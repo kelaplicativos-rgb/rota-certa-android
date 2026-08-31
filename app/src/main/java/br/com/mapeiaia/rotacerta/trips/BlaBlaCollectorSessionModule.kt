@@ -4,6 +4,7 @@ import android.content.Context
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
 import java.time.Instant
+import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -98,20 +99,34 @@ class BlaBlaDynamicSessionStore(context: Context) {
         trips: List<BlaBlaCollectorTrip>,
         skippedTrips: Int,
         identityVerified: Boolean,
+        dateScope: Collection<LocalDate>? = null,
     ) {
         withAccountLock(account.id) {
             val previous = readUnlocked(account)
+            val dateScopeKeys = dateScope
+                ?.map(LocalDate::toString)
+                ?.distinct()
+                ?.toSet()
+                ?.takeIf { it.isNotEmpty() }
+            val scopedTrips = dateScopeKeys?.let { keys -> trips.filter { it.date in keys } } ?: trips
+            val droppedOutOfScope = trips.size - scopedTrips.size
             val authoritativeComplete = identityVerified && skippedTrips == 0
             val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
                 previous = previous?.trips.orEmpty(),
-                current = trips,
+                current = scopedTrips,
                 authoritativeComplete = authoritativeComplete,
+                authoritativeDateScope = dateScopeKeys,
             )
             val preservedVerifiedIdentity =
                 !authoritativeComplete &&
                     previous?.identityVerified == true &&
                     previous.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
+            val effectiveSkippedTrips = if (dateScopeKeys == null) {
+                skippedTrips
+            } else {
+                maxOf(skippedTrips, previous?.skippedTrips ?: 0)
+            }
             writeUnlocked(
                 account,
                 BlaBlaDynamicSessionSnapshot(
@@ -122,13 +137,13 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     lastUrl = lastUrl.take(1000),
                     updatedAtMillis = System.currentTimeMillis(),
                     trips = merged.trips,
-                    skippedTrips = skippedTrips,
+                    skippedTrips = effectiveSkippedTrips,
                 ),
             )
             UnifiedDebugEventStore.record(
                 "SNAPSHOT_SAVED",
                 appContext.packageName,
-                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete authority=session_store",
+                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
             )
         }
     }

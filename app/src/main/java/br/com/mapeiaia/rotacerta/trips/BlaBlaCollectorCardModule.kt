@@ -23,8 +23,16 @@ internal object BlaBlaCollectorCardModule {
         candidates: List<BlaBlaDomRideCandidate>,
         targetDate: LocalDate,
         today: LocalDate = LocalDate.now(),
-    ): List<BlaBlaDomRideCandidate> = candidates.filter { candidate ->
-        candidateDate(candidate, today) == targetDate
+    ): List<BlaBlaDomRideCandidate> = candidatesOnDates(candidates, setOf(targetDate), today)
+
+    fun candidatesOnDates(
+        candidates: List<BlaBlaDomRideCandidate>,
+        targetDates: Collection<LocalDate>,
+        today: LocalDate = LocalDate.now(),
+    ): List<BlaBlaDomRideCandidate> {
+        val scope = targetDates.toSet()
+        if (scope.isEmpty()) return emptyList()
+        return candidates.filter { candidate -> candidateDate(candidate, today) in scope }
     }
 
     fun canAdvance(currentCardComplete: Boolean, currentCardQuarantined: Boolean): Boolean =

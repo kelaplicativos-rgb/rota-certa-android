@@ -20,6 +20,7 @@ internal object BlaBlaCollectorTimelineModule {
         previous: List<BlaBlaCollectorTrip>,
         current: List<BlaBlaCollectorTrip>,
         authoritativeComplete: Boolean,
+        authoritativeDateScope: Set<String>? = null,
     ): BlaBlaSnapshotMergeResult {
         val previousByIdentity = previous.associateBy { BlaBlaTripIdentity.evidence(it).key }
         var preservedIncompleteRosters = 0
@@ -37,10 +38,14 @@ internal object BlaBlaCollectorTimelineModule {
             merged
         }
         val currentKeys = current.mapTo(mutableSetOf()) { BlaBlaTripIdentity.evidence(it).key }
-        val preservedMissing = if (authoritativeComplete) {
-            emptyList()
-        } else {
-            previous.filter { BlaBlaTripIdentity.evidence(it).key !in currentKeys }
+        val preservedMissing = previous.filter { prior ->
+            val missingFromCurrent = BlaBlaTripIdentity.evidence(prior).key !in currentKeys
+            when {
+                !missingFromCurrent -> false
+                !authoritativeComplete -> true
+                authoritativeDateScope == null -> false
+                else -> prior.date !in authoritativeDateScope
+            }
         }
         val resolved = BlaBlaTripIdentity.resolveDistinct(reconciled + preservedMissing).trips
         return BlaBlaSnapshotMergeResult(
@@ -65,11 +70,16 @@ internal object BlaBlaCollectorTimelineModule {
     fun scopeResponseToDate(
         response: BlaBlaCollectorMonthResponse,
         date: LocalDate,
+    ): BlaBlaCollectorMonthResponse = scopeResponseToDates(response, listOf(date))
+
+    fun scopeResponseToDates(
+        response: BlaBlaCollectorMonthResponse,
+        dates: Collection<LocalDate>,
     ): BlaBlaCollectorMonthResponse {
-        val isoDate = date.toString()
+        val isoDates = dates.map(LocalDate::toString).distinct().sorted()
         return response.copy(
-            trips = response.trips.filter { trip -> trip.date == isoDate },
-            coverage = response.coverage.copy(reason = "$DATE_SCOPE_PREFIX$isoDate"),
+            trips = response.trips.filter { trip -> trip.date in isoDates },
+            coverage = response.coverage.copy(reason = "$DATE_SCOPE_PREFIX${isoDates.joinToString(",")}"),
         )
     }
 

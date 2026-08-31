@@ -133,7 +133,7 @@ class BlaBlaBrowserOrchestrator0318Test {
         assertTrue(collectorUi.contains("Text(\"Contas BlaBlaCar\")"))
         assertTrue(collectorUi.contains("Text(\"+ Adicionar conta\")"))
         assertTrue(collectorUi.contains("Sincronizar todas as contas"))
-        assertTrue(collectorUi.contains("Text(\"Sincronizar só hoje\")"))
+        assertTrue(collectorUi.contains("Text(\"📅 Sincronizar por data/período\")"))
         assertTrue(timelineUi.contains("BlaBlaCollectorPanel("))
         assertTrue(timelineUi.contains("Sincronizar BlaBlaCar"))
     }
