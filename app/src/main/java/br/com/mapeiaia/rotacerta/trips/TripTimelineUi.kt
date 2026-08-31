@@ -1152,31 +1152,39 @@ private fun TimelineEntryCard(
                 entry.blablaPublishedSeats,
                 entry.rotaCertaSeatAllocation,
             )
-            if (allocation.blablaPublishedAllocation != null && allocation.rotaCertaAllocation != null && allocation.totalConsidered != null) {
+            val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
+            val localConfirmed = entry.sourcePassengerSeats
+                .filterKeys { it != BookingSource.BLABLACAR }
+                .values
+                .sumOf { it.coerceAtLeast(0) }
+            val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
+            val blablaFree = allocation.blablaPublishedAllocation ?: 0
+            val rotaCertaFree = allocation.rotaCertaAllocation
+                ?.let { (it - localConfirmed - blocked).coerceAtLeast(0) }
+            val operationalFree = if (
+                allocation.blablaPublishedAllocation != null || rotaCertaFree != null
+            ) {
+                (blablaFree + (rotaCertaFree ?: 0)).coerceAtMost(999)
+            } else {
+                null
+            }
+
+            if (allocation.blablaPublishedAllocation != null && rotaCertaFree != null && operationalFree != null) {
                 Text(
-                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} • Rota Certa: ${allocation.rotaCertaAllocation} • Total considerado: ${allocation.totalConsidered}",
+                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} vaga(s) disponíveis • Rota Certa: $rotaCertaFree vaga(s) disponíveis • Total disponível: $operationalFree",
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else {
-                entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                    Text("BlaBlaCar: $published lugar(es) publicados • aguardando a cota do Rota Certa para fechar o total", style = MaterialTheme.typography.bodySmall)
+                entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { available ->
+                    Text("BlaBlaCar: $available vaga(s) disponíveis • aguardando vagas do Rota Certa", style = MaterialTheme.typography.bodySmall)
                 }
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
-            val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
             val physicalFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
                 ?: publicCapacity.availableSeats
-            val operationalFree = allocation.totalConsidered?.let { total ->
-                (total - passengers - blocked).coerceAtLeast(0)
-            }
-            val free = when {
-                physicalFree != null && operationalFree != null -> minOf(physicalFree, operationalFree)
-                operationalFree != null -> operationalFree
-                else -> physicalFree
-            }
+            val free = operationalFree ?: physicalFree
             val physicalCapacity = publicCapacity.physicalVehicleCapacity
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
@@ -1279,7 +1287,7 @@ private fun TimelineEntryCard(
                         entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
                             Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("🪑 ${publicLoads.minOf(SegmentLoad::availableSeats)} = menor disponibilidade real entre os trechos", style = MaterialTheme.typography.bodySmall)
+                        Text("🪑 ${publicLoads.minOf(SegmentLoad::availableSeats)} = disponibilidade física mínima entre os trechos", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
