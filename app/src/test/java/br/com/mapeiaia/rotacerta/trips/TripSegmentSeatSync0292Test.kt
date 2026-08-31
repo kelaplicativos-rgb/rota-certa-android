@@ -100,7 +100,7 @@ class TripSegmentSeatSync0292Test {
     }
 
     @Test
-    fun configuredCapacityAlwaysOverridesExternalOrStaleCardCapacity() {
+    fun channelInventoryOverridesStaleCardCapacityWithoutUsingLegacyVehicleCapacity() {
         val entry = TripTimelineEntry(
             tripId = "x",
             profileId = "p",
@@ -111,11 +111,18 @@ class TripSegmentSeatSync0292Test {
             destination = "B",
             status = TripStatus.PUBLISHED,
             capacity = 2,
+            rotaCertaSeatAllocation = 2,
             minimumOccupiedSeats = 0,
             maximumOccupiedSeats = 0,
             sourcePassengerSeats = emptyMap(),
+            blablaPublishedSeats = 2,
         )
-        assertEquals(4, applyConfiguredVehicleCapacity(listOf(entry), 4).single().capacity)
+        val updated = applyConfiguredVehicleCapacity(
+            entries = listOf(entry),
+            vehicleCapacity = 999,
+            rotaCertaSeatAllocation = 2,
+        ).single()
+        assertEquals(4, updated.capacity)
     }
 
     private fun booking(id: String, source: BookingSource, from: String, to: String, seats: Int) = Booking(
