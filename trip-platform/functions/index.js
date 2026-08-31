@@ -645,7 +645,7 @@ function normalizeStops(rawStops) {
 
 function normalizeDriverTrip(raw, previous = null) {
   const capacity = Number(raw.capacity);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 999) throw new Error("Capacidade inválida.");
+  if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
   const departureAtMillis = Number(raw.departureAtMillis);
   if (!Number.isFinite(departureAtMillis) || departureAtMillis <= 0) throw new Error("Horário de saída inválido.");
   const status = cleanText(raw.status, 24) || "DRAFT";
@@ -654,18 +654,16 @@ function normalizeDriverTrip(raw, previous = null) {
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
-    const externalBlaBlaProjection = isExternalBlaBlaTrip("", previous);
-    const protectedCapacityChange = capacity !== Number(previous.capacity || 0) && !externalBlaBlaProjection;
-    if (protectedCapacityChange || oldStopIds !== newStopIds) {
-      throw new Error("Capacidade e estrutura de paradas não podem mudar depois da primeira reserva.");
+    if (oldStopIds !== newStopIds) {
+      throw new Error("A estrutura de paradas não pode mudar depois da primeira reserva.");
     }
   }
   const rawRotaCertaSeatAllocation = raw.rotaCertaSeatAllocation == null
-    ? Number(previous && previous.rotaCertaSeatAllocation != null ? previous.rotaCertaSeatAllocation : capacity)
+    ? Number(previous && previous.rotaCertaSeatAllocation != null ? previous.rotaCertaSeatAllocation : 0)
     : Number(raw.rotaCertaSeatAllocation);
   const rotaCertaSeatAllocation = Number.isInteger(rawRotaCertaSeatAllocation) && rawRotaCertaSeatAllocation >= 0 && rawRotaCertaSeatAllocation <= 999
     ? rawRotaCertaSeatAllocation
-    : capacity;
+    : 0;
   const rawPublishedSeats = raw.publishedSeats == null ? null : Number(raw.publishedSeats);
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= 999
     ? rawPublishedSeats
@@ -1021,7 +1019,12 @@ function reconciledSegmentCapacity(trip, records, now = Date.now()) {
     const toIndex = stops.findIndex((stop) => stop.id === record.dropoffStopId);
     if (fromIndex < 0 || toIndex <= fromIndex) continue;
     const group = cleanText(record.occupancyGroupId, 120);
-    const key = group ? `group:${group}` : `booking:${cleanText(record.id, 120)}`;
+    const sourceReference = cleanText(record.sourceReference, 240);
+    const passengerId = cleanText(record.passengerId, 120);
+    const key = group ? `group:${group}`
+      : sourceReference ? `reference:${sourceReference}`
+        : passengerId ? `passenger:${passengerId}`
+          : `booking:${cleanText(record.id, 120)}`;
     const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
     const seats = Math.max(0, Number(record.seats || 0));
     for (let index = fromIndex; index < toIndex; index += 1) {
@@ -1081,7 +1084,12 @@ function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
   for (const record of records || []) {
     if (!record || Number(record.seats || 0) <= 0 || !recordOccupiesCapacity(record, now)) continue;
     const groupId = cleanText(record.occupancyGroupId, 120);
-    const key = groupId ? `group:${groupId}` : `booking:${cleanText(record.id, 120)}`;
+    const sourceReference = cleanText(record.sourceReference, 240);
+    const passengerId = cleanText(record.passengerId, 120);
+    const key = groupId ? `group:${groupId}`
+      : sourceReference ? `reference:${sourceReference}`
+        : passengerId ? `passenger:${passengerId}`
+          : `booking:${cleanText(record.id, 120)}`;
     const current = groups.get(key) || { externalConfirmed: 0, localConfirmed: 0, localBlocked: 0 };
     const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
     const source = cleanText(record.source, 24).toUpperCase();
@@ -1124,8 +1132,14 @@ function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
   const rawRota = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
   const rotaCertaAllocatedSeats = Number.isInteger(rawRota) && rawRota >= 0 ? Math.min(999, rawRota) : 0;
   const rotaCertaAvailableSeats = Math.max(0, rotaCertaAllocatedSeats - rotaCertaConsumedSeats);
-  const totalAvailableSeats = Math.min(999, blablaAvailableSeats + rotaCertaAvailableSeats);
-  const operationalOverbookingSeats = Math.max(0, rotaCertaConsumedSeats - rotaCertaAllocatedSeats);
+  const capacityState = reconciledSegmentCapacity(trip, records, now);
+  const derivedCapacity = Math.max(0, Number(trip && trip.capacity || 0));
+  const segmentAvailable = capacityState.loads.map((load) => Math.max(0, derivedCapacity - Number(load || 0)));
+  const totalAvailableSeats = segmentAvailable.length ? Math.min(...segmentAvailable) : derivedCapacity;
+  const operationalOverbookingSeats = capacityState.loads.reduce(
+    (max, load) => Math.max(max, Math.max(0, Number(load || 0) - derivedCapacity)),
+    0,
+  );
 
   return {
     confirmedPassengerSeats,
@@ -1175,15 +1189,15 @@ function assertNoOperationalOverbooking(trip, records, now = Date.now()) {
 }
 
 function availableForBooking(trip, records, loads, fromIndex, toIndex, now = Date.now()) {
-  const physical = availableForSegmentRange(trip, loads, fromIndex, toIndex);
-  const operational = reconciledOperationalSeatSummary(trip, records, now).operationalAvailableSeats;
-  return Math.max(0, Math.min(physical, operational));
+  void records;
+  void now;
+  return availableForSegmentRange(trip, loads, fromIndex, toIndex);
 }
 
 function assertNoOverbooking(trip, loads) {
   const capacity = Number(trip.capacity || 0);
   if (loads.some((load) => Number(load || 0) > capacity)) {
-    throw Object.assign(new Error("A conciliação ultrapassaria a capacidade física do veículo."), { httpStatus: 409, code: "overbooking" });
+    throw Object.assign(new Error("A conciliação ultrapassaria o inventário operacional disponível nesse trecho."), { httpStatus: 409, code: "overbooking" });
   }
 }
 
@@ -4515,12 +4529,7 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
       const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
       assertNoOperationalOverbooking(trip, candidateRecords);
-      const operational = reconciledOperationalSeatSummary(trip, candidateRecords);
-      const physicalRange = capacityAvailabilityRange(trip, loads);
-      const range = {
-        minimum: Math.min(physicalRange.minimum, operational.operationalAvailableSeats),
-        maximum: Math.min(physicalRange.maximum, operational.operationalAvailableSeats),
-      };
+      const range = capacityAvailabilityRange(trip, loads);
       const normalizedPersisted = { ...normalized };
       delete normalizedPersisted.id;
       tx.set(bookingRef, normalizedPersisted, { merge: true });
