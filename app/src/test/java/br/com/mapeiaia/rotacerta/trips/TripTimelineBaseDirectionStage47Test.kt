@@ -89,8 +89,8 @@ class TripTimelineBaseDirectionStage47Test {
     fun directionPresentationDoesNotChangePhysicalOverbookingCalculation() {
         val overloaded = entry().copy(
             capacity = 1,
-            minimumOccupiedSeats = 0,
-            maximumOccupiedSeats = 0,
+            minimumOccupiedSeats = 2,
+            maximumOccupiedSeats = 2,
             sourcePassengerSeats = mapOf(BookingSource.BLABLACAR to 2),
         )
         val physical = TripPhysicalRideConsolidator.consolidate(listOf(overloaded), emptyMap()).single()
