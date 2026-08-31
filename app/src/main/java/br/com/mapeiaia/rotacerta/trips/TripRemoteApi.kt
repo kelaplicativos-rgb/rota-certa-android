@@ -917,4 +917,6 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     fareCurrencyCode = existingLocal?.fareCurrencyCode.orEmpty(),
     boardingAddress = existingLocal?.boardingAddress.orEmpty(),
     dropoffAddress = existingLocal?.dropoffAddress.orEmpty(),
+    cancellationToken = existingLocal?.cancellationToken,
+    localMetadataTouched = existingLocal?.localMetadataTouched == true,
 )
