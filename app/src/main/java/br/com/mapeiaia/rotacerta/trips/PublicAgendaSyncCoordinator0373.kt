@@ -78,7 +78,14 @@ internal class PublicAgendaSyncCoordinator0373(
                 )
                 val completion = try {
                     val result = syncAction(request.rotaCertaSeatAllocation)
-                    lastCompletedSignature = before
+                    if (result.failures == 0) {
+                        lastCompletedSignature = before
+                    } else {
+                        eventSink(
+                            "CAPACITY_PUBLIC_SYNC_PARTIAL_NOT_DEDUPED",
+                            "reason=${request.reason} scope=active_tenant failures=${result.failures}",
+                        )
+                    }
                     PublicAgendaSyncCompletion0373(
                         result = result,
                         reason = request.reason,
