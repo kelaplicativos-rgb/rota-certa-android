@@ -6,6 +6,10 @@ on:
       - agent/tester-exclusive-link-0.1.378
     paths:
       - '.github/workflows/tester-exclusive-link-0378-validation.yml'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/tester-exclusive-link-0378.test.js'
+      - 'trip-platform/public/app.js'
+      - 'trip-platform/public/index.html'
   workflow_dispatch:
 
 permissions:
@@ -197,7 +201,10 @@ jobs:
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/0378/live-index.html
           grep -Fq 'bootstrapTesterExperience' /tmp/0378/live-app.js
           grep -Fq 'X-Rota-Certa-Tester-Session' /tmp/0378/live-app.js
+          grep -Fq 'if (isTesterMode()) return continueAfterAuthentication();' /tmp/0378/live-app.js
+          grep -Fq 'Nenhum serviço externo foi aberto no Modo Teste.' /tmp/0378/live-app.js
           grep -Fq 'MODO TESTE' /tmp/0378/live-index.html
+          grep -Fq '/app.js?v=0.1.378-tester-bypass-2' /tmp/0378/live-index.html
           printf '%s\n' "${GITHUB_SHA}" > /tmp/0378/deployed-source-head.txt
           echo "LIVE_TESTER_CONTRACT=PASS"
 

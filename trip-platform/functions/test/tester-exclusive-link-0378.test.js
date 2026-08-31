@@ -103,6 +103,43 @@ test("browser shadow state is isolated per testSessionId and real external effec
   assert.match(web, /isTesterMode\(\) \? "\/v1\/tester\/me\/bookings"/);
 });
 
+
+test("tester bypass is fail-closed against WhatsApp/password gates and production passenger access", () => {
+  const accessGate = block(web, "function showAccessGate", "async function requestPublicAgendaAccess");
+  assert.match(accessGate, /if \(isTesterMode\(\)\) return continueAfterAuthentication\(\)/);
+  const requestAccess = block(web, "async function requestPublicAgendaAccess", "async function validatePassengerSession");
+  assert.match(requestAccess, /if \(isTesterMode\(\)\)/);
+  const privateSubmit = block(web, "async function submitPrivateAuthentication", "function closePrivateAuth");
+  assert.match(privateSubmit, /if \(isTesterMode\(\)\) return continueAfterAuthentication\(\)/);
+  const portalLogin = block(web, "async function loginPassengerPortal", "async function registerPassengerPortal");
+  assert.match(portalLogin, /if \(isTesterMode\(\)\) return openPassengerPortal\(\)/);
+  const bootstrap = block(web, "async function bootstrapTesterExperience", "async function bootstrapAuthenticatedExperience");
+  assert.match(bootstrap, /showOnly\("loading"\)/);
+  assert.match(bootstrap, /savePassengerContact\(""\)/);
+});
+
+test("tester blocks external WhatsApp/calendar effects and production read telemetry", () => {
+  const whatsapp = block(web, "function setWhatsappLink", "function defaultDriverMessage");
+  assert.match(whatsapp, /if \(isTesterMode\(\)\)/);
+  const google = block(web, "function openGoogleCalendar", "function escapeIcs");
+  assert.match(google, /Nenhum serviço externo foi aberto/);
+  const share = block(web, "async function shareCalendarFeed", "function portalHeaders");
+  assert.match(share, /Compartilhamento externo simulado/);
+  const agenda = block(api, "async function getPublicDriverAgenda", "async function createDriverTrip");
+  assert.match(agenda, /if \(!tester\) \{[\s\S]*PUBLIC_AGENDA_LOADED/);
+  const tripRead = block(api, "async function getPublicTrip", "function normalizeBrazilWhatsapp");
+  assert.match(tripRead, /if \(!tester\) await appendPublicDebugEvent\([\s\S]*PUBLIC_TRIP_LOADED/);
+});
+
+test("expired tester sessions never fall back into passenger password login", () => {
+  const undo = block(web, "async function undoQuickBooking", "function cancellationStorageKey");
+  const update = block(web, "async function updateExistingReservation", "async function refreshTripSilently");
+  const cancel = block(web, "async function cancelReservation", "function recomputeLoadsAfterBooking");
+  for (const source of [undo, update, cancel]) {
+    assert.match(source, /response\.status === 401[\s\S]*if \(isTesterMode\(\)\)[\s\S]*saveTesterSession\(""\)[\s\S]*setError/);
+  }
+});
+
 test("normal passenger access and Android admin integration remain alongside tester contracts", () => {
   assert.match(web, /passengerSessionToken/);
   assert.match(web, /passengerAgendaViewToken/);

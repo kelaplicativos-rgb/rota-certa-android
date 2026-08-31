@@ -2185,14 +2185,16 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   const trips = tester
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
     : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
-  await appendPublicDebugEvent({
-    driverUsername: username,
-    event: "PUBLIC_AGENDA_LOADED",
-    source: "server",
-    agendaToken,
-    screen: "agenda",
-    statusCode: 200,
-  }).catch(() => {});
+  if (!tester) {
+    await appendPublicDebugEvent({
+      driverUsername: username,
+      event: "PUBLIC_AGENDA_LOADED",
+      source: "server",
+      agendaToken,
+      screen: "agenda",
+      statusCode: 200,
+    }).catch(() => {});
+  }
   return json(res, 200, {
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
@@ -2574,7 +2576,7 @@ async function getPublicTrip(res, req, token) {
     }).catch(() => {});
     return fail(res, 409, "trip_departed", "Esta viagem já saiu e não aceita novas reservas.");
   }
-  await appendPublicDebugEvent({
+  if (!tester) await appendPublicDebugEvent({
     driverUsername,
     event: "PUBLIC_TRIP_LOADED",
     source: "server",

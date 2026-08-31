@@ -121,6 +121,8 @@ const publicDebugSessionId = (() => {
 })();
 
 function tracePublicAction(event, details = {}) {
+  // TESTER has its own isolated server-side audit trail. Never feed production browser telemetry.
+  if (testerBootstrapToken || isTesterMode()) return;
   const payload = {
     event,
     sessionId: publicDebugSessionId,
@@ -299,6 +301,11 @@ function routeLabel(item = trip) {
 
 function setWhatsappLink(element, message) {
   if (!element) return false;
+  if (isTesterMode()) {
+    element.classList.add("hidden");
+    element.removeAttribute("href");
+    return false;
+  }
   const digits = whatsappDigits(driverProfile.whatsapp || "");
   if (!digits) {
     element.classList.add("hidden");
@@ -431,6 +438,7 @@ function updateAuthenticatedChrome() {
 function showAccessGate(destination = pendingAuthDestination, message = "") {
   pendingAuthDestination = destination || "agenda";
   pendingPrivateAction = "";
+  if (isTesterMode()) return continueAfterAuthentication();
   showOnly("accessGate");
   updateAuthenticatedChrome();
   const hasPublicTarget = Boolean(driverUsername && (agendaToken || publicSlug || tripToken));
@@ -442,6 +450,10 @@ function showAccessGate(destination = pendingAuthDestination, message = "") {
 }
 
 async function requestPublicAgendaAccess(contactInput = "") {
+  if (isTesterMode()) {
+    await continueAfterViewAccess();
+    return true;
+  }
   const passengerContact = normalizeWhatsapp(contactInput || $("accessContact").value || passengerSessionContact);
   if (!passengerContact) {
     $("accessMessage").textContent = "Informe seu WhatsApp com DDD.";
@@ -577,6 +589,7 @@ function showPrivateAuthGate(destination = "portal", resumeAction = "") {
 }
 
 async function submitPrivateAuthentication() {
+  if (isTesterMode()) return continueAfterAuthentication();
   const passengerContact = passengerSessionContact;
   const password = $("privateAuthPassword").value;
   const confirmation = $("privateAuthPasswordConfirm").value;
@@ -2083,9 +2096,12 @@ function openBookingFlow() {
   if (!trip || trip.capacityReliable !== true || isFullTrip(trip) || trip.canReserve === false) return;
   editingExistingBooking = false;
   $("confirmReserve").textContent = "Fazer pedido de reserva";
-  if (passengerSessionContact) {
+  if (!isTesterMode() && passengerSessionContact) {
     $("contact").value = maskWhatsapp(passengerSessionContact);
     $("contact").readOnly = true;
+  } else if (isTesterMode()) {
+    $("contact").value = "";
+    $("contact").readOnly = false;
   }
   $("creditToUse").value = "0";
   loadPassengerCredits();
@@ -2275,8 +2291,8 @@ async function reserve() {
     confirmedBooking = {
       bookingId: body.bookingId,
       cancellationToken: body.cancellationToken,
-      passengerName: body.passengerName || "",
-      passengerContact: passengerSessionContact,
+      passengerName: body.passengerName || (isTesterMode() ? "🧪 Passageiro de teste" : ""),
+      passengerContact: isTesterMode() ? "" : passengerSessionContact,
       boardingStopId: bookingPayload.boardingStopId,
       dropoffStopId: bookingPayload.dropoffStopId,
       seats: bookingPayload.seats,
@@ -2339,14 +2355,16 @@ async function reserve() {
     showOnly("trip");
     refreshTripAvailabilitySummary();
     showQuickBookingNotice(
-      "✓ RESERVA SOLICITADA",
+      isTesterMode() ? "🧪 RESERVA SIMULADA" : "✓ RESERVA SOLICITADA",
       body.replayed
         ? "Essa solicitação já estava registrada. Nenhuma reserva duplicada foi criada."
-        : "Sua solicitação foi registrada, a vaga ficou protegida e o motorista foi avisado.",
+        : (isTesterMode()
+          ? "A reserva e a disponibilidade foram alteradas somente nesta simulação. Nenhum motorista foi avisado."
+          : "Sua solicitação foi registrada, a vaga ficou protegida e o motorista foi avisado."),
     );
 
     const observation = `Olá, ${driverDisplayName || "motorista"}. Tenho uma observação sobre minha reserva ${confirmedBooking.bookingId}: `;
-    const hasObservation = setWhatsappLink($("quickObservation"), observation);
+    const hasObservation = isTesterMode() ? false : setWhatsappLink($("quickObservation"), observation);
     show("quickObservation", hasObservation);
     show("quickUndo", !body.replayed);
     if (quickUndoTimer) clearTimeout(quickUndoTimer);
@@ -2404,6 +2422,10 @@ async function undoQuickBooking() {
     statusCode = response.status;
     const body = await response.json();
     if (response.status === 401) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        return setError(body.message || "Sessão de teste encerrada. Gere um novo link de teste no aplicativo.");
+      }
       savePassengerSession("");
       passengerViewAccountActivated = true;
       return showPrivateAuthGate("trip", "undo");
@@ -2508,6 +2530,11 @@ async function updateExistingReservation() {
     statusCode = response.status;
     const body = await response.json();
     if (response.status === 401) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        setError(body.message || "Sessão de teste encerrada. Gere um novo link de teste no aplicativo.");
+        return;
+      }
       savePassengerSession("");
       passengerViewAccountActivated = true;
       showPrivateAuthGate("review", "update");
@@ -2603,6 +2630,11 @@ async function cancelReservation() {
     statusCode = response.status;
     const body = await response.json();
     if (response.status === 401) {
+      if (isTesterMode()) {
+        saveTesterSession("");
+        setError(body.message || "Sessão de teste encerrada. Gere um novo link de teste no aplicativo.");
+        return;
+      }
       savePassengerSession("");
       passengerViewAccountActivated = true;
       showPrivateAuthGate("review", "cancel");
@@ -2670,6 +2702,10 @@ function calendarTimes() {
 
 function openGoogleCalendar() {
   if (!trip || !confirmedBooking) return;
+  if (isTesterMode()) {
+    showQuickBookingNotice("🧪 Ação simulada", "Nenhum serviço externo foi aberto no Modo Teste.");
+    return;
+  }
   const { from, to } = bookingStops();
   const query = new URLSearchParams({
     action: "TEMPLATE",
@@ -2722,6 +2758,10 @@ function downloadIcs() {
 
 async function shareCalendarFeed() {
   if (driverUsername.length < 3) return;
+  if (isTesterMode()) {
+    if ($("subscribeCalendar")) $("subscribeCalendar").textContent = "🧪 Compartilhamento externo simulado";
+    return;
+  }
   const shortUrl = publicSlug ? `${location.origin}/${encodeURIComponent(publicSlug)}` : "";
   const url = shortUrl || (agendaToken.length >= 16
     ? `${location.origin}/calendar/${encodeURIComponent(driverUsername)}/${encodeURIComponent(agendaToken)}.ics`
@@ -2908,6 +2948,7 @@ function openPassengerPortal() {
 }
 
 async function loginPassengerPortal() {
+  if (isTesterMode()) return openPassengerPortal();
   const passengerContact = normalizeWhatsapp($("portalContact").value);
   const password = $("portalPassword").value;
   if (!passengerContact || password.length < 8) {
@@ -3512,6 +3553,7 @@ window.addEventListener("online", () => {
 
 async function bootstrapTesterExperience() {
   if (testerBootstrapToken) {
+    showOnly("loading");
     try {
       const response = await fetch("/v1/public/tester/bootstrap", {
         method: "POST",
@@ -3520,6 +3562,11 @@ async function bootstrapTesterExperience() {
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.message || "Link de teste inválido ou expirado.");
+      savePassengerSession("");
+      savePassengerContact("");
+      saveAgendaViewSession("");
+      passengerViewAccountActivated = false;
+      passengerMustChangePassword = false;
       saveTesterSession(body.sessionToken, body);
       const cleanUrl = new URL(location.href);
       cleanUrl.searchParams.delete("tester");
