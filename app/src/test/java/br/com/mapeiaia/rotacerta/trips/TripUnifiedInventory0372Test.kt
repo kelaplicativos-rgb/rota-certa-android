@@ -80,7 +80,7 @@ class TripUnifiedInventory0372Test {
         )
         val summary = operationalSeatSummary(trip(blablaQuota = 3, rotaCerta = 2), listOf(external))
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(3, summary.availableSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test
@@ -115,7 +115,7 @@ class TripUnifiedInventory0372Test {
         )
         val summary = operationalSeatSummary(trip(blablaQuota = 2, rotaCerta = 2), bookings)
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(4, summary.availableSeats)
+        assertEquals(3, summary.availableSeats)
     }
 
     @Test

@@ -972,6 +972,7 @@ internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccup
         blablaQuotaKnown || rotaCertaQuotaKnown
     }
     return when {
+        hasExternalPublication(entry) && !inventoryKnown -> TimelineOccupancyReadState.PENDING
         inventoryKnown && hasExternalPublication(entry) && entry.blablaPassengerRosterComplete != true && entry.maximumOccupiedSeats <= 0 ->
             TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING
         inventoryKnown -> TimelineOccupancyReadState.CAPACITY_CONFIGURED
