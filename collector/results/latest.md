@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-02**
-- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,15 +12,15 @@
 
 ## Motoristas
 
-1. **Donizete** — 06:00 — São Paulo → Minas Gerais — sem preço — Cheio · Super Driver
-2. **Cleiton** — 08:00 — São Paulo → Três Corações — R$ 70,00 — Esgotará em breve
-3. **Joao** — 09:00 — São Paulo → São Thomé das Letras — R$ 88,00 — Esgotará em breve
-4. **Wilson** — 09:30 — São Paulo → São Lourenço — sem preço — Cheio
-5. **Raphael** — 10:00 — Diadema → Três Corações — R$ 93,00
-6. **Tompson** — 12:00 — São Paulo → Minas Gerais — R$ 97,00
-7. **Sergio** — 13:00 — São Paulo → Três Corações — R$ 90,00 — Super Driver
-8. **Isac** — 15:00 — São Paulo → Minas Gerais — R$ 81,00
-9. **Lenilson** — 15:30 — São Paulo → Três Corações — R$ 90,00
-10. **Eliézer** — 16:30 — São Paulo → Minas Gerais — R$ 96,00
+1. **Diones** — 02:20 — Minas Gerais → Guarulhos — R$ 82,00
+2. **Diego Fernandes** — 02:30 — Caxambu → Guarulhos — R$ 89,00
+3. **Vinicius** — 03:10 — Três Corações → São Paulo — R$ 92,00
+4. **Wilson** — 04:30 — São Lourenço → São Paulo — R$ 88,00 — Esgotará em breve
+5. **Jeferson** — 04:50 — Lambari → São Paulo — R$ 84,00 — Super Driver
+6. **Lucas** — 05:00 — São Lourenço → São Paulo — R$ 88,00 — Super Driver
+7. **Rafael** — 06:10 — Minas Gerais → São Paulo — R$ 84,00 — Super Driver
+8. **Isac** — 06:20 — Minas Gerais → São Paulo — R$ 80,00
+9. **Giovanni** — 06:30 — Minas Gerais → São Paulo — R$ 75,00 — Esgotará em breve
+10. **Eliézer** — 07:30 — Campanha → São Paulo — R$ 83,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
