@@ -73,7 +73,7 @@ jobs:
           ! grep -Fq 'capacity = binding.capacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'externalSeatMutation=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
           grep -Fq 'EXTERNAL_SEAT_WRITE_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
-          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0373Test.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0372Test.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncRegression0373Test.kt
           grep -Fq 'recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq '.filter(Trip::isCanonicalLocalPublishSource)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
