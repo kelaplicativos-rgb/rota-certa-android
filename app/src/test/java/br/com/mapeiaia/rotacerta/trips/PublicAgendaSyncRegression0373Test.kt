@@ -236,5 +236,18 @@ class PublicAgendaSyncRegression0373Test {
         assertTrue(source.contains("it.isCanonicalLocalPublishSource()"))
         assertTrue(source.contains("externalBackingsExcluded"))
         assertTrue(source.contains("bookingSnapshot"))
+        assertTrue(source.contains("BOOKING_FETCH_CONCURRENCY_0373 = 4"))
+        assertTrue(source.contains("BOOKING_RECONCILE_PHASES_0373"))
+        assertTrue(source.indexOf("\"BOOKING_REMOTE_FETCH\"") < source.indexOf("\"BOOKING_COMPARE\""))
+        assertTrue(source.indexOf("\"BOOKING_COMPARE\"") < source.indexOf("\"BOOKING_IMPORT\""))
+    }
+
+    @Test
+    fun firebaseBookingServiceNeverBlocksItsDeliveryThread() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt").readText()
+        assertFalse(source.contains("runBlocking"))
+        assertTrue(source.contains("CoroutineScope(SupervisorJob() + Dispatchers.IO)"))
+        assertTrue(source.contains("serviceScope.launch"))
+        assertTrue(source.contains("serviceScope.cancel()"))
     }
 }
