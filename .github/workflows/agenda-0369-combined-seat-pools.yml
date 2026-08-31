@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.373 Public sync single-flight
+name: Rota Certa 0.1.374 Inventory source truth + public sync single-flight
 
 on:
   push:
@@ -39,23 +39,25 @@ jobs:
           BASE=3533dfa1b2d54a863b07d42f43974242fcf94ccf
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5666' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.373"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5667' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.374"' app/build.gradle.kts
 
-          # Canonical rule: BlaBla current remaining seats + Rota Certa allocation,
-          # normalized into one trip inventory and one segment engine.
+          # Canonical rule: quota creates inventory; occupancy consumes it once per segment.
           grep -Fq 'bookingOccupancyIdentityKey' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq 'operationalInventoryCapacity' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'blablaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'rotaCertaAvailableSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
-          grep -Fq 'capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'blablaQuotaSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'rotaCertaQuotaSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          ! grep -Fq 'externalConfirmedPeakSeats' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'capacitySource=blablacar_quota_plus_rota_certa_quota' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          ! grep -Fq 'blablacar_remaining_plus_external_peak_plus_rota_certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'source.published_seats?.takeIf { it in 0..999 }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'Vagas disponibilizadas no Rota Certa' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'Capacidade de passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'Capacidade do veículo' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'prefs[rotaCertaSeatAllocation] ?: 0' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
           ! grep -Fq 'prefs[rotaCertaSeatAllocation] ?: prefs[vehicleCapacity]' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
-          grep -Fq 'Total disponível' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Inventário operacional' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'LOTADO' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'Total disponível' trip-platform/public/app.js
           grep -Fq 'blablaAvailableSeats' trip-platform/functions/index.js
           grep -Fq 'rotaCertaAvailableSeats' trip-platform/functions/index.js
@@ -75,6 +77,7 @@ jobs:
           grep -Fq 'EXTERNAL_SEAT_WRITE_SKIPPED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaReliableSeatSync.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripUnifiedInventory0372Test.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncRegression0373Test.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripInventorySourceTruth0374Test.kt
           grep -Fq 'recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
           grep -Fq '.filter(Trip::isCanonicalLocalPublishSource)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'Channel.CONFLATED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt
@@ -148,31 +151,31 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5666'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.373'" /tmp/aapt.txt
+          grep -Fq "versionCode='5667'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.374'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0373
-          cp "$APK" /tmp/0373/rota-certa-0.1.373-public-sync-single-flight.apk
-          sha256sum /tmp/0373/rota-certa-0.1.373-public-sync-single-flight.apk | tee /tmp/0373/apk.sha256
-          cp /tmp/aapt.txt /tmp/0373/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0373/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0373/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0373/changed-files.txt
-          cp /tmp/farol.sha256 /tmp/0373/farol.sha256
-          git rev-parse HEAD > /tmp/0373/source-head.txt
+          mkdir -p /tmp/0374
+          cp "$APK" /tmp/0374/rota-certa-0.1.374-inventory-source-truth.apk
+          sha256sum /tmp/0374/rota-certa-0.1.374-inventory-source-truth.apk | tee /tmp/0374/apk.sha256
+          cp /tmp/aapt.txt /tmp/0374/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0374/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0374/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0374/changed-files.txt
+          cp /tmp/farol.sha256 /tmp/0374/farol.sha256
+          git rev-parse HEAD > /tmp/0374/source-head.txt
           {
             echo "branch=$SOURCE_BRANCH"
             echo "commit=$SOURCE_SHA"
-            echo "versionName=0.1.373"
-            echo "versionCode=5666"
-          } > /tmp/0373/build-metadata.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0373/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0373/dex-strings.txt
-          grep -Fq 'Sobre o Rota Certa' /tmp/0373/dex-strings.txt
+            echo "versionName=0.1.374"
+            echo "versionCode=5667"
+          } > /tmp/0374/build-metadata.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0374/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0374/dex-strings.txt
+          grep -Fq 'Sobre o Rota Certa' /tmp/0374/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.373-public-sync-single-flight
+          name: rota-certa-0.1.374-inventory-source-truth
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0373
+          path: /tmp/0374

@@ -124,6 +124,29 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
+    fun physicalLogTimelineExtRecordsAreExcludedFromLocalPublisherWhenOriginIsExternal() {
+        val ids = listOf(
+            "timeline-ext-fc2ab95908a2ad8fe0f28b52",
+            "timeline-ext-5df185ba9e36f622f9920d25",
+        )
+        val records = ids.map { id ->
+            Trip(
+                id = id,
+                title = "A → B",
+                departureAtMillis = 4_000_000_000_000L,
+                status = TripStatus.PUBLISHED,
+                stops = listOf(
+                    TripStop(id = "a-$id", order = 0, name = "A"),
+                    TripStop(id = "b-$id", order = 1, name = "B"),
+                ),
+                recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            )
+        }
+        assertTrue(records.none(Trip::isCanonicalLocalPublishSource))
+        assertTrue(records.all { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING })
+    }
+
+    @Test
     fun illegalStateExceptionBoundaryIsNotReachableForExternalBackingThroughLocalDiscovery() {
         val backing = buildTimelineExternalBackingTrip(externalEntry("illegal-state-regression"), 4)
         val remoteApi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()

@@ -13,8 +13,8 @@ class BlaBlaPublishedCapacity0366Test {
     @Test
     fun derivedInventoryRemainsSeparateFromBlaBlaRemainingMetadata() {
         val resolved = timelinePublicCapacityResolution(entry(profileA, "trip-a", published = 3, blablaOccupied = 0))
-        assertEquals(4, resolved.physicalVehicleCapacity)
-        assertEquals(3, resolved.remotePublishedCapacity)
+        assertEquals(4, resolved.operationalInventory)
+        assertEquals(3, resolved.blablaQuota)
         assertEquals(4, resolved.effectiveCapacity)
         assertEquals(4, resolved.availableSeats)
         assertEquals("trip_operational_inventory", resolved.capacitySource)
@@ -53,24 +53,24 @@ class BlaBlaPublishedCapacity0366Test {
             blablaPublishedSeats = 3,
             rotaCertaSeatAllocation = 4,
         )
-        assertEquals(7, breakdown.physicalPassengerCapacity)
-        assertEquals(3, breakdown.blablaPublishedAllocation)
-        assertEquals(4, breakdown.rotaCertaAllocation)
-        assertEquals(7, breakdown.totalConsidered)
+        assertEquals(3, breakdown.blablaQuota)
+        assertEquals(4, breakdown.rotaCertaQuota)
+        assertEquals(7, breakdown.operationalInventory)
     }
 
     @Test
-    fun blablaFreeSeatsAreNotSubtractedByAlreadyConfirmedBlaBlaPassengers() {
+    fun blablaQuotaIsConsumedByConfirmedBlaBlaPassengersExactlyOnce() {
         val trip = trip(capacity = 7, publishedSeats = 2, rotaCertaSeatAllocation = 4)
         val claims = listOf(
             booking("bb", trip, 3, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY, "bb"),
         )
         val summary = operationalSeatSummary(trip, claims)
-        assertEquals(2, summary.blablaAvailableSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
-        assertEquals(6, summary.totalAvailableSeats)
+        assertEquals(2, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(6, summary.operationalInventorySeats)
+        assertEquals(3, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(3, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
     }
 
@@ -83,8 +83,8 @@ class BlaBlaPublishedCapacity0366Test {
         )
         val summary = operationalSeatSummary(trip, claims)
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
-        assertEquals(7, summary.availableSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(6, summary.availableSeats)
     }
 
     @Test
@@ -112,22 +112,22 @@ class BlaBlaPublishedCapacity0366Test {
     fun accountsKeepPublishedMetadataIndependent() {
         val a = timelinePublicCapacityResolution(entry(profileA, "same-trip", 3, 1))
         val b = timelinePublicCapacityResolution(entry(profileB, "same-trip", 4, 1))
-        assertEquals(3, a.remotePublishedCapacity)
-        assertEquals(4, b.remotePublishedCapacity)
+        assertEquals(3, a.blablaQuota)
+        assertEquals(4, b.blablaQuota)
         assertEquals(4, a.effectiveCapacity)
         assertEquals(4, b.effectiveCapacity)
     }
 
     @Test
-    fun publicAgendaSourceDerivesInventoryFromBlaBlaRemainingAndRotaCerta() {
+    fun publicAgendaSourceDerivesInventoryFromBlaBlaQuotaAndRotaCertaQuota() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         assertFalse(source.contains("combinedAgendaAvailableSeats"))
         assertFalse(source.contains("rotaCertaSeatPool"))
-        assertTrue(source.contains("derivedInventory"))
-        assertTrue(source.contains("blablaAvailable"))
-        assertTrue(source.contains("rotaCertaAvailable"))
-        assertTrue(source.contains("totalAvailable"))
-        assertTrue(source.contains("capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa"))
+        assertTrue(source.contains("operationalInventory"))
+        assertTrue(source.contains("blablaQuota"))
+        assertTrue(source.contains("rotaCertaQuota"))
+        assertTrue(source.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
+        assertFalse(source.contains("blablacar_remaining_plus_external_peak_plus_rota_certa"))
     }
 
     private fun entry(

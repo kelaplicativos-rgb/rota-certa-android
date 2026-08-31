@@ -135,10 +135,9 @@ class PublicAgendaAutoSync0300Test {
             blablaPublishedSeats = 3,
             rotaCertaSeatAllocation = 4,
         )
-        assertEquals(7, breakdown.physicalPassengerCapacity)
-        assertEquals(3, breakdown.blablaPublishedAllocation)
-        assertEquals(4, breakdown.rotaCertaAllocation)
-        assertEquals(7, breakdown.totalConsidered)
+        assertEquals(3, breakdown.blablaQuota)
+        assertEquals(4, breakdown.rotaCertaQuota)
+        assertEquals(7, breakdown.operationalInventory)
     }
 
     @Test
@@ -196,11 +195,12 @@ class PublicAgendaAutoSync0300Test {
         assertEquals(3, external.capacityClaims.sumOf(Booking::seats))
         assertTrue(external.capacityClaims.all { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY })
         val summary = operationalSeatSummary(external.trip, external.capacityClaims)
-        assertEquals(3, summary.blablaAvailableSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
-        assertEquals(7, summary.totalAvailableSeats)
+        assertEquals(3, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(7, summary.operationalInventorySeats)
+        assertEquals(4, summary.totalAvailableSeats)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(7, summary.availableSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test

@@ -254,7 +254,7 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CAPACITY_RESOLVED",
                     context.packageName,
-                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.remotePublishedCapacity ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.physicalVehicleCapacity ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
+                    "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.blablaQuota ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.operationalInventory ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
                 )
             }
     }
@@ -928,8 +928,8 @@ internal fun applyPublicExternalBookingsToTimeline(
 
 /**
  * Legacy function name retained for binary/source compatibility with existing tests and callers.
- * vehicleCapacity is intentionally ignored. The segment ceiling is reconstructed per trip as:
- * BlaBlaCar current free seats + BlaBlaCar current occupied peak + Rota Certa allocation.
+ * vehicleCapacity is intentionally ignored. The operational inventory is exactly:
+ * synchronized BlaBlaCar quota + configured Rota Certa quota. Occupancy is subtracted later.
  */
 internal fun applyConfiguredVehicleCapacity(
     entries: List<TripTimelineEntry>,
@@ -938,13 +938,10 @@ internal fun applyConfiguredVehicleCapacity(
 ): List<TripTimelineEntry> {
     val localAllocation = rotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
     return entries.map { entry ->
-        val blablaRemaining = entry.blablaPublishedSeats?.takeIf { it in 0..999 } ?: 0
-        val blablaOccupiedPeak = entry.sourcePassengerSeats[BookingSource.BLABLACAR]
-            ?.coerceAtLeast(0)
-            ?: 0
-        val derivedInventory = (blablaRemaining + blablaOccupiedPeak + localAllocation).coerceIn(0, 999)
+        val blablaQuota = entry.blablaPublishedSeats?.takeIf { it in 0..999 } ?: 0
+        val operationalInventory = (blablaQuota + localAllocation).coerceIn(0, 999)
         entry.copy(
-            capacity = derivedInventory,
+            capacity = operationalInventory,
             rotaCertaSeatAllocation = localAllocation,
         )
     }
@@ -965,8 +962,15 @@ private fun hasExternalPublication(entry: TripTimelineEntry): Boolean =
         !entry.blablaProfileUuid.isNullOrBlank()
 
 internal fun timelineOccupancyReadState(entry: TripTimelineEntry): TimelineOccupancyReadState {
-    val inventoryKnown = entry.blablaPublishedSeats?.let { it in 0..999 } == true ||
-        entry.rotaCertaSeatAllocation?.let { it in 0..999 } == true
+    val blablaQuotaKnown = entry.blablaPublishedSeats?.let { it in 0..999 } == true
+    val rotaCertaQuotaKnown = entry.rotaCertaSeatAllocation?.let { it in 0..999 } == true
+    val inventoryKnown = if (hasExternalPublication(entry)) {
+        // For an external trip the synchronized BlaBlaCar quota is essential.
+        // Explicit zero is known; absence is still pending even if Rota Certa is zero.
+        blablaQuotaKnown && rotaCertaQuotaKnown
+    } else {
+        blablaQuotaKnown || rotaCertaQuotaKnown
+    }
     return when {
         inventoryKnown && hasExternalPublication(entry) && entry.blablaPassengerRosterComplete != true && entry.maximumOccupiedSeats <= 0 ->
             TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING
@@ -1104,53 +1108,38 @@ private fun TimelineEntryCard(
                 entry.rotaCertaSeatAllocation,
             )
             val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
-            val localConfirmed = entry.sourcePassengerSeats
-                .filterKeys { it != BookingSource.BLABLACAR }
-                .values
-                .sumOf { it.coerceAtLeast(0) }
             val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
-            val blablaFree = allocation.blablaPublishedAllocation ?: 0
-            val localDemand = (localConfirmed + blocked).coerceAtLeast(0)
-            val rotaCertaFree = allocation.rotaCertaAllocation
-                ?.let { (it - localDemand).coerceAtLeast(0) }
-            val combinedConfiguredFree = if (
-                allocation.blablaPublishedAllocation != null || allocation.rotaCertaAllocation != null
-            ) {
-                (blablaFree + (allocation.rotaCertaAllocation ?: 0)).coerceAtMost(999)
-            } else {
-                null
-            }
-            val operationalFree = combinedConfiguredFree
-                ?.let { (it - localDemand).coerceAtLeast(0) }
 
-            if (allocation.blablaPublishedAllocation != null && rotaCertaFree != null && operationalFree != null) {
+            if (allocation.blablaQuota != null || allocation.rotaCertaQuota != null) {
                 Text(
-                    "BlaBlaCar: ${allocation.blablaPublishedAllocation} vaga(s) atuais • Rota Certa: $rotaCertaFree vaga(s) • Total disponível: $operationalFree",
+                    "Cota BlaBlaCar: ${allocation.blablaQuota ?: 0} • Cota Rota Certa: ${allocation.rotaCertaQuota ?: 0} • Inventário operacional: ${allocation.operationalInventory ?: entry.capacity}",
                     style = MaterialTheme.typography.bodySmall,
                 )
-            } else {
-                entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { available ->
-                    Text("BlaBlaCar: $available vaga(s) disponíveis • aguardando vagas do Rota Certa", style = MaterialTheme.typography.bodySmall)
-                }
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
             val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
             val segmentFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
                 ?: publicCapacity.availableSeats
-            val free = segmentFree ?: operationalFree
-            val operationalInventory = publicCapacity.physicalVehicleCapacity
+            val free = segmentFree
+            val operationalInventory = publicCapacity.operationalInventory
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
+                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
                     if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
                     Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
-                TimelineOccupancyReadState.RESERVED ->
-                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} ${statusMark(entry)}")
-                TimelineOccupancyReadState.COMPLETE_EMPTY ->
-                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: ${free ?: operationalInventory ?: 0} ${statusMark(entry)}")
+                TimelineOccupancyReadState.RESERVED -> {
+                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
+                }
+                TimelineOccupancyReadState.COMPLETE_EMPTY -> {
+                    val emptyFree = free ?: operationalInventory ?: 0
+                    val availabilityLabel = if (emptyFree == 0) "LOTADO" else statusMark(entry)
+                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: $emptyFree $availabilityLabel")
+                }
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }

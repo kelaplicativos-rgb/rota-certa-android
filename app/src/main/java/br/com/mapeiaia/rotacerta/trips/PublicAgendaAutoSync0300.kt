@@ -309,19 +309,19 @@ internal object PublicAgendaAutoSync0300 {
             .mapNotNull { source ->
                 val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
                 val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
-                val blablaAvailable = source.published_seats?.takeIf { it in 0..999 } ?: 0
-                val rotaCertaAvailable = configuredRotaCertaAllocation
-                val totalAvailable = (blablaAvailable + rotaCertaAvailable).coerceAtMost(999)
-                val derivedInventory = (blablaAvailable + observedOccupiedSeats + rotaCertaAvailable).coerceIn(0, 999)
+                val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                val rotaCertaQuota = configuredRotaCertaAllocation
+                val operationalInventory = (blablaQuota + rotaCertaQuota).coerceIn(0, 999)
+                val availableSeats = (operationalInventory - observedOccupiedSeats).coerceAtLeast(0)
                 UnifiedDebugEventStore.record(
                     "CAPACITY_PUBLIC_SOURCE_RESOLVED",
                     context.packageName,
-                    "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaAvailable=$blablaAvailable rotaCertaAvailable=$rotaCertaAvailable totalAvailable=$totalAvailable externalConfirmedPeak=$observedOccupiedSeats operationalInventory=$derivedInventory capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa",
+                    "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaQuota=$blablaQuota rotaCertaQuota=$rotaCertaQuota operationalInventory=$operationalInventory occupied=$observedOccupiedSeats available=$availableSeats capacitySource=blablacar_quota_plus_rota_certa_quota",
                 )
                 toPublicTrip(
                     source = source,
-                    capacity = derivedInventory,
-                    rotaCertaSeatAllocation = rotaCertaAvailable,
+                    capacity = operationalInventory,
+                    rotaCertaSeatAllocation = rotaCertaQuota,
                     nowMillis = nowMillis,
                 )
             }
