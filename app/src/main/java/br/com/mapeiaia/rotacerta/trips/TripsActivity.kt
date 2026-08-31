@@ -257,11 +257,13 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
-        val (changedTrips, _) = store.reconcileOperationalInventory(
-            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-        )
+        val (changedTrips, _) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            store.reconcileOperationalInventory(
+                rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+            )
+        }
         if (changedTrips > 0) {
-            trips = store.trips()
+            trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
             publicAgendaSyncRevision++
             UnifiedDebugEventStore.record(
                 "OPERATIONAL_INVENTORY_RECONCILED",
@@ -289,6 +291,33 @@ private fun TripApp(
         trips = store.trips()
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
+    }
+    val publicAgendaSyncCoordinator = remember(activity, store, shareScope) {
+        createPublicAgendaSyncCoordinator0373(activity, store, shareScope)
+    }
+    androidx.compose.runtime.LaunchedEffect(publicAgendaSyncCoordinator) {
+        publicAgendaSyncCoordinator.completions.collect { completion ->
+            val result = completion.result
+            if (result == null) {
+                message = "Não foi possível sincronizar a Agenda Pública. A próxima mudança real tentará novamente."
+                return@collect
+            }
+            runCatching {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    BookingPushRegistration0304.ensureRegistered(activity, store)
+                }
+            }
+            AgendaSyncCrashTraceStore.checkpoint(
+                activity,
+                "timeline_public_agenda_coordinator_result local=${result.localPublished} external=${result.externalPublished} failures=${result.failures} durationMs=${completion.durationMs}",
+            )
+            if (result.localPublished + result.externalPublished > 0) {
+                refresh()
+                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
+            } else if (result.failures > 0) {
+                message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
+            }
+        }
     }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         BookingRealtimeEvents0356.changes.collect {
@@ -407,7 +436,6 @@ private fun TripApp(
     androidx.compose.runtime.LaunchedEffect(
         settingsLoaded,
         appSettings.rotaCertaSeatAllocation,
-        appSettings.rotaCertaSeatAllocation,
         publicAgendaSyncRevision,
     ) {
         if (!settingsLoaded) {
@@ -419,63 +447,19 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
-        AgendaSyncCrashTraceStore.checkpoint(
-            activity,
-            "timeline_public_agenda_effect_begin revision=$publicAgendaSyncRevision",
-        )
-        val online = store.onlineSettings()
+        val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.onlineSettings() }
         if (online.configured) {
+            val reason = "public_agenda_effect_revision_$publicAgendaSyncRevision"
             AgendaTrace.event(
                 activity,
-                "CAPACITY_PUBLIC_SYNC_TRIGGERED",
-                "source=rota_certa_allocation rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} legacyVehicleCapacityIgnored=true",
+                "CAPACITY_PUBLIC_SYNC_REQUESTED",
+                "reason=$reason rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} singleFlight=true",
                 traceId,
             )
-            val capacityPublicSyncOperation = AgendaTrace.operationStart(
-                activity,
-                "CAPACITY_PUBLIC_SYNC",
-                "TripApp.publicAgendaEffect",
-                traceId,
+            publicAgendaSyncCoordinator.request(
+                rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                reason = reason,
             )
-            val result = try {
-                PublicAgendaAutoSync0300.sync(
-                    context = activity,
-                    store = store,
-                    configuredVehicleCapacity = 0,
-                    configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                ).also { syncResult ->
-                    AgendaTrace.operationEnd(
-                        activity,
-                        capacityPublicSyncOperation,
-                        result = if (syncResult.failures == 0) "completed" else "partial",
-                        processedCount = syncResult.localPublished + syncResult.externalPublished,
-                    )
-                    AgendaTrace.event(
-                        activity,
-                        "CAPACITY_PUBLIC_AGENDA_SYNC_RESULT",
-                        "source=public_agenda completed=${syncResult.failures == 0} published=${syncResult.localPublished + syncResult.externalPublished} claims=${syncResult.seatClaimsSynced} remoteBlaBlaMutationConfirmed=false",
-                        traceId,
-                        capacityPublicSyncOperation.operationId,
-                    )
-                }
-            } catch (error: kotlinx.coroutines.CancellationException) {
-                AgendaTrace.operationCancelled(activity, capacityPublicSyncOperation)
-                throw error
-            } catch (error: Throwable) {
-                AgendaTrace.operationError(activity, capacityPublicSyncOperation, error)
-                throw error
-            }
-            runCatching { BookingPushRegistration0304.ensureRegistered(activity, store) }
-            AgendaSyncCrashTraceStore.checkpoint(
-                activity,
-                "timeline_public_agenda_effect_result local=${result.localPublished} external=${result.externalPublished} failures=${result.failures}",
-            )
-            if (result.localPublished + result.externalPublished > 0) {
-                refresh()
-                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
-            } else if (result.failures > 0) {
-                message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
-            }
         }
     }
 
