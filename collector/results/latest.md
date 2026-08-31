@@ -1,9 +1,9 @@
 # BlaBlaCar — busca pública renderizada
 
 - Status de validação: **validated**
-- Data: **2026-09-03**
-- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
-- Motoristas visíveis: **6**
+- Data: **2026-09-05**
+- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Motoristas visíveis: **8**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
 - Indicador de demanda: **NÃO ENCONTRADO**
@@ -12,11 +12,13 @@
 
 ## Motoristas
 
-1. **Wilson** — 04:30 — São Lourenço → São Paulo — R$ 88,00
-2. **Milena** — 06:50 — Três Corações → São Paulo — R$ 74,00
-3. **Alessandra** — 08:30 — São Tomé das Letras → São Paulo — R$ 110,00
-4. **Cristian** — 09:00 — Três Corações → Santa Isabel — R$ 76,00
-5. **Eugenio Teixeira** — 13:00 — Três Corações → São Paulo — R$ 92,00
-6. **Bruno** — 13:50 — Três Corações → São Paulo — sem preço — Cheio
+1. **Luis** — 03:30 — Diadema → Três Corações — R$ 94,00 — Super Driver
+2. **Dias** — 05:30 — São Paulo → Minas Gerais — sem preço — Cheio
+3. **Thiago Silva** — 06:00 — São Paulo → São Thomé das Letras — sem preço — Cheio
+4. **Ramom** — 08:30 — São Paulo → Três Corações — R$ 79,00
+5. **Wilson** — 09:30 — São Paulo → São Lourenço — sem preço — Cheio
+6. **Wagner** — 13:00 — São Paulo → Três Corações — sem preço — Cheio
+7. **Gabriel** — 14:00 — São Paulo → Três Corações — R$ 105,00
+8. **Fernando** — 23:00 — São Paulo → Três Corações — R$ 91,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
