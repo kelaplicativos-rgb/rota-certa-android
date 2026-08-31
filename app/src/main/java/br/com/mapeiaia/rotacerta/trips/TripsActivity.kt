@@ -450,10 +450,20 @@ private fun TripApp(
         val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.onlineSettings() }
         if (online.configured) {
             val reason = "public_agenda_effect_revision_$publicAgendaSyncRevision"
+            AgendaSyncCrashTraceStore.checkpoint(
+                activity,
+                "timeline_public_agenda_effect_begin reason=$reason singleFlight=true enqueueOnly=true",
+            )
             AgendaTrace.event(
                 activity,
                 "CAPACITY_PUBLIC_SYNC_REQUESTED",
                 "reason=$reason rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} singleFlight=true",
+                traceId,
+            )
+            AgendaTrace.event(
+                activity,
+                "CAPACITY_PUBLIC_SYNC_TRIGGERED",
+                "reason=$reason mode=single_flight_enqueue rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation}",
                 traceId,
             )
             publicAgendaSyncCoordinator.request(
