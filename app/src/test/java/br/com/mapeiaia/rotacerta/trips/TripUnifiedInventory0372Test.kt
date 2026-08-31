@@ -13,7 +13,7 @@ class TripUnifiedInventory0372Test {
     )
 
     private fun trip(
-        blablaRemaining: Int?,
+        blablaQuota: Int?,
         rotaCerta: Int,
         stops: List<TripStop> = abStops,
     ) = Trip(
@@ -23,7 +23,7 @@ class TripUnifiedInventory0372Test {
         capacity = 0,
         status = TripStatus.PUBLISHED,
         stops = stops,
-        publishedSeats = blablaRemaining,
+        publishedSeats = blablaQuota,
         rotaCertaSeatAllocation = rotaCerta,
     )
 
@@ -57,29 +57,30 @@ class TripUnifiedInventory0372Test {
         trip.copy(capacity = operationalInventoryCapacity(trip, bookings))
 
     @Test
-    fun test01RotaCertaExplicitZeroKeepsBlaBlaRemainingAvailable() {
-        val summary = operationalSeatSummary(trip(blablaRemaining = 3, rotaCerta = 0), emptyList())
+    fun test01RotaCertaExplicitZeroKeepsBlaBlaQuotaAvailableBeforeOccupancy() {
+        val summary = operationalSeatSummary(trip(blablaQuota = 3, rotaCerta = 0), emptyList())
         assertEquals(3, summary.availableSeats)
-        assertEquals(3, summary.blablaAvailableSeats)
-        assertEquals(0, summary.rotaCertaAllocatedSeats)
+        assertEquals(3, summary.blablaQuotaSeats)
+        assertEquals(0, summary.rotaCertaQuotaSeats)
+        assertEquals(3, summary.operationalInventorySeats)
     }
 
     @Test
     fun test02BasicCombinedInventoryIsFive() {
-        val summary = operationalSeatSummary(trip(blablaRemaining = 3, rotaCerta = 2), emptyList())
+        val summary = operationalSeatSummary(trip(blablaQuota = 3, rotaCerta = 2), emptyList())
         assertEquals(5, summary.totalAvailableSeats)
     }
 
     @Test
-    fun test03BlaBlaConfirmedPassengerIsNotSubtractedFromRemainingSeatsAgain() {
+    fun test03BlaBlaConfirmedPassengerConsumesQuotaExactlyOnce() {
         val external = booking(
             id = "bb-1",
             source = BookingSource.BLABLACAR,
             claimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
         )
-        val summary = operationalSeatSummary(trip(blablaRemaining = 3, rotaCerta = 2), listOf(external))
+        val summary = operationalSeatSummary(trip(blablaQuota = 3, rotaCerta = 2), listOf(external))
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test
@@ -91,9 +92,8 @@ class TripUnifiedInventory0372Test {
             booking("agenda-1", source = BookingSource.ROTA_CERTA),
             booking("manual-1", source = BookingSource.PRIVATE),
         )
-        // BlaBlaCar has zero remaining after its three confirmed occupants.
-        // Reconstructed BlaBla share = 0 remaining + 3 occupied; plus 4 Rota Certa = 7.
-        val summary = operationalSeatSummary(trip(blablaRemaining = 0, rotaCerta = 4), bookings)
+        // BlaBlaCar quota 3 + Rota Certa quota 4 = operational inventory 7.
+        val summary = operationalSeatSummary(trip(blablaQuota = 3, rotaCerta = 4), bookings)
         assertEquals(5, summary.confirmedPassengerSeats)
         assertEquals(2, summary.availableSeats)
     }
@@ -113,14 +113,14 @@ class TripUnifiedInventory0372Test {
                 sourceReference = "reservation-strong-1",
             ),
         )
-        val summary = operationalSeatSummary(trip(blablaRemaining = 2, rotaCerta = 2), bookings)
+        val summary = operationalSeatSummary(trip(blablaQuota = 2, rotaCerta = 2), bookings)
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(4, summary.availableSeats)
+        assertEquals(3, summary.availableSeats)
     }
 
     @Test
     fun test06ManualConfirmedPassengerConsumesExactlyOneSeat() {
-        val base = trip(blablaRemaining = 2, rotaCerta = 2)
+        val base = trip(blablaQuota = 2, rotaCerta = 2)
         val normalized = normalized(base, emptyList())
         val before = SeatAvailabilityEngine.remainingSeatsForWholeTrip(normalized, emptyList())
         val after = SeatAvailabilityEngine.remainingSeatsForWholeTrip(normalized, listOf(booking("manual", source = BookingSource.PRIVATE)))
@@ -130,7 +130,7 @@ class TripUnifiedInventory0372Test {
 
     @Test
     fun test07AgendaConfirmedPassengerConsumesExactlyOneSeat() {
-        val base = trip(blablaRemaining = 2, rotaCerta = 2)
+        val base = trip(blablaQuota = 2, rotaCerta = 2)
         val normalized = normalized(base, emptyList())
         val after = SeatAvailabilityEngine.remainingSeatsForWholeTrip(normalized, listOf(booking("agenda")))
         assertEquals(3, after)
@@ -138,7 +138,7 @@ class TripUnifiedInventory0372Test {
 
     @Test
     fun test08CancellationReleasesExactlyOneSeat() {
-        val base = trip(blablaRemaining = 2, rotaCerta = 2)
+        val base = trip(blablaQuota = 2, rotaCerta = 2)
         val normalized = normalized(base, emptyList())
         val active = booking("agenda")
         val cancelled = active.copy(status = BookingStatus.CANCELLED)
@@ -148,7 +148,7 @@ class TripUnifiedInventory0372Test {
 
     @Test
     fun test09ZeroAvailabilityIsStableAndNeverNegative() {
-        val base = normalized(trip(blablaRemaining = 0, rotaCerta = 0), emptyList())
+        val base = normalized(trip(blablaQuota = 0, rotaCerta = 0), emptyList())
         val summary = operationalSeatSummary(base, emptyList())
         assertEquals(0, summary.availableSeats)
         assertEquals(0, summary.overbookingSeats)
@@ -157,7 +157,7 @@ class TripUnifiedInventory0372Test {
 
     @Test
     fun test10TransactionalGuardRejectsRequestLargerThanRemainingRange() {
-        val base = normalized(trip(blablaRemaining = 1, rotaCerta = 0), emptyList())
+        val base = normalized(trip(blablaQuota = 1, rotaCerta = 0), emptyList())
         val availability = SeatAvailabilityEngine.availability(
             trip = base,
             bookings = emptyList(),
@@ -170,15 +170,15 @@ class TripUnifiedInventory0372Test {
     }
 
     @Test
-    fun test11BlaBlaRemainingSeatsNeverDoubleSubtractExternalRoster() {
+    fun test11BlaBlaQuotaSubtractsExternalRosterExactlyOnce() {
         val external = listOf(
             booking("bb-1", source = BookingSource.BLABLACAR, claimType = CapacityClaimType.EXTERNAL_OCCUPANCY),
             booking("bb-2", source = BookingSource.BLABLACAR, claimType = CapacityClaimType.EXTERNAL_OCCUPANCY),
             booking("bb-3", source = BookingSource.BLABLACAR, claimType = CapacityClaimType.EXTERNAL_OCCUPANCY),
         )
-        val summary = operationalSeatSummary(trip(blablaRemaining = 2, rotaCerta = 4), external)
+        val summary = operationalSeatSummary(trip(blablaQuota = 2, rotaCerta = 4), external)
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(3, summary.availableSeats)
     }
 
     @Test
@@ -210,7 +210,7 @@ class TripUnifiedInventory0372Test {
             TripStop(id = "b", order = 1, name = "B"),
             TripStop(id = "c", order = 2, name = "C"),
         )
-        val base = trip(blablaRemaining = 0, rotaCerta = 2, stops = stops)
+        val base = trip(blablaQuota = 0, rotaCerta = 2, stops = stops)
         val normalized = normalized(base, emptyList())
         val bookings = listOf(
             booking("a-b", seats = 2, source = BookingSource.PRIVATE, from = "a", to = "b"),

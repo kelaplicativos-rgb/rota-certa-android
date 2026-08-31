@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlinx.coroutines.Dispatchers
@@ -332,6 +333,57 @@ data class DriverBookingUpsertResponse(
 )
 
 @Serializable
+data class DriverCapacitySnapshotClaim(
+    val id: String,
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String = BookingStatus.CONFIRMED.name,
+    val source: BookingSource = BookingSource.OTHER,
+    val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+    val holdExpiresAtMillis: Long? = null,
+)
+
+@Serializable
+data class DriverCapacitySnapshotRequest(
+    val trip: Trip,
+    val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
+    val claimNamespace: String,
+    val snapshotRevision: String,
+    val sourceComplete: Boolean = true,
+)
+
+@Serializable
+data class DriverCapacitySnapshotResponse(
+    val tripId: String,
+    val publicToken: String,
+    val availableSeatsMinimum: Int = 0,
+    val availableSeatsMaximum: Int = 0,
+    val occupancyRevision: Long = 0L,
+    val changed: Boolean = false,
+)
+
+internal class TripRemoteApiException(
+    val httpMethod: String,
+    val endpoint: String,
+    val httpStatus: Int,
+    val backendErrorCode: String,
+    val sanitizedResponse: String,
+    val requestId: String,
+    val correlationId: String,
+) : IllegalStateException(
+    buildString {
+        append("Servidor respondeu HTTP ").append(httpStatus)
+        if (backendErrorCode.isNotBlank()) append(" code=").append(backendErrorCode)
+        if (sanitizedResponse.isNotBlank()) append(": ").append(sanitizedResponse.take(240))
+    },
+)
+
+@Serializable
 data class DriverOperationalStatusRequest(
     val selection: String,
 )
@@ -449,6 +501,42 @@ class TripRemoteApi(
         method = "PUT",
         path = "/v1/driver/trips/${trip.remoteId ?: trip.id}",
         body = json.encodeToString(trip),
+        requireDriverToken = true,
+    )
+
+    suspend fun reconcileCapacitySnapshot(
+        remoteTripId: String,
+        trip: Trip,
+        claims: List<Booking>,
+        claimNamespace: String,
+        snapshotRevision: String,
+    ): DriverCapacitySnapshotResponse = request(
+        method = "PUT",
+        path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
+        body = json.encodeToString(
+            DriverCapacitySnapshotRequest(
+                trip = trip.copy(remoteId = remoteTripId, capacityReliable = true),
+                claims = claims.map { booking ->
+                    DriverCapacitySnapshotClaim(
+                        id = booking.id,
+                        passengerName = booking.passengerName,
+                        passengerContact = booking.passengerContact,
+                        boardingStopId = booking.boardingStopId,
+                        dropoffStopId = booking.dropoffStopId,
+                        seats = booking.seats,
+                        status = booking.status.name,
+                        source = booking.source,
+                        capacityClaimType = booking.capacityClaimType,
+                        sourceReference = booking.sourceReference,
+                        occupancyGroupId = booking.occupancyGroupId,
+                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                    )
+                },
+                claimNamespace = claimNamespace,
+                snapshotRevision = snapshotRevision,
+                sourceComplete = true,
+            ),
+        ),
         requireDriverToken = true,
     )
 
@@ -733,12 +821,42 @@ class TripRemoteApi(
                 ?.use { it.readText() }
                 .orEmpty()
             if (status !in 200..299) {
-                throw IllegalStateException("Servidor respondeu HTTP $status: ${responseText.take(240)}")
+                val sanitizedResponse = UnifiedDebugEventStore.sanitizeForExport(responseText).take(600)
+                throw TripRemoteApiException(
+                    httpMethod = method,
+                    endpoint = path.take(220),
+                    httpStatus = status,
+                    backendErrorCode = backendErrorCode(responseText),
+                    sanitizedResponse = sanitizedResponse,
+                    requestId = responseHeader(connection, "X-Request-Id", "Request-Id"),
+                    correlationId = responseHeader(connection, "X-Correlation-Id", "Correlation-Id"),
+                )
             }
             json.decodeFromString<T>(responseText)
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun responseHeader(connection: HttpURLConnection, vararg names: String): String =
+        names.asSequence()
+            .mapNotNull { name -> connection.getHeaderField(name)?.trim()?.takeIf(String::isNotBlank) }
+            .firstOrNull()
+            ?.let { UnifiedDebugEventStore.sanitizeForExport(it) }
+            ?.take(120)
+            .orEmpty()
+
+    private fun backendErrorCode(responseText: String): String {
+        val patterns = listOf(
+            Regex("(?i)\\\"(?:errorCode|error_code|code)\\\"\\s*:\\s*\\\"([^\\\"]{1,96})\\\""),
+            Regex("(?i)\\b(?:errorCode|error_code|code)\\s*[:=]\\s*([A-Z0-9_.-]{2,96})"),
+        )
+        return patterns.asSequence()
+            .mapNotNull { it.find(responseText)?.groupValues?.getOrNull(1) }
+            .firstOrNull()
+            ?.let { UnifiedDebugEventStore.sanitizeForExport(it) }
+            ?.take(96)
+            .orEmpty()
     }
 }
 

@@ -55,13 +55,14 @@ class AgendaSyncCrashTrace0322Test {
     }
 
     @Test
-    fun persistedCrashEvidenceNeverStoresThrowableMessageOrPassengerValues() {
+    fun persistedCrashEvidenceKeepsSanitizedBoundedThrowableDetailsWithoutPassengerValues() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt").readText()
-        assertTrue(source.contains("error.javaClass.name"))
-        assertTrue(source.contains("messageCaptured=false"))
+        assertTrue(source.contains("AgendaFailureEvidence.describe("))
+        assertTrue(source.contains("UNCAUGHT_AGENDA_SYNC_CRASH"))
+        assertTrue(source.contains("messageCaptured=true_sanitized_bounded"))
         assertTrue(source.contains("personalValuesCaptured=false"))
-        assertFalse(source.contains("error.message"))
-        assertFalse(source.contains("error.localizedMessage"))
+        assertTrue(source.contains("UnifiedDebugEventStore.sanitizeForExport(value)"))
+        assertFalse(source.contains("messageCaptured=false"))
     }
 
     @Test

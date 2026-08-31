@@ -55,7 +55,7 @@ class TripStore(context: Context) {
     }
 
     fun saveTrip(trip: Trip): Trip {
-        val normalized = trip.copy(updatedAtMillis = System.currentTimeMillis())
+        val normalized = trip.normalizedRecordOrigin().copy(updatedAtMillis = System.currentTimeMillis())
         val current = trips().filterNot { it.id == normalized.id }
         prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).apply()
         return normalized

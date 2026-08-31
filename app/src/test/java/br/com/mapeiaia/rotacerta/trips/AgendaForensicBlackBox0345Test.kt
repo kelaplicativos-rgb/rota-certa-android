@@ -66,6 +66,7 @@ class AgendaForensicBlackBox0345Test {
         val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
         val bookingSync = source("br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt")
+        val publicSyncCoordinator = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt")
         assertTrue(activity.contains("collectAsState(initial = null)"))
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_WAITING"))
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_RECEIVED"))
@@ -77,7 +78,7 @@ class AgendaForensicBlackBox0345Test {
         assertFalse(timeline.contains("Capacidade de passageiros"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
-        assertTrue(activity.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
+        assertTrue(publicSyncCoordinator.contains("CAPACITY_PUBLIC_AGENDA_SYNC_RESULT"))
         assertTrue(bookingSync.contains("BOOKING_INVENTORY_RECALCULATED"))
         assertTrue(bookingSync.contains("externalSeatMutation=false"))
     }
@@ -105,15 +106,17 @@ class AgendaForensicBlackBox0345Test {
             "PROFILE_SYNC",
             "PASSENGER_DIRECTORY_SYNC",
             "LOCAL_TRIPS_DISCOVERY",
-            "LOCAL_TRIP_PUBLISH",
-            "LOCAL_CAPACITY_CLAIMS",
+            "LOCAL_CAPACITY_SNAPSHOT",
             "CONNECTED_ACCOUNTS_READ",
             "EXTERNAL_TRIPS_DISCOVERY",
-            "EXTERNAL_TRIP_PUBLISH",
-            "EXTERNAL_TRIP_UPDATE_RETRY",
-            "EXTERNAL_TRIP_UPDATE_END",
-            "EXTERNAL_CAPACITY_CLAIMS",
-            "PUBLIC_EXTERNAL_BINDING_SAVE",
+            "EXTERNAL_CAPACITY_SNAPSHOT",
+            "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED",
+            "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
+            "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED",
+            "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
+            "PUBLIC_CAPACITY_FAIL_CLOSED",
+            "PUBLIC_CAPACITY_UNKNOWN_PUBLISHED",
+            "PUBLIC_CAPACITY_SNAPSHOT_COMMITTED",
             "PUBLIC_AGENDA_SYNC_RESULT",
             "preservedShape",
             "retries=",

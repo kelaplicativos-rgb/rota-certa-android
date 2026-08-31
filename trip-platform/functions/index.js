@@ -778,8 +778,8 @@ function safePublicTrip(token, data) {
   const availableMaximum = operationalBreakdownReliable ? operationalAvailableSeats : 0;
   const physicallyFull = segmentLoads.length === expectedSegments && expectedSegments > 0 &&
     segmentLoads.every((load) => load >= capacity);
-  const fullyOccupied = data.status === "FULL" || operationalAvailableSeats === 0 || operationalOverbookingSeats > 0;
-  const capacityReliable = capacityIsReliable(token, data) && operationalBreakdownReliable && operationalOverbookingSeats === 0;
+  const capacityReliable = capacityIsReliable(token, data) && operationalBreakdownReliable;
+  const fullyOccupied = capacityReliable && (data.status === "FULL" || operationalAvailableSeats === 0 || operationalOverbookingSeats > 0);
   const itineraryAuthoritative = itineraryIsAuthoritative(token, data);
   return {
     tripId: token,
@@ -792,9 +792,9 @@ function safePublicTrip(token, data) {
     segmentLoads,
     segmentPassengerLoads,
     segmentBlockedLoads,
-    availableSeatsMinimum: fullyOccupied ? 0 : availableMinimum,
-    availableSeatsMaximum: fullyOccupied ? 0 : availableMaximum,
-    isFull: fullyOccupied,
+    availableSeatsMinimum: capacityReliable ? (fullyOccupied ? 0 : availableMinimum) : 0,
+    availableSeatsMaximum: capacityReliable ? (fullyOccupied ? 0 : availableMaximum) : 0,
+    isFull: capacityReliable && fullyOccupied,
     canReserve: data.publicBookingEnabled === true && capacityReliable && !fullyOccupied && availableMaximum > 0,
     confirmedPassengerSeats,
     blockedSeats,
@@ -1919,7 +1919,19 @@ async function updateDriverTrip(req, res, token) {
       if (previous.driverUsername && previous.driverUsername !== driver.username) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
-      const normalized = normalizeDriverTrip(req.body || {}, previous);
+      let normalized = normalizeDriverTrip(req.body || {}, previous);
+      const preserveReliableCapacity = isExternalBlaBlaTrip(token, previous) &&
+        previous.capacityReliable === true && normalized.capacityReliable === false;
+      if (preserveReliableCapacity) {
+        normalized = {
+          ...normalized,
+          capacity: Number(previous.capacity || 0),
+          publishedSeats: previous.publishedSeats == null ? null : Number(previous.publishedSeats),
+          rotaCertaSeatAllocation: Number(previous.rotaCertaSeatAllocation || 0),
+          capacityReliable: true,
+          status: previous.status,
+        };
+      }
       const changes = tripRelevantChanges(previous, normalized);
       const capacityChanged = Number(previous.capacity || 0) !== Number(normalized.capacity || 0);
       const externalCapacityChanged = capacityChanged && isExternalBlaBlaTrip(token, previous);
@@ -4500,6 +4512,134 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
   }
 }
 
+function managedCapacityClaim(record, namespace) {
+  const sourceReference = cleanText(record && record.sourceReference, 240);
+  const id = cleanText(record && record.id, 120);
+  if (sourceReference.startsWith(namespace)) return true;
+  if (namespace === "BLABLACAR_SYNC:" && cleanText(record && record.source, 24).toUpperCase() === "BLABLACAR") {
+    return id.startsWith("bbp-") || id.startsWith("bbr-") || id.startsWith("blablacar-");
+  }
+  return false;
+}
+
+async function reconcileDriverCapacitySnapshot(req, res, token) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const tripRef = db.collection("trips").doc(token);
+  const rawTrip = req.body && req.body.trip ? req.body.trip : {};
+  const rawClaims = Array.isArray(req.body && req.body.claims) ? req.body.claims : [];
+  const claimNamespace = cleanText(req.body && req.body.claimNamespace, 40);
+  const snapshotRevision = cleanText(req.body && req.body.snapshotRevision, 128).replace(/[^A-Za-z0-9:_-]/g, "");
+  const sourceComplete = req.body && req.body.sourceComplete === true;
+  if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
+    return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
+  }
+  if (!sourceComplete || !snapshotRevision) {
+    return fail(res, 409, "capacity_snapshot_incomplete", "O snapshot de capacidade ainda não está completo.");
+  }
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const tripSnap = await tx.get(tripRef);
+      if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      const previous = tripSnap.data();
+      if (previous.driverUsername && previous.driverUsername !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+      if (previous.capacityReliable === true && cleanText(previous.capacitySnapshotRevision, 128) === snapshotRevision) {
+        const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+        return {
+          changed: false,
+          range,
+          occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+        };
+      }
+
+      const normalized = normalizeDriverTrip({ ...rawTrip, capacityReliable: true }, previous);
+      const candidateTrip = { ...previous, ...normalized, capacityReliable: true };
+      if (claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
+        throw Object.assign(new Error("A cota BlaBlaCar ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
+      }
+      const expectedInventory = operationalSeatLimit(candidateTrip);
+      if (Number(candidateTrip.capacity || 0) !== expectedInventory) {
+        throw Object.assign(new Error("O inventário operacional diverge das cotas canônicas."), { httpStatus: 409, code: "inventory_mismatch" });
+      }
+
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const desiredIds = new Set();
+      const desiredClaims = rawClaims.map((raw) => {
+        const id = cleanText(raw && raw.id, 120).replace(/[^A-Za-z0-9_-]/g, "");
+        if (!id || desiredIds.has(id)) throw new Error("Identificador de ocupação inválido ou duplicado.");
+        desiredIds.add(id);
+        const previousClaim = records.find((record) => record.id === id) || null;
+        if (previousClaim && (previousClaim.source === "ROTA_CERTA" || previousClaim.cancellationHash)) {
+          throw Object.assign(new Error("Reserva pública do Rota Certa não pode ser sobrescrita por snapshot de capacidade."), { httpStatus: 409, code: "protected_booking" });
+        }
+        const normalizedClaim = normalizeDriverCapacityBooking(raw || {}, candidateTrip, id, previousClaim);
+        if (!cleanText(normalizedClaim.sourceReference, 240).startsWith(claimNamespace)) {
+          throw Object.assign(new Error("Ocupação fora do namespace do snapshot."), { httpStatus: 409, code: "capacity_claim_namespace_mismatch" });
+        }
+        if (claimNamespace === "BLABLACAR_SYNC:" && (normalizedClaim.source !== "BLABLACAR" || normalizedClaim.capacityClaimType !== "EXTERNAL_OCCUPANCY")) {
+          throw Object.assign(new Error("Snapshot BlaBlaCar contém ocupação incompatível."), { httpStatus: 409, code: "invalid_external_capacity_claim" });
+        }
+        return normalizedClaim;
+      });
+
+      const staleManaged = records.filter((record) => managedCapacityClaim(record, claimNamespace) && !desiredIds.has(record.id));
+      const preserved = records.filter((record) => !managedCapacityClaim(record, claimNamespace));
+      const candidateRecords = [...preserved, ...desiredClaims];
+      const capacityState = reconciledSegmentCapacity(candidateTrip, candidateRecords);
+      const loads = capacityState.loads;
+      const persistence = canonicalCapacityPersistence(candidateTrip, candidateRecords, capacityState);
+      // An authoritative channel snapshot may reveal that already-confirmed occupancy now
+      // exceeds a reduced quota. Persist that truth atomically and fail closed as FULL;
+      // do not preserve an older optimistic availability. New bookings still use the
+      // strict overbooking assertions in their own transactions.
+      const snapshotOverbooked = loads.some((load) => Number(load || 0) > Number(candidateTrip.capacity || 0)) ||
+        Number(persistence.operationalOverbookingSeats || 0) > 0;
+      const status = snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads);
+      const now = Date.now();
+      const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+
+      desiredClaims.forEach((claim) => {
+        const persisted = { ...claim };
+        delete persisted.id;
+        tx.set(tripRef.collection("bookings").doc(claim.id), persisted, { merge: true });
+      });
+      staleManaged.forEach((claim) => {
+        tx.set(tripRef.collection("bookings").doc(claim.id), { status: "CANCELLED", updatedAtMillis: now }, { merge: true });
+      });
+      tx.update(tripRef, {
+        ...normalized,
+        ...persistence,
+        capacityReliable: true,
+        status,
+        capacitySnapshotRevision: snapshotRevision,
+        occupancyRevision,
+        bookingsCount: candidateRecords.length + staleManaged.length,
+        updatedAtMillis: now,
+      });
+      return {
+        changed: true,
+        range: capacityAvailabilityRange(candidateTrip, loads),
+        occupancyRevision,
+        snapshotOverbooked,
+      };
+    });
+    return json(res, 200, {
+      tripId: token,
+      publicToken: token,
+      availableSeatsMinimum: result.range.minimum,
+      availableSeatsMaximum: result.range.maximum,
+      occupancyRevision: result.occupancyRevision,
+      changed: result.changed,
+      snapshotOverbooked: result.snapshotOverbooked === true,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "capacity_snapshot_failed", error.message || "Falha ao publicar snapshot de capacidade.");
+  }
+}
+
 async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -4600,6 +4740,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/driver/agenda/regenerate") return await regenerateDriverPublicAgenda(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "capacity-snapshot" && req.method === "PUT") {
+      return await reconcileDriverCapacitySnapshot(req, res, parts[3]);
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "PUT") {
       return await upsertDriverCapacityBooking(req, res, parts[3], parts[5]);

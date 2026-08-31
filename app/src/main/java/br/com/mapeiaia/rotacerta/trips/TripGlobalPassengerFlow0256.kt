@@ -38,26 +38,19 @@ internal data class TimelinePassengerTripPreparation(
     val mirroredExternalSeats: Int,
 )
 
-internal fun timelineStrongExternalTripKey(entry: TripTimelineEntry): String? {
-    val profile = entry.blablaProfileUuid
-        ?.trim()
-        ?.lowercase(Locale.ROOT)
-        ?.takeIf(::looksCanonicalTimelineProfileUuid0256)
-        ?: return null
-    val externalId = entry.blablaTripId?.trim()?.takeIf(String::isNotEmpty)
-    val href = entry.blablaTripHref
-        ?.trim()
-        ?.substringBefore("&search_uuid=")
-        ?.takeIf { value ->
-            value.startsWith("https://") &&
-                (value.contains("/rides/offer/") || value.contains("/trip/"))
-        }
-    val identity = externalId?.let { "id:$it" } ?: href?.let { "href:$it" } ?: return null
-    return "$profile|$identity"
-}
+internal fun timelineStrongExternalTripKey(entry: TripTimelineEntry): String? =
+    canonicalExternalTripIdentityKey(
+        entry.blablaProfileUuid,
+        entry.blablaTripId,
+        entry.blablaTripHref,
+    )
 
 internal fun timelineExternalBackingTripId(entry: TripTimelineEntry): String? =
-    timelineStrongExternalTripKey(entry)?.let { "timeline-ext-${sha256Short0256(it, 24)}" }
+    externalBackingTripIdFor(
+        entry.blablaProfileUuid,
+        entry.blablaTripId,
+        entry.blablaTripHref,
+    )
 
 internal fun timelineManualPassengerOccupancyKnown(entry: TripTimelineEntry): Boolean =
     timelineStrongExternalTripKey(entry) == null || entry.blablaPassengerRosterComplete == true
@@ -172,6 +165,7 @@ internal fun buildTimelineExternalBackingTrip(entry: TripTimelineEntry, capacity
         blablaManageUrl = entry.blablaTripHref,
         blablaPublicUrl = entry.blablaPublicHref,
         publishedSeats = entry.blablaPublishedSeats,
+        recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
     )
 }
 

@@ -34,12 +34,12 @@ data class TripTimelineEntry(
     val blablaAvailability: String? = null,
     /** Ordered stops observed on the exact BlaBlaCar publication. */
     val blablaItineraryStops: List<String> = emptyList(),
-    /** External publication setting only; never used as the trip's operational inventory. */
+    /** Synchronized BlaBlaCar quota. Legacy field name retained for collector/persistence compatibility. */
     val blablaPublishedSeats: Int? = null,
     val blablaPassengers: List<BlaBlaCollectorPassenger> = emptyList(),
     val blablaPassengerRosterComplete: Boolean? = null,
     val issues: Set<TripTimelineIssue> = emptySet(),
-    /** Operational Rota Certa allocation; separate from physical capacity. */
+    /** Configured Rota Certa quota contributing to the operational inventory. */
     val rotaCertaSeatAllocation: Int? = null,
     /** Whole-trip operational blocks/holds that are not confirmed passengers. */
     val operationalBlockedSeats: Int = 0,
@@ -52,13 +52,13 @@ data class TripTimelineEntry(
 }
 
 /**
- * Resolves public availability from the operational inventory ceiling only.
- * BlaBlaCar published seats remain channel metadata and NEVER redefine or add
- * to the trip's operational inventory.
+ * Resolves public availability from the canonical operational inventory.
+ * The synchronized BlaBlaCar quota contributes to that inventory exactly once;
+ * confirmed occupancy is subtracted separately.
  */
 internal data class TimelinePublicCapacityResolution(
-    val physicalVehicleCapacity: Int?,
-    val remotePublishedCapacity: Int?,
+    val operationalInventory: Int?,
+    val blablaQuota: Int?,
     val passengerSeats: Int,
     val blockedSeats: Int,
     val effectiveCapacity: Int?,
@@ -68,26 +68,26 @@ internal data class TimelinePublicCapacityResolution(
 )
 
 internal fun resolveTimelinePublicCapacity(
-    physicalVehicleCapacity: Int?,
-    remotePublishedCapacity: Int?,
+    operationalInventory: Int?,
+    blablaQuota: Int?,
     passengerSeats: Int,
     blockedSeats: Int = 0,
 ): TimelinePublicCapacityResolution {
-    val physical = physicalVehicleCapacity?.takeIf { it in 0..999 }
-    val remote = remotePublishedCapacity?.takeIf { it in 0..999 }
+    val inventory = operationalInventory?.takeIf { it in 0..999 }
+    val quota = blablaQuota?.takeIf { it in 0..999 }
     val passengers = passengerSeats.coerceAtLeast(0)
     val blocked = blockedSeats.coerceAtLeast(0)
     val consumed = passengers + blocked
-    val overbooking = physical?.let { (consumed - it).coerceAtLeast(0) } ?: 0
+    val overbooking = inventory?.let { (consumed - it).coerceAtLeast(0) } ?: 0
     return TimelinePublicCapacityResolution(
-        physicalVehicleCapacity = physical,
-        remotePublishedCapacity = remote,
+        operationalInventory = inventory,
+        blablaQuota = quota,
         passengerSeats = passengers,
         blockedSeats = blocked,
-        effectiveCapacity = physical,
-        availableSeats = physical?.let { (it - consumed).coerceAtLeast(0) },
+        effectiveCapacity = inventory,
+        availableSeats = inventory?.let { (it - consumed).coerceAtLeast(0) },
         overbookingSeats = overbooking,
-        capacitySource = if (physical != null) "trip_operational_inventory" else "unavailable",
+        capacitySource = if (inventory != null) "trip_operational_inventory" else "unavailable",
     )
 }
 
@@ -99,8 +99,8 @@ internal fun timelinePublicCapacityResolution(
     val passengers = minOf(occupiedSeats.coerceAtLeast(0), confirmedWholeTrip)
     val blocked = (occupiedSeats.coerceAtLeast(0) - passengers).coerceAtLeast(0)
     return resolveTimelinePublicCapacity(
-        physicalVehicleCapacity = entry.capacity,
-        remotePublishedCapacity = entry.blablaPublishedSeats,
+        operationalInventory = entry.capacity,
+        blablaQuota = entry.blablaPublishedSeats,
         passengerSeats = passengers,
         blockedSeats = blocked,
     )
@@ -112,15 +112,14 @@ internal fun timelinePublicSegmentLoads(
 ): List<SegmentLoad> = physicalLoads
 
 internal data class TripChannelAllocationBreakdown(
-    val physicalPassengerCapacity: Int?,
-    val blablaPublishedAllocation: Int?,
-    val rotaCertaAllocation: Int?,
-    val totalConsidered: Int?,
+    val operationalInventory: Int?,
+    val blablaQuota: Int?,
+    val rotaCertaQuota: Int?,
 )
 
 /**
- * Channel allocations form a whole-trip operational total. They never replace
- * the simultaneous physical capacity; the per-segment engine still enforces it.
+ * Channel quotas form the whole-trip operational inventory. Confirmed occupancy
+ * is deliberately excluded here and is subtracted later by the per-segment engine.
  */
 internal fun tripChannelAllocationBreakdown(
     physicalPassengerCapacity: Int?,
@@ -136,10 +135,9 @@ internal fun tripChannelAllocationBreakdown(
         null
     }
     return TripChannelAllocationBreakdown(
-        physicalPassengerCapacity = physical,
-        blablaPublishedAllocation = blabla,
-        rotaCertaAllocation = rotaCerta,
-        totalConsidered = total,
+        operationalInventory = total ?: physical,
+        blablaQuota = blabla,
+        rotaCertaQuota = rotaCerta,
     )
 }
 

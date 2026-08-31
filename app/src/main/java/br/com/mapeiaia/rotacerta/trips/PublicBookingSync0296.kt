@@ -4,6 +4,11 @@ import android.content.Context
 import android.content.Intent
 import br.com.mapeiaia.rotacerta.DebugLogPreferenceStore
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 internal data class PublicBookingPullResult(
     val importedCount: Int,
@@ -11,8 +16,25 @@ internal data class PublicBookingPullResult(
     val seatSyncQueued: Int,
 )
 
+private data class BookingFetchTarget0373(
+    val localTripId: String,
+    val remoteTripId: String,
+    val publicOnly: Boolean,
+    val localCandidate: Boolean,
+)
+
+private data class BookingFetchBatch0373(
+    val target: BookingFetchTarget0373,
+    val bookings: List<RemoteBooking>,
+)
+
 internal object PublicBookingRemoteSync0296 {
-    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult {
+    suspend fun pullAndReconcile(context: Context, store: TripStore): PublicBookingPullResult =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            pullAndReconcileOnIo(context, store)
+        }
+
+    private suspend fun pullAndReconcileOnIo(context: Context, store: TripStore): PublicBookingPullResult {
         val traceId = AgendaTrace.currentTraceId()
         val reconcileStartedNs = android.os.SystemClock.elapsedRealtimeNanos()
         val reconcileOperation = AgendaTrace.operationStart(
@@ -36,8 +58,20 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
-        val candidates = store.trips().filter { !it.remoteId.isNullOrBlank() }
+        val persistedTrips = store.trips()
+        val candidates = persistedTrips.filter {
+            it.isCanonicalLocalPublishSource() && !it.remoteId.isNullOrBlank()
+        }
+        val excludedExternalBackings = persistedTrips.count {
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && !it.remoteId.isNullOrBlank()
+        }
         val externalBindings = store.publicExternalBindings()
+        UnifiedDebugEventStore.record(
+            "BOOKING_RECONCILE_SOURCE_CLASSIFIED",
+            context.packageName,
+            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings",
+        )
+        val bookingSnapshot = store.bookings().associateBy(Booking::id).toMutableMap()
         AgendaTrace.operationEnd(
             context,
             localReadOperation,
@@ -48,6 +82,32 @@ internal object PublicBookingRemoteSync0296 {
             return PublicBookingPullResult(0, emptySet(), 0)
         }
 
+        val targets = buildList {
+            candidates.forEach { trip ->
+                val remoteTripId = trip.remoteId ?: return@forEach
+                add(
+                    BookingFetchTarget0373(
+                        localTripId = trip.id,
+                        remoteTripId = remoteTripId,
+                        publicOnly = false,
+                        localCandidate = true,
+                    ),
+                )
+            }
+            externalBindings.forEach { binding ->
+                add(
+                    BookingFetchTarget0373(
+                        localTripId = binding.bookingTripId,
+                        remoteTripId = binding.remoteTripId,
+                        publicOnly = true,
+                        localCandidate = false,
+                    ),
+                )
+            }
+        }.distinctBy { target ->
+            "${target.localTripId}|${target.remoteTripId}|${target.publicOnly}"
+        }
+
         val remoteFetchOperation = AgendaTrace.operationStart(
             context,
             "BOOKING_REMOTE_FETCH",
@@ -55,6 +115,54 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
+        val fetchSemaphore = Semaphore(BOOKING_FETCH_CONCURRENCY_0373)
+        val fetchedBatches = coroutineScope {
+            targets.map { target ->
+                async {
+                    fetchSemaphore.withPermit {
+                        runCatching { api.listBookings(target.remoteTripId).bookings }
+                            .fold(
+                                onSuccess = { remote ->
+                                    BookingFetchBatch0373(target, remote)
+                                },
+                                onFailure = { error ->
+                                    val targetTrip = persistedTrips.firstOrNull { it.id == target.localTripId }
+                                    val targetContext = targetTrip?.let { trip ->
+                                        AgendaFailureEvidence.tripContext(
+                                            trip = trip,
+                                            bookings = bookingSnapshot.values.filter { it.tripId == trip.id },
+                                            tripKey = seatSyncDiagnosticKey(trip.id),
+                                            publicIdentity = target.remoteTripId,
+                                            origin = resolvedTripRecordOrigin(trip).name,
+                                        )
+                                    } ?: AgendaFailureTripContext(
+                                        tripKey = seatSyncDiagnosticKey(target.localTripId),
+                                        canonicalIdentity = target.localTripId,
+                                        publicIdentity = target.remoteTripId,
+                                        origin = if (target.localCandidate) TripRecordOrigin.LOCAL.name else TripRecordOrigin.EXTERNAL_BACKING.name,
+                                    )
+                                    UnifiedDebugEventStore.record(
+                                        if (target.localCandidate) "PUBLIC_BOOKING_PULL_FAILED"
+                                        else "PUBLIC_BOOKING_EXTERNAL_PULL_FAILED",
+                                        context.packageName,
+                                        AgendaFailureEvidence.describe(
+                                            error = error,
+                                            operation = "BOOKING_REMOTE_FETCH",
+                                            component = "PublicBookingRemoteSync0296",
+                                            method = "pullAndReconcileOnIo",
+                                            trip = targetContext,
+                                        ),
+                                    )
+                                    null
+                                },
+                            )
+                    }
+                }
+            }.awaitAll().filterNotNull()
+        }
+        val remoteFetched = fetchedBatches.sumOf { it.bookings.size }
+        AgendaTrace.operationEnd(context, remoteFetchOperation, processedCount = remoteFetched)
+
         val compareOperation = AgendaTrace.operationStart(
             context,
             "BOOKING_COMPARE",
@@ -62,6 +170,25 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
+        val pendingImports = mutableListOf<Booking>()
+        fetchedBatches.forEach { batch ->
+            batch.bookings.asSequence()
+                .filter { incoming ->
+                    !batch.target.publicOnly ||
+                        incoming.source == BookingSource.ROTA_CERTA ||
+                        incoming.sourceReference.startsWith("PUBLIC_LINK:")
+                }
+                .forEach { incoming ->
+                    val existing = bookingSnapshot[incoming.id]
+                    val mapped = incoming.toLocalBooking(batch.target.localTripId, existing)
+                    if (existing != mapped) {
+                        pendingImports += mapped
+                        bookingSnapshot[mapped.id] = mapped
+                    }
+                }
+        }
+        AgendaTrace.operationEnd(context, compareOperation, processedCount = remoteFetched)
+
         val importOperation = AgendaTrace.operationStart(
             context,
             "BOOKING_IMPORT",
@@ -69,62 +196,20 @@ internal object PublicBookingRemoteSync0296 {
             traceId,
             reconcileOperation.operationId,
         )
-        var remoteFetched = 0
         var imported = 0
         val changed = linkedSetOf<String>()
-        candidates.forEach { trip ->
-            val remoteTripId = trip.remoteId ?: return@forEach
-            val remote = runCatching { api.listBookings(remoteTripId).bookings }
-                .getOrElse { error ->
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_BOOKING_PULL_FAILED",
-                        context.packageName,
-                        "localTrip=${trip.id} remoteTripPresent=true reason=${error.javaClass.simpleName}",
-                    )
-                    return@forEach
-                }
-            remoteFetched += remote.size
-            remote.forEach { incoming ->
-                val existing = store.bookings().firstOrNull { it.id == incoming.id }
-                val mapped = incoming.toLocalBooking(trip.id, existing)
-                if (existing != mapped) {
-                    store.saveBooking(mapped)
-                    imported++
-                    changed += trip.id
-                }
-            }
+        pendingImports.forEach { mapped ->
+            val saved = store.saveBooking(mapped)
+            bookingSnapshot[saved.id] = saved
+            imported++
+            changed += saved.tripId
         }
-
-        externalBindings.forEach { binding ->
-            val remote = runCatching { api.listBookings(binding.remoteTripId).bookings }
-                .getOrElse { error ->
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_BOOKING_EXTERNAL_PULL_FAILED",
-                        context.packageName,
-                        "remoteTripPresent=true reason=${error.javaClass.simpleName}",
-                    )
-                    return@forEach
-                }
-            remoteFetched += remote.size
-            remote.asSequence()
-                .filter { incoming ->
-                    incoming.source == BookingSource.ROTA_CERTA ||
-                        incoming.sourceReference.startsWith("PUBLIC_LINK:")
-                }
-                .forEach { incoming ->
-                    val existing = store.bookings().firstOrNull { it.id == incoming.id }
-                    val mapped = incoming.toLocalBooking(binding.bookingTripId, existing)
-                    if (existing != mapped) {
-                        store.saveBooking(mapped)
-                        imported++
-                        changed += binding.bookingTripId
-                    }
-                }
-        }
-
-        AgendaTrace.operationEnd(context, remoteFetchOperation, processedCount = remoteFetched)
-        AgendaTrace.operationEnd(context, compareOperation, processedCount = remoteFetched)
         AgendaTrace.operationEnd(context, importOperation, processedCount = imported)
+        UnifiedDebugEventStore.record(
+            "BOOKING_RECONCILE_PHASES_0373",
+            context.packageName,
+            "targets=${targets.size} remoteFetched=$remoteFetched pendingImports=${pendingImports.size} imported=$imported fetchConcurrency=$BOOKING_FETCH_CONCURRENCY_0373 externalBackingsExcluded=$excludedExternalBackings",
+        )
 
         if (changed.isEmpty()) {
             val durationMs = ((android.os.SystemClock.elapsedRealtimeNanos() - reconcileStartedNs).coerceAtLeast(0L)) / 1_000_000L
@@ -165,6 +250,8 @@ internal object PublicBookingRemoteSync0296 {
         )
         return PublicBookingPullResult(imported, changed, queued)
     }
+
+    private const val BOOKING_FETCH_CONCURRENCY_0373 = 4
 
     private fun recordReconcileSlowThresholds(
         context: Context,
@@ -210,7 +297,12 @@ internal object PublicBookingRemoteSync0296 {
             UnifiedDebugEventStore.record(
                 "PUBLIC_LINK_DEBUG_PULL_FAILED",
                 context.packageName,
-                "reason=${error.javaClass.simpleName}",
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PUBLIC_LINK_DEBUG_PULL",
+                    component = "PublicBookingRemoteSync0296",
+                    method = "pullPublicLinkDebugTrace",
+                ),
             )
             return
         }

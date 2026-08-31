@@ -18,10 +18,13 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -67,11 +70,16 @@ internal object BookingPushRegistration0304 {
 }
 
 class RotaCertaBookingMessagingService : FirebaseMessagingService() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        runBlocking {
+        serviceScope.launch {
             withTimeoutOrNull(8_000L) {
-                BookingPushRegistration0304.ensureRegistered(this@RotaCertaBookingMessagingService, TripStore(this@RotaCertaBookingMessagingService))
+                BookingPushRegistration0304.ensureRegistered(
+                    this@RotaCertaBookingMessagingService,
+                    TripStore(this@RotaCertaBookingMessagingService),
+                )
             }
         }
     }
@@ -99,16 +107,24 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             "event=${event.take(40)} remoteTripPresent=${remoteTripId.isNotBlank()} bookingPresent=${bookingId.isNotBlank()} seats=$seats",
         )
 
-        runBlocking {
-            withTimeoutOrNull(10_000L) {
-                PublicBookingRemoteSync0296.pullAndReconcile(
-                    context = this@RotaCertaBookingMessagingService,
-                    store = TripStore(this@RotaCertaBookingMessagingService),
-                )
+        serviceScope.launch {
+            try {
+                withTimeoutOrNull(10_000L) {
+                    PublicBookingRemoteSync0296.pullAndReconcile(
+                        context = this@RotaCertaBookingMessagingService,
+                        store = TripStore(this@RotaCertaBookingMessagingService),
+                    )
+                }
+            } finally {
+                BookingRealtimeEvents0356.notifyChanged()
+                TripWidgetProvider.updateAll(this@RotaCertaBookingMessagingService)
             }
         }
-        BookingRealtimeEvents0356.notifyChanged()
-        TripWidgetProvider.updateAll(this)
+    }
+
+    override fun onDestroy() {
+        serviceScope.cancel()
+        super.onDestroy()
     }
 }
 

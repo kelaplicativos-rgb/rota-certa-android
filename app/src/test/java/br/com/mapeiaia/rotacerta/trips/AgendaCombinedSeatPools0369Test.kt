@@ -9,8 +9,8 @@ import kotlin.test.assertTrue
 class AgendaCombinedSeatPools0369Test {
     private fun trip(
         physicalCapacity: Int,
-        blablaAvailable: Int? = null,
-        rotaCertaAvailable: Int? = null,
+        blablaQuota: Int? = null,
+        rotaCertaQuota: Int? = null,
         stops: List<TripStop> = listOf(
             TripStop(id = "a", order = 0, name = "A"),
             TripStop(id = "b", order = 1, name = "B"),
@@ -20,11 +20,11 @@ class AgendaCombinedSeatPools0369Test {
         title = "A → B",
         departureAtMillis = 4_000_000_000_000L,
         capacity = physicalCapacity,
-        rotaCertaSeatAllocation = rotaCertaAvailable,
+        rotaCertaSeatAllocation = rotaCertaQuota,
         status = TripStatus.PUBLISHED,
         stops = stops,
-        // Legacy persisted name; semantically this is the current BlaBlaCar free-seat value.
-        publishedSeats = blablaAvailable,
+        // Legacy persisted name; semantically this is the synchronized BlaBlaCar quota.
+        publishedSeats = blablaQuota,
     )
 
     private fun booking(
@@ -51,19 +51,19 @@ class AgendaCombinedSeatPools0369Test {
     )
 
     @Test
-    fun latestRuleTwoBlaBlaFreePlusFourRotaCertaFreeEqualsSixImmediately() {
+    fun twoBlaBlaQuotaPlusFourRotaCertaQuotaBuildsInventorySix() {
         val trip = trip(
             physicalCapacity = 7,
-            blablaAvailable = 2,
-            rotaCertaAvailable = 4,
+            blablaQuota = 2,
+            rotaCertaQuota = 4,
         )
 
         val summary = operationalSeatSummary(trip, emptyList())
 
         assertTrue(summary.operationalLimitConfigured)
-        assertEquals(2, summary.blablaAvailableSeats)
-        assertEquals(4, summary.rotaCertaAllocatedSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
+        assertEquals(2, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
         assertEquals(6, summary.totalAvailableSeats)
         assertEquals(6, summary.availableSeats)
         assertEquals(0, summary.confirmedPassengerSeats)
@@ -71,8 +71,8 @@ class AgendaCombinedSeatPools0369Test {
     }
 
     @Test
-    fun BlaBlaConfirmedPassengersDoNotSubtractFreeSeatsAgain() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+    fun BlaBlaConfirmedPassengersConsumeQuotaExactlyOnce() {
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val bookings = listOf(
             booking(
                 "blabla-already-accounted",
@@ -87,14 +87,15 @@ class AgendaCombinedSeatPools0369Test {
         val summary = operationalSeatSummary(trip, bookings)
 
         assertEquals(3, summary.confirmedPassengerSeats)
-        assertEquals(2, summary.blablaAvailableSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(2, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(6, summary.operationalInventorySeats)
+        assertEquals(3, summary.availableSeats)
     }
 
     @Test
     fun localRotaCertaPassengerConsumesOnlyRotaCertaPool() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val bookings = listOf(
             booking("rota", trip, 1, BookingSource.ROTA_CERTA),
         )
@@ -102,14 +103,14 @@ class AgendaCombinedSeatPools0369Test {
         val summary = operationalSeatSummary(trip, bookings)
 
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(2, summary.blablaAvailableSeats)
-        assertEquals(3, summary.rotaCertaAvailableSeats)
+        assertEquals(2, summary.blablaQuotaSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
         assertEquals(5, summary.availableSeats)
     }
 
     @Test
     fun familyMirrorInsideSameStrongGroupIsNotCountedTwice() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val bookings = listOf(
             booking(
                 "external",
@@ -132,13 +133,13 @@ class AgendaCombinedSeatPools0369Test {
         val summary = operationalSeatSummary(trip, bookings)
 
         assertEquals(1, summary.confirmedPassengerSeats)
-        assertEquals(4, summary.rotaCertaAvailableSeats)
-        assertEquals(6, summary.availableSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(5, summary.availableSeats)
     }
 
     @Test
     fun independentFamilyPassengerConsumesOneRotaCertaSeat() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val bookings = listOf(
             booking("external", trip, 1, BookingSource.BLABLACAR, CapacityClaimType.EXTERNAL_OCCUPANCY),
             booking("family-independent", trip, 1, BookingSource.PRIVATE),
@@ -147,13 +148,13 @@ class AgendaCombinedSeatPools0369Test {
         val summary = operationalSeatSummary(trip, bookings)
 
         assertEquals(2, summary.confirmedPassengerSeats)
-        assertEquals(3, summary.rotaCertaAvailableSeats)
-        assertEquals(5, summary.availableSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
+        assertEquals(4, summary.availableSeats)
     }
 
     @Test
     fun blockedSeatReducesRotaCertaAvailabilityButIsNotConfirmedPassenger() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val blocked = booking(
             "blocked",
             trip,
@@ -166,13 +167,13 @@ class AgendaCombinedSeatPools0369Test {
 
         assertEquals(0, summary.confirmedPassengerSeats)
         assertEquals(1, summary.blockedSeats)
-        assertEquals(3, summary.rotaCertaAvailableSeats)
+        assertEquals(4, summary.rotaCertaQuotaSeats)
         assertEquals(5, summary.availableSeats)
     }
 
     @Test
     fun cancellationReleasesRotaCertaSeatImmediately() {
-        val trip = trip(7, blablaAvailable = 2, rotaCertaAvailable = 4)
+        val trip = trip(7, blablaQuota = 2, rotaCertaQuota = 4)
         val active = booking("rota", trip, 1, BookingSource.ROTA_CERTA)
         assertEquals(5, operationalSeatSummary(trip, listOf(active)).availableSeats)
 
@@ -216,17 +217,19 @@ class AgendaCombinedSeatPools0369Test {
         val domain = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt").readText()
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
-        assertTrue(agenda.contains("blablaAvailable"))
-        assertTrue(agenda.contains("rotaCertaAvailable"))
+        assertTrue(agenda.contains("blablaQuota"))
+        assertTrue(agenda.contains("rotaCertaQuota"))
         assertTrue(agenda.contains("operationalInventory"))
-        assertTrue(agenda.contains("capacitySource=blablacar_remaining_plus_external_peak_plus_rota_certa"))
+        assertTrue(agenda.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
+        assertFalse(agenda.contains("blablacar_remaining_plus_external_peak_plus_rota_certa"))
         assertTrue(domain.contains("operationalInventoryCapacity"))
         assertTrue(domain.contains("bookingOccupancyIdentityKey"))
         assertTrue(domain.contains("EXTERNAL_OCCUPANCY"))
         assertFalse(ui.contains("Capacidade de passageiros"))
         assertFalse(ui.contains("Capacidade do veículo"))
         assertTrue(ui.contains("Vagas disponibilizadas no Rota Certa"))
-        assertTrue(ui.contains("Total disponível"))
+        assertTrue(ui.contains("Inventário operacional"))
+        assertTrue(ui.contains("LOTADO"))
     }
 
     @Test
