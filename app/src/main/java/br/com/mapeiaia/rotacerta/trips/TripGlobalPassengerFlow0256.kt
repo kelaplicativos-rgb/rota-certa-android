@@ -143,7 +143,7 @@ internal fun timelineExternalRoutePointLabels(entry: TripTimelineEntry): List<St
 }
 
 internal fun buildTimelineExternalBackingTrip(entry: TripTimelineEntry, capacity: Int): Trip {
-    require(capacity in 1..999) { "Capacidade física inválida." }
+    require(capacity in 1..999) { "Inventário operacional indisponível." }
     val id = timelineExternalBackingTripId(entry)
         ?: throw IllegalArgumentException("Publicação sem identidade externa forte; não criei viagem duplicada.")
     val labels = timelineExternalRoutePointLabels(entry).ifEmpty { listOf(entry.origin, entry.destination) }
@@ -315,7 +315,7 @@ internal data class TimelineSeatSyncPlan(
 
 /**
  * Computes the single publication target from the bottleneck of the already-existing
- * per-segment physical engine. External roster must be complete; otherwise we fail
+ * per-segment inventory engine. External roster must be complete; otherwise we fail
  * closed instead of inventing segment availability.
  */
 internal fun timelineDesiredSeatSyncPlan(
@@ -364,7 +364,7 @@ internal fun prepareTimelineTripForPassenger(
     var created = false
     if (trip == null) {
         require(strongExternal != null) { "Selecione uma viagem interna existente ou crie uma nova viagem particular." }
-        require(entry.capacity in 1..999) { "Configure primeiro a capacidade física do veículo." }
+        require(entry.capacity in 1..999) { "Não há vagas disponíveis nesta viagem." }
         trip = buildTimelineExternalBackingTrip(entry, entry.capacity)
         created = true
     }
