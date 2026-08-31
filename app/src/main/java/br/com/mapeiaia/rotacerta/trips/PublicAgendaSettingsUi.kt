@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -130,6 +131,10 @@ internal fun OnlineSettingsEditor(
     var publicProfileOverrideFields by remember { mutableStateOf(emptySet<String>()) }
     var registrationMessage by remember { mutableStateOf<String?>(null) }
     var linkActionMessage by remember { mutableStateOf<String?>(null) }
+    var testerLinkStatus by remember { mutableStateOf<DriverTesterLinkResponse?>(null) }
+    var testerLinkUrl by remember { mutableStateOf("") }
+    var testerLinkMessage by remember { mutableStateOf<String?>(null) }
+    var testerLinkInFlight by remember { mutableStateOf(false) }
     var confirmRegenerateLink by remember { mutableStateOf(false) }
     var linkRotationInFlight by remember { mutableStateOf(false) }
     var usernameChangeInFlight by remember { mutableStateOf(false) }
@@ -181,6 +186,19 @@ internal fun OnlineSettingsEditor(
         selectedPublicProfileAccountId = selectedPublicProfileAccountId,
         publicProfileOverrideFields = emptySet(),
     )
+
+    LaunchedEffect(api, token, driverUsername) {
+        if (token.isBlank() || !api.startsWith("https://") || driverUsername.isBlank()) {
+            testerLinkStatus = null
+            testerLinkUrl = ""
+            return@LaunchedEffect
+        }
+        testerLinkInFlight = true
+        runCatching { TripRemoteApi(buildSettings()).testerLinkStatus() }
+            .onSuccess { testerLinkStatus = it }
+            .onFailure { testerLinkMessage = "Não foi possível consultar o link de teste: ${it.message ?: "erro de conexão"}" }
+        testerLinkInFlight = false
+    }
 
     Text("Integração online", style = MaterialTheme.typography.titleLarge)
     Text("O link da agenda pertence ao motorista e permanece o mesmo ao alterar dados ou perfil.")
@@ -451,6 +469,95 @@ internal fun OnlineSettingsEditor(
                         TextButton(enabled = !linkRotationInFlight, onClick = { confirmRegenerateLink = false }) { Text("Cancelar") }
                     }
                 }
+            }
+        }
+
+        HorizontalDivider()
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("🧪 Link exclusivo de teste", style = MaterialTheme.typography.titleMedium)
+                Text("Abre a Agenda sem WhatsApp ou senha em uma sessão TESTER isolada. Reservas e cancelamentos desse link usam somente estado sombra e não alteram a operação real.")
+                val activeTesterLink = testerLinkStatus?.active == true
+                val testerExpiry = testerLinkStatus?.expiresAtMillis?.takeIf { it > 0L }?.let { millis ->
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                        .withZone(ZoneId.systemDefault())
+                        .format(Instant.ofEpochMilli(millis))
+                }
+                Text(
+                    when {
+                        testerLinkInFlight && testerLinkStatus == null -> "Consultando estado do link…"
+                        activeTesterLink && testerExpiry != null -> "Link ativo • expira em $testerExpiry"
+                        activeTesterLink -> "Link ativo"
+                        (testerLinkStatus?.revokedAtMillis ?: 0L) > 0L -> "Link revogado"
+                        else -> "Nenhum link de teste ativo"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                testerLinkUrl.takeIf(String::isNotBlank)?.let { testUrl ->
+                    Text(testUrl, style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(
+                        enabled = !testerLinkInFlight,
+                        onClick = {
+                            val clipboard = context.getSystemService(ClipboardManager::class.java)
+                            clipboard?.setPrimaryClip(ClipData.newPlainText("Link de teste Rota Certa", testUrl))
+                            testerLinkMessage = if (clipboard != null) "Link de teste copiado." else "Não foi possível copiar o link de teste."
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Copiar link de teste") }
+                    OutlinedButton(
+                        enabled = !testerLinkInFlight,
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, testUrl)
+                            }
+                            runCatching { context.startActivity(Intent.createChooser(shareIntent, "Compartilhar link de teste")) }
+                                .onSuccess { testerLinkMessage = "Abrindo opções de compartilhamento…" }
+                                .onFailure { testerLinkMessage = "Não foi possível compartilhar o link de teste neste aparelho." }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Compartilhar link de teste") }
+                }
+                if (activeTesterLink && testerLinkUrl.isBlank()) {
+                    Text("Por segurança, o segredo do link não é recuperado do servidor depois da geração. Gere um novo link para obter uma nova URL copiável; o link anterior será invalidado.", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(
+                    enabled = !testerLinkInFlight,
+                    onClick = {
+                        registrationScope.launch {
+                            testerLinkInFlight = true
+                            runCatching { TripRemoteApi(buildSettings()).generateTesterLink() }
+                                .onSuccess { response ->
+                                    testerLinkStatus = response
+                                    testerLinkUrl = response.testUrl
+                                    testerLinkMessage = if (activeTesterLink) "Novo link gerado. O link e as sessões anteriores foram invalidados." else "Link de teste gerado com sucesso."
+                                }
+                                .onFailure { testerLinkMessage = "Não foi possível gerar o link de teste: ${it.message ?: "erro de conexão"}" }
+                            testerLinkInFlight = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (activeTesterLink) "Gerar novo link de teste" else "Gerar link de teste") }
+                if (activeTesterLink) {
+                    OutlinedButton(
+                        enabled = !testerLinkInFlight,
+                        onClick = {
+                            registrationScope.launch {
+                                testerLinkInFlight = true
+                                runCatching { TripRemoteApi(buildSettings()).revokeTesterLink() }
+                                    .onSuccess { response ->
+                                        testerLinkStatus = response
+                                        testerLinkUrl = ""
+                                        testerLinkMessage = "Link de teste revogado. Sessões TESTER associadas também deixam de ser válidas."
+                                    }
+                                    .onFailure { testerLinkMessage = "Não foi possível revogar o link de teste: ${it.message ?: "erro de conexão"}" }
+                                testerLinkInFlight = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Revogar link de teste") }
+                }
+                testerLinkMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
     }
