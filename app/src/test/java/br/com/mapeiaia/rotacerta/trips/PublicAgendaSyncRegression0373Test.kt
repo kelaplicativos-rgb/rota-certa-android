@@ -177,13 +177,15 @@ class PublicAgendaSyncRegression0373Test {
                     }
                 },
             )
-            val completions = async { coordinator.completions.take(2).toList() }
             coordinator.request(4, "first-partial")
-            withTimeout(2_000L) {
-                while (executions.get() < 1) delay(10L)
-            }
+            val firstCompletion = withTimeout(2_000L) { coordinator.completions.first() }
+            assertEquals(1, firstCompletion.result?.failures)
+            assertEquals(1, executions.get())
+
             coordinator.request(4, "explicit-retry")
-            withTimeout(2_000L) { completions.await() }
+            withTimeout(2_000L) {
+                while (executions.get() < 2) delay(10L)
+            }
             assertEquals(2, executions.get())
         } finally {
             workerScope.cancel()
