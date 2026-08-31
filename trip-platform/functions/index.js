@@ -667,7 +667,7 @@ function normalizeDriverTrip(raw, previous = null) {
     ? rawRotaCertaSeatAllocation
     : capacity;
   const rawPublishedSeats = raw.publishedSeats == null ? null : Number(raw.publishedSeats);
-  const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= capacity
+  const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= 999
     ? rawPublishedSeats
     : null;
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
@@ -1039,49 +1039,77 @@ function segmentCapacityPersistence(capacityState) {
   };
 }
 function operationalSeatLimit(trip) {
-  const blabla = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
+  const blablaAvailable = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
     ? Number(trip.publishedSeats)
     : 0;
   const configuredLocal = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
-  const rotaCerta = Number.isInteger(configuredLocal) && configuredLocal >= 0
+  const rotaCertaAllocated = Number.isInteger(configuredLocal) && configuredLocal >= 0
     ? configuredLocal
-    : Math.max(0, Number(trip && trip.capacity || 0));
-  return Math.min(999, blabla + rotaCerta);
+    : 0;
+  return Math.min(999, blablaAvailable + rotaCertaAllocated);
 }
 
 function reconciledOperationalSeatSummary(trip, records, now = Date.now()) {
   const groups = new Map();
   for (const record of records || []) {
     if (!record || Number(record.seats || 0) <= 0 || !recordOccupiesCapacity(record, now)) continue;
-    const group = cleanText(record.occupancyGroupId, 120);
-    const key = group ? `group:${group}` : `booking:${cleanText(record.id, 120)}`;
-    const current = groups.get(key) || { confirmed: 0, blocked: 0 };
+    const groupId = cleanText(record.occupancyGroupId, 120);
+    const key = groupId ? `group:${groupId}` : `booking:${cleanText(record.id, 120)}`;
+    const current = groups.get(key) || { externalConfirmed: 0, localConfirmed: 0, localBlocked: 0 };
     const claimType = cleanText(record.capacityClaimType, 24).toUpperCase() || "PASSENGER";
+    const source = cleanText(record.source, 24).toUpperCase();
     const seats = Math.max(0, Number(record.seats || 0));
+    const external = claimType === "EXTERNAL_OCCUPANCY" || source === "BLABLACAR";
+
     if (claimType === "PASSENGER" || claimType === "EXTERNAL_OCCUPANCY") {
-      if (record.status === "CONFIRMED") current.confirmed = Math.max(current.confirmed, seats);
-      else current.blocked = Math.max(current.blocked, seats);
-    } else if (claimType === "RESERVED_SEAT") {
-      current.blocked = Math.max(current.blocked, seats);
+      if (record.status === "CONFIRMED") {
+        if (external) current.externalConfirmed = Math.max(current.externalConfirmed, seats);
+        else current.localConfirmed = Math.max(current.localConfirmed, seats);
+      } else if (!external) {
+        current.localBlocked = Math.max(current.localBlocked, seats);
+      }
+    } else if (claimType === "RESERVED_SEAT" && !external) {
+      current.localBlocked = Math.max(current.localBlocked, seats);
     }
     groups.set(key, current);
   }
+
   let confirmedPassengerSeats = 0;
   let blockedSeats = 0;
+  let rotaCertaConsumedSeats = 0;
+
   for (const group of groups.values()) {
-    const confirmed = Math.max(0, Number(group.confirmed || 0));
-    const consumed = Math.max(confirmed, Math.max(0, Number(group.blocked || 0)));
+    const externalConfirmed = Math.max(0, Number(group.externalConfirmed || 0));
+    const localConfirmed = Math.max(0, Number(group.localConfirmed || 0));
+    const localBlocked = Math.max(0, Number(group.localBlocked || 0));
+    const confirmed = Math.max(externalConfirmed, localConfirmed);
+    const localDemand = Math.max(localConfirmed, localBlocked);
+    const extraLocalBeyondExternal = Math.max(0, localDemand - externalConfirmed);
+
     confirmedPassengerSeats += confirmed;
-    blockedSeats += Math.max(0, consumed - confirmed);
+    blockedSeats += Math.max(0, localBlocked - Math.max(externalConfirmed, localConfirmed));
+    rotaCertaConsumedSeats += externalConfirmed > 0 ? extraLocalBeyondExternal : localDemand;
   }
-  const totalConsideredSeats = operationalSeatLimit(trip);
-  const consumed = confirmedPassengerSeats + blockedSeats;
+
+  const blablaAvailableSeats = Number.isInteger(Number(trip && trip.publishedSeats)) && Number(trip.publishedSeats) >= 0
+    ? Math.min(999, Number(trip.publishedSeats))
+    : 0;
+  const rawRota = trip && trip.rotaCertaSeatAllocation != null ? Number(trip.rotaCertaSeatAllocation) : NaN;
+  const rotaCertaAllocatedSeats = Number.isInteger(rawRota) && rawRota >= 0 ? Math.min(999, rawRota) : 0;
+  const rotaCertaAvailableSeats = Math.max(0, rotaCertaAllocatedSeats - rotaCertaConsumedSeats);
+  const totalAvailableSeats = Math.min(999, blablaAvailableSeats + rotaCertaAvailableSeats);
+  const operationalOverbookingSeats = Math.max(0, rotaCertaConsumedSeats - rotaCertaAllocatedSeats);
+
   return {
     confirmedPassengerSeats,
     blockedSeats,
-    totalConsideredSeats,
-    operationalAvailableSeats: Math.max(0, totalConsideredSeats - consumed),
-    operationalOverbookingSeats: Math.max(0, consumed - totalConsideredSeats),
+    blablaAvailableSeats,
+    rotaCertaAllocatedSeats,
+    rotaCertaAvailableSeats,
+    totalAvailableSeats,
+    totalConsideredSeats: totalAvailableSeats,
+    operationalAvailableSeats: totalAvailableSeats,
+    operationalOverbookingSeats,
   };
 }
 
@@ -1089,8 +1117,12 @@ function operationalSeatPersistence(summary) {
   return {
     confirmedPassengerSeats: summary.confirmedPassengerSeats,
     blockedSeats: summary.blockedSeats,
-    totalConsideredSeats: summary.totalConsideredSeats,
-    operationalAvailableSeats: summary.operationalAvailableSeats,
+    blablaAvailableSeats: summary.blablaAvailableSeats,
+    rotaCertaAllocatedSeats: summary.rotaCertaAllocatedSeats,
+    rotaCertaAvailableSeats: summary.rotaCertaAvailableSeats,
+    totalAvailableSeats: summary.totalAvailableSeats,
+    totalConsideredSeats: summary.totalAvailableSeats,
+    operationalAvailableSeats: summary.totalAvailableSeats,
     operationalOverbookingSeats: summary.operationalOverbookingSeats,
   };
 }
