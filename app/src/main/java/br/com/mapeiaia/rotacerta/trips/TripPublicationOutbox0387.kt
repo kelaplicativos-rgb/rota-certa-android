@@ -267,6 +267,13 @@ internal class TripMutationCoordinator0387(
         if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
         val original = store.getTrip(canonicalTripId) ?: return null
         if (!original.isCanonicalLocalPublishSource()) return null
+        if (original.status == TripStatus.CANCELLED) {
+            return recordTombstone(
+                canonicalTripId = canonicalTripId,
+                mutationType = mutationType,
+                source = source,
+            )
+        }
         val bookings = store.bookingsFor(canonicalTripId)
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
@@ -377,7 +384,7 @@ internal class TripMutationCoordinator0387(
         val trip = store.getTrip(canonicalTripId) ?: return null
         val bookings = store.bookingsFor(canonicalTripId)
         val signature = "tombstone-v1:" + sha256TripPublication0387(
-            listOf(canonicalTripId, trip.remoteId.orEmpty(), trip.publicToken, mutationType).joinToString("|"),
+            listOf(canonicalTripId, trip.remoteId.orEmpty(), trip.publicToken, "CANCELLED").joinToString("|"),
         )
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
@@ -387,6 +394,51 @@ internal class TripMutationCoordinator0387(
             snapshot = TripPublicationSnapshot0387(trip = trip, bookings = bookings, semanticSignature = signature),
         )?.also { event ->
             recordEvent("TRIP_MUTATION_TOMBSTONE_ENQUEUED", event, "historyPreserved=true blablaMutation=false")
+        }
+    }
+
+    fun recordExternalTombstone(
+        binding: PublicExternalTripBinding,
+        mutationType: String = "TIMELINE_OPERATIONAL_CLEAR",
+        source: String = "TIMELINE",
+    ): TripPublicationOutboxEvent0387? {
+        val profileUuid = binding.profileUuid.trim()
+        val tripId = binding.blablaTripId.trim()
+        if (profileUuid.isBlank() || tripId.isBlank()) return null
+        val accounts = BlaBlaDynamicAccountRegistry(appContext).list().filter {
+            it.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+        }
+        if (accounts.size != 1) return null
+        val canonicalTripId = strongExternalCanonicalTripId0387(
+            outbox.tenantId,
+            accounts.single().id,
+            profileUuid,
+            tripId,
+        )
+        val trip = binding.asTrip().copy(
+            status = TripStatus.CANCELLED,
+            publicBookingEnabled = false,
+        )
+        val signature = "tombstone-v1:" + sha256TripPublication0387(
+            listOf(canonicalTripId, binding.remoteTripId, binding.publicToken, "CANCELLED").joinToString("|"),
+        )
+        return outbox.enqueue(
+            canonicalTripId = canonicalTripId,
+            operation = TripPublicationOperation0387.TOMBSTONE,
+            mutationType = mutationType,
+            source = source,
+            snapshot = TripPublicationSnapshot0387(
+                trip = trip,
+                bookings = store.bookingsFor(binding.bookingTripId),
+                externalAccountId = accounts.single().id,
+                semanticSignature = signature,
+            ),
+        )?.also { event ->
+            recordEvent(
+                "TRIP_MUTATION_TOMBSTONE_ENQUEUED",
+                event,
+                "historyPreserved=true blablaMutation=false external=true profileUuidPresent=true tripIdPresent=true",
+            )
         }
     }
 
@@ -402,16 +454,30 @@ internal class TripMutationCoordinator0387(
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot local ausente." }
-                        PublicAgendaAutoSync0300.syncLocalTripIncremental(
-                            context = appContext,
-                            store = store,
-                            localTripId = event.canonicalTripId,
-                            configuredRotaCertaSeatAllocation = snapshotTrip.rotaCertaSeatAllocation ?: 0,
-                            snapshotTrip = snapshotTrip,
-                            snapshotBookings = event.snapshot.bookings,
-                            entityRevision = event.revision,
-                            outboxEventId = event.id,
-                        )
+                        if (snapshotTrip.status == TripStatus.COMPLETED) {
+                            val settings = store.onlineSettings()
+                            require(settings.configured) { "Agenda Pública não configurada." }
+                            val remoteId = snapshotTrip.remoteId?.takeIf(String::isNotBlank) ?: snapshotTrip.publicToken
+                            TripRemoteApi(settings).update(
+                                snapshotTrip.copy(
+                                    remoteId = remoteId,
+                                    publicationRevision = event.revision,
+                                    publicationTombstone = false,
+                                    publicationEventId = event.id,
+                                ),
+                            )
+                        } else {
+                            PublicAgendaAutoSync0300.syncLocalTripIncremental(
+                                context = appContext,
+                                store = store,
+                                localTripId = event.canonicalTripId,
+                                configuredRotaCertaSeatAllocation = snapshotTrip.rotaCertaSeatAllocation ?: 0,
+                                snapshotTrip = snapshotTrip,
+                                snapshotBookings = event.snapshot.bookings,
+                                entityRevision = event.revision,
+                                outboxEventId = event.id,
+                            )
+                        }
                     }
                     TripPublicationOperation0387.UPSERT_EXTERNAL -> {
                         val sourceTrip = requireNotNull(event.snapshot.externalTrip) { "Snapshot externo ausente." }
