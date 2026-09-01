@@ -110,24 +110,17 @@ test("protected booking state is part of the immutable versioned local snapshot 
   assert.doesNotMatch(passenger, /TripRemoteApi\(settings\)\.decideDriverBooking\(/);
 });
 
-test("BlaBlaCar exact-card channel requires strong identity and uses the outbox", () => {
-  const start = timeline.indexOf("onResult = { nextResponse ->");
-  const end = timeline.indexOf("onChanged = onChanged", start);
-  assert.ok(start >= 0 && end > start);
-  const resultBlock = timeline.slice(start, end);
-  assert.match(resultBlock, /exactProfileUuid/);
-  assert.match(resultBlock, /exactTripId/);
-  assert.match(resultBlock, /exactMatches\.size != 1/);
-  assert.match(resultBlock, /recordExternalManualMutation/);
-  assert.doesNotMatch(resultBlock, /tripMutationCoordinator\.drainPending\(\)/);
-  assert.match(resultBlock, /AgendaBackgroundSync0392\.enqueueImmediate/);
-  assert.doesNotMatch(resultBlock, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
+test("Timeline no longer exposes the legacy exact-card manual synchronization channel", () => {
+  assert.doesNotMatch(timeline, /recordExternalManualMutation/);
+  assert.doesNotMatch(timeline, /manual_card_shortcut/);
+  assert.doesNotMatch(timeline, /Sincronização individual indisponível/);
+  assert.match(background, /AgendaBackgroundSyncMode0392\.COLLECTOR_RECONCILE/);
+  assert.match(background, /TripMutationCoordinator0387\(appContext, store\)\.drainPending\(\)/);
 });
 
-test("operational Timeline clear emits tombstones and explicitly avoids BlaBlaCar mutation", () => {
-  assert.match(timeline, /Remover da operação \+ Agenda/);
-  assert.match(timeline, /recordTombstone\(/);
-  assert.match(timeline, /recordExternalTombstone\(/);
-  assert.match(timeline, /blablaMutation=false/);
+test("operational Timeline no longer has bulk clear while durable tombstones remain available to real lifecycle mutations", () => {
+  assert.doesNotMatch(timeline, /Remover da operação \+ Agenda/);
+  assert.doesNotMatch(timeline, /TIMELINE_VISUAL_CLEARED_BY_USER/);
+  assert.match(timeline, /clearLegacyBulkHiddenOnce0398/);
   assert.match(outbox, /publicationTombstone = true/);
 });
