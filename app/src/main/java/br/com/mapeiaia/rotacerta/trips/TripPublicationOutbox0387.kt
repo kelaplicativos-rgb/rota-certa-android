@@ -291,7 +291,7 @@ internal class TripPublicationOutbox0387(context: Context) {
         events[index] = target.copy(
             status = TripPublicationStatus0387.SUPERSEDED,
             updatedAtMillis = now,
-            lastError = "rebased_from_${target.revision}_to_$nextRevision_remote_$remoteRevision",
+            lastError = "rebased_from_${target.revision}_to_${nextRevision}_remote_$remoteRevision",
         )
         events += rebased
         revisions[target.canonicalTripId] = nextRevision
