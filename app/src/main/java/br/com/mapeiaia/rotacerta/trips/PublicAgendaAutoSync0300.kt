@@ -446,11 +446,10 @@ internal object PublicAgendaAutoSync0300 {
         if (!original.isCanonicalLocalPublishSource() || original.departureAtMillis <= nowMillis || original.status !in PUBLIC_LOCAL_STATUSES) {
             return@withContext false
         }
-        val localBookings = store.bookingsFor(original.id)
+        val localBookings = snapshotBookings ?: store.bookingsFor(original.id)
         val allocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
         val withAllocation = original.copy(
             rotaCertaSeatAllocation = allocation,
-            publicBookingEnabled = true,
         )
         var publicTrip = withAllocation.copy(
             capacity = operationalInventoryCapacity(withAllocation, localBookings),
