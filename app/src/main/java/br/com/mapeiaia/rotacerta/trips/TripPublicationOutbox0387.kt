@@ -491,7 +491,7 @@ internal class TripMutationCoordinator0387(
     fun recordExternalTenantMutation(
         sourceTrip: BlaBlaCollectorTrip,
         configuredRotaCertaSeatAllocation: Int,
-        seatAllocationVersion: Long,
+        seatAllocationVersion: Long = 0L,
         mutationType: String = "TENANT_SEAT_ALLOCATION_CHANGED",
     ): TripPublicationOutboxEvent0387? = recordExternalMutation(
         sourceTrip = sourceTrip,
@@ -532,6 +532,16 @@ internal class TripMutationCoordinator0387(
         }
         val accountId = accounts.single().id
         val existingBinding = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)
+        if (seatAllocationVersion != null && existingBinding != null && existingBinding.seatAllocationVersionUsed > seatAllocationVersion) {
+            UnifiedDebugEventStore.record(
+                "TRIP_MUTATION_EXTERNAL_CONFIG_STALE",
+                appContext.packageName,
+                "tenantId=" + outbox.tenantId + " internalTripId=" + seatSyncDiagnosticKey(existingBinding.bookingTripId) +
+                    " result=SKIP_STALE_REVISION configVersion=" + seatAllocationVersion +
+                    " currentConfigVersion=" + existingBinding.seatAllocationVersionUsed,
+            )
+            return null
+        }
         val canonicalTripId = existingBinding?.bookingTripId?.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(outbox.tenantId, accountId, profileUuid, tripId)
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
