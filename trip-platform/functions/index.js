@@ -483,6 +483,43 @@ function writeChangeEventAndNotifications(tx, {
   return eventId;
 }
 
+function writeDeliveredTripPublicationOutbox(tx, {
+  tenantId,
+  canonicalTripId,
+  revision,
+  operation = "UPSERT",
+  mutationType,
+  source,
+  sourceEventId = "",
+}) {
+  const tenant = normalizeUsername(tenantId);
+  const canonical = cleanText(canonicalTripId, 120);
+  const entityRevision = Math.max(0, Math.floor(Number(revision || 0)));
+  if (!tenant || !canonical || entityRevision <= 0) return "";
+  const eventId = "server_" + sha256Hex(`${tenant}|${canonical}|${entityRevision}`).slice(0, 48);
+  const now = Date.now();
+  const immutableSourceEventId = cleanText(sourceEventId, 120);
+  tx.set(db.collection("tripPublicationOutbox").doc(eventId), {
+    eventId,
+    tenantId: tenant,
+    canonicalTripId: canonical,
+    revision: entityRevision,
+    operation: cleanText(operation, 32) || "UPSERT",
+    mutationType: cleanText(mutationType, 80),
+    source: cleanText(source, 80),
+    destination: "PUBLIC_AGENDA",
+    sourceEventId: immutableSourceEventId,
+    payloadReference: immutableSourceEventId ? "tripChangeEvents/" + immutableSourceEventId : "",
+    status: "DELIVERED",
+    attempts: 1,
+    createdAtMillis: now,
+    updatedAtMillis: now,
+    lastError: "",
+    nextAttemptAtMillis: 0,
+  }, { merge: true });
+  return eventId;
+}
+
 function notificationResponse(doc) {
   const data = doc.data();
   return {
@@ -4232,6 +4269,15 @@ async function createBooking(req, res, token) {
         driverNotification: driverNotificationCopy("RESERVATION_REQUESTED", candidate, cleanText(trip.title, 180)),
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: debugDriverUsername,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: "PUBLIC_BOOKING_CREATED",
+        source: "PUBLIC_AGENDA",
+        sourceEventId: eventId,
+      });
       tx.update(tripRef, {
         ...canonicalCapacityPersistence(trip, candidateRecords, reconciledCapacityState, now),
         bookingsCount: existing.length + 1,
@@ -4396,6 +4442,15 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         driverNotification: driverNotificationCopy("BOOKING_CANCELLED", updated, cleanText(trip.title, 180)),
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: debugDriverUsername,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: "PUBLIC_BOOKING_CANCELLED",
+        source: "PUBLIC_AGENDA",
+        sourceEventId: eventId,
+      });
       tx.update(tripRef, {
         ...canonicalCapacityPersistence(trip, reconciledRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
@@ -4557,6 +4612,15 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
           driverNotification: driverNotificationCopy("BOOKING_CHANGED", updated, cleanText(trip.title, 180)),
         });
         entityRevision += 1;
+        writeDeliveredTripPublicationOutbox(tx, {
+          tenantId: debugDriverUsername,
+          canonicalTripId: token,
+          revision: entityRevision,
+          operation: "UPSERT",
+          mutationType: "PUBLIC_BOOKING_CHANGED",
+          source: "PUBLIC_AGENDA",
+          sourceEventId: eventId,
+        });
         tx.update(tripRef, {
           ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
@@ -4724,6 +4788,15 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
         }],
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: driver.username,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: eventType,
+        source: "TIMELINE_RESERVATION_DECISION",
+        sourceEventId: eventId,
+      });
       tx.update(tripRef, {
         ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
@@ -4897,6 +4970,15 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         }],
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: driver.username,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: eventType,
+        source: "TIMELINE_PASSENGER_STATUS",
+        sourceEventId: eventId,
+      });
       tx.update(tripRef, {
         ...tripCapacityPersistence,
         status: tripStatus,
@@ -5081,6 +5163,15 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         }],
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: driver.username,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: eventType,
+        source: cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT",
+        sourceEventId: eventId,
+      });
       tx.update(tripRef, {
         ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
