@@ -375,6 +375,8 @@ private fun TripApp(
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
     }
+    // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
+    val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         BookingRealtimeEvents0356.changes.collect {
             refresh()
