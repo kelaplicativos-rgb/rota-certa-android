@@ -124,7 +124,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC }
+private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC, ACCOUNTS_BROWSERS }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -144,6 +144,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.TIMELINE -> "Todas as viagens"
     TripScreen.AUTO_SYNC -> "Sincronização automática"
+    TripScreen.ACCOUNTS_BROWSERS -> "Contas e navegadores"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
     TripScreen.PASSENGERS -> "Passageiros"
     TripScreen.CREATE -> "Nova viagem"
@@ -464,6 +465,14 @@ private fun TripApp(
     }
     val headerActions0396 = when (screen) {
         TripScreen.TIMELINE -> listOf(
+            AgendaHeaderAction0396("Contas e navegadores") {
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.ACCOUNTS_BROWSERS
+            },
+            AgendaHeaderAction0396("Sincronização automática") {
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.AUTO_SYNC
+            },
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
                 parentRootScreen0396 = TripScreen.TIMELINE
@@ -547,7 +556,23 @@ private fun TripApp(
             }
         },
     ) { openDrawer0396 ->
-        Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                AgendaModuleHeader0396(
+                    sectionLabel = headerLabel0396,
+                    root = headerIsRoot0396,
+                    onNavigationClick = {
+                        when {
+                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
+                            screen.isAgendaRoot0396() -> openDrawer0396()
+                            else -> screen = parentRootScreen0396
+                        }
+                    },
+                    overflowActions = headerActions0396,
+                )
+            },
+        ) { padding ->
             Column(
                 modifier = if (screen == TripScreen.TIMELINE) {
                     Modifier
@@ -563,18 +588,6 @@ private fun TripApp(
                 },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                AgendaModuleHeader0396(
-                    sectionLabel = headerLabel0396,
-                    root = headerIsRoot0396,
-                    onNavigationClick = {
-                        when {
-                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
-                            screen.isAgendaRoot0396() -> openDrawer0396()
-                            else -> screen = parentRootScreen0396
-                        }
-                    },
-                    overflowActions = headerActions0396,
-                )
             if (notificationsExpanded) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -767,6 +780,7 @@ private fun TripApp(
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
                 TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()
+                TripScreen.ACCOUNTS_BROWSERS -> BlaBlaAccountsAndBrowsersScreen0399()
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = { saved ->

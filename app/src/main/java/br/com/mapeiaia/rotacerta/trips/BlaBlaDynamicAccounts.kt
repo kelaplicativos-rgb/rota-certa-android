@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import android.app.Activity
 import android.content.Context
@@ -57,12 +58,14 @@ data class BlaBlaDynamicAccount(
 
 class BlaBlaDynamicAccountRegistry(context: Context) {
     private val appContext = context.applicationContext
+    private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val accountsKey = tenantScope.key(KEY_ACCOUNTS)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun list(): List<BlaBlaDynamicAccount> {
         val decoded = runCatching {
-            json.decodeFromString<List<BlaBlaDynamicAccount>>(prefs.getString(KEY_ACCOUNTS, "[]") ?: "[]")
+            json.decodeFromString<List<BlaBlaDynamicAccount>>(prefs.getString(accountsKey, "[]") ?: "[]")
         }.getOrDefault(emptyList())
         val sanitized = decoded.map { account ->
             account.copy(profileName = BlaBlaDriverProfileNamePolicy.normalize(account.profileName))
@@ -118,7 +121,7 @@ class BlaBlaDynamicAccountRegistry(context: Context) {
     }
 
     private fun save(accounts: List<BlaBlaDynamicAccount>) {
-        prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(accounts)).apply()
+        prefs.edit().putString(accountsKey, json.encodeToString(accounts)).apply()
     }
 
     companion object {
