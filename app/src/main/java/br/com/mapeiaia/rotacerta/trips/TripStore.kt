@@ -158,7 +158,7 @@ class TripStore(context: Context) {
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
-            if (!shouldApply) {
+            if (!shouldApply || trip.seatAllocationVersionUsed > seatAllocationVersion) {
                 trip
             } else {
                 val withAllocation = trip.copy(
