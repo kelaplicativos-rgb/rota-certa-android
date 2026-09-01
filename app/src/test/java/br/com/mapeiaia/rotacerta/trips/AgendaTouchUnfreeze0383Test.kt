@@ -17,25 +17,28 @@ class AgendaTouchUnfreeze0383Test {
             "TripsActivity must not wrap header/actions in a full-screen pull-to-refresh recognizer",
         )
         assertTrue(activity.contains("Scaffold(modifier = Modifier.fillMaxSize())"))
+        assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
         assertTrue(activity.contains("refreshing = refreshAllRunning"))
         assertTrue(activity.contains("onRefresh = requestFullTimelineRefresh"))
+        assertTrue(activity.contains("modifier = Modifier.weight(1f).fillMaxWidth()"))
         assertTrue(activity.contains("listModifier = Modifier.weight(1f)"))
     }
 
     @Test
-    fun pullToRefreshLivesOnlyInTimelineDataRegionAfterToolbarControls() {
+    fun timelineListUsesExplicitStateAndNoSecondPullRecognizer() {
         val timeline = source("TripTimelineUi.kt")
         val actions = timeline.indexOf("ResponsiveTripActions(")
         val search = timeline.indexOf("label = { Text(\"Buscar na Timeline\") }", actions)
-        val refresh = timeline.indexOf("PullToRefreshBox(", search)
-        val list = timeline.indexOf("LazyColumn(", refresh)
+        val emptyState = timeline.indexOf("val timelineEmptyMessage = when", search)
+        val region = timeline.indexOf("Box(", emptyState)
+        val list = timeline.indexOf("LazyColumn(", region)
 
         assertTrue(actions >= 0, "Timeline toolbar actions missing")
         assertTrue(search > actions, "Search control must remain after toolbar actions")
-        assertTrue(refresh > search, "Pull-to-refresh must start only below toolbar/search controls")
-        assertTrue(list > refresh, "Timeline list must be inside pull-to-refresh region")
-        assertTrue(timeline.contains("isRefreshing = refreshing"))
-        assertTrue(timeline.contains("onRefresh = onRefresh"))
+        assertTrue(region > search, "Timeline data region must remain after toolbar/search controls")
+        assertTrue(list > region, "Timeline list must remain inside the weighted data region")
+        assertFalse(timeline.contains("PullToRefreshBox("), "There must be only one canonical pull owner")
+        assertTrue(timeline.contains("state = listState"))
         assertTrue(timeline.contains("modifier = listModifier.fillMaxWidth()"))
         assertTrue(timeline.contains("modifier = Modifier.fillMaxSize()"))
     }
@@ -50,7 +53,7 @@ class AgendaTouchUnfreeze0383Test {
         assertFalse(
             timeline.substring(
                 timeline.indexOf("val timelineEmptyMessage = when"),
-                timeline.indexOf("PullToRefreshBox(", timeline.indexOf("val timelineEmptyMessage = when")),
+                timeline.indexOf("Box(", timeline.indexOf("val timelineEmptyMessage = when")),
             ).contains("return"),
             "Empty Timeline must not return before installing its refreshable data region",
         )
