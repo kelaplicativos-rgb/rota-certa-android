@@ -36,6 +36,8 @@ class AgendaTraceProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val application = context?.applicationContext as? Application ?: return false
         AgendaTrace.install(application)
+        // Only schedules durable WorkManager work; no network runs on the provider/main thread.
+        AgendaBackgroundSync0392.ensureScheduled(application)
         return true
     }
 
