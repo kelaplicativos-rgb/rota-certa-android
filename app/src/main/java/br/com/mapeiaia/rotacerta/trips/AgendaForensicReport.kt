@@ -305,6 +305,12 @@ internal object AgendaForensicReportBuilder {
             stage.startsWith("TIMELINE_") ||
             stage.startsWith("CAPACITY_") ||
             stage.startsWith("BOOKING_") ||
+            stage.startsWith("BROWSER_") ||
+            stage.startsWith("HARVEST_") ||
+            stage.startsWith("MHTML_") ||
+            stage.startsWith("PASSENGER_") ||
+            stage.startsWith("DRIVER_NOTIFICATION_") ||
+            stage.startsWith("PUBLIC_SEARCH_") ||
             stage.startsWith("PUBLIC_AGENDA_") ||
             stage.startsWith("PUBLIC_BOOKING_") ||
             stage.startsWith("PUBLIC_DRIVER_") ||
