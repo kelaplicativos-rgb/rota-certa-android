@@ -144,7 +144,6 @@ fun PassengerAdminScreen(
         }
     }
     val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search, canonicalSearchIds) {
-    val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search, canonicalSearchIds) {
         mergePassengerAdminCandidates(localProfiles, collectedPassengers, remotePassengers)
             .filter { candidate ->
                 val needle = search.trim()
@@ -200,7 +199,6 @@ fun PassengerAdminScreen(
         localProfiles = withContext(Dispatchers.IO) { passengerStore.profiles() }
     }
 
-    LaunchedEffect(settings.driverUsername, settings.driverToken, revision) {
     LaunchedEffect(settings.driverUsername, settings.driverToken, revision) {
         reloadRemote()
     }
