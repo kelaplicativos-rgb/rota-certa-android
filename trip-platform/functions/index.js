@@ -5837,11 +5837,12 @@ async function reconcileDriverAgendaSeatAllocation(req, res) {
 
         const bookingsSnap = await tx.get(tripRef.collection("bookings"));
         const records = bookingsSnap.docs.map((bookingDoc) => ({ id: bookingDoc.id, ...bookingDoc.data() }));
+        const external = isExternalBlaBlaTrip(token, previous);
+        if (!external) return { processed: false, changed: false, failClosed: false };
         const rawPublished = previous.publishedSeats == null ? null : Number(previous.publishedSeats);
         const publishedSeats = Number.isInteger(rawPublished) && rawPublished >= 0 && rawPublished <= 999
           ? rawPublished
           : null;
-        const external = isExternalBlaBlaTrip(token, previous);
 
         let candidate = {
           ...previous,
@@ -5851,14 +5852,11 @@ async function reconcileDriverAgendaSeatAllocation(req, res) {
         if (publishedSeats != null) {
           candidate.capacity = Math.min(999, publishedSeats + allocation);
           candidate.capacityReliable = true;
-        } else if (external) {
-          // Without a fresh authoritative BlaBlaCar quota, never preserve an old
-          // Rota Certa contribution as if it were still current.
+        } else {
+          // For an external publication without a fresh authoritative BlaBlaCar
+          // quota, never preserve an old Rota Certa contribution as if current.
           capacityKnown = false;
           candidate.capacityReliable = false;
-        } else {
-          candidate.capacity = allocation;
-          candidate.capacityReliable = true;
         }
 
         const capacityState = reconciledSegmentCapacity(candidate, records, now);
