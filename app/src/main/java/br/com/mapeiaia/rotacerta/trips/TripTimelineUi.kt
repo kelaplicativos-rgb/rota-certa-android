@@ -73,9 +73,6 @@ fun TripTimelineScreen(
     bookings: List<Booking>,
     store: TripStore,
     onChanged: (String) -> Unit,
-    autoSyncToken: Int,
-    forceAllSyncToken: Int,
-    onRequestBlaBlaSync: () -> Unit,
     onCreateTripForPassenger: (String) -> Unit,
     addPassengerResumeToken: Int,
     addPassengerResumePassengerId: String?,
@@ -96,7 +93,6 @@ fun TripTimelineScreen(
     val tripMutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
-    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
     val seatSyncStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
     val archiveStore = remember(context) {
         TripTimelineArchiveStore(context).also { it.clearLegacyBulkHiddenOnce0398() }
@@ -104,14 +100,8 @@ fun TripTimelineScreen(
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
     var collectorResponse by remember { mutableStateOf<BlaBlaCollectorMonthResponse?>(null) }
-    var publicSearchResponse by remember { mutableStateOf<BlaBlaPublicSearchResponse?>(null) }
-    var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
-    var showSync by remember { mutableStateOf(false) }
-    var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
-    var autoSyncTripId by remember { mutableStateOf<String?>(null) }
-    var showPublisher by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
@@ -121,7 +111,6 @@ fun TripTimelineScreen(
     val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
     val settingsLoaded = appSettingsState != null
     val appSettings = appSettingsState ?: AppSettings()
-    val forceAllSyncActive = autoSyncToken > 0 && forceAllSyncToken == autoSyncToken
 
     LaunchedEffect(uiCommandToken0396, uiCommand0396) {
         if (uiCommandToken0396 <= 0) return@LaunchedEffect
@@ -132,31 +121,15 @@ fun TripTimelineScreen(
         }
     }
 
-    LaunchedEffect(autoSyncToken, forceAllSyncToken) {
-        if (autoSyncToken > 0) {
-            showSync = true
-            if (forceAllSyncActive) {
-                autoSyncProfileUuid = null
-                autoSyncTripId = null
-                UnifiedDebugEventStore.record(
-                    "AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED",
-                    context.packageName,
-                    "scope=all_accounts source=timeline_pull token=$autoSyncToken",
-                )
-            }
-        }
-    }
     LaunchedEffect(Unit) {
         val startupSnapshot = withContext(Dispatchers.IO) {
-            Triple(
+            Pair(
                 collectorStore.lastResponseRecoveringDynamicSessions(),
-                publicSearchStore.lastResponse(),
                 referenceStore.read(),
             )
         }
         collectorResponse = startupSnapshot.first
-        publicSearchResponse = startupSnapshot.second
-        referenceOrigin = startupSnapshot.third
+        referenceOrigin = startupSnapshot.second
         while (true) {
             currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
             delay(30_000L)
@@ -315,7 +288,7 @@ fun TripTimelineScreen(
         }
     }
 
-    val seatSyncStates = remember(entries, autoSyncToken, forceAllSyncToken, showSync) {
+    val seatSyncStates = remember(entries) {
         seatSyncStateStore.snapshot().associateBy { state ->
             state.profileUuid.trim().lowercase() + "|" + state.tripId
         }
@@ -384,11 +357,11 @@ fun TripTimelineScreen(
             onFirstUsableFrame(visibleEntries.size + publicTimelineCards.size)
         }
     }
-    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             context,
             "TIMELINE_RENDER_STATE",
-            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} inventorySettingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} syncRunning=$showSync",
+            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} inventorySettingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} syncRunning=false",
             traceId,
         )
         AgendaTrace.event(
