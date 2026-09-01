@@ -85,6 +85,7 @@ internal data class AgendaBackgroundSyncStatus0397(
     val lastStartedAtMillis: Long,
     val lastFinishedAtMillis: Long,
     val lastPeriodicFinishedAtMillis: Long,
+    val lastFullReconcileFinishedAtMillis: Long,
     val lastTrigger: String,
     val lastResult: String,
     val retryPending: Boolean,
@@ -113,6 +114,7 @@ internal object AgendaBackgroundSyncConfig0392 {
     private const val KEY_LAST_STARTED = "last_started_at_0397"
     private const val KEY_LAST_FINISHED = "last_finished_at_0397"
     private const val KEY_LAST_PERIODIC_FINISHED = "last_periodic_finished_at_0397"
+    private const val KEY_LAST_FULL_RECONCILE_FINISHED = "last_full_reconcile_finished_at_0397"
     private const val KEY_LAST_TRIGGER = "last_trigger_0397"
     private const val KEY_LAST_RESULT = "last_result_0397"
     private const val KEY_RETRY_PENDING = "retry_pending_0397"
@@ -151,6 +153,7 @@ internal object AgendaBackgroundSyncConfig0392 {
             lastStartedAtMillis = prefs.getLong(scope.key(KEY_LAST_STARTED), 0L),
             lastFinishedAtMillis = prefs.getLong(scope.key(KEY_LAST_FINISHED), 0L),
             lastPeriodicFinishedAtMillis = prefs.getLong(scope.key(KEY_LAST_PERIODIC_FINISHED), 0L),
+            lastFullReconcileFinishedAtMillis = prefs.getLong(scope.key(KEY_LAST_FULL_RECONCILE_FINISHED), 0L),
             lastTrigger = prefs.getString(scope.key(KEY_LAST_TRIGGER), "").orEmpty(),
             lastResult = prefs.getString(scope.key(KEY_LAST_RESULT), "Ainda não executada").orEmpty(),
             retryPending = prefs.getBoolean(scope.key(KEY_RETRY_PENDING), false),
@@ -247,6 +250,13 @@ internal object AgendaBackgroundSyncConfig0392 {
         if (reason == "periodic") {
             editor.putLong(scope.key(KEY_LAST_PERIODIC_FINISHED), nowMillis)
         }
+        if (
+            failures == 0 &&
+            !retryPending &&
+            agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+        ) {
+            editor.putLong(scope.key(KEY_LAST_FULL_RECONCILE_FINISHED), nowMillis)
+        }
         editor.apply()
     }
 }
@@ -306,13 +316,14 @@ internal object AgendaBackgroundSync0392 {
         if (!status.enabled) return
         val now = System.currentTimeMillis()
         val staleAfterMillis = status.intervalMinutes.coerceAtLeast(AgendaBackgroundSyncConfig0392.MIN_INTERVAL_MINUTES) * 60_000L
-        val stale = status.lastFinishedAtMillis <= 0L || now - status.lastFinishedAtMillis >= staleAfterMillis
+        val lastValidFullReconcile = status.lastFullReconcileFinishedAtMillis
+        val stale = lastValidFullReconcile <= 0L || now - lastValidFullReconcile >= staleAfterMillis
         if (stale) {
             enqueueImmediate(appContext, "recovery")
             UnifiedDebugEventStore.record(
                 "AGENDA_BACKGROUND_SYNC_RECOVERY_0397",
                 appContext.packageName,
-                "trigger=RECOVERY stale=true lastFinishedAt=${status.lastFinishedAtMillis} intervalMinutes=${status.intervalMinutes}",
+                "trigger=RECOVERY stale=true lastValidFullReconcileAt=$lastValidFullReconcile intervalMinutes=${status.intervalMinutes}",
             )
         }
     }
