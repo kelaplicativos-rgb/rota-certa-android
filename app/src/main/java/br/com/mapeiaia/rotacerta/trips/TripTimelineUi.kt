@@ -76,16 +76,13 @@ fun TripTimelineScreen(
     autoSyncToken: Int,
     forceAllSyncToken: Int,
     onRequestBlaBlaSync: () -> Unit,
-    onCreateTrip: () -> Unit,
     onCreateTripForPassenger: (String) -> Unit,
     addPassengerResumeToken: Int,
     addPassengerResumePassengerId: String?,
     addPassengerResumeTripId: String?,
-    onPinShortcut: () -> Unit,
-    onOpenOnlineSettings: () -> Unit,
-    onOpenPassengers: () -> Unit,
-    onBack: () -> Unit,
     onManageLocal: (String) -> Unit,
+    uiCommand0396: AgendaTimelineCommand0396? = null,
+    uiCommandToken0396: Int = 0,
     focusedTripId: String? = null,
     focusedBookingId: String? = null,
     reservationPendingOnly: Boolean = false,
@@ -106,7 +103,6 @@ fun TripTimelineScreen(
     val locationService = remember(context) { DeviceLocationService(context) }
     var collectorResponse by remember { mutableStateOf<BlaBlaCollectorMonthResponse?>(null) }
     var publicSearchResponse by remember { mutableStateOf<BlaBlaPublicSearchResponse?>(null) }
-    var publicSearchClearToken by remember { mutableIntStateOf(0) }
     var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
@@ -124,6 +120,27 @@ fun TripTimelineScreen(
     val settingsLoaded = appSettingsState != null
     val appSettings = appSettingsState ?: AppSettings()
     val forceAllSyncActive = autoSyncToken > 0 && forceAllSyncToken == autoSyncToken
+
+    LaunchedEffect(uiCommandToken0396, uiCommand0396) {
+        if (uiCommandToken0396 <= 0) return@LaunchedEffect
+        when (uiCommand0396) {
+            AgendaTimelineCommand0396.ADD_PASSENGER -> passengerAddRequestToken++
+            AgendaTimelineCommand0396.OPEN_PUBLISHER -> showPublisher = true
+            AgendaTimelineCommand0396.OPEN_BLABLACAR_SYNC -> {
+                autoSyncProfileUuid = null
+                autoSyncTripId = null
+                showSync = true
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_PANEL_OPENED",
+                    context.packageName,
+                    "source=header_overflow autoSyncStarted=false",
+                )
+            }
+            AgendaTimelineCommand0396.OPEN_CLEAR_DIALOG -> showTimelineClearDialog = true
+            AgendaTimelineCommand0396.TOGGLE_ARCHIVED -> showArchived = !showArchived
+            null -> Unit
+        }
+    }
 
     LaunchedEffect(autoSyncToken, forceAllSyncToken) {
         if (autoSyncToken > 0) {
@@ -396,14 +413,6 @@ fun TripTimelineScreen(
         )
     }
 
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(if (showArchived) "Arquivadas" else "Todas as viagens", style = MaterialTheme.typography.titleLarge)
-        TextButton(onClick = {
-            AgendaTrace.event(context, "USER_BACK", "source=timeline_header", traceId)
-            onBack()
-        }) { Text("Voltar") }
-    }
-
     GlobalPassengerFlowPanel(
         entries = entries,
         store = store,
@@ -444,7 +453,6 @@ fun TripTimelineScreen(
         if (includeManualCards) {
             publicSearchStore.clearResponse()
             publicSearchResponse = null
-            publicSearchClearToken++
             syncPendingOnly = false
             showSync = false
             showPublisher = false
@@ -522,34 +530,6 @@ fun TripTimelineScreen(
             "Viagens removidas da operação no Rota Certa. Tombstones da Agenda foram gravados; passageiros, histórico e identidades foram preservados. BlaBlaCar não foi alterado.",
         )
     }
-
-    ResponsiveTripActions(
-        actions = listOf(
-            ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
-            ResponsiveTripAction("➕ Adicionar a uma viagem") { passengerAddRequestToken++ },
-            ResponsiveTripAction("🛣️ Nova viagem", onClick = onCreateTrip),
-            ResponsiveTripAction(if (showPublisher) "Fechar publicação" else "Publicar agenda") { showPublisher = !showPublisher },
-            ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
-            ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
-            ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
-                if (!showSync) {
-                    // Toolbar opens the account/collection panel only. It must not inherit a previous card target.
-                    autoSyncProfileUuid = null
-                    autoSyncTripId = null
-                }
-                showSync = !showSync
-                UnifiedDebugEventStore.record(
-                    if (showSync) "AGENDA_SYNC_PANEL_OPENED" else "AGENDA_SYNC_PANEL_CLOSED",
-                    context.packageName,
-                    "source=timeline_toolbar autoSyncStarted=false",
-                )
-            },
-            ResponsiveTripAction("Limpar Timeline") { showTimelineClearDialog = true },
-            ResponsiveTripAction(if (showArchived) "Ver próximas" else "Ver arquivadas") { showArchived = !showArchived },
-        ),
-        onPublicSearchResponse = { publicSearchResponse = it },
-        publicSearchClearToken = publicSearchClearToken,
-    )
 
     if (showTimelineClearDialog) {
         AlertDialog(
