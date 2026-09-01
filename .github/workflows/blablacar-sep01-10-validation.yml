@@ -1,0 +1,134 @@
+name: BlaBlaCar Sep 01-10 public validation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/blablacar-sep01-10-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/agent/blablacar-public-search-collector'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install collector package
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+
+      - name: Run 20 exact public searches
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -u
+          mkdir -p collector/batch-sep01-10
+          for day in 01 02 03 04 05 06 07 08 09 10; do
+            date="2026-09-$day"
+            for direction in outbound return; do
+              if [ "$direction" = "outbound" ]; then
+                from="Santo André, SP, Brasil"
+                to="São Thomé das Letras, MG, Brasil"
+              else
+                from="São Thomé das Letras, MG, Brasil"
+                to="Santo André, SP, Brasil"
+              fi
+
+              outdir="collector/batch-sep01-10/$date/$direction"
+              mkdir -p "$outdir"
+
+              node - "$date" "$from" "$to" "$direction" <<'NODE'
+const fs = require('fs');
+const [date, from, to, direction] = process.argv.slice(2);
+const request = {
+  request_id: `batch-${date}-${direction}`,
+  from,
+  to,
+  date,
+  seats: 1,
+  identity_targets: [
+    { name: "Ezequiel S", uuid: "7371f028-9c55-4903-8444-308015823efd" },
+    { name: "Barbosa", uuid: "175a7068-50d8-40c3-a27a-214b9c6e0461" }
+  ]
+};
+fs.writeFileSync('collector/requests/current.json', JSON.stringify(request, null, 2) + '\n');
+NODE
+
+              rm -f collector/results/latest.json collector/results/latest.md collector/results/latest.html collector/results/latest.png collector/results/detail-*.html
+              set +e
+              xvfb-run -a node tools/blablacar-public-search/collect-dom.mjs                 collector/requests/current.json                 collector/results/latest.json                 collector/results/latest.md                 collector/results/latest.png
+              code=$?
+              set -e
+
+              cp collector/requests/current.json "$outdir/request.json"
+              [ -f collector/results/latest.json ] && cp collector/results/latest.json "$outdir/result.json"
+              [ -f collector/results/latest.md ] && cp collector/results/latest.md "$outdir/result.md"
+              [ -f collector/results/latest.html ] && cp collector/results/latest.html "$outdir/search.html"
+              [ -f collector/results/latest.png ] && cp collector/results/latest.png "$outdir/search.png"
+              for f in collector/results/detail-*.html; do
+                [ -e "$f" ] || continue
+                cp "$f" "$outdir/$(basename "$f")"
+              done
+              printf '%s\n' "$code" > "$outdir/exit_code.txt"
+            done
+          done
+
+      - name: Build manifest
+        run: |
+          node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = 'collector/batch-sep01-10';
+const rows = [];
+for (const date of fs.readdirSync(root).sort()) {
+  const dateDir = path.join(root, date);
+  if (!fs.statSync(dateDir).isDirectory()) continue;
+  for (const direction of ['outbound','return']) {
+    const dir = path.join(dateDir, direction);
+    if (!fs.existsSync(dir)) continue;
+    const resultPath = path.join(dir, 'result.json');
+    let result = null;
+    if (fs.existsSync(resultPath)) {
+      try { result = JSON.parse(fs.readFileSync(resultPath, 'utf8')); } catch {}
+    }
+    rows.push({
+      date,
+      direction,
+      status: result?.status ?? 'missing',
+      http_status: result?.validation?.http_status ?? null,
+      exact_date_match: result?.validation?.exact_date_match ?? false,
+      exact_origin_match: result?.validation?.exact_origin_match ?? false,
+      exact_destination_match: result?.validation?.exact_destination_match ?? false,
+      ezequiel_s_visible: result?.ezequiel_s_visible ?? null,
+      barbosa_visible: result?.barbosa_visible ?? null,
+      trips: (result?.trips ?? []).map(t => ({
+        driver_name: t.driver_name,
+        departure_time: t.departure_time,
+        arrival_time: t.arrival_time,
+        actual_departure: t.actual_departure,
+        actual_arrival: t.actual_arrival,
+        trip_href: t.trip_href,
+        identity_check: t.identity_check ?? null
+      }))
+    });
+  }
+}
+fs.writeFileSync(path.join(root, 'manifest.json'), JSON.stringify({generated_at:new Date().toISOString(), rows}, null, 2) + '\n');
+NODE
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: blablacar-sep01-10-validation-${{ github.run_id }}
+          path: collector/batch-sep01-10
+          if-no-files-found: error
+          retention-days: 30
