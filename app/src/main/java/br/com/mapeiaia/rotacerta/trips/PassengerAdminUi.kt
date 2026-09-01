@@ -59,6 +59,8 @@ fun PassengerAdminScreen(
     onBack: () -> Unit,
     onChanged: (String) -> Unit,
     showHeader: Boolean = true,
+    externalBackToken: Int = 0,
+    onHierarchyChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -79,6 +81,14 @@ fun PassengerAdminScreen(
     var temporaryPasswordFor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(historyProfileId) {
+        onHierarchyChanged(historyProfileId != null)
+    }
+    LaunchedEffect(externalBackToken) {
+        if (externalBackToken > 0 && historyProfileId != null) {
+            historyProfileId = null
+        }
+    }
     var blockCandidate by remember { mutableStateOf<PassengerAdminCandidate?>(null) }
     var settingsState by remember(store) { mutableStateOf<TripOnlineSettings?>(null) }
     var localProfiles by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
@@ -209,6 +219,7 @@ fun PassengerAdminScreen(
         PassengerHistoryPanel(
             history = selectedHistory,
             onBack = { historyProfileId = null },
+            showHeader = showHeader,
             onArchiveToggle = { profile ->
                 passengerStore.setArchived(profile.id, !profile.archived)
                 revision++
@@ -699,14 +710,17 @@ internal fun PassengerHistoryPanel(
     history: PassengerPersistentHistory?,
     onBack: () -> Unit,
     onArchiveToggle: (PassengerProfile) -> Unit,
+    showHeader: Boolean = true,
 ) {
     val context = LocalContext.current
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("Histórico do passageiro", style = MaterialTheme.typography.headlineSmall)
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.semantics { contentDescription = "Voltar para Passageiros" },
-        ) { Text("←") }
+    if (showHeader) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Histórico do passageiro", style = MaterialTheme.typography.headlineSmall)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics { contentDescription = "Voltar para Passageiros" },
+            ) { Text("←") }
+        }
     }
     if (history == null) {
         Card(modifier = Modifier.fillMaxWidth()) {
