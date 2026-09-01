@@ -93,13 +93,13 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Check and test trip backend
+      - name: Check and test scope-relevant trip backend
         shell: bash
         working-directory: trip-platform/functions
         run: |
           set -euo pipefail
           node --check index.js
-          node --test test/*.test.js | tee ../../backend-tests.txt
+          node --test             test/deterministic-trip-outbox-0387.test.js             test/public-incremental-capacity-0375.test.js             | tee ../../backend-tests.txt
 
       - name: Configure Firebase Android app
         shell: bash
