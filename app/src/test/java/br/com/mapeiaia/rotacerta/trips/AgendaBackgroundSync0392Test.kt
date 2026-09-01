@@ -128,8 +128,8 @@ class AgendaBackgroundSync0392Test {
 
         assertTrue(background.contains("AgendaBackgroundSyncMode0392.DELTA_ONLY"))
         assertTrue(background.contains("val reconcileAllCanonicalTrips = mode in setOf("))
-        assertTrue(timeline.contains("recordExternalManualMutation("))
-        assertTrue(timeline.contains("exactMatches.size != 1"))
+        assertFalse(timeline.contains("recordExternalManualMutation("))
+        assertFalse(timeline.contains("manual_card_shortcut"))
         assertFalse(background.contains("BlaBlaReliableSeatSyncActivity"))
         assertFalse(background.contains("BlaBlaManualSeatSyncActivity"))
     }
