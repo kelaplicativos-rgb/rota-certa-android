@@ -1,7 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "request_id": "2026-09-01-ida",
-  "collected_at": "2026-09-01T10:49:44.801Z",
+  "collected_at": "2026-09-01T11:10:34.697Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
@@ -29,6 +29,12 @@
   "driver_cards_count": 10,
   "ezequiel_s_visible": false,
   "barbosa_visible": false,
+  "demand": {
+    "indicador_demanda_encontrado": false,
+    "trecho_concorrido": null,
+    "percentual_reservado": null,
+    "mensagem_demanda": null
+  },
   "trips": [
     {
       "driver_name": "Rômulo",
@@ -41,7 +47,10 @@
         "Super Driver"
       ],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_Qm3-udzsJTCmxA86rgyVYbw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJww3SjbNMq9Tfyf9-uSwhJCQg&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Antonio",
@@ -55,7 +64,10 @@
         "Super Driver"
       ],
       "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQEH4404ASoeI57kFA43e7Q&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJww08-0tD6BRkGjjkt0F4teJw&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Danubia",
@@ -66,7 +78,10 @@
       "price": "R$ 94,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QLDHenPxxS4qTbgHoASQljA&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJwwM8vNHl2BTO2z38gRA_iEiQ&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Tulio",
@@ -75,9 +90,14 @@
       "actual_departure": "São Paulo",
       "actual_arrival": "Minas Gerais",
       "price": "R$ 76,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QK4Ujiy1oR42VUUI1OBbA_g&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJwwyu_ZXvCARnayhzXlCxxkFw&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Raphael",
@@ -88,7 +108,10 @@
       "price": "R$ 90,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQB2wairvRgGyNqUOv-FUzw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJwwg6gZ1haHQQeJE9iJ7xJPqQ&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Ricardo",
@@ -99,7 +122,24 @@
       "price": "R$ 73,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QkizBs_4-T8KbRejtm5FWtg&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJww12pDdbgcT3Kyu-m4yDNHzQ&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "driver_name": "Gilson",
+      "departure_time": "12:00",
+      "arrival_time": "16:00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Cruzília",
+      "price": "R$ 97,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJwwi291RSymTpiP7lGTdgdJCg&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Alexandre",
@@ -112,7 +152,10 @@
         "Cheio"
       ],
       "availability": "full",
-      "trip_href": null
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Jaime",
@@ -125,7 +168,10 @@
         "Cheio"
       ],
       "availability": "full",
-      "trip_href": null
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     },
     {
       "driver_name": "Myrella",
@@ -138,20 +184,10 @@
         "Super Driver"
       ],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQayX0ZydR_myJ1L8hQ4wJw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
-    },
-    {
-      "driver_name": "Renan",
-      "departure_time": "15:50",
-      "arrival_time": "19:40",
-      "actual_departure": "São Paulo",
-      "actual_arrival": "Minas Gerais",
-      "price": "R$ 93,00",
-      "flags": [
-        "Super Driver"
-      ],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QUuuRQRX4TwyKHs8pnce09g&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+      "trip_href": "/trip?source=CARPOOLING&id=1MpoGfDDRLeGMNpQjqbJwwsSJF-GuMRceIV9G3dNPEog&requested_seats=1&search_origin=SEARCH&search_uuid=d4ca6819-f0c3-44b7-8630-da508ea6c9c3",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
     }
   ]
 }

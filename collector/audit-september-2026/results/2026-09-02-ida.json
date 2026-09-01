@@ -1,7 +1,7 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "request_id": "2026-09-02-ida",
-  "collected_at": "2026-09-01T10:49:45.454Z",
+  "collected_at": "2026-09-01T11:10:37.115Z",
   "status": "error",
   "strategy": "headed_chromium_rendered_public_page",
   "error": "página pública retornou HTTP 403",
