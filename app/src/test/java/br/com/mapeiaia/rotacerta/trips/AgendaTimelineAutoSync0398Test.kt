@@ -34,6 +34,10 @@ class AgendaTimelineAutoSync0398Test {
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
+        assertFalse(activity.contains("reason = \"timeline_open\""))
+        assertFalse(activity.contains("enqueueImmediate(activity, \"timeline_resume\")"))
+        assertFalse(timeline.contains("autoSyncToken"))
+        assertFalse(timeline.contains("recordExternalManualMutation"))
         assertFalse(passengerTimeline.contains("Sincronizar somente as vagas deste card"))
     }
 
@@ -43,6 +47,8 @@ class AgendaTimelineAutoSync0398Test {
         assertTrue(activity.contains("Resultado desta consulta pública"))
         assertTrue(activity.contains("Esta consulta possui Timeline própria e não é misturada à Timeline operacional."))
         assertTrue(activity.contains("BlaBlaPublicTimelineCard("))
+        assertTrue(activity.contains("showCollectionActions = false"))
+        assertTrue(activity.indexOf("BlaBlaPublicTimelineCard(") < activity.lastIndexOf("BlaBlaAuditableCollectionActions("))
     }
 
     @Test
