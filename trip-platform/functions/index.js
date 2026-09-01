@@ -5705,6 +5705,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
 
       const protectedEventIds = [];
+      const protectedRefundIds = [];
       protectedChanges.forEach(({ id, previous: previousBooking, updated: updatedProtected, changes }) => {
         const persisted = { ...updatedProtected };
         delete persisted.id;
@@ -5731,6 +5732,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           }],
         });
         protectedEventIds.push(eventId);
+        if (eventType === "RESERVATION_REJECTED" || eventType === "BOOKING_CANCELLED_BY_DRIVER") {
+          protectedRefundIds.push(id);
+        }
       });
       desiredClaims.forEach((claim) => {
         const persisted = { ...claim };
@@ -5772,8 +5776,14 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         entityRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         occupancyRevision,
         snapshotOverbooked,
+        refundBookingIds: protectedRefundIds,
       };
     });
+    for (const bookingId of (result.refundBookingIds || [])) {
+      await refundBookingCreditsIfNeeded(token, bookingId).catch((error) => {
+        console.error("refund deterministic protected booking", token, bookingId, error);
+      });
+    }
     return json(res, 200, {
       tripId: token,
       publicToken: token,
