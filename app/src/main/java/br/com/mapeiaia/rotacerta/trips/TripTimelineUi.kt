@@ -532,28 +532,6 @@ fun TripTimelineScreen(
                         referenceRadiusKm = directionReference.radiusKm,
                         directionGeo = directionGeo,
                         currentCoordinate = currentCoordinate,
-                        onManualSeatSyncRequested = {
-                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-                            val tripId = entry.blablaTripId?.trim().orEmpty()
-                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
-                                autoSyncProfileUuid = profileUuid
-                                autoSyncTripId = tripId
-                                onRequestBlaBlaSync()
-                            } else {
-                                onChanged("Sincronização BlaBlaCar indisponível: este card não possui profile UUID + tripId fortes.")
-                            }
-                        },
-                        onSyncExactCard = {
-                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-                            val tripId = entry.blablaTripId?.trim().orEmpty()
-                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
-                                autoSyncProfileUuid = profileUuid
-                                autoSyncTripId = tripId
-                                onRequestBlaBlaSync()
-                            } else {
-                                onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
-                            }
-                        },
                         focusedBookingId = focusedBookingId,
                     ) {
                         archiveStore.setArchived(entry, !archived)
@@ -1029,8 +1007,6 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
-    onManualSeatSyncRequested: () -> Unit,
-    onSyncExactCard: () -> Unit,
     focusedBookingId: String? = null,
     onArchive: () -> Unit,
 ) {
@@ -1049,16 +1025,6 @@ private fun TimelineEntryCard(
     val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
-
-    fun requestSeatOnlySync(@Suppress("UNUSED_PARAMETER") selectedTrip: Trip?, reason: String) {
-        UnifiedDebugEventStore.record(
-            "EXTERNAL_SEAT_WRITE_SKIPPED",
-            context.packageName,
-            "reason=independent_channel_inventory source=$reason trip=${entry.tripId}",
-        )
-        onChanged("Sincronizando a leitura BlaBlaCar sem alterar vagas externas.")
-        onManualSeatSyncRequested()
-    }
 
     Card(
         modifier = Modifier
@@ -1161,8 +1127,6 @@ private fun TimelineEntryCard(
                 store = store,
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
-                onSyncExactCard = onSyncExactCard,
-                onSyncSeatsOnly = { requestSeatOnlySync(trip, "manual_card_shortcut") },
                 focusedBookingId = focusedBookingId,
                 onAddManualPassenger = {
                     runCatching { prepareTimelineTripForPassenger(entry, store) }
@@ -1253,7 +1217,18 @@ private fun TimelineEntryCard(
             trip = selectedTrip,
             store = store,
             onChanged = onChanged,
-            onTargetSync = { requestSeatOnlySync(selectedTrip, "automatic_after_passenger_change") },
+            onTargetSync = {
+                runCatching {
+                    mutationCoordinator.recordLocalMutation(
+                        canonicalTripId = selectedTrip.id,
+                        mutationType = "PASSENGER_MUTATION",
+                        source = "TIMELINE_QUICK_PASSENGER",
+                    )
+                    AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
+                }.onFailure { error ->
+                    onChanged("Alteração salva; atualização automática pendente: ${error.message ?: "erro de persistência"}")
+                }
+            },
             onDismiss = { directPassengerTrip = null },
         )
     }
