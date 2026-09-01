@@ -118,6 +118,66 @@ internal class TripPublicationOutbox0387(context: Context) {
         }
     }
 
+    fun recordDeliveredAtRevision(
+        canonicalTripId: String,
+        revision: Long,
+        operation: TripPublicationOperation0387,
+        mutationType: String,
+        source: String,
+        snapshot: TripPublicationSnapshot0387,
+    ): TripPublicationOutboxEvent0387? {
+        if (canonicalTripId.isBlank() || revision <= 0L || snapshot.semanticSignature.isBlank()) return null
+        synchronized(LOCK) {
+            val now = System.currentTimeMillis()
+            val events = recoverInterrupted(readEvents()).toMutableList()
+            val revisions = readRevisions().toMutableMap()
+            val eventId = publicationEventId0387(tenantScope.tenantId, canonicalTripId, revision)
+            val authoritative = TripPublicationOutboxEvent0387(
+                id = eventId,
+                tenantId = tenantScope.tenantId,
+                canonicalTripId = canonicalTripId,
+                revision = revision,
+                operation = operation,
+                mutationType = mutationType.take(80),
+                source = source.take(80),
+                snapshot = snapshot,
+                status = TripPublicationStatus0387.DELIVERED,
+                attempts = 1,
+                createdAtMillis = events.firstOrNull { it.id == eventId }?.createdAtMillis ?: now,
+                updatedAtMillis = now,
+                lastError = "",
+                nextAttemptAtMillis = 0L,
+            )
+            val normalized = events.map { event ->
+                when {
+                    event.id == eventId -> authoritative
+                    event.canonicalTripId == canonicalTripId &&
+                        event.revision < revision &&
+                        event.status in setOf(
+                            TripPublicationStatus0387.PENDING,
+                            TripPublicationStatus0387.PROCESSING,
+                            TripPublicationStatus0387.FAILED_RETRYABLE,
+                        ) -> event.copy(
+                            status = TripPublicationStatus0387.SUPERSEDED,
+                            updatedAtMillis = now,
+                            lastError = "remote_applied_revision_$revision",
+                            nextAttemptAtMillis = 0L,
+                        )
+                    else -> event
+                }
+            }.toMutableList()
+            if (normalized.none { it.id == eventId }) normalized += authoritative
+            revisions[canonicalTripId] = maxOf(revisions[canonicalTripId] ?: 0L, revision)
+            require(
+                prefs.edit()
+                    .putString(eventsKey, json.encodeToString(compact(normalized)))
+                    .putString(revisionsKey, json.encodeToString(revisions))
+                    .commit(),
+            ) { "Falha ao registrar revisão remota já aplicada." }
+            return authoritative
+        }
+    }
+
     fun pending(nowMillis: Long = System.currentTimeMillis(), limit: Int = 32): List<TripPublicationOutboxEvent0387> =
         synchronized(LOCK) {
             val recovered = recoverInterrupted(readEvents())
@@ -355,6 +415,57 @@ internal class TripMutationCoordinator0387(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
                 event,
                 "previousRevision=${event.revision - 1} resultingRevision=${event.revision}",
+            )
+        }
+    }
+
+    fun recordRemoteAppliedLocal(
+        canonicalTripId: String,
+        revision: Long,
+        mutationType: String,
+        source: String,
+        reconcileBookingInventory: Boolean = true,
+    ): TripPublicationOutboxEvent0387? {
+        if (canonicalTripId.isBlank() || revision <= 0L || !store.onlineSettings().configured) return null
+        if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
+        val original = store.getTrip(canonicalTripId) ?: return null
+        if (!original.isCanonicalLocalPublishSource()) return null
+        val bookings = store.bookingsFor(canonicalTripId)
+        val allocation = original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+        val publicTrip = original.copy(
+            capacity = operationalInventoryCapacity(original, bookings),
+        )
+        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
+            publicTrip,
+            bookings,
+            allocation,
+        )
+        return outbox.recordDeliveredAtRevision(
+            canonicalTripId = canonicalTripId,
+            revision = revision,
+            operation = if (original.status == TripStatus.CANCELLED) {
+                TripPublicationOperation0387.TOMBSTONE
+            } else {
+                TripPublicationOperation0387.UPSERT_LOCAL
+            },
+            mutationType = mutationType,
+            source = source,
+            snapshot = TripPublicationSnapshot0387(
+                trip = publicTrip,
+                bookings = bookings,
+                semanticSignature = if (original.status == TripStatus.CANCELLED) {
+                    "tombstone-v1:" + sha256TripPublication0387(
+                        listOf(canonicalTripId, original.remoteId.orEmpty(), original.publicToken, "CANCELLED").joinToString("|"),
+                    )
+                } else {
+                    signature
+                },
+            ),
+        )?.also { event ->
+            recordEvent(
+                "TRIP_MUTATION_REMOTE_APPLIED",
+                event,
+                "publicationResult=already_applied_remote resultingRevision=${event.revision}",
             )
         }
     }
