@@ -150,6 +150,7 @@ data class RemoteBooking(
 @Serializable
 data class DriverBookingsResponse(
     val bookings: List<RemoteBooking> = emptyList(),
+    val entityRevision: Long = 0L,
 )
 
 @Serializable
@@ -365,6 +366,9 @@ data class DriverCapacitySnapshotRequest(
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
+    val entityRevision: Long = 0L,
+    val canonicalTripId: String = "",
+    val outboxEventId: String = "",
 )
 
 @Serializable
@@ -375,6 +379,8 @@ data class DriverCapacitySnapshotResponse(
     val availableSeatsMaximum: Int = 0,
     val occupancyRevision: Long = 0L,
     val changed: Boolean = false,
+    val entityRevision: Long = 0L,
+    val stale: Boolean = false,
 )
 
 internal class TripRemoteApiException(
@@ -559,6 +565,9 @@ class TripRemoteApi(
         claims: List<Booking>,
         claimNamespace: String,
         snapshotRevision: String,
+        entityRevision: Long = 0L,
+        canonicalTripId: String = "",
+        outboxEventId: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -584,6 +593,9 @@ class TripRemoteApi(
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
                 sourceComplete = true,
+                entityRevision = entityRevision,
+                canonicalTripId = canonicalTripId,
+                outboxEventId = outboxEventId,
             ),
         ),
         requireDriverToken = true,
