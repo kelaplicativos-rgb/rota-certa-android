@@ -17,16 +17,6 @@ jobs:
       max-parallel: 7
       matrix:
         include:
-          - date: 2026-09-01
-            direction: volta
-          - date: 2026-09-08
-            direction: volta
-          - date: 2026-09-09
-            direction: ida
-          - date: 2026-09-10
-            direction: volta
-          - date: 2026-09-21
-            direction: volta
           - date: 2026-09-22
             direction: volta
           - date: 2026-09-29
