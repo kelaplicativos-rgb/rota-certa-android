@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "request_id": "live-2026-09-04-sa-stl",
-  "collected_at": "2026-09-01T10:58:40.730Z",
+  "collected_at": "2026-09-01T11:06:07.359Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
@@ -37,6 +37,21 @@
   },
   "trips": [
     {
+      "driver_name": "Wanderson",
+      "departure_time": "04:00",
+      "arrival_time": "07:50",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 80,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wVQoDAaN-TFC06QTUHFsVqw&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
+    },
+    {
       "driver_name": "Rafael",
       "departure_time": "05:00",
       "arrival_time": "09:10",
@@ -47,7 +62,9 @@
         "Cheio"
       ],
       "availability": "full",
-      "trip_href": null
+      "trip_href": null,
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Mateus",
@@ -58,7 +75,9 @@
       "price": "R$ 86,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nA2B-ZS5zBSKCOCO9NvDQszQ&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wnRJ7GfECSpqEpXXIkiIzzQ&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Thay",
@@ -71,7 +90,9 @@
         "Esgotará em breve"
       ],
       "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nACQXiY06oRUqsR8ao8pXV1Q&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wo4fjGPMzTyaCCYCJsTivgQ&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "André",
@@ -85,7 +106,9 @@
         "Super Driver"
       ],
       "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nARQDx2pC0SrqppyVqqedVxw&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wG-jN-g_ETaWdwZF0fa57-A&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Ezequiel",
@@ -98,7 +121,24 @@
         "Cheio"
       ],
       "availability": "full",
-      "trip_href": null
+      "trip_href": null,
+      "profile_href": null,
+      "profile_uuid": null
+    },
+    {
+      "driver_name": "Josenilson",
+      "departure_time": "12:00",
+      "arrival_time": "16:00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 85,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wjwIjkh8YTDCtOasvJncwIQ&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Guilherme",
@@ -111,7 +151,9 @@
         "Cheio"
       ],
       "availability": "full",
-      "trip_href": null
+      "trip_href": null,
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Fabio",
@@ -122,7 +164,9 @@
       "price": "R$ 102,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nASpKCGPVTQWKBsPAEEUsHsA&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wy9DWQY-eSaa_csEMHcsCyQ&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     },
     {
       "driver_name": "Wanderlei Toledo Junior",
@@ -133,31 +177,9 @@
       "price": "R$ 52,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nAFSgzAy4URfet8KLx5BxoOQ&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
-    },
-    {
-      "driver_name": "Joyce",
-      "departure_time": "13:00",
-      "arrival_time": "17:40",
-      "actual_departure": "São Paulo",
-      "actual_arrival": "São Thomé das Letras",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null
-    },
-    {
-      "driver_name": "Gabriel",
-      "departure_time": "13:00",
-      "arrival_time": "17:10",
-      "actual_departure": "São Paulo",
-      "actual_arrival": "Três Corações",
-      "price": "R$ 86,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=wr7CVCK6Thm9Fum31fg_nAlb4dsKOmSqWLd1nikKudkA&requested_seats=1&search_origin=SEARCH&search_uuid=c2bec254-22ba-4e19-bd16-e9b7d5f83f9c"
+      "trip_href": "/trip?source=CARPOOLING&id=9ehOtDeVTlmu94pzcVrg9wBS_rkz_yRlGZJaXVNG75PA&requested_seats=1&search_origin=SEARCH&search_uuid=f5e84eb4-3795-4e59-aef7-8a73715ae0f7",
+      "profile_href": null,
+      "profile_uuid": null
     }
   ]
 }
