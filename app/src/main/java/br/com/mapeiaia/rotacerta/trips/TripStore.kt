@@ -202,7 +202,7 @@ class TripStore(context: Context) {
     internal fun saveBookingsBatch(
         bookingsToSave: List<Booking>,
         preserveSourceUpdatedAt: Boolean,
-    ): List<Booking> {
+    ): List<Booking> = synchronized(CANONICAL_LOCK) {
         if (bookingsToSave.isEmpty()) return emptyList()
 
         val existingAll = bookings()
@@ -228,14 +228,25 @@ class TripStore(context: Context) {
             )
         }
 
+        val changedTripIds = normalized.asSequence()
+            .filter { incoming ->
+                val existing = existingById[incoming.id]
+                existing == null || existing.copy(updatedAtMillis = 0L) != incoming.copy(updatedAtMillis = 0L)
+            }
+            .map(Booking::tripId)
+            .toSet()
+        if (changedTripIds.isEmpty()) return@synchronized normalized
+
         val next = mergeBookingBatch0380(existingAll, normalized)
-        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
-        refreshTripStatusesBatch(
-            tripIds = normalized.map(Booking::tripId).toSet(),
+        require(prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit()) {
+            "Falha ao persistir reservas do estado canônico."
+        }
+        refreshCanonicalTripStateBatch0395(
+            tripIds = changedTripIds,
             bookingSnapshot = next,
             nowMillis = now,
         )
-        return normalized
+        normalized
     }
 
     internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int {
