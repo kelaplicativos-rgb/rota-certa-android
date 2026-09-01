@@ -13,6 +13,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,11 +22,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,6 +61,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripTimelineScreen(
     trips: List<Trip>,
@@ -80,6 +84,8 @@ fun TripTimelineScreen(
     focusedTripId: String? = null,
     focusedBookingId: String? = null,
     reservationPendingOnly: Boolean = false,
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     listModifier: Modifier = Modifier,
     onFirstUsableFrame: (Int) -> Unit = {},
 ) {
@@ -620,11 +626,6 @@ fun TripTimelineScreen(
         }
     }
 
-    if (entries.isEmpty() && publicResponseForTimeline == null) {
-        Text(if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada.")
-        return
-    }
-
     LaunchedEffect(entries.map { it.tripId to it.issues }) {
         entries.firstOrNull { TripTimelineIssue.OVERBOOKING in it.issues }?.let {
             Toast.makeText(
@@ -635,22 +636,32 @@ fun TripTimelineScreen(
         }
     }
 
-    if (syncPendingOnly && visibleEntries.isEmpty()) {
-        Text("Nenhum card está com sincronização externa pendente.")
-        return
-    }
-    if (visibleEntries.isEmpty() && publicResponseForTimeline == null) {
-        Text("Nenhuma viagem corresponde à busca.")
-        return
-    }
-    if (visibleEntries.isEmpty() && publicTimelineCards.isEmpty() && searchQuery.isNotBlank()) {
-        Text("Nenhum card corresponde à busca.")
+    val timelineEmptyMessage = when {
+        entries.isEmpty() && publicResponseForTimeline == null ->
+            if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada."
+        syncPendingOnly && visibleEntries.isEmpty() ->
+            "Nenhum card está com sincronização externa pendente."
+        visibleEntries.isEmpty() && publicResponseForTimeline == null ->
+            "Nenhuma viagem corresponde à busca."
+        visibleEntries.isEmpty() && publicTimelineCards.isEmpty() && searchQuery.isNotBlank() ->
+            "Nenhum card corresponde à busca."
+        else -> null
     }
 
-    LazyColumn(
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
         modifier = listModifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
+        if (timelineEmptyMessage != null) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Text(timelineEmptyMessage)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
         timelineCalendarDays.forEach { day ->
             val dayPublicCards = publicTimelineCards.filter { card ->
                 runCatching { LocalDate.parse(card.date) }.getOrNull() == day.date
@@ -722,6 +733,8 @@ fun TripTimelineScreen(
                     )
                 }
                 publicCardIndex++
+            }
+        }
             }
         }
     }
