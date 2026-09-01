@@ -1,19 +1,83 @@
 {
   "schema_version": 5,
-  "request_id": "live-2026-10-10-sa-stl-html",
-  "collected_at": "2026-09-01T13:22:23.518Z",
-  "status": "error",
+  "request_id": "live-2026-10-10-sa-stl-identity-html",
+  "collected_at": "2026-09-01T13:23:47.830Z",
+  "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
-  "error": "página pública retornou HTTP 403",
+  "place_resolution": "static_corridor",
   "request": {
     "from": "Santo André, SP, Brasil",
     "to": "São Thomé das Letras, MG, Brasil",
     "date": "2026-10-10",
     "seats": 1
   },
+  "resolved_place_ids": {
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+  },
+  "validation": {
+    "http_status": 200,
+    "exact_date_match": true,
+    "exact_origin_match": true,
+    "exact_destination_match": true,
+    "route_visible_in_page": true,
+    "content_confirmed": true,
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-10-10&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
+  },
   "zero_results_confirmed": false,
-  "driver_cards_count": 0,
-  "ezequiel_s_visible": null,
-  "barbosa_visible": null,
-  "trips": []
+  "driver_cards_count": 2,
+  "ezequiel_s_visible": false,
+  "barbosa_visible": true,
+  "demand": {
+    "indicador_demanda_encontrado": false,
+    "trecho_concorrido": null,
+    "percentual_reservado": null,
+    "mensagem_demanda": null
+  },
+  "trips": [
+    {
+      "driver_name": "Alice",
+      "departure_time": "07:00",
+      "arrival_time": "12:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Thomé das Letras",
+      "price": "R$ 77,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=YgPFN2cwQsKlHuONG38CTADo_m68v0QTioEgUfTLtIdA&requested_seats=1&search_origin=SEARCH&search_uuid=6203c537-6730-42c2-a51e-e38d1b7f024c",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "driver_name": "Barbosa",
+      "departure_time": "11:00",
+      "arrival_time": "16:20",
+      "actual_departure": "Santo André",
+      "actual_arrival": "São Thomé das Letras",
+      "price": "R$ 106,00",
+      "flags": [
+        "Esgotará em breve",
+        "Super Driver"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=YgPFN2cwQsKlHuONG38CTAZU-gZxEeQmK2mKQ0fHUn6A&requested_seats=1&search_origin=SEARCH&search_uuid=6203c537-6730-42c2-a51e-e38d1b7f024c",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null,
+      "identity_check": {
+        "expected_name": "Barbosa",
+        "expected_uuid": "175a7068-50d8-40c3-a27a-214b9c6e0461",
+        "detail_http_status": 403,
+        "detail_url": "https://www.blablacar.com.br/trip?source=CARPOOLING&id=YgPFN2cwQsKlHuONG38CTAZU-gZxEeQmK2mKQ0fHUn6A&requested_seats=1&search_origin=SEARCH&search_uuid=6203c537-6730-42c2-a51e-e38d1b7f024c",
+        "canonical_profile_hrefs": [],
+        "canonical_profile_uuids": [],
+        "confirmed": false,
+        "evidence": null
+      }
+    }
+  ]
 }
