@@ -883,6 +883,7 @@ private fun AgendaPublicSearchRoot0396(
         onResult = { response = it },
         onChanged = onChanged,
         showTitle = false,
+        showCollectionActions = false,
     )
     response?.let { result ->
         Text(
@@ -904,6 +905,10 @@ private fun AgendaPublicSearchRoot0396(
         Text(
             "Esta consulta possui Timeline própria e não é misturada à Timeline operacional.",
             style = MaterialTheme.typography.bodySmall,
+        )
+        BlaBlaAuditableCollectionActions(
+            snapshot = BlaBlaAuditableCollectionBuilder.build(context, result),
+            onChanged = onChanged,
         )
     }
 }
