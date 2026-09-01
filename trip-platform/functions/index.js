@@ -3429,15 +3429,44 @@ async function cancelActiveBookingsForBlockedPassenger(driverUsername, passenger
       activeIds.forEach((bookingId) => {
         tx.set(tripRef.collection("bookings").doc(bookingId), {
           status: "CANCELLED",
+          operationalStatus: "CANCELLED",
+          lastDriverSelection: "CANCELLED",
           updatedAtMillis: now,
         }, { merge: true });
+      });
+      const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      const eventId = writeChangeEventAndNotifications(tx, {
+        eventType: "PASSENGER_BLOCKED_BOOKINGS_CANCELLED",
+        tripToken: tripRef.id,
+        version: entityRevision,
+        driverUsername: username,
+        actor: "DRIVER",
+        source: "PASSENGER_BLOCK",
+        passengerId: canonicalPassengerId,
+        changes: [{
+          field: "activeBookings",
+          before: activeIds.length,
+          after: 0,
+        }],
+      });
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: username,
+        canonicalTripId: tripRef.id,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: "PASSENGER_BLOCKED_BOOKINGS_CANCELLED",
+        source: "PASSENGER_BLOCK",
+        sourceEventId: eventId,
       });
       tx.update(tripRef, {
         ...canonicalCapacityPersistence(trip, updatedRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
+        publicationRevision: entityRevision,
+        publicationTombstone: false,
+        publicationEventId: eventId,
         updatedAtMillis: now,
       });
-      return { bookingIds: activeIds };
+      return { bookingIds: activeIds, entityRevision };
     });
     if (result.bookingIds.length) {
       affectedTrips += 1;
@@ -5268,13 +5297,9 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
-        tx.update(tripRef, {
-          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
-          status: statusForReconciledLoads(trip, loads),
-          updatedAtMillis: now,
-        });
-        writeChangeEventAndNotifications(tx, {
+        const eventId = writeChangeEventAndNotifications(tx, {
           eventType: "BOOKING_CHANGED",
           tripToken: token,
           bookingId,
@@ -5286,6 +5311,24 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
           changes,
           driverNotification: driverNotificationCopy("BOOKING_CHANGED", updated, cleanText(trip.title, 180)),
         });
+        entityRevision += 1;
+        writeDeliveredTripPublicationOutbox(tx, {
+          tenantId: driverUsername,
+          canonicalTripId: token,
+          revision: entityRevision,
+          operation: "UPSERT",
+          mutationType: "PASSENGER_MY_TRIPS_EDIT",
+          source: "PASSENGER_MY_TRIPS",
+          sourceEventId: eventId,
+        });
+        tx.update(tripRef, {
+          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
+          status: statusForReconciledLoads(trip, loads),
+          publicationRevision: entityRevision,
+          publicationTombstone: false,
+          publicationEventId: eventId,
+          updatedAtMillis: now,
+        });
       }
       const safeBooking = { ...updated };
       delete safeBooking.cancellationHash;
@@ -5296,6 +5339,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
         driverUsername,
         tripTitle: cleanText(trip.title, 180),
         changed: changes.length > 0,
+        entityRevision,
       };
     });
     await reconcileBookingCreditAfterFareChange(token, bookingId);
@@ -5317,6 +5361,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       booking: safeBooking,
       availableSeats: result.availableSeats,
       changed: result.changed,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_booking_update_failed", error.message || "Não foi possível alterar a reserva.");
@@ -5347,7 +5392,13 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         throw Object.assign(new Error("Reserva não encontrada para este acesso."), { httpStatus: 404, code: "booking_not_found" });
       }
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
-        return { changed: false, driverUsername, tripTitle: cleanText(trip.title, 180), seats: Number(previous.seats || 0) };
+        return {
+          changed: false,
+          driverUsername,
+          tripTitle: cleanText(trip.title, 180),
+          seats: Number(previous.seats || 0),
+          entityRevision: Math.max(0, Number(trip.publicationRevision || 0)),
+        };
       }
       const operationalStatus = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
       if (operationalStatus === "IN_CAR" || operationalStatus === "COMPLETED") {
@@ -5378,12 +5429,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
-      tx.update(tripRef, {
-        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
-        status: statusForReconciledLoads(trip, loads),
-        updatedAtMillis: now,
-      });
-      writeChangeEventAndNotifications(tx, {
+      const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "BOOKING_CANCELLED",
         tripToken: token,
         bookingId,
@@ -5395,7 +5441,31 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         changes: bookingRelevantChanges(previous, updated),
         driverNotification: driverNotificationCopy("BOOKING_CANCELLED", updated, cleanText(trip.title, 180)),
       });
-      return { changed: true, driverUsername, tripTitle: cleanText(trip.title, 180), seats: Number(previous.seats || 0) };
+      const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: driverUsername,
+        canonicalTripId: token,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: "PASSENGER_MY_TRIPS_CANCEL",
+        source: "PASSENGER_MY_TRIPS",
+        sourceEventId: eventId,
+      });
+      tx.update(tripRef, {
+        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
+        status: statusForReconciledLoads(trip, loads),
+        publicationRevision: entityRevision,
+        publicationTombstone: false,
+        publicationEventId: eventId,
+        updatedAtMillis: now,
+      });
+      return {
+        changed: true,
+        driverUsername,
+        tripTitle: cleanText(trip.title, 180),
+        seats: Number(previous.seats || 0),
+        entityRevision,
+      };
     });
     if (result.changed) {
       await refundBookingCreditsIfNeeded(token, bookingId);
@@ -5408,7 +5478,11 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         tripTitle: result.tripTitle || "",
       }).catch((error) => console.error("push passenger reservation_cancelled", error));
     }
-    return json(res, 200, { cancelled: true, changed: result.changed });
+    return json(res, 200, {
+      cancelled: true,
+      changed: result.changed,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
+    });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_booking_cancel_failed", error.message || "Não foi possível cancelar a reserva.");
   }
