@@ -105,6 +105,10 @@ data class Trip(
     val rotaCertaSeatAllocation: Int? = null,
     /** Canonical persisted origin. Old 0.1.372 external backings are resolved by strong-identity migration. */
     val recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL,
+    /** Monotonic local canonical-state revision. tenantId + id is the stable internal trip identity. */
+    val canonicalRevision: Long = 0L,
+    /** Tenant seat-allocation configuration version used by this canonical snapshot. */
+    val seatAllocationVersionUsed: Long = 0L,
     /** Monotonic public-entity revision. Zero keeps compatibility with legacy/full-sync payloads. */
     val publicationRevision: Long = 0L,
     /** Versioned public deletion marker. Local history/bookings remain preserved. */
@@ -112,6 +116,32 @@ data class Trip(
     /** Durable outbox event id used only for publication idempotency/audit. */
     val publicationEventId: String = "",
 )
+
+internal enum class CanonicalTripRevisionDecision0395 {
+    UPDATE,
+    SKIP_NO_CHANGE,
+    SKIP_STALE_REVISION,
+}
+
+internal fun canonicalTripRevisionDecision0395(
+    currentRevision: Long,
+    incomingRevision: Long,
+    semanticChanged: Boolean,
+): CanonicalTripRevisionDecision0395 = when {
+    currentRevision > 0L && incomingRevision < currentRevision -> CanonicalTripRevisionDecision0395.SKIP_STALE_REVISION
+    semanticChanged || incomingRevision > currentRevision -> CanonicalTripRevisionDecision0395.UPDATE
+    else -> CanonicalTripRevisionDecision0395.SKIP_NO_CHANGE
+}
+
+internal fun nextCanonicalTripRevision0395(
+    currentRevision: Long,
+    incomingRevision: Long,
+    semanticChanged: Boolean,
+): Long = if (semanticChanged) {
+    maxOf(currentRevision, incomingRevision) + 1L
+} else {
+    maxOf(currentRevision, incomingRevision)
+}
 
 @Serializable
 data class Booking(
