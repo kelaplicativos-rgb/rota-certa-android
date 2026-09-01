@@ -526,6 +526,9 @@ internal object PublicAgendaAutoSync0300 {
             throw error
         }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
+        if (entityRevision > 0L && response.stale) {
+            throw PublicationStaleRevision0387(response.entityRevision)
+        }
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
@@ -762,6 +765,9 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
+        if (entityRevision > 0L && response.stale) {
+            throw PublicationStaleRevision0387(response.entityRevision)
+        }
         saveExternalBinding(store, remoteTripId, publicTrip.publicToken, synthesized, effectiveTrip)
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
