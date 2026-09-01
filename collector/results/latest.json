@@ -1,7 +1,7 @@
 {
   "schema_version": 5,
   "request_id": "live-2026-10-01-stl-sa-identity-html",
-  "collected_at": "2026-09-01T13:41:09.085Z",
+  "collected_at": "2026-09-01T13:43:47.931Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
@@ -45,7 +45,7 @@
       "price": "R$ 88,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=8Z1gJhRfSyaec0zO0e_K6QB1DfsLjBSZ-mn1cgga5rbQ&requested_seats=1&search_origin=SEARCH&search_uuid=f19d6026-145f-4b26-9e73-4cced1efcae9",
+      "trip_href": "/trip?source=CARPOOLING&id=3fWFinG0TQW6pABR-9hKSgo4-S75KNR2OaeB54ZmT7EA&requested_seats=1&search_origin=SEARCH&search_uuid=ddf5858a-71b4-4d05-baa4-0051fbd84a4a",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
