@@ -225,7 +225,13 @@ class BlaBlaMhtmlArchiveStore(private val context: Context) {
             UnifiedDebugEventStore.record(
                 "MHTML_ARCHIVE_FAILED",
                 context.packageName,
-                "account=${account.displayLabel} kind=${safe(kind)} reason=${it.javaClass.simpleName}",
+                "account=${account.displayLabel} kind=${safe(kind)} " +
+                    AgendaFailureEvidence.describe(
+                        error = it,
+                        operation = "MHTML_ARCHIVE_SAVE",
+                        component = "BlaBlaManualSeatAutomation",
+                        method = "saveWebArchive",
+                    ),
             )
             complete(null)
         }
