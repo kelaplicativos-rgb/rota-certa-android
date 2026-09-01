@@ -229,10 +229,7 @@ private fun TripApp(
             throw error
         }
     }
-    var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
-    var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var refreshAllRunning by remember { mutableStateOf(false) }
     val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
@@ -379,25 +376,14 @@ private fun TripApp(
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
-    val requestFullTimelineRefresh = {
-        if (shouldStartAgendaFullRefresh0388(screen == TripScreen.TIMELINE, refreshAllRunning)) {
-            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh backgroundModule=true", traceId)
-            AgendaSyncCrashTraceStore.arm(activity)
-            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested_background_0392")
-            refreshAllRunning = true
-            refresh()
-            AgendaBackgroundSync0392.enqueueImmediate(
-                context = activity,
-                reason = "timeline_pull_refresh",
-            )
-            refreshAllRunning = false
-            message = null
-            UnifiedDebugEventStore.record(
-                "AGENDA_PULL_REFRESH_BACKGROUND_REQUESTED_0392",
-                activity.packageName,
-                "timelineRefresh=true publicAgenda=true publicBookings=true blablaAutomatic=false silentUi=true",
-            )
-        }
+    val requestTimelineVisualReload = {
+        refresh()
+        message = null
+        UnifiedDebugEventStore.record(
+            "AGENDA_TIMELINE_VISUAL_RELOAD_0398",
+            activity.packageName,
+            "networkSync=false automaticSyncOnly=true",
+        )
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -494,18 +480,8 @@ private fun TripApp(
             AgendaHeaderAction0396("Adicionar passageiro") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
             },
-            AgendaHeaderAction0396("Sincronizar agora") { requestFullTimelineRefresh() },
-            AgendaHeaderAction0396("Publicar agenda") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_PUBLISHER)
-            },
-            AgendaHeaderAction0396("Sincronizar BlaBlaCar") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_BLABLACAR_SYNC)
-            },
             AgendaHeaderAction0396("Alternar próximas / arquivadas") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
-            },
-            AgendaHeaderAction0396("Limpar Timeline") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_CLEAR_DIALOG)
             },
             AgendaHeaderAction0396("Fixar atalho") {
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
@@ -701,9 +677,9 @@ private fun TripApp(
                 )
                 TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    refreshing = refreshAllRunning,
+                    refreshing = false,
                     canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
-                    onRefresh = requestFullTimelineRefresh,
+                    onRefresh = requestTimelineVisualReload,
                     onPointerDown = { position, canRefreshAtStart, refreshRunningAtStart ->
                         UnifiedDebugEventStore.record(
                             "AGENDA_PULL_GESTURE_DOWN_0390",
@@ -747,9 +723,9 @@ private fun TripApp(
                     bookings = bookings,
                     store = store,
                     onChanged = { text -> refresh(); message = text },
-                    autoSyncToken = autoBlaBlaSyncToken,
-                    forceAllSyncToken = forceAllBlaBlaSyncToken,
-                    onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
+                    autoSyncToken = 0,
+                    forceAllSyncToken = 0,
+                    onRequestBlaBlaSync = {},
                     onCreateTripForPassenger = { passengerId ->
                         pendingCreateForPassengerId = passengerId
                         parentRootScreen0396 = TripScreen.TIMELINE
@@ -881,10 +857,7 @@ private fun TripApp(
                                 expanded = selectedId == trip.id,
                                 onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
                                 onChanged = { text -> refresh(); message = text },
-                                onRequestBlaBlaSync = {
-                                    autoBlaBlaSyncToken++
-                                    screen = TripScreen.TIMELINE
-                                },
+                                onRequestBlaBlaSync = {},
                             )
                         }
                     }
