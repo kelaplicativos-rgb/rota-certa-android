@@ -748,7 +748,6 @@ private fun TripApp(
                     onSave = { trip ->
                         store.saveTrip(trip)
                         refresh()
-                        publicAgendaSyncRevision++
                         selectedId = trip.id
                         val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
                         pendingCreateForPassengerId = ""
@@ -767,7 +766,7 @@ private fun TripApp(
                     trips = trips,
                     bookings = bookings,
                     store = store,
-                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                    onChanged = { text -> refresh(); message = text },
                     autoSyncToken = autoBlaBlaSyncToken,
                     forceAllSyncToken = forceAllBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
@@ -820,7 +819,7 @@ private fun TripApp(
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
-                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                    onChanged = { text -> refresh(); message = text },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
@@ -903,7 +902,7 @@ private fun TripApp(
                                 trip = trip,
                                 expanded = selectedId == trip.id,
                                 onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
-                                onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                                onChanged = { text -> refresh(); message = text },
                                 onRequestBlaBlaSync = {
                                     autoBlaBlaSyncToken++
                                     screen = TripScreen.TIMELINE
