@@ -148,7 +148,25 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388InstrumentedTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          script: |
+            set -euo pipefail
+            ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+            APP_APK=app/build/outputs/apk/debug/app-debug.apk
+            TEST_APK=app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            test -s "$APP_APK"
+            test -s "$TEST_APK"
+            adb install -r "$APP_APK"
+            adb install -r "$TEST_APK"
+            adb shell pm list instrumentation | tee instrumentation-list.txt
+            grep -Fq 'br.com.mapeiaia.rotacerta.test/androidx.test.runner.AndroidJUnitRunner' instrumentation-list.txt
+            adb logcat -c
+            set +e
+            adb shell am instrument -w -r               -e class br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388InstrumentedTest               br.com.mapeiaia.rotacerta.test/androidx.test.runner.AndroidJUnitRunner               | tee instrumentation-output.txt
+            STATUS=${PIPESTATUS[0]}
+            adb logcat -d -v threadtime '*:W' | tee instrumentation-logcat.txt || true
+            set -e
+            test "$STATUS" -eq 0
+            grep -Fq 'OK (9 tests)' instrumentation-output.txt
 
       - name: Lint Android app
         shell: bash
@@ -198,3 +216,6 @@ jobs:
             apk.sha256
             changed-files.txt
             source-diff-stat.txt
+            instrumentation-list.txt
+            instrumentation-output.txt
+            instrumentation-logcat.txt
