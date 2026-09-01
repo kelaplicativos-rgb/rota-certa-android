@@ -298,16 +298,21 @@ internal object PublicBookingRemoteSync0296 {
                 .filterNotNull()
                 .filter { it.target.localTripId == tripId }
                 .maxOfOrNull(BookingFetchBatch0373::entityRevision) ?: 0L
-            mutationCoordinator.ensureRevisionAtLeast(tripId, remoteRevision)
-            val outboxQueued = if (remoteRevision <= 0L) {
+            val outboxQueued = if (remoteRevision > 0L) {
+                mutationCoordinator.recordRemoteAppliedLocal(
+                    canonicalTripId = tripId,
+                    revision = remoteRevision,
+                    mutationType = "PUBLIC_BOOKING_RECONCILED",
+                    source = "PUBLIC_AGENDA_PULL",
+                    reconcileBookingInventory = false,
+                ) != null
+            } else {
                 mutationCoordinator.recordLocalMutation(
                     canonicalTripId = tripId,
                     mutationType = "PUBLIC_BOOKING_RECONCILED_LEGACY",
                     source = "PUBLIC_AGENDA_PULL",
                     reconcileBookingInventory = false,
                 ) != null
-            } else {
-                false
             }
             UnifiedDebugEventStore.record(
                 "BOOKING_INVENTORY_RECALCULATED",
