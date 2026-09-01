@@ -846,7 +846,6 @@ class TripRemoteApi(
     ): T = withContext(Dispatchers.IO) {
         val requestPayload = body.orEmpty()
         val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
-        val requestHash = sha256Hex(requestPayloadBytes)
         val callStartedNs = System.nanoTime()
         val networkCallId = buildString {
             append("net-")
