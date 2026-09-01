@@ -47,14 +47,30 @@ class TripStore(context: Context) {
     fun publicExternalBinding(remoteTripId: String): PublicExternalTripBinding? =
         publicExternalBindings().firstOrNull { it.remoteTripId == remoteTripId }
 
+    fun publicExternalBindingForStrongIdentity(profileUuid: String, blablaTripId: String): PublicExternalTripBinding? {
+        val profile = profileUuid.trim()
+        val tripId = blablaTripId.trim()
+        if (profile.isBlank() || tripId.isBlank()) return null
+        return publicExternalBindings().firstOrNull {
+            it.profileUuid.trim().equals(profile, ignoreCase = true) && it.blablaTripId.trim() == tripId
+        }
+    }
+
     fun publicExternalBindingFor(entry: TripTimelineEntry): PublicExternalTripBinding? =
         publicExternalBindings().firstOrNull { it.matches(entry) }
 
-    fun savePublicExternalBinding(binding: PublicExternalTripBinding): PublicExternalTripBinding {
+    fun savePublicExternalBinding(binding: PublicExternalTripBinding): PublicExternalTripBinding = synchronized(CANONICAL_LOCK) {
         val normalized = binding.copy(updatedAtMillis = System.currentTimeMillis())
-        val current = publicExternalBindings().filterNot { it.remoteTripId == normalized.remoteTripId }
-        prefs.edit().putString(publicExternalBindingsKey, json.encodeToString(listOf(normalized) + current)).apply()
-        return normalized
+        val current = publicExternalBindings().filterNot {
+            it.remoteTripId == normalized.remoteTripId ||
+                (normalized.bookingTripId.isNotBlank() && it.bookingTripId == normalized.bookingTripId) ||
+                (normalized.profileUuid.isNotBlank() && normalized.blablaTripId.isNotBlank() &&
+                    it.profileUuid.equals(normalized.profileUuid, ignoreCase = true) && it.blablaTripId == normalized.blablaTripId)
+        }
+        require(prefs.edit().putString(publicExternalBindingsKey, json.encodeToString(listOf(normalized) + current)).commit()) {
+            "Falha ao persistir vínculo externo canônico."
+        }
+        normalized
     }
 
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
@@ -438,6 +454,10 @@ data class PublicExternalTripBinding(
     val departureAtMillis: Long,
     val capacity: Int,
     val stops: List<TripStop>,
+    /** Stable tenant-scoped internal identity used by Timeline/Agenda reconciliation. */
+    val canonicalRevision: Long = 0L,
+    val seatAllocationVersionUsed: Long = 0L,
+    val externalFingerprint: String = "",
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {
     fun matches(entry: TripTimelineEntry): Boolean {
@@ -472,6 +492,8 @@ data class PublicExternalTripBinding(
         blablaManageUrl = blablaTripHref.takeIf(String::isNotBlank),
         blablaPublicUrl = blablaPublicHref.takeIf(String::isNotBlank),
         publicBookingEnabled = true,
+        canonicalRevision = canonicalRevision,
+        seatAllocationVersionUsed = seatAllocationVersionUsed,
     )
 }
 
