@@ -484,7 +484,12 @@ class BlaBlaPublicSearchActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "PUBLIC_SEARCH_AUDIT_SNAPSHOT_FAILED",
                     packageName,
-                    "exception=${error.javaClass.simpleName}",
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "PUBLIC_SEARCH_AUDIT_SNAPSHOT",
+                        component = "BlaBlaPublicSearchActivity",
+                        method = "finishCollection",
+                    ),
                 )
             }
         browserOrchestrator.cancel()
