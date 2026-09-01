@@ -28,6 +28,7 @@ internal data class TripPublicationSnapshot0387(
     val externalTrip: BlaBlaCollectorTrip? = null,
     val externalAccountId: String = "",
     val configuredRotaCertaSeatAllocation: Int = 0,
+    val seatAllocationVersion: Long = 0L,
     val semanticSignature: String,
 )
 
@@ -400,6 +401,7 @@ internal class TripMutationCoordinator0387(
         val allocated = original.copy(rotaCertaSeatAllocation = allocation)
         val publicTrip = allocated.copy(capacity = operationalInventoryCapacity(allocated, bookings))
         val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation)
+        outbox.ensureRevisionAtLeast(canonicalTripId, (publicTrip.canonicalRevision - 1L).coerceAtLeast(0L))
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
             operation = TripPublicationOperation0387.UPSERT_LOCAL,
@@ -408,6 +410,7 @@ internal class TripMutationCoordinator0387(
             snapshot = TripPublicationSnapshot0387(
                 trip = publicTrip,
                 bookings = bookings,
+                seatAllocationVersion = publicTrip.seatAllocationVersionUsed,
                 semanticSignature = signature,
             ),
         )?.also { event ->
@@ -428,8 +431,11 @@ internal class TripMutationCoordinator0387(
     ): TripPublicationOutboxEvent0387? {
         if (canonicalTripId.isBlank() || revision <= 0L || !store.onlineSettings().configured) return null
         if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
-        val original = store.getTrip(canonicalTripId) ?: return null
+        var original = store.getTrip(canonicalTripId) ?: return null
         if (!original.isCanonicalLocalPublishSource()) return null
+        if (revision > original.canonicalRevision) {
+            original = store.saveTrip(original.copy(canonicalRevision = revision))
+        }
         val bookings = store.bookingsFor(canonicalTripId)
         val allocation = original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
         val publicTrip = original.copy(
@@ -453,6 +459,7 @@ internal class TripMutationCoordinator0387(
             snapshot = TripPublicationSnapshot0387(
                 trip = publicTrip,
                 bookings = bookings,
+                seatAllocationVersion = publicTrip.seatAllocationVersionUsed,
                 semanticSignature = if (original.status == TripStatus.CANCELLED) {
                     "tombstone-v1:" + sha256TripPublication0387(
                         listOf(canonicalTripId, original.remoteId.orEmpty(), original.publicToken, "CANCELLED").joinToString("|"),
