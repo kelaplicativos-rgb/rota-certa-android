@@ -3,7 +3,7 @@ name: Agenda sync panel scroll 0.1.385
 on:
   pull_request:
     branches:
-      - agent/agenda-sync-panel-scroll-0.1.385
+      - agent/agenda-passenger-main-thread-unfreeze-0.1.384
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
@@ -47,7 +47,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test -s "$FAROL"
           sha256sum "$FAROL" | tee farol-before.sha256
-          git fetch origin agent/agenda-failure-evidence-complete-0.1.382 --depth=1
+          git fetch origin agent/agenda-passenger-main-thread-unfreeze-0.1.384 --depth=1
           git show FETCH_HEAD:"$FAROL" | sha256sum | awk '{print $1}' > farol-base.sha256
           awk '{print $1}' farol-before.sha256 > farol-head.sha256
           cmp -s farol-base.sha256 farol-head.sha256
@@ -134,6 +134,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0381Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaSyncPanelScroll0385Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPerformance0380Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSyncRegression0373Test' \
