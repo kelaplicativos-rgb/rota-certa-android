@@ -38,7 +38,7 @@ internal enum class AgendaRootSection0396(val label: String) {
     PASSENGERS("Passageiros"),
 }
 
-internal enum class AgendaTimelineCommand0396 {
+enum class AgendaTimelineCommand0396 {
     ADD_PASSENGER,
     OPEN_PUBLISHER,
     OPEN_BLABLACAR_SYNC,
