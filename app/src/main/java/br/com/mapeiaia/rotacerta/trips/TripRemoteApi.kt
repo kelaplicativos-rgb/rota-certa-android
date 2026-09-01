@@ -903,7 +903,7 @@ class TripRemoteApi(
             responseText = responsePayloadBytes.toString(Charsets.UTF_8)
 
             if (status !in 200..299) {
-                throw remoteException(
+                remoteException(
                     method = method,
                     path = path,
                     status = status,
@@ -927,7 +927,7 @@ class TripRemoteApi(
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                throw remoteException(
+                remoteException(
                     method = method,
                     path = path,
                     status = status,
@@ -950,7 +950,7 @@ class TripRemoteApi(
         } catch (remote: TripRemoteApiException) {
             throw remote
         } catch (error: Throwable) {
-            throw remoteException(
+            remoteException(
                 method = method,
                 path = path,
                 status = status,
@@ -988,9 +988,9 @@ class TripRemoteApi(
         responseContentType: String,
         startedNs: Long,
         cause: Throwable? = null,
-    ): TripRemoteApiException {
+    ): Nothing {
         val elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L)) / 1_000_000L
-        return TripRemoteApiException(
+        throw TripRemoteApiException(
             httpMethod = method,
             endpoint = path.take(220),
             httpStatus = status,
