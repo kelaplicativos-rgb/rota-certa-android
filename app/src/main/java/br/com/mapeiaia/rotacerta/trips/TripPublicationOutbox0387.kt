@@ -683,6 +683,8 @@ internal class TripMutationCoordinator0387(
                             entityRevision = event.revision,
                             outboxEventId = event.id,
                             externalAccountId = event.snapshot.externalAccountId,
+                            canonicalTripId = event.canonicalTripId,
+                            seatAllocationVersion = event.snapshot.seatAllocationVersion,
                         )
                     }
                     TripPublicationOperation0387.TOMBSTONE -> {
@@ -739,6 +741,8 @@ internal class TripMutationCoordinator0387(
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
         if (profileUuid.isBlank() || tripId.isBlank() || event.snapshot.externalAccountId.isBlank()) return false
+        val boundCanonicalId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId
+        if (!boundCanonicalId.isNullOrBlank() && boundCanonicalId == event.canonicalTripId) return true
         return strongExternalCanonicalTripId0387(
             event.tenantId,
             event.snapshot.externalAccountId,
@@ -751,7 +755,7 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} revision=${event.revision} mutationType=${event.mutationType} source=${event.source} destination=${event.destination} operation=${event.operation.name} outboxEventId=${event.id} $extra",
+            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} revision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} mutationType=${event.mutationType} source=${event.source} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
         )
     }
 }
