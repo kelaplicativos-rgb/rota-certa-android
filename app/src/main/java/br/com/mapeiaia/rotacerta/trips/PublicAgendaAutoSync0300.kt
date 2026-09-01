@@ -540,8 +540,11 @@ internal object PublicAgendaAutoSync0300 {
         rotaCertaSeatAllocation: Int,
     ): String {
         val semantic = buildString {
-            append(trip.id).append('|').append(trip.departureAtMillis).append('|').append(trip.status.name).append('|')
-            append(trip.publishedSeats ?: -1).append('|').append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
+            append(trip.id).append('|').append(trip.title.trim()).append('|')
+            append(trip.departureAtMillis).append('|').append(trip.status.name).append('|')
+            append(trip.publicBookingEnabled).append('|').append(trip.itineraryAuthoritative).append('|')
+            append(trip.capacityReliable).append('|').append(trip.publishedSeats ?: -1).append('|')
+            append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
             trip.stops.sortedBy(TripStop::order).forEach { stop ->
                 append(stop.id).append('~').append(stop.order).append('~').append(normalizePlace(stop.name)).append('~')
                 append(normalizePlace(stop.address)).append('~').append(stop.priceToNextCents).append(',')
@@ -1142,6 +1145,7 @@ internal object PublicAgendaAutoSync0300 {
             append(source.trip_id.orEmpty().trim()).append('|')
             append(source.date.trim()).append('|').append(source.departure_time.orEmpty().trim()).append('|')
             append(source.actual_departure.orEmpty().trim()).append('|').append(source.actual_arrival.orEmpty().trim()).append('|')
+            append(source.price.orEmpty().trim()).append('|').append(source.availability.trim()).append('|')
             append(source.published_seats ?: -1).append('|').append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
             append(source.booked_seats.coerceAtLeast(0)).append('|').append(source.passenger_roster_complete).append('|')
             append(source.itinerary_authoritative).append('|').append(source.itinerary_stops.joinToString(">") { normalizePlace(it) }).append('|')
