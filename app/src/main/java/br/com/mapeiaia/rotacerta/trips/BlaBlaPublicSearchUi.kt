@@ -49,6 +49,7 @@ fun BlaBlaPublicSearchPanel(
     onResult: (BlaBlaPublicSearchResponse?) -> Unit,
     onChanged: (String) -> Unit,
     showTitle: Boolean = true,
+    showCollectionActions: Boolean = true,
 ) {
     val context = LocalContext.current
     val store = remember(context) { BlaBlaPublicSearchStore(context) }
@@ -222,10 +223,12 @@ fun BlaBlaPublicSearchPanel(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                BlaBlaAuditableCollectionActions(
-                    snapshot = auditSnapshot,
-                    onChanged = onChanged,
-                )
+                if (showCollectionActions) {
+                    BlaBlaAuditableCollectionActions(
+                        snapshot = auditSnapshot,
+                        onChanged = onChanged,
+                    )
+                }
                 OutlinedButton(
                     onClick = {
                         store.clearResponse()
