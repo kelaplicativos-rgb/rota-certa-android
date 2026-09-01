@@ -16,6 +16,8 @@ data class PublishedTripResponse(
     val tripId: String,
     val publicToken: String,
     val publicUrl: String,
+    val entityRevision: Long = 0L,
+    val stale: Boolean = false,
 )
 
 @Serializable
