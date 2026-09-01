@@ -2635,11 +2635,30 @@ async function updateDriverTrip(req, res, token) {
       const requestedPublicationRevision = Math.max(0, Math.floor(Number(req.body && req.body.publicationRevision || 0)));
       const currentPublicationRevision = Math.max(0, Math.floor(Number(previous.publicationRevision || 0)));
       const requestedPublicationEventId = cleanText(req.body && req.body.publicationEventId, 120);
-      if (requestedTombstone) {
-        if (requestedPublicationRevision <= 0) {
-          throw Object.assign(new Error("Tombstone exige revisão monotônica."), { httpStatus: 409, code: "tombstone_revision_required" });
-        }
-        if (requestedPublicationRevision < currentPublicationRevision) {
+      const currentPublicationEventId = cleanText(previous.publicationEventId, 120);
+      const requestedVersioned = requestedPublicationRevision > 0;
+
+      if (requestedTombstone && !requestedVersioned) {
+        throw Object.assign(new Error("Tombstone exige revisão monotônica."), { httpStatus: 409, code: "tombstone_revision_required" });
+      }
+      if ((!requestedVersioned && currentPublicationRevision > 0) ||
+          (requestedVersioned && requestedPublicationRevision < currentPublicationRevision)) {
+        return {
+          publicUrl: previous.publicUrl || publicUrlFor(req, token, previous.driverUsername || driver.username),
+          ownerUsername: previous.driverUsername || driver.username,
+          becameCompleted: false,
+          becameCancelled: false,
+          eventType: "",
+          notifiedPassengers: 0,
+          stale: true,
+          entityRevision: currentPublicationRevision,
+        };
+      }
+      if (requestedVersioned && requestedPublicationRevision === currentPublicationRevision) {
+        const sameEvent = (!currentPublicationEventId && !requestedPublicationEventId) ||
+          (currentPublicationEventId && requestedPublicationEventId && currentPublicationEventId === requestedPublicationEventId);
+        const sameTombstoneKind = (previous.publicationTombstone === true) === requestedTombstone;
+        if (sameEvent && sameTombstoneKind) {
           return {
             publicUrl: previous.publicUrl || publicUrlFor(req, token, previous.driverUsername || driver.username),
             ownerUsername: previous.driverUsername || driver.username,
@@ -2647,28 +2666,11 @@ async function updateDriverTrip(req, res, token) {
             becameCancelled: false,
             eventType: "",
             notifiedPassengers: 0,
-            stale: true,
+            stale: false,
             entityRevision: currentPublicationRevision,
           };
         }
-        if (requestedPublicationRevision === currentPublicationRevision) {
-          const sameEvent = !cleanText(previous.publicationEventId, 120) ||
-            !requestedPublicationEventId ||
-            cleanText(previous.publicationEventId, 120) === requestedPublicationEventId;
-          if (previous.publicationTombstone === true && sameEvent) {
-            return {
-              publicUrl: previous.publicUrl || publicUrlFor(req, token, previous.driverUsername || driver.username),
-              ownerUsername: previous.driverUsername || driver.username,
-              becameCompleted: false,
-              becameCancelled: false,
-              eventType: "",
-              notifiedPassengers: 0,
-              stale: false,
-              entityRevision: currentPublicationRevision,
-            };
-          }
-          throw Object.assign(new Error("A mesma revisão já pertence a outro estado público."), { httpStatus: 409, code: "publication_revision_conflict" });
-        }
+        throw Object.assign(new Error("A mesma revisão já pertence a outro estado público."), { httpStatus: 409, code: "publication_revision_conflict" });
       }
       let normalized = normalizeDriverTrip(req.body || {}, previous);
       const preserveReliableCapacity = isExternalBlaBlaTrip(token, previous) &&
