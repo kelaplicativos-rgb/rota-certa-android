@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -384,12 +385,31 @@ internal class TripRemoteApiException(
     val sanitizedResponse: String,
     val requestId: String,
     val correlationId: String,
+    val networkCallId: String = "",
+    val transportPhase: String = "",
+    val requestBytes: Int = 0,
+    val responseBytes: Int = 0,
+    val requestSha256: String = "",
+    val responseSha256: String = "",
+    val sanitizedRequest: String = "",
+    val responseContentType: String = "",
+    val elapsedMs: Long = 0L,
+    cause: Throwable? = null,
 ) : IllegalStateException(
     buildString {
-        append("Servidor respondeu HTTP ").append(httpStatus)
+        if (httpStatus > 0) {
+            append("Servidor respondeu HTTP ").append(httpStatus)
+        } else {
+            append("Falha de transporte remoto")
+        }
+        if (transportPhase.isNotBlank()) append(" phase=").append(transportPhase)
         if (backendErrorCode.isNotBlank()) append(" code=").append(backendErrorCode)
         if (sanitizedResponse.isNotBlank()) append(": ").append(sanitizedResponse.take(240))
+        if (sanitizedResponse.isBlank() && cause?.message?.isNotBlank() == true) {
+            append(": ").append(UnifiedDebugEventStore.sanitizeForExport(cause.message.orEmpty()).take(240))
+        }
     },
+    cause,
 )
 
 @Serializable
@@ -824,48 +844,177 @@ class TripRemoteApi(
         body: String? = null,
         requireDriverToken: Boolean,
     ): T = withContext(Dispatchers.IO) {
-        check(settings.apiBaseUrl.startsWith("https://")) { "Servidor HTTPS não configurado" }
-        if (requireDriverToken) check(settings.driverToken.isNotBlank()) { "Chave do motorista não configurada" }
-        val base = settings.apiBaseUrl.trimEnd('/')
-        val connection = (URL(base + path).openConnection() as HttpURLConnection).apply {
-            requestMethod = method
-            connectTimeout = 12_000
-            readTimeout = 12_000
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            if (settings.publicBaseUrl.startsWith("https://")) {
-                setRequestProperty("X-Rota-Certa-Public-Base-Url", settings.publicBaseUrl)
-            }
-            if (requireDriverToken && settings.driverUsername.isNotBlank()) setRequestProperty("X-Rota-Certa-Driver-Username", settings.driverUsername)
-            if (requireDriverToken) setRequestProperty("X-Rota-Certa-Driver-Token", settings.driverToken)
-            if (body != null) {
-                doOutput = true
-                outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-            }
+        val requestPayload = body.orEmpty()
+        val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
+        val callStartedNs = System.nanoTime()
+        val networkCallId = buildString {
+            append("net-")
+            append(callStartedNs.toString(36))
+            append('-')
+            append(sha256Hex("$method|$path".toByteArray(Charsets.UTF_8)).take(10))
         }
+        var phase = "validate_configuration"
+        var connection: HttpURLConnection? = null
+        var status = 0
+        var responsePayloadBytes = ByteArray(0)
+        var responseText = ""
+        var responseContentType = ""
+        var requestId = ""
+        var correlationId = ""
+
         try {
-            val status = connection.responseCode
-            val responseText = (if (status in 200..299) connection.inputStream else connection.errorStream)
-                ?.bufferedReader(Charsets.UTF_8)
-                ?.use { it.readText() }
-                .orEmpty()
+            check(settings.apiBaseUrl.startsWith("https://")) { "Servidor HTTPS não configurado" }
+            if (requireDriverToken) check(settings.driverToken.isNotBlank()) { "Chave do motorista não configurada" }
+
+            val base = settings.apiBaseUrl.trimEnd('/')
+            phase = "open_connection"
+            val opened = URL(base + path).openConnection() as HttpURLConnection
+            connection = opened
+            opened.requestMethod = method
+            opened.connectTimeout = 12_000
+            opened.readTimeout = 12_000
+            opened.setRequestProperty("Accept", "application/json")
+            opened.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (settings.publicBaseUrl.startsWith("https://")) {
+                opened.setRequestProperty("X-Rota-Certa-Public-Base-Url", settings.publicBaseUrl)
+            }
+            if (requireDriverToken && settings.driverUsername.isNotBlank()) {
+                opened.setRequestProperty("X-Rota-Certa-Driver-Username", settings.driverUsername)
+            }
+            if (requireDriverToken) {
+                opened.setRequestProperty("X-Rota-Certa-Driver-Token", settings.driverToken)
+            }
+            if (body != null) {
+                phase = "request_body_write"
+                opened.doOutput = true
+                opened.outputStream.use { output -> output.write(requestPayloadBytes) }
+            }
+
+            phase = "response_status"
+            status = opened.responseCode
+            responseContentType = opened.contentType?.trim().orEmpty()
+            requestId = responseHeader(opened, "X-Request-Id", "Request-Id")
+            correlationId = responseHeader(opened, "X-Correlation-Id", "Correlation-Id")
+
+            phase = "response_body_read"
+            responsePayloadBytes = (if (status in 200..299) opened.inputStream else opened.errorStream)
+                ?.use { input -> input.readBytes() }
+                ?: ByteArray(0)
+            responseText = responsePayloadBytes.toString(Charsets.UTF_8)
+
             if (status !in 200..299) {
-                val sanitizedResponse = UnifiedDebugEventStore.sanitizeForExport(responseText).take(600)
-                throw TripRemoteApiException(
-                    httpMethod = method,
-                    endpoint = path.take(220),
-                    httpStatus = status,
+                remoteException(
+                    method = method,
+                    path = path,
+                    status = status,
                     backendErrorCode = backendErrorCode(responseText),
-                    sanitizedResponse = sanitizedResponse,
-                    requestId = responseHeader(connection, "X-Request-Id", "Request-Id"),
-                    correlationId = responseHeader(connection, "X-Correlation-Id", "Correlation-Id"),
+                    responseText = responseText,
+                    requestText = requestPayload,
+                    requestId = requestId,
+                    correlationId = correlationId,
+                    networkCallId = networkCallId,
+                    phase = "http_status",
+                    requestBytes = requestPayloadBytes,
+                    responseBytes = responsePayloadBytes,
+                    responseContentType = responseContentType,
+                    startedNs = callStartedNs,
                 )
             }
-            json.decodeFromString<T>(responseText)
+
+            phase = "decode_json"
+            try {
+                json.decodeFromString<T>(responseText)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                remoteException(
+                    method = method,
+                    path = path,
+                    status = status,
+                    backendErrorCode = backendErrorCode(responseText),
+                    responseText = responseText,
+                    requestText = requestPayload,
+                    requestId = requestId,
+                    correlationId = correlationId,
+                    networkCallId = networkCallId,
+                    phase = phase,
+                    requestBytes = requestPayloadBytes,
+                    responseBytes = responsePayloadBytes,
+                    responseContentType = responseContentType,
+                    startedNs = callStartedNs,
+                    cause = error,
+                )
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (remote: TripRemoteApiException) {
+            throw remote
+        } catch (error: Throwable) {
+            remoteException(
+                method = method,
+                path = path,
+                status = status,
+                backendErrorCode = backendErrorCode(responseText),
+                responseText = responseText,
+                requestText = requestPayload,
+                requestId = requestId,
+                correlationId = correlationId,
+                networkCallId = networkCallId,
+                phase = phase,
+                requestBytes = requestPayloadBytes,
+                responseBytes = responsePayloadBytes,
+                responseContentType = responseContentType,
+                startedNs = callStartedNs,
+                cause = error,
+            )
         } finally {
-            connection.disconnect()
+            runCatching { connection?.disconnect() }
         }
     }
+
+    private fun remoteException(
+        method: String,
+        path: String,
+        status: Int,
+        backendErrorCode: String,
+        responseText: String,
+        requestText: String,
+        requestId: String,
+        correlationId: String,
+        networkCallId: String,
+        phase: String,
+        requestBytes: ByteArray,
+        responseBytes: ByteArray,
+        responseContentType: String,
+        startedNs: Long,
+        cause: Throwable? = null,
+    ): Nothing {
+        val elapsedMs = ((System.nanoTime() - startedNs).coerceAtLeast(0L)) / 1_000_000L
+        throw TripRemoteApiException(
+            httpMethod = method,
+            endpoint = path.take(220),
+            httpStatus = status,
+            backendErrorCode = backendErrorCode,
+            sanitizedResponse = UnifiedDebugEventStore.sanitizeForExport(responseText).take(600),
+            requestId = requestId,
+            correlationId = correlationId,
+            networkCallId = networkCallId,
+            transportPhase = phase,
+            requestBytes = requestBytes.size,
+            responseBytes = responseBytes.size,
+            requestSha256 = sha256Hex(requestBytes),
+            responseSha256 = sha256Hex(responseBytes),
+            sanitizedRequest = UnifiedDebugEventStore.sanitizeForExport(requestText).take(600),
+            responseContentType = UnifiedDebugEventStore.sanitizeForExport(responseContentType).take(120),
+            elapsedMs = elapsedMs,
+            cause = cause,
+        )
+    }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
 
     private fun responseHeader(connection: HttpURLConnection, vararg names: String): String =
         names.asSequence()
