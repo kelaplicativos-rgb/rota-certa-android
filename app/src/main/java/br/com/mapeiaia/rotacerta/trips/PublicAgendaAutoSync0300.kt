@@ -196,7 +196,7 @@ internal object PublicAgendaAutoSync0300 {
         )
 
         localTrips.forEach { original ->
-            val localBookings = store.bookingsFor(original.id)
+            val localBookings = snapshotBookings ?: store.bookingsFor(original.id)
             val localAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
             val localFailureTrip = original.copy(
                 rotaCertaSeatAllocation = localAllocation,
@@ -435,10 +435,14 @@ internal object PublicAgendaAutoSync0300 {
         localTripId: String,
         configuredRotaCertaSeatAllocation: Int = 0,
         nowMillis: Long = System.currentTimeMillis(),
+        snapshotTrip: Trip? = null,
+        snapshotBookings: List<Booking>? = null,
+        entityRevision: Long = 0L,
+        outboxEventId: String = "",
     ): Boolean = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
         if (!settings.configured) return@withContext false
-        val original = store.trips().firstOrNull { it.id == localTripId } ?: return@withContext false
+        val original = snapshotTrip ?: store.trips().firstOrNull { it.id == localTripId } ?: return@withContext false
         if (!original.isCanonicalLocalPublishSource() || original.departureAtMillis <= nowMillis || original.status !in PUBLIC_LOCAL_STATUSES) {
             return@withContext false
         }
@@ -473,6 +477,9 @@ internal object PublicAgendaAutoSync0300 {
             claims = mirrors,
             claimNamespace = LOCAL_MIRROR_PREFIX,
             snapshotRevision = revision,
+            entityRevision = entityRevision,
+            canonicalTripId = original.id,
+            outboxEventId = outboxEventId,
         )
 
         val response = try {
@@ -489,7 +496,18 @@ internal object PublicAgendaAutoSync0300 {
                     publicToken = published.publicToken,
                     publicUrl = published.publicUrl,
                 )
-                store.saveTrip(publicTrip.copy(capacityReliable = true))
+                store.getTrip(original.id)?.let { current ->
+                    if (current.remoteId.isNullOrBlank()) {
+                        store.saveTrip(
+                            current.copy(
+                                remoteId = published.tripId,
+                                publicToken = published.publicToken,
+                                publicUrl = published.publicUrl,
+                                capacityReliable = true,
+                            ),
+                        )
+                    }
+                }
                 reconcile()
             }
         } catch (error: Throwable) {
@@ -511,7 +529,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
+            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} entityRevision=$entityRevision outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
         )
         response.changed
     }
@@ -544,8 +562,21 @@ internal object PublicAgendaAutoSync0300 {
         source: BlaBlaCollectorTrip,
         configuredRotaCertaSeatAllocation: Int = 0,
         nowMillis: Long = System.currentTimeMillis(),
+        entityRevision: Long = 0L,
+        outboxEventId: String = "",
+        externalAccountId: String = "",
     ): Boolean = withContext(Dispatchers.IO) {
         if (source.identity_conflict) return@withContext false
+        if (entityRevision > 0L) {
+            val profileUuid = source.profile_uuid.trim()
+            val tripId = source.trip_id?.trim().orEmpty()
+            val accounts = BlaBlaDynamicAccountRegistry(context).list().filter { account ->
+                account.id == externalAccountId && account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+            }
+            require(profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1) {
+                "Sincronização externa determinística exige conta + profile UUID + tripId fortes."
+            }
+        }
         val settings = store.onlineSettings()
         if (!settings.configured) return@withContext false
         val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
@@ -587,6 +618,16 @@ internal object PublicAgendaAutoSync0300 {
                 synthesized = synthesized,
                 traceId = AgendaTrace.currentTraceId(),
                 parentOperationId = null,
+                entityRevision = entityRevision,
+                canonicalTripId = if (entityRevision > 0L) {
+                    strongExternalCanonicalTripId0387(
+                        TripPublicationOutbox0387(context).tenantId,
+                        externalAccountId,
+                        source.profile_uuid.trim(),
+                        source.trip_id?.trim().orEmpty(),
+                    )
+                } else "",
+                outboxEventId = outboxEventId,
             )
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
@@ -619,6 +660,9 @@ internal object PublicAgendaAutoSync0300 {
         synthesized: PublicAgendaExternalTrip,
         traceId: String,
         parentOperationId: String?,
+        entityRevision: Long = 0L,
+        canonicalTripId: String = "",
+        outboxEventId: String = "",
     ): ExternalCapacitySnapshotSyncResult {
         val publicTrip = synthesized.trip
         val diagnosticTripKey = sha256(publicTrip.publicToken).take(12)
@@ -683,6 +727,9 @@ internal object PublicAgendaAutoSync0300 {
             claims = effectiveClaims,
             claimNamespace = EXTERNAL_MIRROR_PREFIX,
             snapshotRevision = synthesized.snapshotRevision,
+            entityRevision = entityRevision,
+            canonicalTripId = canonicalTripId,
+            outboxEventId = outboxEventId,
         )
 
         val response = try {
@@ -716,7 +763,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
+            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} entityRevision=$entityRevision outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
         )
         AgendaTrace.event(
             context,
