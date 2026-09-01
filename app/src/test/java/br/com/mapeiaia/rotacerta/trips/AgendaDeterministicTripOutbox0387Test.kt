@@ -69,10 +69,22 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
-    fun blablaAutomaticSeatSyncWasRemovedFromInternalBookingMutations() {
+    fun protectedBookingActionsAreLocalFirstOutboxAndNeverDirectHttpOrBlabla() {
         val passenger = source("PassengerTimelineUi.kt")
+        val autoSync = source("PublicAgendaAutoSync0300.kt")
+        val remote = source("TripRemoteApi.kt")
         assertFalse(passenger.contains("onSyncSeatsOnly?.invoke()"))
+        assertFalse(passenger.contains("TripRemoteApi(settings).updateDriverPassengerOperationalStatus("))
+        assertFalse(passenger.contains("TripRemoteApi(settings).decideDriverBooking("))
+        assertFalse(passenger.contains("updateProtectedDriverBooking(remoteTripId"))
+        assertTrue(passenger.contains("mutationCoordinator.recordLocalMutation("))
+        assertTrue(passenger.contains("mutationCoordinator.drainPending()"))
         assertTrue(passenger.contains("BlaBlaCar is never synchronized automatically after an internal mutation."))
+        assertTrue(remote.contains("protectedBookings: List<DriverProtectedBookingSnapshot>"))
+        assertTrue(autoSync.contains("protectedBookings = if (entityRevision > 0L)"))
+        assertTrue(autoSync.contains("booking.operationalStatus.name"))
+        assertTrue(autoSync.contains("booking.paymentStatus.name"))
+        assertTrue(autoSync.contains("booking.lastDriverSelection.trim()"))
     }
 
     @Test
@@ -115,6 +127,10 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(fn.contains("stale: true"))
         assertTrue(fn.contains("publication_revision_conflict"))
         assertTrue(fn.contains("publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision"))
+        assertTrue(fn.contains("rawProtectedBookings"))
+        assertTrue(fn.contains("normalizeProtectedSnapshotBooking"))
+        assertTrue(fn.contains("protected_snapshot_requires_revision"))
+        assertTrue(fn.contains("ANDROID_OUTBOX_SNAPSHOT"))
     }
 
     @Test
