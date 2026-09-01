@@ -4,38 +4,39 @@ on:
   push:
     paths:
       - '.github/workflows/blablacar-sep01-10-validation.yml'
-      - 'tools/blablacar-public-search/batch-sep01-10.mjs'
+      - 'tools/blablacar-public-search/run-single-sep01-10.mjs'
   workflow_dispatch:
 
 jobs:
   collect:
     if: github.ref == 'refs/heads/agent/blablacar-public-search-collector'
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        date: ['2026-09-01','2026-09-02','2026-09-03','2026-09-04','2026-09-05','2026-09-06','2026-09-07','2026-09-08','2026-09-09','2026-09-10']
+        direction: ['outbound','return']
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
       - name: Install collector package
         working-directory: tools/blablacar-public-search
         run: |
           npm install --no-audit --no-fund
           npx playwright install chromium
-
-      - name: Run 20 exact public searches
+      - name: Run exact public search
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-        run: node tools/blablacar-public-search/batch-sep01-10.mjs
-
+        run: node tools/blablacar-public-search/run-single-sep01-10.mjs "${{ matrix.date }}" "${{ matrix.direction }}"
       - name: Upload evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: blablacar-sep01-10-validation-${{ github.run_id }}
-          path: collector/batch-sep01-10
-          if-no-files-found: error
+          name: blablacar-${{ matrix.date }}-${{ matrix.direction }}-${{ github.run_id }}
+          path: collector/matrix-sep01-10/${{ matrix.date }}/${{ matrix.direction }}
+          if-no-files-found: warn
           retention-days: 30
