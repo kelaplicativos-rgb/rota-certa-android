@@ -127,6 +127,9 @@ class AgendaDeterministicTripOutbox0387Test {
             "async function mutateDriverBookingDecision",
             "async function mutateDriverPassengerOperationalStatus",
             "async function mutateProtectedBooking",
+            "async function updatePassengerBooking",
+            "async function cancelPassengerBooking",
+            "async function cancelActiveBookingsForBlockedPassenger",
         ).forEach { name ->
             val start = api.indexOf(name)
             assertTrue(start >= 0, "$name missing")
@@ -135,6 +138,22 @@ class AgendaDeterministicTripOutbox0387Test {
             assertTrue(fn.contains("publicationRevision"), "$name must advance or preserve entity revision explicitly")
             assertTrue(fn.contains("publicationEventId") || fn.contains("entityRevision"), "$name must retain publication event/revision evidence")
         }
+    }
+
+    @Test
+    fun serverAppliedMutationsAreJournaledDurablyWithoutSecondNetworkPublication() {
+        val api = backend()
+        val outbox = source("TripPublicationOutbox0387.kt")
+        assertTrue(api.contains("function writeDeliveredTripPublicationOutbox"))
+        assertTrue(api.contains("db.collection(\"tripPublicationOutbox\")"))
+        assertTrue(api.contains("status: \"DELIVERED\""))
+        assertTrue(api.contains("payloadReference: immutableSourceEventId ? \"tripChangeEvents/\""))
+        assertTrue(api.contains("PASSENGER_MY_TRIPS_EDIT"))
+        assertTrue(api.contains("PASSENGER_MY_TRIPS_CANCEL"))
+        assertTrue(api.contains("PASSENGER_BLOCKED_BOOKINGS_CANCELLED"))
+        assertTrue(outbox.contains("fun recordDeliveredAtRevision("))
+        assertTrue(outbox.contains("fun recordRemoteAppliedLocal("))
+        assertTrue(outbox.contains("remote_applied_revision_"))
     }
 
     @Test
