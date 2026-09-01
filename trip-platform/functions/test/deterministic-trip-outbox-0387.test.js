@@ -42,6 +42,9 @@ test("all public and driver booking mutations advance the trip publication revis
     "async function mutateDriverBookingDecision",
     "async function mutateDriverPassengerOperationalStatus",
     "async function mutateProtectedBooking",
+    "async function updatePassengerBooking",
+    "async function cancelPassengerBooking",
+    "async function cancelActiveBookingsForBlockedPassenger",
   ];
   for (const name of names) {
     const start = api.indexOf(name);
@@ -50,6 +53,21 @@ test("all public and driver booking mutations advance the trip publication revis
     const fn = api.slice(start, next < 0 ? api.length : next);
     assert.match(fn, /publicationRevision/, `${name} missing publicationRevision`);
   }
+});
+
+test("server-side mutations journal one delivered outbox event at the same entity revision", () => {
+  assert.match(api, /function writeDeliveredTripPublicationOutbox/);
+  assert.match(api, /db\.collection\("tripPublicationOutbox"\)/);
+  assert.match(api, /status: "DELIVERED"/);
+  assert.match(api, /payloadReference: immutableSourceEventId \? "tripChangeEvents\/"/);
+  for (const marker of [
+    "PUBLIC_BOOKING_CREATED",
+    "PUBLIC_BOOKING_CANCELLED",
+    "PUBLIC_BOOKING_CHANGED",
+    "PASSENGER_MY_TRIPS_EDIT",
+    "PASSENGER_MY_TRIPS_CANCEL",
+    "PASSENGER_BLOCKED_BOOKINGS_CANCELLED",
+  ]) assert.match(api, new RegExp(marker));
 });
 
 test("normal Android mutations do not depend on global Agenda revision", () => {
