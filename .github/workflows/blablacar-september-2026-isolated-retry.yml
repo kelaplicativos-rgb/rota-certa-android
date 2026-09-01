@@ -102,3 +102,5 @@ jobs:
             git commit -m "data(blablacar): retry isolated September queries [skip ci]"
             git push
           fi
+
+# zero-state-rerun: 2026-09-01
