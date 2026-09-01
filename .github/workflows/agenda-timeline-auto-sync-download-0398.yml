@@ -201,3 +201,72 @@ jobs:
             farol-after.sha256
             apk.sha256
             changed-files.txt
+
+
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy exact HEAD trip-api only
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(cat source_head.txt)" = "$SOURCE_SHA"
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/deterministic-trip-outbox-0387.test.js
+          grep -Fq '/v1/driver/agenda/seat-allocation' trip-platform/functions/index.js
+          grep -Fq 'reconcileDriverAgendaSeatAllocation' trip-platform/functions/index.js
+
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+          fi
+          echo "DEPLOYED_SOURCE_HEAD=$SOURCE_SHA"
+
+      - name: Smoke deployed 0.1.398 seat-allocation route
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://rota-certa-7ccc8.web.app"
+
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+
+          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error \
+            -o /tmp/seat-allocation-probe.json \
+            -w "%{http_code}" \
+            -X PUT "$BASE/v1/driver/agenda/seat-allocation" \
+            -H 'Content-Type: application/json' \
+            --data '{"rotaCertaSeatAllocation":0,"configVersion":1}')"
+          cat /tmp/seat-allocation-probe.json || true
+          test "$CODE" = "401"
+
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          echo "AGENDA_0398_BACKEND_SMOKE=PASS"
+          echo "SOURCE_HEAD=${{ github.sha }}"
