@@ -64,6 +64,7 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaFixedHeaderAccountsBrowsers0399Test.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineAutoSync0398Test.kt' changed-files.txt
+          grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDeterministicTripOutbox0387Test.kt' changed-files.txt
 
           grep -Fq 'topBar = {' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq '.statusBarsPadding()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
