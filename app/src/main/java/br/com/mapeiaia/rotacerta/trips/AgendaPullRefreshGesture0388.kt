@@ -2,6 +2,9 @@ package br.com.mapeiaia.rotacerta.trips
 
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -11,6 +14,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.consume
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
 internal enum class AgendaPullRefreshOutcome0388 {
@@ -102,6 +106,27 @@ internal class AgendaPullRefreshGestureGate0388(
  * downward vertical drag do we consume pointer changes, cancelling the child click/scroll for
  * that gesture and dispatching exactly one refresh callback.
  */
+@Composable
+internal fun TimelineRefreshGestureSurface0388(
+    modifier: Modifier = Modifier,
+    refreshing: Boolean,
+    canRefreshAtGestureStart: () -> Boolean,
+    onRefresh: () -> Unit,
+    onDecision: (AgendaPullRefreshDecision0388) -> Unit = {},
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = modifier.agendaPullRefreshGestureOwner0388(
+            refreshing = refreshing,
+            canRefreshAtGestureStart = canRefreshAtGestureStart,
+            onRefresh = onRefresh,
+            onDecision = onDecision,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
+}
+
 @Composable
 internal fun Modifier.agendaPullRefreshGestureOwner0388(
     refreshing: Boolean,
