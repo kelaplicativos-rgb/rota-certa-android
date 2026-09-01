@@ -285,7 +285,13 @@ class BlaBlaHarvestNavigationWatchdogProvider : ContentProvider() {
                 UnifiedDebugEventStore.record(
                     "HARVEST_FAST_PATH_REFLECTION_FAILED",
                     appContext.packageName,
-                    "method=$name fallbackPreserved=true error=${it.javaClass.simpleName}",
+                    "method=$name fallbackPreserved=true " +
+                        AgendaFailureEvidence.describe(
+                            error = it,
+                            operation = "HARVEST_FAST_PATH_REFLECTION",
+                            component = "BlaBlaHarvestNavigationWatchdogProvider",
+                            method = name,
+                        ),
                 )
                 false
             }
