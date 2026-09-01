@@ -59,6 +59,8 @@ internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
 
 internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncMode0392 = when {
     reason == "periodic" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
+    reason == "manual" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
+    reason == "recovery" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "timeline_open" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "timeline_pull_refresh" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
@@ -66,34 +68,186 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
 }
 
+internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
+    reason == "periodic" -> "PERIODIC"
+    reason == "manual" -> "MANUAL"
+    reason == "timeline_pull_refresh" -> "PULL_TO_REFRESH"
+    reason == "recovery" || reason == "timeline_open" -> "RECOVERY"
+    reason.startsWith("booking_push:") -> "EVENT_DELTA"
+    reason == "blablacar_collection_result" -> "EVENT_DELTA"
+    else -> "EVENT_DELTA"
+}
+
+internal data class AgendaBackgroundSyncStatus0397(
+    val enabled: Boolean,
+    val intervalMinutes: Long,
+    val scheduledAtMillis: Long,
+    val lastStartedAtMillis: Long,
+    val lastFinishedAtMillis: Long,
+    val lastPeriodicFinishedAtMillis: Long,
+    val lastTrigger: String,
+    val lastResult: String,
+    val retryPending: Boolean,
+    val retryAttempt: Int,
+    val lastFailures: Int,
+) {
+    fun nextExecutionEstimateMillis(nowMillis: Long = System.currentTimeMillis()): Long {
+        if (!enabled || scheduledAtMillis <= 0L) return 0L
+        val anchor = maxOf(scheduledAtMillis, lastPeriodicFinishedAtMillis)
+        val candidate = anchor + intervalMinutes.coerceAtLeast(1L) * 60_000L
+        return maxOf(candidate, nowMillis)
+    }
+}
+
 internal object AgendaBackgroundSyncConfig0392 {
     const val DEFAULT_INTERVAL_MINUTES = 15L
     const val MIN_INTERVAL_MINUTES = 15L
     const val MAX_INTERVAL_MINUTES = 24L * 60L
+    const val DEFAULT_ENABLED = true
 
     private const val PREFS = "rota_certa_agenda_background_sync_0392"
+    private const val KEY_ENABLED = "automatic_sync_enabled_0397"
     private const val KEY_INTERVAL_MINUTES = "periodic_interval_minutes"
+    private const val KEY_SCHEDULED_AT = "periodic_scheduled_at_0397"
+    private const val KEY_SCHEDULED_INTERVAL = "periodic_scheduled_interval_0397"
+    private const val KEY_LAST_STARTED = "last_started_at_0397"
+    private const val KEY_LAST_FINISHED = "last_finished_at_0397"
+    private const val KEY_LAST_PERIODIC_FINISHED = "last_periodic_finished_at_0397"
+    private const val KEY_LAST_TRIGGER = "last_trigger_0397"
+    private const val KEY_LAST_RESULT = "last_result_0397"
+    private const val KEY_RETRY_PENDING = "retry_pending_0397"
+    private const val KEY_RETRY_ATTEMPT = "retry_attempt_0397"
+    private const val KEY_LAST_FAILURES = "last_failures_0397"
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun scope(context: Context) =
+        RotaCertaTenantRegistry(context.applicationContext).activeScope()
+
+    fun isEnabled(context: Context): Boolean {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        return prefs.getBoolean(scope.key(KEY_ENABLED), DEFAULT_ENABLED)
+    }
 
     fun configuredIntervalMinutes(context: Context): Long {
-        val appContext = context.applicationContext
-        val scope = RotaCertaTenantRegistry(appContext).activeScope()
-        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val prefs = prefs(context)
+        val scope = scope(context)
         val raw = prefs.getLong(scope.key(KEY_INTERVAL_MINUTES), DEFAULT_INTERVAL_MINUTES)
         return agendaBackgroundSyncIntervalMinutes0392(raw)
     }
 
+    fun status(context: Context): AgendaBackgroundSyncStatus0397 {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        val interval = agendaBackgroundSyncIntervalMinutes0392(
+            prefs.getLong(scope.key(KEY_INTERVAL_MINUTES), DEFAULT_INTERVAL_MINUTES),
+        )
+        return AgendaBackgroundSyncStatus0397(
+            enabled = prefs.getBoolean(scope.key(KEY_ENABLED), DEFAULT_ENABLED),
+            intervalMinutes = interval,
+            scheduledAtMillis = prefs.getLong(scope.key(KEY_SCHEDULED_AT), 0L),
+            lastStartedAtMillis = prefs.getLong(scope.key(KEY_LAST_STARTED), 0L),
+            lastFinishedAtMillis = prefs.getLong(scope.key(KEY_LAST_FINISHED), 0L),
+            lastPeriodicFinishedAtMillis = prefs.getLong(scope.key(KEY_LAST_PERIODIC_FINISHED), 0L),
+            lastTrigger = prefs.getString(scope.key(KEY_LAST_TRIGGER), "").orEmpty(),
+            lastResult = prefs.getString(scope.key(KEY_LAST_RESULT), "Ainda não executada").orEmpty(),
+            retryPending = prefs.getBoolean(scope.key(KEY_RETRY_PENDING), false),
+            retryAttempt = prefs.getInt(scope.key(KEY_RETRY_ATTEMPT), 0),
+            lastFailures = prefs.getInt(scope.key(KEY_LAST_FAILURES), 0),
+        )
+    }
+
+    fun updateEnabled(context: Context, enabled: Boolean): Boolean {
+        val appContext = context.applicationContext
+        val prefs = prefs(appContext)
+        val scope = scope(appContext)
+        require(
+            prefs.edit().putBoolean(scope.key(KEY_ENABLED), enabled).commit(),
+        ) { "Falha ao persistir estado da sincronização automática da Agenda." }
+        if (enabled) {
+            AgendaBackgroundSync0392.ensureScheduled(appContext)
+            AgendaBackgroundSync0392.enqueueRecoveryIfNeeded(appContext)
+        } else {
+            AgendaBackgroundSync0392.cancelPeriodic(appContext, "config_disabled")
+        }
+        return enabled
+    }
+
     fun updateIntervalMinutes(context: Context, requestedMinutes: Long): Long {
         val appContext = context.applicationContext
-        val scope = RotaCertaTenantRegistry(appContext).activeScope()
+        val prefs = prefs(appContext)
+        val scope = scope(appContext)
         val sanitized = agendaBackgroundSyncIntervalMinutes0392(requestedMinutes)
         require(
-            appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit()
+            prefs.edit()
                 .putLong(scope.key(KEY_INTERVAL_MINUTES), sanitized)
                 .commit(),
         ) { "Falha ao persistir intervalo da sincronização da Agenda." }
-        AgendaBackgroundSync0392.ensureScheduled(appContext)
+        if (isEnabled(appContext)) {
+            AgendaBackgroundSync0392.ensureScheduled(appContext)
+        }
         return sanitized
+    }
+
+    internal fun markScheduled(context: Context, intervalMinutes: Long, nowMillis: Long = System.currentTimeMillis()) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        val scheduledAtKey = scope.key(KEY_SCHEDULED_AT)
+        val scheduledIntervalKey = scope.key(KEY_SCHEDULED_INTERVAL)
+        val previousInterval = prefs.getLong(scheduledIntervalKey, 0L)
+        val previousScheduledAt = prefs.getLong(scheduledAtKey, 0L)
+        val editor = prefs.edit().putLong(scheduledIntervalKey, intervalMinutes)
+        if (previousScheduledAt <= 0L || previousInterval != intervalMinutes) {
+            editor.putLong(scheduledAtKey, nowMillis)
+        }
+        editor.apply()
+    }
+
+    internal fun markUnscheduled(context: Context) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        prefs.edit()
+            .putLong(scope.key(KEY_SCHEDULED_AT), 0L)
+            .putLong(scope.key(KEY_SCHEDULED_INTERVAL), 0L)
+            .apply()
+    }
+
+    internal fun recordRunStarted(context: Context, reason: String, attempt: Int, nowMillis: Long = System.currentTimeMillis()) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        prefs.edit()
+            .putLong(scope.key(KEY_LAST_STARTED), nowMillis)
+            .putString(scope.key(KEY_LAST_TRIGGER), agendaBackgroundSyncTrigger0397(reason))
+            .putString(scope.key(KEY_LAST_RESULT), "RUNNING")
+            .putBoolean(scope.key(KEY_RETRY_PENDING), false)
+            .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
+            .apply()
+    }
+
+    internal fun recordRunFinished(
+        context: Context,
+        reason: String,
+        result: String,
+        failures: Int,
+        retryPending: Boolean,
+        attempt: Int,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        val editor = prefs.edit()
+            .putLong(scope.key(KEY_LAST_FINISHED), nowMillis)
+            .putString(scope.key(KEY_LAST_TRIGGER), agendaBackgroundSyncTrigger0397(reason))
+            .putString(scope.key(KEY_LAST_RESULT), result)
+            .putBoolean(scope.key(KEY_RETRY_PENDING), retryPending)
+            .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
+            .putInt(scope.key(KEY_LAST_FAILURES), failures)
+        if (reason == "periodic") {
+            editor.putLong(scope.key(KEY_LAST_PERIODIC_FINISHED), nowMillis)
+        }
+        editor.apply()
     }
 }
 
@@ -101,49 +255,86 @@ internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
     private const val INPUT_REASON = "reason"
+    private const val INPUT_TENANT_ID = "tenant_id_0397"
     private const val WORK_BACKOFF_SECONDS = 30L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
+        if (!AgendaBackgroundSyncConfig0392.isEnabled(appContext)) {
+            cancelPeriodic(appContext, "disabled_guard")
+            return
+        }
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         val intervalMinutes = AgendaBackgroundSyncConfig0392.configuredIntervalMinutes(appContext)
         val periodic = PeriodicWorkRequestBuilder<AgendaBackgroundSyncWorker0392>(
             intervalMinutes,
             TimeUnit.MINUTES,
         )
             .setConstraints(networkConstraints())
+            .setInputData(workDataOf(INPUT_REASON to "periodic", INPUT_TENANT_ID to tenantId))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
-            tenantScopedWorkName(appContext, PERIODIC_WORK),
+            tenantScopedWorkName(tenantId, PERIODIC_WORK),
             ExistingPeriodicWorkPolicy.UPDATE,
             periodic,
         )
+        AgendaBackgroundSyncConfig0392.markScheduled(appContext, intervalMinutes)
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_SCHEDULED_0392",
             appContext.packageName,
-            "periodMinutes=$intervalMinutes silentUi=true durable=true tenantScoped=true configurable=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} periodMinutes=$intervalMinutes silentUi=true durable=true tenantScoped=true configurable=true enabled=true scheduler=WorkManager periodicMin=15",
         )
+    }
+
+    fun cancelPeriodic(context: Context, reason: String) {
+        val appContext = context.applicationContext
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        WorkManager.getInstance(appContext).cancelUniqueWork(tenantScopedWorkName(tenantId, PERIODIC_WORK))
+        AgendaBackgroundSyncConfig0392.markUnscheduled(appContext)
+        UnifiedDebugEventStore.record(
+            "AGENDA_BACKGROUND_SYNC_CANCELLED_0397",
+            appContext.packageName,
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} periodicOnly=true immediateEventsPreserved=true",
+        )
+    }
+
+    fun enqueueRecoveryIfNeeded(context: Context) {
+        val appContext = context.applicationContext
+        val status = AgendaBackgroundSyncConfig0392.status(appContext)
+        if (!status.enabled) return
+        val now = System.currentTimeMillis()
+        val staleAfterMillis = status.intervalMinutes.coerceAtLeast(AgendaBackgroundSyncConfig0392.MIN_INTERVAL_MINUTES) * 60_000L
+        val stale = status.lastFinishedAtMillis <= 0L || now - status.lastFinishedAtMillis >= staleAfterMillis
+        if (stale) {
+            enqueueImmediate(appContext, "recovery")
+            UnifiedDebugEventStore.record(
+                "AGENDA_BACKGROUND_SYNC_RECOVERY_0397",
+                appContext.packageName,
+                "trigger=RECOVERY stale=true lastFinishedAt=${status.lastFinishedAtMillis} intervalMinutes=${status.intervalMinutes}",
+            )
+        }
     }
 
     fun enqueueImmediate(context: Context, reason: String) {
         val appContext = context.applicationContext
-        ensureScheduled(appContext)
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
             .setConstraints(networkConstraints())
-            .setInputData(workDataOf(INPUT_REASON to reason.take(80)))
+            .setInputData(workDataOf(INPUT_REASON to reason.take(80), INPUT_TENANT_ID to tenantId))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
         WorkManager.getInstance(appContext).enqueueUniqueWork(
-            tenantScopedWorkName(appContext, IMMEDIATE_WORK),
+            tenantScopedWorkName(tenantId, IMMEDIATE_WORK),
             ExistingWorkPolicy.APPEND_OR_REPLACE,
             request,
         )
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_ENQUEUED_0392",
             appContext.packageName,
-            "reason=${reason.take(80)} mode=${agendaBackgroundSyncMode0392(reason).name} silentUi=true tenantScoped=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${agendaBackgroundSyncMode0392(reason).name} workId=${request.id} silentUi=true tenantScoped=true periodicEnabled=${AgendaBackgroundSyncConfig0392.isEnabled(appContext)}",
         )
     }
 
@@ -275,7 +466,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_START_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} mode=${mode.name} silentUi=true singleFlight=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} silentUi=true singleFlight=true",
         )
 
         val pullBookings = mode in setOf(
@@ -386,7 +577,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_END_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures silentUi=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures silentUi=true",
         )
 
         return AgendaBackgroundSyncRun0392(
@@ -401,10 +592,25 @@ internal object AgendaBackgroundSync0392 {
     internal fun reason(workerParameters: WorkerParameters): String =
         workerParameters.inputData.getString(INPUT_REASON)?.takeIf(String::isNotBlank) ?: "periodic"
 
-    private fun tenantScopedWorkName(context: Context, base: String): String {
-        val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
-        return "$base-${sha256TripPublication0387(tenantId).take(12)}"
+    internal fun scheduledTenantId(workerParameters: WorkerParameters): String =
+        workerParameters.inputData.getString(INPUT_TENANT_ID)?.trim().orEmpty()
+
+    internal fun currentTenantId(context: Context): String =
+        RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+
+    internal fun cancelStaleTenantPeriodic(context: Context, scheduledTenantId: String) {
+        if (scheduledTenantId.isBlank()) return
+        WorkManager.getInstance(context.applicationContext)
+            .cancelUniqueWork(tenantScopedWorkName(scheduledTenantId, PERIODIC_WORK))
+        UnifiedDebugEventStore.record(
+            "AGENDA_BACKGROUND_SYNC_STALE_TENANT_CANCELLED_0397",
+            context.applicationContext.packageName,
+            "scheduledTenantKey=${seatSyncDiagnosticKey(scheduledTenantId)} activeTenantKey=${seatSyncDiagnosticKey(currentTenantId(context))}",
+        )
     }
+
+    private fun tenantScopedWorkName(tenantId: String, base: String): String =
+        "$base-${sha256TripPublication0387(tenantId).take(12)}"
 
     private fun networkConstraints(): Constraints = Constraints.Builder()
         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -416,10 +622,88 @@ class AgendaBackgroundSyncWorker0392(
     private val parameters: WorkerParameters,
 ) : CoroutineWorker(appContext, parameters) {
     override suspend fun doWork(): Result {
-        val result = AgendaBackgroundSync0392.runCycle(
+        val reason = AgendaBackgroundSync0392.reason(parameters)
+        val scheduledTenantId = AgendaBackgroundSync0392.scheduledTenantId(parameters)
+        val activeTenantId = AgendaBackgroundSync0392.currentTenantId(applicationContext)
+
+        if (scheduledTenantId.isNotBlank() && scheduledTenantId != activeTenantId) {
+            if (reason == "periodic") {
+                AgendaBackgroundSync0392.cancelStaleTenantPeriodic(applicationContext, scheduledTenantId)
+            }
+            UnifiedDebugEventStore.record(
+                "AGENDA_BACKGROUND_SYNC_TENANT_MISMATCH_0397",
+                applicationContext.packageName,
+                "workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} scheduledTenantKey=${seatSyncDiagnosticKey(scheduledTenantId)} activeTenantKey=${seatSyncDiagnosticKey(activeTenantId)} result=SKIPPED",
+            )
+            return Result.success()
+        }
+
+        if (reason == "periodic" && !AgendaBackgroundSyncConfig0392.isEnabled(applicationContext)) {
+            AgendaBackgroundSync0392.cancelPeriodic(applicationContext, "worker_disabled_guard")
+            return Result.success()
+        }
+
+        val startedElapsed = android.os.SystemClock.elapsedRealtime()
+        AgendaBackgroundSyncConfig0392.recordRunStarted(
             context = applicationContext,
-            reason = AgendaBackgroundSync0392.reason(parameters),
+            reason = reason,
+            attempt = runAttemptCount,
         )
-        return if (result.failures > 0 && runAttemptCount < 5) Result.retry() else Result.success()
+        UnifiedDebugEventStore.record(
+            "AGENDA_BACKGROUND_SYNC_WORK_0397",
+            applicationContext.packageName,
+            "phase=START workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} reason=${reason.take(80)} attempt=$runAttemptCount",
+        )
+
+        return try {
+            val cycle = AgendaBackgroundSync0392.runCycle(
+                context = applicationContext,
+                reason = reason,
+            )
+            val retryPending = cycle.failures > 0 && runAttemptCount < 5
+            val resultLabel = when {
+                retryPending -> "RETRY"
+                cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+                else -> "SUCCESS"
+            }
+            AgendaBackgroundSyncConfig0392.recordRunFinished(
+                context = applicationContext,
+                reason = reason,
+                result = resultLabel,
+                failures = cycle.failures,
+                retryPending = retryPending,
+                attempt = runAttemptCount,
+            )
+            UnifiedDebugEventStore.record(
+                "AGENDA_BACKGROUND_SYNC_WORK_0397",
+                applicationContext.packageName,
+                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=${cycle.failures} retry=$retryPending attempt=$runAttemptCount",
+            )
+            if (retryPending) Result.retry() else Result.success()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            val retryPending = runAttemptCount < 5
+            AgendaBackgroundSyncConfig0392.recordRunFinished(
+                context = applicationContext,
+                reason = reason,
+                result = if (retryPending) "RETRY_EXCEPTION" else "FAILED_AFTER_MAX_RETRIES",
+                failures = 1,
+                retryPending = retryPending,
+                attempt = runAttemptCount,
+            )
+            UnifiedDebugEventStore.record(
+                "AGENDA_BACKGROUND_SYNC_WORK_FAILED_0397",
+                applicationContext.packageName,
+                "workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} retry=$retryPending attempt=$runAttemptCount " +
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "BACKGROUND_WORKER",
+                        component = "AgendaBackgroundSyncWorker0392",
+                        method = "doWork",
+                    ),
+            )
+            if (retryPending) Result.retry() else Result.success()
+        }
     }
 }

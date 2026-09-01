@@ -34,8 +34,11 @@ import kotlinx.coroutines.launch
 
 internal enum class AgendaRootSection0396(val label: String) {
     ALL_TRIPS("Todas as viagens"),
+    AUTOMATIC_SYNC("Sincronização automática"),
     PUBLIC_SEARCH("Consulta pública"),
     PASSENGERS("Passageiros"),
+    INTEGRATIONS("Integrações"),
+    APP_SETTINGS("Configurações"),
 }
 
 enum class AgendaTimelineCommand0396 {
@@ -83,7 +86,29 @@ internal fun AgendaModuleDrawer0396(
                     )
                 }
                 HorizontalDivider()
-                AgendaRootSection0396.entries.forEach { section ->
+                NavigationDrawerItem(
+                    label = { Text(AgendaRootSection0396.ALL_TRIPS.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    selected = currentSection == AgendaRootSection0396.ALL_TRIPS,
+                    onClick = {
+                        onSelect(AgendaRootSection0396.ALL_TRIPS)
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
+                Text(
+                    "Central do Rota Certa",
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                listOf(
+                    AgendaRootSection0396.AUTOMATIC_SYNC,
+                    AgendaRootSection0396.PUBLIC_SEARCH,
+                    AgendaRootSection0396.PASSENGERS,
+                    AgendaRootSection0396.INTEGRATIONS,
+                    AgendaRootSection0396.APP_SETTINGS,
+                ).forEach { section ->
                     NavigationDrawerItem(
                         label = { Text(section.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         selected = section == currentSection,

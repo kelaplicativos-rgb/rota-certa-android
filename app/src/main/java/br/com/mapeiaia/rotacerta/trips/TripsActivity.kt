@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.MainActivity
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
@@ -123,23 +124,30 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS }
+private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
-    this == TripScreen.TIMELINE || this == TripScreen.PUBLIC_SEARCH || this == TripScreen.PASSENGERS
+    this == TripScreen.TIMELINE ||
+        this == TripScreen.PUBLIC_SEARCH ||
+        this == TripScreen.PASSENGERS ||
+        this == TripScreen.SETTINGS ||
+        this == TripScreen.AUTO_SYNC
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
+    TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
+    TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
     else -> AgendaRootSection0396.ALL_TRIPS
 }
 
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.TIMELINE -> "Todas as viagens"
+    TripScreen.AUTO_SYNC -> "Sincronização automática"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
     TripScreen.PASSENGERS -> "Passageiros"
     TripScreen.CREATE -> "Nova viagem"
-    TripScreen.SETTINGS -> "Integração online"
+    TripScreen.SETTINGS -> "Integrações"
     TripScreen.LIST -> "Gerenciar viagem"
 }
 
@@ -471,10 +479,6 @@ private fun TripApp(
         timelineUiCommand0396 = command
         timelineUiCommandToken0396 += 1
     }
-    val openSettings0396: () -> Unit = {
-        parentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
-        screen = TripScreen.SETTINGS
-    }
     val notificationLabel0396 = if (driverUnreadCount > 0) {
         "Notificações (" + (if (driverUnreadCount > 99) "99+" else driverUnreadCount.toString()) + ")"
     } else {
@@ -490,7 +494,7 @@ private fun TripApp(
             AgendaHeaderAction0396("Adicionar passageiro") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
             },
-            AgendaHeaderAction0396("Atualizar agora") { requestFullTimelineRefresh() },
+            AgendaHeaderAction0396("Sincronizar agora") { requestFullTimelineRefresh() },
             AgendaHeaderAction0396("Publicar agenda") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_PUBLISHER)
             },
@@ -507,21 +511,18 @@ private fun TripApp(
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
                 message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
             },
-            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
             AgendaHeaderAction0396(notificationLabel0396) {
                 notificationsExpanded = !notificationsExpanded
                 shareScope.launch { refreshDriverNotifications() }
             },
         )
         TripScreen.PUBLIC_SEARCH -> listOf(
-            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
             AgendaHeaderAction0396(notificationLabel0396) {
                 notificationsExpanded = !notificationsExpanded
                 shareScope.launch { refreshDriverNotifications() }
             },
         )
         TripScreen.PASSENGERS -> listOf(
-            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
             AgendaHeaderAction0396(notificationLabel0396) {
                 notificationsExpanded = !notificationsExpanded
                 shareScope.launch { refreshDriverNotifications() }
@@ -546,14 +547,36 @@ private fun TripApp(
     AgendaModuleDrawer0396(
         currentSection = currentRootScreen0396.agendaRootSection0396(),
         onSelect = { section ->
-            val target = when (section) {
-                AgendaRootSection0396.ALL_TRIPS -> TripScreen.TIMELINE
-                AgendaRootSection0396.PUBLIC_SEARCH -> TripScreen.PUBLIC_SEARCH
-                AgendaRootSection0396.PASSENGERS -> TripScreen.PASSENGERS
+            when (section) {
+                AgendaRootSection0396.ALL_TRIPS -> {
+                    parentRootScreen0396 = TripScreen.TIMELINE
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.TIMELINE
+                }
+                AgendaRootSection0396.AUTOMATIC_SYNC -> {
+                    parentRootScreen0396 = currentRootScreen0396
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.AUTO_SYNC
+                }
+                AgendaRootSection0396.PUBLIC_SEARCH -> {
+                    parentRootScreen0396 = TripScreen.PUBLIC_SEARCH
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.PUBLIC_SEARCH
+                }
+                AgendaRootSection0396.PASSENGERS -> {
+                    parentRootScreen0396 = TripScreen.PASSENGERS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.PASSENGERS
+                }
+                AgendaRootSection0396.INTEGRATIONS -> {
+                    parentRootScreen0396 = currentRootScreen0396
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.SETTINGS
+                }
+                AgendaRootSection0396.APP_SETTINGS -> {
+                    activity.startActivity(Intent(activity, MainActivity::class.java))
+                }
             }
-            parentRootScreen0396 = target
-            passengerSubscreenOpen0396 = false
-            screen = target
         },
     ) { openDrawer0396 ->
         Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
@@ -778,6 +801,7 @@ private fun TripApp(
                     externalBackToken = passengerExternalBackToken0396,
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
+                TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
