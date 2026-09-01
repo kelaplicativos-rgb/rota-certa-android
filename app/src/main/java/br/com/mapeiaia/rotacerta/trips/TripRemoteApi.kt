@@ -343,6 +343,7 @@ data class DriverBookingUpsertResponse(
     val availableSeatsMaximum: Int = 0,
     val changed: Boolean = false,
     val passengerNotified: Boolean = false,
+    val entityRevision: Long = 0L,
 )
 
 @Serializable
