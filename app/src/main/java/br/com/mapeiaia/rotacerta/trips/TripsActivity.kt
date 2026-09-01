@@ -801,7 +801,31 @@ private fun TripApp(
                     refreshing = refreshAllRunning,
                     canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
                     onRefresh = requestFullTimelineRefresh,
+                    onPointerDown = { position, canRefreshAtStart, refreshRunningAtStart ->
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_PULL_GESTURE_DOWN_0390",
+                            activity.packageName,
+                            "xPx=${position.x.toInt()} yPx=${position.y.toInt()} canRefreshAtStart=$canRefreshAtStart " +
+                                "refreshRunningAtStart=$refreshRunningAtStart firstVisibleItemIndex=${timelineListState.firstVisibleItemIndex} " +
+                                "firstVisibleItemScrollOffset=${timelineListState.firstVisibleItemScrollOffset} canScrollBackward=${timelineListState.canScrollBackward}",
+                        )
+                    },
+                    onPointerEnd = { position, accepted ->
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_PULL_GESTURE_END_0390",
+                            activity.packageName,
+                            "xPx=${position.x.toInt()} yPx=${position.y.toInt()} accepted=$accepted " +
+                                "firstVisibleItemIndex=${timelineListState.firstVisibleItemIndex} " +
+                                "firstVisibleItemScrollOffset=${timelineListState.firstVisibleItemScrollOffset} canScrollBackward=${timelineListState.canScrollBackward}",
+                        )
+                    },
                     onDecision = { decision ->
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_PULL_GESTURE_DECISION_0390",
+                            activity.packageName,
+                            "outcome=${decision.outcome.name} accepted=${decision.accepted} dyPx=${decision.deltaY.toInt()} dxPx=${decision.deltaX.toInt()} " +
+                                "listAtTop=${decision.eligibleAtStart} blockedByRefresh=${decision.refreshingAtStart}",
+                        )
                         if (
                             decision.accepted ||
                             decision.outcome == AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING

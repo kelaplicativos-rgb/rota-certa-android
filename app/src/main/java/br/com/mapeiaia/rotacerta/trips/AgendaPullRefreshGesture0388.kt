@@ -117,6 +117,8 @@ internal fun TimelineRefreshGestureSurface0388(
     canRefreshAtGestureStart: () -> Boolean,
     onRefresh: () -> Unit,
     onDecision: (AgendaPullRefreshDecision0388) -> Unit = {},
+    onPointerDown: (Offset, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    onPointerEnd: (Offset, Boolean) -> Unit = { _, _ -> },
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -125,6 +127,8 @@ internal fun TimelineRefreshGestureSurface0388(
             canRefreshAtGestureStart = canRefreshAtGestureStart,
             onRefresh = onRefresh,
             onDecision = onDecision,
+            onPointerDown = onPointerDown,
+            onPointerEnd = onPointerEnd,
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content,
@@ -137,11 +141,15 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
     canRefreshAtGestureStart: () -> Boolean,
     onRefresh: () -> Unit,
     onDecision: (AgendaPullRefreshDecision0388) -> Unit = {},
+    onPointerDown: (Offset, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    onPointerEnd: (Offset, Boolean) -> Unit = { _, _ -> },
 ): Modifier {
     val latestRefreshing by rememberUpdatedState(refreshing)
     val latestCanRefresh by rememberUpdatedState(canRefreshAtGestureStart)
     val latestOnRefresh by rememberUpdatedState(onRefresh)
     val latestOnDecision by rememberUpdatedState(onDecision)
+    val latestOnPointerDown by rememberUpdatedState(onPointerDown)
+    val latestOnPointerEnd by rememberUpdatedState(onPointerEnd)
     val touchSlop = LocalViewConfiguration.current.touchSlop
 
     return pointerInput(touchSlop) {
@@ -151,17 +159,21 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
                 pass = PointerEventPass.Initial,
             )
             val gate = AgendaPullRefreshGestureGate0388(touchSlopPx = touchSlop)
+            val canRefreshAtStart = latestCanRefresh()
+            val refreshRunningAtStart = latestRefreshing
             gate.onDown(
                 position = down.position,
-                canRefreshAtStart = latestCanRefresh(),
-                refreshRunningAtStart = latestRefreshing,
+                canRefreshAtStart = canRefreshAtStart,
+                refreshRunningAtStart = refreshRunningAtStart,
             )
+            latestOnPointerDown(down.position, canRefreshAtStart, refreshRunningAtStart)
 
             var accepted = false
             while (true) {
                 val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (!change.pressed) {
+                    latestOnPointerEnd(change.position, accepted)
                     gate.onUpOrCancel()
                     break
                 }
