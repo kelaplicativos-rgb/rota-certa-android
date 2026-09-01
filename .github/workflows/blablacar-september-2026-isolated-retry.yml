@@ -1,0 +1,114 @@
+name: BlaBlaCar September 2026 isolated retry
+
+on:
+  push:
+    branches:
+      - audit/blablacar-september-2026-search-only
+    paths:
+      - '.github/workflows/blablacar-september-2026-isolated-retry.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    strategy:
+      fail-fast: false
+      max-parallel: 7
+      matrix:
+        include:
+          - date: 2026-09-01
+            direction: volta
+          - date: 2026-09-08
+            direction: volta
+          - date: 2026-09-09
+            direction: ida
+          - date: 2026-09-10
+            direction: volta
+          - date: 2026-09-21
+            direction: volta
+          - date: 2026-09-22
+            direction: volta
+          - date: 2026-09-29
+            direction: volta
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/blablacar-september-2026-search-only
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install collector
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+      - name: Build request
+        run: |
+          mkdir -p /tmp/blablacar-retry
+          python3 - <<'PY'
+          import json, os
+          d=os.environ["DATE"]; direction=os.environ["DIRECTION"]
+          if direction=="ida":
+              origin="Santo André, SP, Brasil"; dest="São Thomé das Letras, MG, Brasil"
+          else:
+              origin="São Thomé das Letras, MG, Brasil"; dest="Santo André, SP, Brasil"
+          json.dump({"request_id":f"retry-{d}-{direction}","from":origin,"to":dest,"date":d,"seats":1},
+                    open("/tmp/blablacar-retry/request.json","w",encoding="utf-8"),ensure_ascii=False,indent=2)
+          PY
+        env:
+          DATE: ${{ matrix.date }}
+          DIRECTION: ${{ matrix.direction }}
+      - name: Collect one retry
+        continue-on-error: true
+        run: |
+          xvfb-run -a node tools/blablacar-public-search/collect-dom.mjs             /tmp/blablacar-retry/request.json             /tmp/blablacar-retry/result.json             /tmp/blablacar-retry/result.md             /tmp/blablacar-retry/result.png
+      - name: Preserve
+        if: always()
+        run: |
+          mkdir -p out
+          cp /tmp/blablacar-retry/result.json "out/${{ matrix.date }}-${{ matrix.direction }}.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retry-${{ matrix.date }}-${{ matrix.direction }}
+          path: out/*
+          retention-days: 7
+
+  aggregate:
+    needs: collect
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/blablacar-september-2026-search-only
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: retry-*
+          path: downloaded
+          merge-multiple: true
+      - name: Aggregate
+        run: |
+          python3 - <<'PY'
+          import json, pathlib
+          rows=[]
+          for p in sorted(pathlib.Path("downloaded").glob("*.json")):
+              d=json.loads(p.read_text(encoding="utf-8"))
+              rows.append(d)
+          out={"schema_version":1,"results":rows}
+          pathlib.Path("collector/results/september-2026-isolated-retry.json").write_text(json.dumps(out,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          print([(x.get("request",{}).get("date"),x.get("request",{}).get("from"),x.get("status"),x.get("error")) for x in rows])
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add collector/results/september-2026-isolated-retry.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data(blablacar): retry isolated September queries [skip ci]"
+            git push
+          fi
