@@ -1,9 +1,9 @@
 # BlaBlaCar — busca pública renderizada
 
 - Status de validação: **validated**
-- Data: **2026-09-09**
-- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
-- Motoristas visíveis: **4**
+- Data: **2026-09-04**
+- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
 - Indicador de demanda: **NÃO ENCONTRADO**
@@ -12,9 +12,15 @@
 
 ## Motoristas
 
-1. **Wilson** — 04:30 — São Lourenço → São Paulo — R$ 88,00
-2. **Lucas** — 05:00 — São Lourenço → São Paulo — sem preço — Cheio · Super Driver
-3. **Alessandra** — 08:30 — São Tomé das Letras → São Paulo — R$ 110,00 — Esgotará em breve
-4. **Thay** — 16:00 — São Thomé das Letras → Poá — R$ 80,00
+1. **Rafael** — 05:00 — São Bernardo do Campo → Minas Gerais — sem preço — Cheio
+2. **Mateus** — 07:30 — São Bernardo do Campo → Minas Gerais — R$ 86,00
+3. **Thay** — 08:00 — Poá → São Thomé das Letras — R$ 78,00 — Esgotará em breve
+4. **André** — 08:30 — São Paulo → São Thomé das Letras — R$ 85,00 — Esgotará em breve · Super Driver
+5. **Ezequiel** — 10:40 — Santo André → São Tomé das Letras — sem preço — Cheio
+6. **Guilherme** — 12:00 — São Paulo → Minas Gerais — sem preço — Cheio
+7. **Fabio** — 12:20 — São Paulo → São Thomé das Letras — R$ 102,00
+8. **Wanderlei Toledo Junior** — 13:00 — São Paulo → Lambari — R$ 52,00
+9. **Joyce** — 13:00 — São Paulo → São Thomé das Letras — sem preço — Cheio
+10. **Gabriel** — 13:00 — São Paulo → Três Corações — R$ 86,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
