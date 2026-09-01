@@ -348,7 +348,7 @@ private fun TripApp(
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
-            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            "loading=false empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=false screen=${screen.name.lowercase()}",
             traceId,
         )
     }
@@ -369,8 +369,6 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
-                // Resume only retries durable per-trip deltas. It never triggers a tenant-wide sync.
-                AgendaBackgroundSync0392.enqueueImmediate(activity, "timeline_resume")
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -393,12 +391,6 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        AgendaBackgroundSync0392.enqueueImmediate(
-            context = activity,
-            reason = "timeline_open",
-        )
-    }
 
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
         if (!settingsLoaded) return@LaunchedEffect
