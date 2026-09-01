@@ -143,6 +143,39 @@ internal fun AgendaAutomaticSyncScreen0397() {
     }
 }
 
+
+@Composable
+internal fun AgendaAutomaticSyncTimelineStatus0398(
+    status: AgendaBackgroundSyncStatus0397,
+) {
+    val context = LocalContext.current
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                if (status.enabled) "Sincronização automática ligada" else "Sincronização automática desligada",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                "Última execução: ${agendaAutomaticSyncDateTime0397(context, status.lastFinishedAtMillis)}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                "Resultado: ${status.lastResult.ifBlank { "Ainda não executada" }}",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (status.retryPending || status.lastFailures > 0) {
+                Text(
+                    "⚠️ Falhas: ${status.lastFailures} · retry ${if (status.retryPending) "pendente" else "não pendente"}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+    }
+}
+
 private fun agendaAutomaticSyncDateTime0397(
     context: android.content.Context,
     millis: Long,
