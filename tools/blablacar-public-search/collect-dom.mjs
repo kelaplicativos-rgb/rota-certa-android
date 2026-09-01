@@ -217,6 +217,50 @@ try {
       };
     });
 
+  const identityTargets = new Map(
+    (Array.isArray(request.identity_targets) ? request.identity_targets : [])
+      .filter((target) => target?.name && target?.uuid)
+      .map((target) => [fold(target.name), { name: String(target.name), uuid: String(target.uuid).toLowerCase() }]),
+  );
+
+  for (const trip of trips) {
+    const target = identityTargets.get(fold(trip.driver_name));
+    if (!target || !trip.trip_href) continue;
+    const detailPage = await context.newPage();
+    try {
+      const detailUrl = new URL(trip.trip_href, 'https://www.blablacar.com.br').toString();
+      const detailNav = await detailPage.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await detailPage.waitForTimeout(5_000);
+      const detailHrefs = await detailPage.locator('a[href]').evaluateAll((links) =>
+        links.map((a) => a.getAttribute('href')).filter(Boolean)
+      );
+      const canonicalProfileHrefs = detailHrefs.filter((href) =>
+        /\/user\/show\/|\/profile(?:\/|\?)|\/member(?:\/|\?)/i.test(String(href))
+      );
+      const canonicalProfileUuids = uuidsFromHrefs(canonicalProfileHrefs);
+      trip.identity_check = {
+        expected_name: target.name,
+        expected_uuid: target.uuid,
+        detail_http_status: detailNav?.status() ?? null,
+        detail_url: detailPage.url(),
+        canonical_profile_hrefs: canonicalProfileHrefs,
+        canonical_profile_uuids: canonicalProfileUuids,
+        confirmed: canonicalProfileUuids.includes(target.uuid),
+        evidence: canonicalProfileUuids.includes(target.uuid) ? 'TRIP_DETAIL_CANONICAL_PROFILE_LINK' : null,
+      };
+    } catch (error) {
+      trip.identity_check = {
+        expected_name: target.name,
+        expected_uuid: target.uuid,
+        confirmed: false,
+        evidence: null,
+        error: String(error?.message ?? error),
+      };
+    } finally {
+      await detailPage.close().catch(() => {});
+    }
+  }
+
   const exactDate = final.searchParams.get('db') === request.date;
   const exactFrom = city(final.searchParams.get('fn') ?? '') === city(request.from);
   const exactTo = city(final.searchParams.get('tn') ?? '') === city(request.to);
