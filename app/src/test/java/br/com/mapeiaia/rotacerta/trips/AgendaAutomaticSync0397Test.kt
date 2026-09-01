@@ -57,13 +57,14 @@ class AgendaAutomaticSync0397Test {
     }
 
     @Test
-    fun schedulerStatusAndManualSyncAreVisibleWithoutPromisingExactAndroidTiming() {
+    fun schedulerStatusIsVisibleWithoutManualSyncOrExactAndroidTiming() {
         assertTrue(ui.contains("Sincronização automática"))
         assertTrue(ui.contains("Última execução"))
         assertTrue(ui.contains("Próxima execução prevista"))
         assertTrue(ui.contains("Último resultado"))
         assertTrue(ui.contains("Falha/retry"))
-        assertTrue(ui.contains("Sincronizar agora"))
+        assertFalse(ui.contains("Sincronizar agora"))
+        assertTrue(ui.contains("Esta é a única central de sincronização"))
         assertTrue(ui.contains("WorkManager"))
         assertTrue(ui.contains("Doze"))
         assertTrue(ui.contains("Forçar parada"))
@@ -86,8 +87,10 @@ class AgendaAutomaticSync0397Test {
         val overflow = activity
             .substringAfter("val headerActions0396 = when (screen) {")
             .substringBefore("val passengerSubscreenActive0396")
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Limpar Timeline\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Limpar Timeline\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Integração online\""))
         assertFalse(header.contains("horizontalScroll"))
     }
