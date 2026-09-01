@@ -28,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -622,24 +621,21 @@ private fun TripApp(
     }
 
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        PullToRefreshBox(
-            isRefreshing = refreshAllRunning,
-            onRefresh = requestFullTimelineRefresh,
-            modifier = Modifier.fillMaxSize().padding(padding),
+        Column(
+            modifier = if (screen == TripScreen.TIMELINE) {
+                Modifier
+                    .padding(padding)
+                    .padding(16.dp)
+                    .fillMaxSize()
+            } else {
+                Modifier
+                    .padding(padding)
+                    .padding(16.dp)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            },
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = if (screen == TripScreen.TIMELINE) {
-                    Modifier
-                        .padding(16.dp)
-                        .fillMaxSize()
-                } else {
-                    Modifier
-                        .padding(16.dp)
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                },
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -792,6 +788,8 @@ private fun TripApp(
                         ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
                     focusedBookingId = focusedBookingId,
                     reservationPendingOnly = reservationPendingOnly,
+                    refreshing = refreshAllRunning,
+                    onRefresh = requestFullTimelineRefresh,
                     listModifier = Modifier.weight(1f),
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
@@ -906,7 +904,6 @@ private fun TripApp(
                     }
                 }
             }
-        }
         }
     }
 }
