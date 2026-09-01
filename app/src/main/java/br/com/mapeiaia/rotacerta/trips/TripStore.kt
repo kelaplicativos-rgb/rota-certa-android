@@ -249,8 +249,8 @@ class TripStore(context: Context) {
         normalized
     }
 
-    internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int {
-        if (tripIds.isEmpty()) return 0
+    internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int = synchronized(CANONICAL_LOCK) {
+        if (tripIds.isEmpty()) return@synchronized 0
         val allBookings = bookings()
         val bookingsByTrip = allBookings.groupBy(Booking::tripId)
         val currentTrips = trips()
@@ -265,14 +265,20 @@ class TripStore(context: Context) {
                     trip
                 } else {
                     changed++
-                    trip.copy(capacity = derived, updatedAtMillis = now)
+                    trip.copy(
+                        capacity = derived,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        updatedAtMillis = now,
+                    )
                 }
             }
         }
         if (changed > 0) {
-            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+            require(prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).commit()) {
+                "Falha ao reconciliar inventário canônico."
+            }
         }
-        return changed
+        changed
     }
 
     private fun prepareBookingForPersistence(booking: Booking, existing: Booking?): Booking {
@@ -325,7 +331,7 @@ class TripStore(context: Context) {
         }
     }
 
-    private fun refreshTripStatusesBatch(
+    private fun refreshCanonicalTripStateBatch0395(
         tripIds: Set<String>,
         bookingSnapshot: List<Booking>,
         nowMillis: Long,
@@ -338,13 +344,16 @@ class TripStore(context: Context) {
             if (trip.id !in tripIds) {
                 trip
             } else {
-                val status = SeatAvailabilityEngine.suggestedStatus(trip, bookingsByTrip[trip.id].orEmpty())
-                if (status == trip.status) {
-                    trip
-                } else {
-                    changed = true
-                    trip.copy(status = status, updatedAtMillis = nowMillis)
-                }
+                val tripBookings = bookingsByTrip[trip.id].orEmpty()
+                val status = SeatAvailabilityEngine.suggestedStatus(trip, tripBookings)
+                val capacity = operationalInventoryCapacity(trip, tripBookings)
+                changed = true
+                trip.copy(
+                    status = status,
+                    capacity = capacity,
+                    canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                    updatedAtMillis = nowMillis,
+                )
             }
         }
         if (changed) {
@@ -358,7 +367,7 @@ class TripStore(context: Context) {
         val next = current.filterNot { it.id == id }
         prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
         booking?.let {
-            refreshTripStatusesBatch(
+            refreshCanonicalTripStateBatch0395(
                 tripIds = setOf(it.tripId),
                 bookingSnapshot = next,
                 nowMillis = System.currentTimeMillis(),
