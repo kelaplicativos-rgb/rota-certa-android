@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-10-01**
-- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **1**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,6 +12,6 @@
 
 ## Motoristas
 
-1. **Wilson** — 09:30 — São Paulo → São Lourenço — R$ 89,00
+1. **Wilson** — 04:30 — São Lourenço → São Paulo — R$ 88,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
