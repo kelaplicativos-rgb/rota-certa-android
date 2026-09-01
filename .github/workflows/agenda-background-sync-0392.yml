@@ -61,8 +61,13 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt' changed-files.txt
 
-          grep -Fq 'agendaBackgroundSyncIntervalMinutes0392(): Long = 15L' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'DEFAULT_INTERVAL_MINUTES = 15L' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'fun configuredIntervalMinutes(context: Context)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'tenantMutexes.computeIfAbsent' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'AgendaBackgroundSyncMode0392.DELTA_ONLY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'BackoffPolicy.EXPONENTIAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'agendaBackgroundSyncShowsUiStatus0392(): Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'PublicAgendaAutoSync0300.sync' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
@@ -71,6 +76,24 @@ jobs:
           ! grep -Fq 'createPublicAgendaSyncCoordinator0373' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'drainPending()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'drainPending()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          ! grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile(context, store)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check deterministic backend revision contracts
+        shell: bash
+        working-directory: trip-platform/functions
+        run: |
+          set -euo pipefail
+          node --check index.js
+          node --test \
+            test/deterministic-trip-outbox-0387.test.js \
+            test/public-incremental-capacity-0375.test.js \
+            | tee ../../backend-tests.txt
 
       - name: Configure Firebase Android app
         shell: bash
@@ -121,11 +144,23 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSyncRegression0373Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripSegmentSeatSync0292Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCombinedSeatPools0369Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ManualPassengerCapacityGuard0295Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BookingExternalSeatSync0353Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaManualSeatAutomationStage47Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaReliableSeatSync0271Test' \
+            --tests 'br.com.mapeiaia.rotacerta.TenantStorageFoundation0252Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDateScopeTimelineViewport0391Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPullEvidence0390Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTripDetailTimeout0389Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
@@ -169,3 +204,4 @@ jobs:
             farol-after.sha256
             apk.sha256
             changed-files.txt
+            backend-tests.txt
