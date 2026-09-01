@@ -45,7 +45,9 @@ import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.text.Normalizer
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal data class EnhancedPassengerCardRow(
     val name: String,
@@ -73,6 +75,63 @@ internal data class EnhancedPassengerCardRow(
     val externalPassengerId: String? = null,
 )
 
+internal data class PassengerTimelineRenderSnapshot0394(
+    val rows: List<EnhancedPassengerCardRow>,
+    val profilesByRowKey: Map<String, PassengerProfile>,
+    val bookingsById: Map<String, Booking>,
+    val historiesByProfileId: Map<String, PassengerPersistentHistory>,
+    val completedRowKeys: Set<String>,
+)
+
+internal fun passengerTimelineRowKey0394(row: EnhancedPassengerCardRow): String =
+    row.localBookingId?.trim()?.takeIf(String::isNotEmpty)
+        ?: row.externalReservationKey?.trim()?.takeIf(String::isNotEmpty)
+        ?: row.externalPassengerId?.trim()?.takeIf(String::isNotEmpty)
+        ?: listOf(row.name.trim().lowercase(), row.phone.orEmpty().filter(Char::isDigit), row.boarding.orEmpty(), row.dropoff.orEmpty())
+            .joinToString("|")
+
+internal fun buildPassengerTimelineRenderSnapshot0394(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+    store: TripStore,
+    passengerStore: PassengerIdentityStore,
+    completionService: PassengerCompletionService,
+): PassengerTimelineRenderSnapshot0394 {
+    val externalMetadata = passengerStore.externalMetadataSnapshot0394()
+    val localBookings = trip?.let { store.bookingsFor(it.id) }.orEmpty()
+    val rows = enhancedPassengerRows(
+        entry = entry,
+        trip = trip,
+        store = store,
+        passengerStore = passengerStore,
+        externalMetadataSnapshot0394 = externalMetadata,
+        localBookingsSnapshot0394 = localBookings,
+    )
+    val profilesByRowKey = rows.mapNotNull { row ->
+        completionService.resolvedProfile(row)?.let { profile -> passengerTimelineRowKey0394(row) to profile }
+    }.toMap()
+    val historiesByProfileId = passengerStore.persistentHistorySnapshot(
+        profilesByRowKey.values.map(PassengerProfile::id).toSet(),
+    )
+    val completedRowKeys = rows.mapNotNull { row ->
+        val rowKey = passengerTimelineRowKey0394(row)
+        val profile = profilesByRowKey[rowKey] ?: return@mapNotNull null
+        val occurrenceKey = completionService.occurrenceKey(entry, row)
+        val completed = historiesByProfileId[profile.id]
+            ?.rides
+            .orEmpty()
+            .any { record -> record.rideKey == occurrenceKey && record.status == PassengerOccurrenceStatus.COMPLETED }
+        rowKey.takeIf { completed }
+    }.toSet()
+    return PassengerTimelineRenderSnapshot0394(
+        rows = rows,
+        profilesByRowKey = profilesByRowKey,
+        bookingsById = localBookings.associateBy(Booking::id),
+        historiesByProfileId = historiesByProfileId,
+        completedRowKeys = completedRowKeys,
+    )
+}
+
 @Composable
 internal fun EnhancedPassengerTimelineSection(
     entry: TripTimelineEntry,
@@ -92,24 +151,43 @@ internal fun EnhancedPassengerTimelineSection(
     val scope = rememberCoroutineScope()
     var identityRevision by remember { mutableIntStateOf(0) }
     var completionRevision by remember { mutableIntStateOf(0) }
-    val rawRows = enhancedPassengerRows(entry, trip, store, passengerStore)
+    var renderSnapshot0394 by remember(entry.tripId, trip?.id) {
+        mutableStateOf<PassengerTimelineRenderSnapshot0394?>(null)
+    }
+    LaunchedEffect(entry, trip, identityRevision, completionRevision) {
+        renderSnapshot0394 = withContext(Dispatchers.IO) {
+            buildPassengerTimelineRenderSnapshot0394(
+                entry = entry,
+                trip = trip,
+                store = store,
+                passengerStore = passengerStore,
+                completionService = completionService,
+            )
+        }
+    }
+    val renderSnapshot = renderSnapshot0394
+    val rawRows = renderSnapshot?.rows.orEmpty()
     val externalObservationKey = rawRows
         .filter { BookingSource.BLABLACAR in it.sources }
         .joinToString("|") { row ->
             listOf(row.externalPassengerId.orEmpty(), row.name, row.phone.orEmpty(), row.externalReservationKey.orEmpty()).joinToString("~")
         }
     LaunchedEffect(entry.tripId, entry.blablaTripId, entry.blablaProfileUuid, externalObservationKey) {
-        var observed = false
-        rawRows.filter { BookingSource.BLABLACAR in it.sources }.forEach { row ->
-            val profile = passengerStore.observeExternalPassenger(
-                displayName = row.name,
-                whatsapp = row.phone,
-                externalPassengerId = row.externalPassengerId,
-                reservationKey = row.externalReservationKey,
-                externalTripId = entry.blablaTripId,
-                driverProfileUuid = entry.blablaProfileUuid,
-            )
-            if (profile != null) observed = true
+        if (externalObservationKey.isBlank()) return@LaunchedEffect
+        val observed = withContext(Dispatchers.IO) {
+            var anyObserved = false
+            rawRows.filter { BookingSource.BLABLACAR in it.sources }.forEach { row ->
+                val profile = passengerStore.observeExternalPassenger(
+                    displayName = row.name,
+                    whatsapp = row.phone,
+                    externalPassengerId = row.externalPassengerId,
+                    reservationKey = row.externalReservationKey,
+                    externalTripId = entry.blablaTripId,
+                    driverProfileUuid = entry.blablaProfileUuid,
+                )
+                if (profile != null) anyObserved = true
+            }
+            anyObserved
         }
         if (observed) identityRevision++
     }
@@ -119,6 +197,10 @@ internal fun EnhancedPassengerTimelineSection(
     val completionRefresh = completionRevision
     if (hasExternalTripActionEvidence(entry)) {
         TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
+    }
+    if (renderSnapshot == null) {
+        Text("Carregando passageiros…", style = MaterialTheme.typography.bodySmall)
+        return
     }
     if (rawRows.isEmpty()) return
 
@@ -161,13 +243,9 @@ internal fun EnhancedPassengerTimelineSection(
 
     rows.forEachIndexed { index, passenger ->
         if (index > 0) HorizontalDivider()
-        val rowProfile = passenger.passengerId?.let(passengerStore::profile)
-            ?: passengerStore.profileByExternalPassengerId(passenger.externalPassengerId)
-        val currentBooking = trip?.let { currentTrip ->
-            passenger.localBookingId?.let { bookingId ->
-                store.bookingsFor(currentTrip.id).firstOrNull { it.id == bookingId }
-            }
-        }
+        val rowKey0394 = passengerTimelineRowKey0394(passenger)
+        val rowProfile = renderSnapshot.profilesByRowKey[rowKey0394]
+        val currentBooking = passenger.localBookingId?.let(renderSnapshot.bookingsById::get)
         var statusMenuOpen by remember(passenger.localBookingId, passenger.externalPassengerId) {
             mutableStateOf(false)
         }
@@ -177,7 +255,7 @@ internal fun EnhancedPassengerTimelineSection(
         val pendingApproval = currentBooking?.status == BookingStatus.REQUESTED &&
             currentBooking.source == BookingSource.ROTA_CERTA
         val rejected = currentBooking?.status == BookingStatus.REJECTED
-        val completed = completionService.isCompleted(entry, passenger)
+        val completed = rowKey0394 in renderSnapshot.completedRowKeys
         val statusLabel = when {
             rejected -> "Recusado"
             pendingApproval -> "Aguardando aprovação"
@@ -698,7 +776,7 @@ internal fun EnhancedPassengerTimelineSection(
                 overflow = TextOverflow.Ellipsis,
             )
             val canonicalProfile = rowProfile
-            val persistentHistory = canonicalProfile?.let { passengerStore.persistentHistory(it.id) }
+            val persistentHistory = canonicalProfile?.id?.let(renderSnapshot.historiesByProfileId::get)
             val identityLabel = when {
                 canonicalProfile?.blocked == true -> "⛔ NÃO ACEITO NO MEU CARRO • ${persistentHistory?.totalRides ?: 0} concluída(s) • ${persistentHistory?.totalOccurrences ?: 0} ocorrência(s)"
                 persistentHistory != null -> "${persistentHistory.totalRides} concluída(s) • ${persistentHistory.totalOccurrences} ocorrência(s)/reserva(s)"
@@ -1217,10 +1295,12 @@ internal fun enhancedPassengerRows(
     trip: Trip?,
     store: TripStore,
     passengerStore: PassengerIdentityStore,
+    externalMetadataSnapshot0394: Map<String, ExternalPassengerMetadata>? = null,
+    localBookingsSnapshot0394: List<Booking>? = null,
 ): List<EnhancedPassengerCardRow> {
     val rows = entry.blablaPassengers.map { passenger ->
         val metadataKey = externalPassengerReservationKey(entry.blablaProfileUuid, passenger.booking_href)
-        val metadata = passengerStore.externalMetadata(metadataKey)
+        val metadata = externalMetadataSnapshot0394?.get(metadataKey) ?: passengerStore.externalMetadata(metadataKey)
         val hrefExternalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
         val externalId = metadata?.externalPassengerId?.takeIf(String::isNotBlank) ?: hrefExternalId
         val boarding = passengerTimelinePlaceLabel(passenger.name, passenger.boarding)
@@ -1250,7 +1330,8 @@ internal fun enhancedPassengerRows(
 
     if (trip != null) {
         val stops = trip.stops.associateBy(TripStop::id)
-        val local = store.bookingsFor(trip.id)
+        val local = (localBookingsSnapshot0394 ?: store.bookingsFor(trip.id))
+            .filter { it.tripId == trip.id }
             .filter { it.capacityClaimType == CapacityClaimType.PASSENGER }
             .filter { it.status == BookingStatus.CONFIRMED || it.status == BookingStatus.HELD }
             .filter { it.seats > 0 }

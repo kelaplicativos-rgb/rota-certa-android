@@ -104,8 +104,8 @@ fun TripTimelineScreen(
     val archiveStore = remember(context) { TripTimelineArchiveStore(context) }
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
-    var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }
-    var publicSearchResponse by remember { mutableStateOf(publicSearchStore.lastResponse()) }
+    var collectorResponse by remember { mutableStateOf<BlaBlaCollectorMonthResponse?>(null) }
+    var publicSearchResponse by remember { mutableStateOf<BlaBlaPublicSearchResponse?>(null) }
     var publicSearchClearToken by remember { mutableIntStateOf(0) }
     var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
@@ -117,7 +117,7 @@ fun TripTimelineScreen(
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
-    var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
+    var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
     val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
@@ -140,6 +140,16 @@ fun TripTimelineScreen(
         }
     }
     LaunchedEffect(Unit) {
+        val startupSnapshot = withContext(Dispatchers.IO) {
+            Triple(
+                collectorStore.lastResponseRecoveringDynamicSessions(),
+                publicSearchStore.lastResponse(),
+                referenceStore.read(),
+            )
+        }
+        collectorResponse = startupSnapshot.first
+        publicSearchResponse = startupSnapshot.second
+        referenceOrigin = startupSnapshot.third
         while (true) {
             currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
             delay(30_000L)
@@ -189,8 +199,12 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val publicExternalBindings = store.publicExternalBindings()
-    val internallyCancelledExternalReservationKeys = passengerIdentityStore.internallyCancelledExternalReservationKeys()
+    val publicExternalBindings = remember(trips, bookings, collectorResponse) {
+        store.publicExternalBindings()
+    }
+    val internallyCancelledExternalReservationKeys = remember(trips, bookings, collectorResponse) {
+        passengerIdentityStore.internallyCancelledExternalReservationKeys()
+    }
     val collectorResponseForTimeline = remember(collectorResponse, internallyCancelledExternalReservationKeys) {
         applyInternalCancellationTombstones(collectorResponse, internallyCancelledExternalReservationKeys)
     }
@@ -294,8 +308,10 @@ fun TripTimelineScreen(
         }
     }
 
-    val seatSyncStates = seatSyncStateStore.snapshot().associateBy { state ->
-        state.profileUuid.trim().lowercase() + "|" + state.tripId
+    val seatSyncStates = remember(entries, autoSyncToken, forceAllSyncToken, showSync) {
+        seatSyncStateStore.snapshot().associateBy { state ->
+            state.profileUuid.trim().lowercase() + "|" + state.tripId
+        }
     }
     val pendingSyncEntries = entries.filter { entry ->
         val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
@@ -1320,7 +1336,7 @@ private fun TimelineEntryCard(
     val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
-    val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
+    val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
 
