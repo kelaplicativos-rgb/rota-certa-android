@@ -1,19 +1,19 @@
 {
   "schema_version": 5,
-  "request_id": "live-2026-10-10-stl-sa-identity-html",
-  "collected_at": "2026-09-01T13:25:14.592Z",
+  "request_id": "live-2026-10-01-sa-stl-identity-html",
+  "collected_at": "2026-09-01T13:31:36.651Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
   "request": {
-    "from": "São Thomé das Letras, MG, Brasil",
-    "to": "Santo André, SP, Brasil",
-    "date": "2026-10-10",
+    "from": "Santo André, SP, Brasil",
+    "to": "São Thomé das Letras, MG, Brasil",
+    "date": "2026-10-01",
     "seats": 1
   },
   "resolved_place_ids": {
-    "from_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-    "to_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
   },
   "validation": {
     "http_status": 200,
@@ -22,8 +22,8 @@
     "exact_destination_match": true,
     "route_visible_in_page": true,
     "content_confirmed": true,
-    "final_url": "https://www.blablacar.com.br/search?fn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&tn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&db=2026-10-10&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
-    "page_title": "Caronas e viagens para Santo André, SP, Brasil"
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-10-01&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
   },
   "zero_results_confirmed": false,
   "driver_cards_count": 1,
@@ -37,15 +37,15 @@
   },
   "trips": [
     {
-      "driver_name": "Rogerio",
-      "departure_time": "00:50",
-      "arrival_time": "05:20",
-      "actual_departure": "Três Corações",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 77,00",
+      "driver_name": "Wilson",
+      "departure_time": "09:30",
+      "arrival_time": "14:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Lourenço",
+      "price": "R$ 89,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=U0omnXcwTCGJNp15t5m94A7E3o9EP1ROqfQ2ThgNkNgw&requested_seats=1&search_origin=SEARCH&search_uuid=534a269d-7730-4c21-8936-9d79b799bde0",
+      "trip_href": "/trip?source=CARPOOLING&id=-VxAIbmfTz6mJHaoO7BhaQ27qMEN0qQD-Sw69cJeIY0w&requested_seats=1&search_origin=SEARCH&search_uuid=f95c4021-b99f-4f3e-a624-76a83bb06169",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
