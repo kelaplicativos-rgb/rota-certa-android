@@ -207,6 +207,7 @@ private fun TripApp(
     // Normal mutations flow through TripMutationCoordinator0387 by canonicalTripId.
     var publicAgendaSyncRevision by remember { mutableStateOf(-1) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
@@ -276,6 +277,8 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
+        val priorAllocation = previousRotaCertaSeatAllocation
+        previousRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation
         val beforeTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
         val (changedTrips, _) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             store.reconcileOperationalInventory(
@@ -304,7 +307,36 @@ private fun TripApp(
                         reconcileBookingInventory = false,
                     )
                 }
+                val externalAffected = if (priorAllocation != null && priorAllocation != appSettings.rotaCertaSeatAllocation) {
+                    val publishedBindings = store.publicExternalBindings()
+                    BlaBlaCollectorStateStore(activity).lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+                        .asSequence()
+                        .filterNot(BlaBlaCollectorTrip::identity_conflict)
+                        .filter { source -> source.profile_uuid.isNotBlank() && !source.trip_id.isNullOrBlank() }
+                        .filter { source ->
+                            publishedBindings.any { binding ->
+                                binding.profileUuid.equals(source.profile_uuid, ignoreCase = true) &&
+                                    binding.blablaTripId == source.trip_id
+                            }
+                        }
+                        .filter { source ->
+                            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, priorAllocation) !=
+                                PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, appSettings.rotaCertaSeatAllocation)
+                        }
+                        .toList()
+                } else emptyList()
+                externalAffected.forEach { source ->
+                    mutationCoordinator.recordExternalTenantMutation(
+                        sourceTrip = source,
+                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    )
+                }
                 mutationCoordinator.drainPending()
+                UnifiedDebugEventStore.record(
+                    "TENANT_SEAT_ALLOCATION_EXACT_IMPACT",
+                    activity.packageName,
+                    "previous=${priorAllocation ?: -1} current=${appSettings.rotaCertaSeatAllocation} localAffected=${changedLocalIds.size} externalAffected=${externalAffected.size} fullSyncRequested=false blablaNetworkSync=false",
+                )
             }
             UnifiedDebugEventStore.record(
                 "OPERATIONAL_INVENTORY_RECONCILED",
