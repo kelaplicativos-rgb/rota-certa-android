@@ -294,7 +294,31 @@ internal class TripMutationCoordinator0387(
 
     fun recordExternalManualMutation(
         sourceTrip: BlaBlaCollectorTrip,
+        configuredRotaCertaSeatAllocation: Int? = null,
         mutationType: String = "BLABLACAR_MANUAL_CARD_SYNC",
+    ): TripPublicationOutboxEvent0387? = recordExternalMutation(
+        sourceTrip = sourceTrip,
+        configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
+        mutationType = mutationType,
+        eventSource = "BLABLACAR_MANUAL_CARD",
+    )
+
+    fun recordExternalTenantMutation(
+        sourceTrip: BlaBlaCollectorTrip,
+        configuredRotaCertaSeatAllocation: Int,
+        mutationType: String = "TENANT_SEAT_ALLOCATION_CHANGED",
+    ): TripPublicationOutboxEvent0387? = recordExternalMutation(
+        sourceTrip = sourceTrip,
+        configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
+        mutationType = mutationType,
+        eventSource = "ROTA_CERTA_SETTINGS",
+    )
+
+    private fun recordExternalMutation(
+        sourceTrip: BlaBlaCollectorTrip,
+        configuredRotaCertaSeatAllocation: Int?,
+        mutationType: String,
+        eventSource: String,
     ): TripPublicationOutboxEvent0387? {
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
@@ -319,15 +343,17 @@ internal class TripMutationCoordinator0387(
         }
         val accountId = accounts.single().id
         val canonicalTripId = strongExternalCanonicalTripId0387(outbox.tenantId, accountId, profileUuid, tripId)
-        val allocation = store.trips()
-            .firstOrNull { it.blablaProfileUuid.equals(profileUuid, true) && it.blablaTripId == tripId }
-            ?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+        val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
+            ?: store.trips()
+                .firstOrNull { it.blablaProfileUuid.equals(profileUuid, true) && it.blablaTripId == tripId }
+                ?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+            ?: 0
         val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation)
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
             operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
             mutationType = mutationType,
-            source = "BLABLACAR_MANUAL_CARD",
+            source = eventSource,
             snapshot = TripPublicationSnapshot0387(
                 externalTrip = sourceTrip,
                 externalAccountId = accountId,
