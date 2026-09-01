@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -209,6 +210,7 @@ private fun TripApp(
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
+    val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
@@ -426,7 +428,7 @@ private fun TripApp(
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
     val requestFullTimelineRefresh = {
-        if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+        if (shouldStartAgendaFullRefresh0388(screen == TripScreen.TIMELINE, refreshAllRunning)) {
             AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
             AgendaSyncCrashTraceStore.arm(activity)
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
@@ -794,7 +796,26 @@ private fun TripApp(
                         screen = TripScreen.TIMELINE
                     },
                 )
-                TripScreen.TIMELINE -> TripTimelineScreen(
+                TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    refreshing = refreshAllRunning,
+                    canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
+                    onRefresh = requestFullTimelineRefresh,
+                    onDecision = { decision ->
+                        if (
+                            decision.accepted ||
+                            decision.outcome == AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING
+                        ) {
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_PULL_GESTURE_RECOGNIZED",
+                                activity.packageName,
+                                "accepted=${decision.accepted} dyPx=${decision.deltaY.toInt()} dxPx=${decision.deltaX.toInt()} " +
+                                    "listAtTop=${decision.eligibleAtStart} blockedByRefresh=${decision.refreshingAtStart}",
+                            )
+                        }
+                    },
+                ) {
+                    TripTimelineScreen(
                     trips = trips,
                     bookings = bookings,
                     store = store,
@@ -828,8 +849,7 @@ private fun TripApp(
                         ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
                     focusedBookingId = focusedBookingId,
                     reservationPendingOnly = reservationPendingOnly,
-                    refreshing = refreshAllRunning,
-                    onRefresh = requestFullTimelineRefresh,
+                    listState = timelineListState,
                     listModifier = Modifier.weight(1f),
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
@@ -847,7 +867,8 @@ private fun TripApp(
                             }
                         }
                     },
-                )
+                    )
+                }
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },

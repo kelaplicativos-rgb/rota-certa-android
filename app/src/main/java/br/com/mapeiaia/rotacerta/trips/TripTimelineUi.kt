@@ -11,6 +11,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,7 +33,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -88,8 +89,7 @@ fun TripTimelineScreen(
     focusedTripId: String? = null,
     focusedBookingId: String? = null,
     reservationPendingOnly: Boolean = false,
-    refreshing: Boolean = false,
-    onRefresh: () -> Unit = {},
+    listState: LazyListState,
     listModifier: Modifier = Modifier,
     onFirstUsableFrame: (Int) -> Unit = {},
 ) {
@@ -757,9 +757,7 @@ fun TripTimelineScreen(
         else -> null
     }
 
-    PullToRefreshBox(
-        isRefreshing = refreshing,
-        onRefresh = onRefresh,
+    Box(
         modifier = listModifier.fillMaxWidth(),
     ) {
         if (timelineEmptyMessage != null) {
@@ -769,6 +767,7 @@ fun TripTimelineScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
+                state = listState,
                 verticalArrangement = Arrangement.spacedBy(0.dp),
             ) {
         timelineCalendarDays.forEach { day ->

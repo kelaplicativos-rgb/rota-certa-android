@@ -28,13 +28,17 @@ class AgendaSyncPanelScroll0385Test {
     }
 
     @Test
-    fun pullToRefreshRemainsRestrictedToTimelineList() {
+    fun syncModalRemainsIndependentFromTheSingleTimelinePullOwner() {
         val activity = source("TripsActivity.kt")
         val timeline = source("TripTimelineUi.kt")
+        val gesture = source("AgendaPullRefreshGesture0388.kt")
 
         assertFalse(activity.contains("PullToRefreshBox("))
-        assertTrue(timeline.contains("PullToRefreshBox("))
+        assertFalse(timeline.contains("PullToRefreshBox("))
+        assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
         assertTrue(timeline.contains("modifier = listModifier.fillMaxWidth()"))
-        assertTrue(timeline.indexOf("PullToRefreshBox(") > timeline.indexOf("OutlinedTextField("))
+        assertTrue(timeline.contains("state = listState"))
+        assertTrue(gesture.contains("if (decision.accepted)"))
+        assertTrue(gesture.contains("change.consume()"))
     }
 }
