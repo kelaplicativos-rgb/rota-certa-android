@@ -86,9 +86,20 @@ function cleanPrice(text) {
   return match ? match[0].replace(/\s+/g, ' ').trim() : null;
 }
 
-function uuidFromProfileHref(href = '') {
-  const match = String(href).match(/\/user\/show\/([0-9a-f-]{36})(?:[/?#]|$)/i);
-  return match ? match[1].toLowerCase() : null;
+const UUID_RE_GLOBAL = /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/ig;
+
+function uuidsFromHrefs(hrefs = []) {
+  const found = new Set();
+  for (const href of hrefs) {
+    for (const match of String(href || '').matchAll(UUID_RE_GLOBAL)) found.add(match[0].toLowerCase());
+    UUID_RE_GLOBAL.lastIndex = 0;
+  }
+  return [...found];
+}
+
+function strongUuidFromProfileHrefs(hrefs = []) {
+  const found = uuidsFromHrefs(hrefs);
+  return found.length === 1 ? found[0] : null;
 }
 
 function extractDemand(text = '') {
@@ -180,7 +191,9 @@ try {
       price_text: text('[data-testid="e2e-tripcard-price"]'),
       text: card.innerText || '',
       href: card.querySelector('a[href*="/trip"]')?.getAttribute('href') || null,
-      profile_href: card.querySelector('a[href*="/user/show/"]')?.getAttribute('href') || null,
+      profile_hrefs: Array.from(card.querySelectorAll('a[href]'))
+        .map((a) => a.getAttribute('href'))
+        .filter((href) => href && /profile|member|user/i.test(href)),
     };
   }));
 
@@ -198,8 +211,9 @@ try {
         flags,
         availability: flags.includes('Cheio') ? 'full' : flags.includes('Esgotará em breve') ? 'scarce' : 'available_or_unspecified',
         trip_href: card.href,
-        profile_href: card.profile_href,
-        profile_uuid: uuidFromProfileHref(card.profile_href),
+        profile_hrefs: card.profile_hrefs,
+        profile_uuid: strongUuidFromProfileHrefs(card.profile_hrefs),
+        profile_uuid_evidence: strongUuidFromProfileHrefs(card.profile_hrefs) ? 'PUBLIC_CARD_PROFILE_LINK' : null,
       };
     });
 
