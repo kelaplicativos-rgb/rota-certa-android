@@ -17,10 +17,16 @@ jobs:
       max-parallel: 7
       matrix:
         include:
-          - date: 2026-09-22
-            direction: volta
-          - date: 2026-09-29
-            direction: volta
+          - { date: 2026-09-02, direction: ida }
+          - { date: 2026-09-02, direction: volta }
+          - { date: 2026-09-09, direction: ida }
+          - { date: 2026-09-09, direction: volta }
+          - { date: 2026-09-15, direction: ida }
+          - { date: 2026-09-15, direction: volta }
+          - { date: 2026-09-22, direction: ida }
+          - { date: 2026-09-22, direction: volta }
+          - { date: 2026-09-29, direction: ida }
+          - { date: 2026-09-29, direction: volta }
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -103,4 +109,3 @@ jobs:
             git push
           fi
 
-# zero-state-rerun: 2026-09-01
