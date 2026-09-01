@@ -84,6 +84,11 @@ internal fun validateBlaBlaSyncDateSelection(
     else -> BlaBlaSyncDateValidation(error = "Modo de data não suportado para esta sincronização.")
 }
 
+internal fun shouldExposeDateScopedCollectorStatusOutsideDialog0391(
+    dateScoped: Boolean,
+    failure: Boolean = false,
+): Boolean = failure || !dateScoped
+
 private enum class BlaBlaSyncDateField {
     SINGLE,
     START,
@@ -168,7 +173,18 @@ fun BlaBlaCollectorPanel(
             " • $summary"
         }.orEmpty()
         message = "$messagePrefix$scopeLabel • ${published.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${published.trips.size} viagens."
-        onChanged(message.orEmpty())
+        val exposeOutsideDialog = shouldExposeDateScopedCollectorStatusOutsideDialog0391(
+            dateScoped = scopeDates.isNotEmpty(),
+        )
+        if (exposeOutsideDialog) {
+            onChanged(message.orEmpty())
+        } else {
+            UnifiedDebugEventStore.record(
+                "AGENDA_DATE_SCOPE_STATUS_LOCAL_ONLY_0391",
+                context.packageName,
+                "phase=published dateCount=${scopeDates.size} timelineBanner=false",
+            )
+        }
         UnifiedDebugEventStore.record(
             "AGENDA_SYNC_SCOPE_PUBLISHED",
             context.packageName,
@@ -230,7 +246,15 @@ fun BlaBlaCollectorPanel(
                 } else if (account != null && !syncDateScope.isNullOrEmpty()) {
                     archiving = false
                     message = "${account.displayLabel}: escopo de data/período concluído ✅"
-                    onChanged(message.orEmpty())
+                    if (shouldExposeDateScopedCollectorStatusOutsideDialog0391(dateScoped = true)) {
+                        onChanged(message.orEmpty())
+                    } else {
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_DATE_SCOPE_STATUS_LOCAL_ONLY_0391",
+                            context.packageName,
+                            "phase=account_complete timelineBanner=false",
+                        )
+                    }
                     UnifiedDebugEventStore.record(
                         "AGENDA_DATE_SCOPE_ACCOUNT_SYNC_FINISHED",
                         context.packageName,
@@ -503,7 +527,15 @@ fun BlaBlaCollectorPanel(
                     locale = dateLocale,
                 )
                 message = "Sincronizando $summary • conta ${syncCursor + 1}/${syncQueue.size}: ${account.displayLabel}…"
-                onChanged(message.orEmpty())
+                if (shouldExposeDateScopedCollectorStatusOutsideDialog0391(dateScoped = true)) {
+                    onChanged(message.orEmpty())
+                } else {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_DATE_SCOPE_STATUS_LOCAL_ONLY_0391",
+                        context.packageName,
+                        "phase=account_launch timelineBanner=false",
+                    )
+                }
                 UnifiedDebugEventStore.record(
                     "AGENDA_SYNC_SESSION_LAUNCH",
                     context.packageName,
@@ -702,7 +734,15 @@ fun BlaBlaCollectorPanel(
                         syncing = true
                         archiving = false
                         message = "Sincronizando $summary • 0/${accounts.size} contas processadas…"
-                        onChanged(message.orEmpty())
+                        if (shouldExposeDateScopedCollectorStatusOutsideDialog0391(dateScoped = true)) {
+                            onChanged(message.orEmpty())
+                        } else {
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_DATE_SCOPE_STATUS_LOCAL_ONLY_0391",
+                                context.packageName,
+                                "phase=requested timelineBanner=false",
+                            )
+                        }
                         UnifiedDebugEventStore.record(
                             "AGENDA_DATE_SCOPE_SYNC_REQUESTED",
                             context.packageName,
