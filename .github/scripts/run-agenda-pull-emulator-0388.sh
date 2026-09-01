@@ -6,8 +6,16 @@ readonly TEST_APK='app/build/outputs/apk/androidTest/debug/app-debug-androidTest
 readonly RUNNER='br.com.mapeiaia.rotacerta.test/androidx.test.runner.AndroidJUnitRunner'
 readonly TEST_CLASS='br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388InstrumentedTest'
 
-./gradlew :app:assembleDebug :app:assembleDebugAndroidTest \
-  --no-daemon --max-workers=1 --no-parallel --stacktrace
+adb wait-for-device
+package_service_ready=0
+for _attempt in $(seq 1 120); do
+  if adb shell service check package 2>/dev/null | grep -Fq 'Service package: found'; then
+    package_service_ready=1
+    break
+  fi
+  sleep 2
+done
+test "$package_service_ready" -eq 1
 
 test -s "$APP_APK"
 test -s "$TEST_APK"
