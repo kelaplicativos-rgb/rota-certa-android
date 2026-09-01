@@ -86,6 +86,11 @@ function cleanPrice(text) {
   return match ? match[0].replace(/\s+/g, ' ').trim() : null;
 }
 
+function uuidFromProfileHref(href = '') {
+  const match = String(href).match(/\/user\/show\/([0-9a-f-]{36})(?:[/?#]|$)/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
 function extractDemand(text = '') {
   const normalized = String(text).replace(/\\s+/g, ' ').trim();
   const busy = normalized.match(/Trecho\\s+concorrido!?\\s*(?:É|E)\\s+bom\\s+reservar\\s+logo\\.?/i)?.[0]?.trim() || null;
@@ -175,6 +180,7 @@ try {
       price_text: text('[data-testid="e2e-tripcard-price"]'),
       text: card.innerText || '',
       href: card.querySelector('a[href*="/trip"]')?.getAttribute('href') || null,
+      profile_href: card.querySelector('a[href*="/user/show/"]')?.getAttribute('href') || null,
     };
   }));
 
@@ -192,6 +198,8 @@ try {
         flags,
         availability: flags.includes('Cheio') ? 'full' : flags.includes('Esgotará em breve') ? 'scarce' : 'available_or_unspecified',
         trip_href: card.href,
+        profile_href: card.profile_href,
+        profile_uuid: uuidFromProfileHref(card.profile_href),
       };
     });
 
