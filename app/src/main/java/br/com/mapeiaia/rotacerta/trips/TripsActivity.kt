@@ -375,9 +375,13 @@ private fun TripApp(
             )
             if (result.localPublished + result.externalPublished > 0) {
                 refresh()
-                message = "Agenda pública atualizada: ${result.localPublished + result.externalPublished} viagem(ns) • ${result.seatClaimsSynced} ocupação(ões) sincronizada(s)."
+                // Successful background publication is intentionally silent in the UI.
+                // The coordinator checkpoint above remains the audit/diagnostic evidence.
+                message = null
             } else if (result.failures > 0) {
                 message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
+            } else {
+                message = null
             }
         }
     }
