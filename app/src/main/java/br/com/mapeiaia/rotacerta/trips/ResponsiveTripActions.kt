@@ -64,11 +64,13 @@ fun ResponsiveTripActions(
         if (agendaToolbar && showPublicSearch) TripStore(context).trips() else emptyList()
     }
     val effectiveActions = if (agendaToolbar) {
-        actions + ResponsiveTripAction(
-            label = if (showPublicSearch) "Fechar consulta pública" else "Consulta pública",
-            traceKey = "public_search",
-            onClick = { showPublicSearch = !showPublicSearch },
-        )
+        listOf(
+            ResponsiveTripAction(
+                label = if (showPublicSearch) "Fechar consulta pública" else "Consulta pública",
+                traceKey = "public_search",
+                onClick = { showPublicSearch = !showPublicSearch },
+            ),
+        ) + actions
     } else {
         actions
     }
