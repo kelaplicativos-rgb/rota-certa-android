@@ -253,7 +253,13 @@ internal class BlaBlaBrowserOrchestrator {
             UnifiedDebugEventStore.record(
                 "BROWSER_REQUEST_DECODE_ERROR",
                 androidContext.packageName,
-                "accountId=${executionContext.accountId.take(80)} request=${request.name} error=${error.javaClass.simpleName}",
+                "accountId=${executionContext.accountId.take(80)} request=${request.name} " +
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "BROWSER_REQUEST_DECODE",
+                        component = "BlaBlaBrowserOrchestrator",
+                        method = "decodeResult",
+                    ),
             )
             null
         }
@@ -284,7 +290,13 @@ internal class BlaBlaBrowserOrchestrator {
         UnifiedDebugEventStore.record(
             "BROWSER_REQUEST_SCRIPT_ERROR",
             context.packageName,
-            "accountId=${executionContext.accountId.take(80)} request=${request.name} error=${error.javaClass.simpleName}",
+            "accountId=${executionContext.accountId.take(80)} request=${request.name} " +
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "BROWSER_REQUEST_SCRIPT",
+                    component = "BlaBlaBrowserOrchestrator",
+                    method = "recordScriptError",
+                ),
         )
     }
 
