@@ -132,3 +132,4 @@ jobs:
             git commit -m 'data(blablacar): September 2026 search-only audit [skip ci]'
             git push
           fi
+# manual-rerun: 2026-09-01
