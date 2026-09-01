@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -134,27 +133,10 @@ internal fun AgendaAutomaticSyncScreen0397() {
             }
         }
 
-        Button(
-            onClick = {
-                AgendaBackgroundSync0392.enqueueImmediate(context, "manual")
-                message = "Sincronização extraordinária solicitada."
-                reload()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Sincronizar agora")
-        }
-        OutlinedButton(
-            onClick = { reload() },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Atualizar status")
-        }
-
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         Text(
-            "O Android executa o trabalho periódico com WorkManager. O horário exibido é uma previsão: Doze, App Standby, economia de bateria e restrições do fabricante podem adiar a execução. Após “Forçar parada” nas configurações do Android, a execução automática pode ficar bloqueada até o app ser aberto novamente.",
+            "Esta é a única central de sincronização. O funcionamento é automático e os resultados ficam visíveis na Timeline. O Android executa o trabalho periódico com WorkManager; o horário exibido é uma previsão: Doze, App Standby, economia de bateria e restrições do fabricante podem adiar a execução. Após “Forçar parada” nas configurações do Android, a execução automática pode ficar bloqueada até o app ser aberto novamente.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
