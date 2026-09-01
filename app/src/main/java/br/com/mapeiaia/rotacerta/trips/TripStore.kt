@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.TenantStorageScope
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -56,12 +57,56 @@ class TripStore(context: Context) {
         return normalized
     }
 
-    fun saveTrip(trip: Trip): Trip {
-        val normalized = trip.normalizedRecordOrigin().copy(updatedAtMillis = System.currentTimeMillis())
+    fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
+        val incoming = trip.normalizedRecordOrigin()
+        val existing = trips().firstOrNull { it.id == incoming.id }
+        if (existing != null && existing.canonicalRevision > 0L && incoming.canonicalRevision < existing.canonicalRevision) {
+            UnifiedDebugEventStore.record(
+                "TRIP_CANONICAL_WRITE",
+                appContext.packageName,
+                "tenantId=" + tenantScope.tenantId +
+                    " internalTripId=" + incoming.id +
+                    " source=TripStore oldRevision=" + existing.canonicalRevision +
+                    " newRevision=" + incoming.canonicalRevision +
+                    " changedFields=unknown publicationTarget=LOCAL result=SKIP_STALE_REVISION" +
+                    " reason=older_local_snapshot configVersion=" + existing.seatAllocationVersionUsed,
+            )
+            return@synchronized existing
+        }
+        val semanticChanged = existing == null || canonicalTripComparable0395(existing) != canonicalTripComparable0395(incoming)
+        if (existing != null && !semanticChanged && incoming.canonicalRevision <= existing.canonicalRevision) {
+            return@synchronized existing
+        }
+        val nextRevision = if (existing == null) {
+            maxOf(1L, incoming.canonicalRevision)
+        } else {
+            nextCanonicalTripRevision0395(existing.canonicalRevision, incoming.canonicalRevision, semanticChanged)
+        }
+        val normalized = incoming.copy(
+            canonicalRevision = nextRevision,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
         val current = trips().filterNot { it.id == normalized.id }
-        prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).apply()
-        return normalized
+        require(prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).commit()) {
+            "Falha ao persistir estado canônico da viagem."
+        }
+        UnifiedDebugEventStore.record(
+            "TRIP_CANONICAL_WRITE",
+            appContext.packageName,
+            "tenantId=" + tenantScope.tenantId +
+                " internalTripId=" + normalized.id +
+                " source=TripStore oldRevision=" + (existing?.canonicalRevision ?: 0L) +
+                " newRevision=" + normalized.canonicalRevision +
+                " changedFields=trip publicationTarget=LOCAL result=UPDATE" +
+                " reason=canonical_mutation configVersion=" + normalized.seatAllocationVersionUsed,
+        )
+        normalized
     }
+
+    private fun canonicalTripComparable0395(trip: Trip): Trip = trip.copy(
+        canonicalRevision = 0L,
+        updatedAtMillis = 0L,
+    )
 
     /**
      * Reconciles active/future trips to the channel-derived inventory. The old
@@ -329,6 +374,7 @@ class TripStore(context: Context) {
     }.getOrNull()
 
     companion object {
+        private val CANONICAL_LOCK = Any()
         private const val PREFS = "rota_certa_trips_stage47"
         private const val KEY_TRIPS = "trips"
         private const val KEY_BOOKINGS = "bookings"
