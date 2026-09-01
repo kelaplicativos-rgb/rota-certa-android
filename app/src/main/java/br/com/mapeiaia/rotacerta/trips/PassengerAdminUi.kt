@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -203,7 +206,7 @@ fun PassengerAdminScreen(
         reloadRemote()
     }
 
-    val selectedHistory = historyProfileId?.let(passengerStore::persistentHistory)
+    val selectedHistory = historyProfileId?.let(passengerHistories::get)
     if (historyProfileId != null) {
         PassengerHistoryPanel(
             history = selectedHistory,
@@ -433,7 +436,12 @@ fun PassengerAdminScreen(
         Text("Nenhum passageiro encontrado.")
     }
 
-    candidates.forEach { candidate ->
+    if (candidates.isNotEmpty()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(candidates, key = PassengerAdminCandidate::key) { candidate ->
         val access = candidate.remoteAccess
         val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
             ?: candidate.agendaAccessWhatsapp.ifBlank { candidate.whatsapp }
@@ -609,6 +617,8 @@ fun PassengerAdminScreen(
                         ) { Text("Redefinir senha") }
                     }
                 }
+            }
+        }
             }
         }
     }
