@@ -263,9 +263,10 @@ internal class TripMutationCoordinator0387(
         configuredRotaCertaSeatAllocation: Int? = null,
         reconcileBookingInventory: Boolean = true,
     ): TripPublicationOutboxEvent0387? {
-        if (canonicalTripId.isBlank()) return null
+        if (canonicalTripId.isBlank() || !store.onlineSettings().configured) return null
         if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
         val original = store.getTrip(canonicalTripId) ?: return null
+        if (original.status == TripStatus.DRAFT) return null
         if (!original.isCanonicalLocalPublishSource()) return null
         if (original.status == TripStatus.CANCELLED) {
             return recordTombstone(
@@ -327,6 +328,7 @@ internal class TripMutationCoordinator0387(
         mutationType: String,
         eventSource: String,
     ): TripPublicationOutboxEvent0387? {
+        if (!store.onlineSettings().configured) return null
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
         if (sourceTrip.identity_conflict || profileUuid.isBlank() || tripId.isBlank()) {
@@ -381,6 +383,7 @@ internal class TripMutationCoordinator0387(
         mutationType: String = "TIMELINE_OPERATIONAL_CLEAR",
         source: String = "TIMELINE",
     ): TripPublicationOutboxEvent0387? {
+        if (!store.onlineSettings().configured) return null
         val trip = store.getTrip(canonicalTripId) ?: return null
         val bookings = store.bookingsFor(canonicalTripId)
         val signature = "tombstone-v1:" + sha256TripPublication0387(
@@ -402,6 +405,7 @@ internal class TripMutationCoordinator0387(
         mutationType: String = "TIMELINE_OPERATIONAL_CLEAR",
         source: String = "TIMELINE",
     ): TripPublicationOutboxEvent0387? {
+        if (!store.onlineSettings().configured) return null
         val profileUuid = binding.profileUuid.trim()
         val tripId = binding.blablaTripId.trim()
         if (profileUuid.isBlank() || tripId.isBlank()) return null
