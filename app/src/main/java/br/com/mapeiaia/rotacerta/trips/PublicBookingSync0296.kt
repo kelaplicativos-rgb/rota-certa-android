@@ -299,16 +299,20 @@ internal object PublicBookingRemoteSync0296 {
                 .filter { it.target.localTripId == tripId }
                 .maxOfOrNull(BookingFetchBatch0373::entityRevision) ?: 0L
             mutationCoordinator.ensureRevisionAtLeast(tripId, remoteRevision)
-            mutationCoordinator.recordLocalMutation(
-                canonicalTripId = tripId,
-                mutationType = "PUBLIC_BOOKING_RECONCILED",
-                source = "PUBLIC_AGENDA_PULL",
-                reconcileBookingInventory = false,
-            )
+            val outboxQueued = if (remoteRevision <= 0L) {
+                mutationCoordinator.recordLocalMutation(
+                    canonicalTripId = tripId,
+                    mutationType = "PUBLIC_BOOKING_RECONCILED_LEGACY",
+                    source = "PUBLIC_AGENDA_PULL",
+                    reconcileBookingInventory = false,
+                ) != null
+            } else {
+                false
+            }
             UnifiedDebugEventStore.record(
                 "BOOKING_INVENTORY_RECALCULATED",
                 context.packageName,
-                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated entityRevisionObserved=$remoteRevision outboxQueued=true",
+                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated entityRevisionObserved=$remoteRevision outboxQueued=$outboxQueued publicationAlreadyAppliedServerSide=${remoteRevision > 0L}",
             )
         }
         mutationCoordinator.drainPending()
