@@ -177,7 +177,7 @@ try {
   await page.waitForTimeout(8_000);
   const final = new URL(page.url());
   const body = await page.locator('body').innerText({ timeout: 10_000 });
-  const zeroResults = /Ainda não existem viagens entre essas cidades/i.test(body) || /0 viagem disponível/i.test(body);
+  const zeroResults = /Ainda não existem viagens entre essas cidades/i.test(body) || /0 viagem disponível/i.test(body) || /(?:^|\n)Carona\s*\n?\s*0(?:\n|$)/i.test(body);
   const demand = extractDemand(body);
 
   const rawCards = await page.locator('[data-testid="e2e-srp-card"]').evaluateAll((cards) => cards.map((card) => {
