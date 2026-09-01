@@ -1,0 +1,201 @@
+name: Agenda timeline automatic sync download 0.1.398
+
+on:
+  push:
+    branches:
+      - agent/agenda-timeline-auto-sync-download-0.1.398
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-timeline-auto-sync-download-0398-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GOOGLE_MAPS_API_KEY: agenda_permanent_sync_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prove source version scope scheduler and FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.sha }}"
+          SOURCE_BRANCH="${{ github.ref_name }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          printf '%s\n' "$SOURCE_SHA" | tee source_head.txt
+          printf '%s\n' "$SOURCE_BRANCH" | tee source_branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+
+          BASE='a0f4cd53ff90601460ab534aa3787cb4c3e62b2c'
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee farol-head.sha256
+          git show "$BASE:$FAROL" | sha256sum | awk '{print $1}' > farol-base.sha256
+          awk '{print $1}' farol-head.sha256 > farol-current.sha256
+          cmp -s farol-base.sha256 farol-current.sha256
+
+          grep -Fq 'versionCode = 5691' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.398"' app/build.gradle.kts
+
+          git diff --name-only "$BASE"...HEAD | tee changed-files.txt
+          ! grep -Fxq "$FAROL" changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeia/rotacerta/trips/AgendaBackgroundSync0392.kt' changed-files.txt 2>/dev/null || true
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt' changed-files.txt
+          grep -Fxq 'trip-platform/functions/index.js' changed-files.txt
+          grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineAutoSync0398Test.kt' changed-files.txt
+
+          grep -Fq 'DEFAULT_ENABLED = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'ExistingPeriodicWorkPolicy.UPDATE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'cancelPeriodic(appContext, "config_disabled")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'AgendaBackgroundSync0392.enqueueRecoveryIfNeeded(application)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt
+          grep -Fq 'AUTOMATIC_SYNC("Sincronização automática")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'APP_SETTINGS("Configurações")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'AgendaHeaderAction0396("Sincronizar agora")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'AgendaHeaderAction0396("Sincronizar BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'AgendaHeaderAction0396("Publicar agenda")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'AgendaHeaderAction0396("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AgendaTimelineDownloadButton0398(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILED_0398' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq '/v1/driver/agenda/seat-allocation' trip-platform/functions/index.js
+          ! grep -Fq 'AlarmManager' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+
+          # Retain canonical trip state, per-trip outbox and performance corrections.
+          grep -Fq 'val canonicalRevision: Long = 0L' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'reconcileTenantSeatAllocation0395' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'TripMutationCoordinator0387(appContext, store).drainPending()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'PublicAgendaAutoSync0300.sync(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'TimelineRefreshGestureSurface0388(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate backend syntax and deterministic contract
+        working-directory: trip-platform/functions
+        run: |
+          node --check index.js
+          node --test test/deterministic-trip-outbox-0387.test.js
+
+      - name: Run scheduler navigation and retained Android tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaMainThreadPerformance0394Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAccess0393Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCombinedSeatPools0369Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Assemble APK
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify APK identity and FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee farol-after.sha256
+          cmp -s farol-head.sha256 farol-after.sha256
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+          if git status --porcelain --untracked-files=no | grep -q .; then
+            git status --short
+            exit 1
+          fi
+
+      - name: Upload exact SHA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.398-timeline-auto-sync-download-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            source_head.txt
+            source_branch.txt
+            app-version.txt
+            farol-base.sha256
+            farol-current.sha256
+            farol-head.sha256
+            farol-after.sha256
+            apk.sha256
+            changed-files.txt
