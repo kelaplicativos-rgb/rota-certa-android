@@ -841,6 +841,13 @@ class PassengerIdentityStore(context: Context) {
         return normalized
     }
 
+    /**
+     * Single-decode snapshot for Timeline rendering. The Timeline must never decode the
+     * complete external-passenger metadata collection once per visible passenger.
+     */
+    internal fun externalMetadataSnapshot0394(): Map<String, ExternalPassengerMetadata> =
+        externalMetadata().associateBy(ExternalPassengerMetadata::reservationKey)
+
     fun internallyCancelledExternalReservationKeys(): Set<String> = externalMetadata()
         .asSequence()
         .filter {
