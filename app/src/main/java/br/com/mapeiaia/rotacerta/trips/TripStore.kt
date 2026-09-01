@@ -115,8 +115,20 @@ class TripStore(context: Context) {
     fun reconcileOperationalInventory(
         rotaCertaSeatAllocation: Int,
         nowMillis: Long = System.currentTimeMillis(),
-    ): Pair<Int, Int> {
+        seatAllocationVersion: Long = 0L,
+    ): Pair<Int, Int> = reconcileOperationalInventoryTripIds(
+        rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+        seatAllocationVersion = seatAllocationVersion,
+        nowMillis = nowMillis,
+    ).size to 0
+
+    internal fun reconcileOperationalInventoryTripIds(
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Set<String> = synchronized(CANONICAL_LOCK) {
         require(rotaCertaSeatAllocation in 0..999) { "Vagas do Rota Certa inválidas." }
+        require(seatAllocationVersion >= 0L) { "Versão de vagas do Rota Certa inválida." }
         val activeStatuses = setOf(
             TripStatus.DRAFT,
             TripStatus.PUBLISHED,
@@ -125,28 +137,38 @@ class TripStore(context: Context) {
             TripStatus.ACTIVE,
         )
         val allBookings = bookings()
+        val changedTripIds = linkedSetOf<String>()
         val currentTrips = trips()
-        var changedTrips = 0
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
             if (!shouldApply) {
                 trip
             } else {
-                val withAllocation = trip.copy(rotaCertaSeatAllocation = rotaCertaSeatAllocation)
+                val withAllocation = trip.copy(
+                    rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                    seatAllocationVersionUsed = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                )
                 val derivedCapacity = operationalInventoryCapacity(withAllocation, allBookings)
-                if (trip.capacity != derivedCapacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation) {
-                    changedTrips++
-                    withAllocation.copy(capacity = derivedCapacity, updatedAtMillis = nowMillis)
-                } else {
-                    trip
-                }
+                val changed = trip.capacity != derivedCapacity ||
+                    trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation ||
+                    trip.seatAllocationVersionUsed < seatAllocationVersion
+                if (changed) {
+                    changedTripIds += trip.id
+                    withAllocation.copy(
+                        capacity = derivedCapacity,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        updatedAtMillis = nowMillis,
+                    )
+                } else trip
             }
         }
-        if (changedTrips > 0) {
-            prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).apply()
+        if (changedTripIds.isNotEmpty()) {
+            require(prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).commit()) {
+                "Falha ao persistir fan-out canônico de vagas."
+            }
         }
-        return changedTrips to 0
+        changedTripIds
     }
 
     @Deprecated("Legacy compatibility only; vehicle capacity no longer drives trip inventory.")
