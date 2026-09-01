@@ -18,8 +18,9 @@ class AgendaTouchUnfreeze0383Test {
         )
         assertTrue(activity.contains("Scaffold(modifier = Modifier.fillMaxSize())"))
         assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
-        assertTrue(activity.contains("refreshing = refreshAllRunning"))
-        assertTrue(activity.contains("onRefresh = requestFullTimelineRefresh"))
+        assertTrue(activity.contains("refreshing = false"))
+        assertTrue(activity.contains("onRefresh = requestTimelineVisualReload"))
+        assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
         assertTrue(activity.contains("modifier = Modifier.weight(1f).fillMaxWidth()"))
         assertTrue(activity.contains("listModifier = Modifier.weight(1f)"))
     }
@@ -80,13 +81,13 @@ class AgendaTouchUnfreeze0383Test {
         listOf(
             "Nova viagem",
             "Adicionar passageiro",
-            "Sincronizar agora",
-            "Publicar agenda",
+            "Alternar próximas / arquivadas",
             "Fixar atalho",
-            "Sincronizar BlaBlaCar",
-            "Limpar Timeline",
         ).forEach { label ->
             assertTrue(activity.contains("AgendaHeaderAction0396(\"$label\""), "Missing Agenda contextual action: $label")
+        }
+        listOf("Sincronizar agora", "Publicar agenda", "Sincronizar BlaBlaCar", "Limpar Timeline").forEach { label ->
+            assertFalse(activity.contains("AgendaHeaderAction0396(\"$label\""), "Obsolete sync/clear action returned: $label")
         }
         assertTrue(header.contains("INTEGRATIONS(\"Integrações\")"), "Persistent integration navigation must remain a real drawer destination")
         assertTrue(header.contains("AUTOMATIC_SYNC(\"Sincronização automática\")"), "Automatic sync must remain a real drawer destination")
