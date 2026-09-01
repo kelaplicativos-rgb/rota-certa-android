@@ -58,6 +58,7 @@ fun PassengerAdminScreen(
     store: TripStore,
     onBack: () -> Unit,
     onChanged: (String) -> Unit,
+    showHeader: Boolean = true,
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -242,9 +243,14 @@ fun PassengerAdminScreen(
         else historyProfileId = profile.id
     }
 
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("👥 Passageiros", style = MaterialTheme.typography.headlineSmall)
-        TextButton(onClick = onBack) { Text("Voltar") }
+    if (showHeader) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("👥 Passageiros", style = MaterialTheme.typography.headlineSmall)
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics { contentDescription = "Voltar para a Agenda de Viagens" },
+            ) { Text("←") }
+        }
     }
     Text(
         "Administre quem pode entrar na Agenda de Viagens, senhas temporárias, indicações e créditos.",
@@ -697,7 +703,10 @@ internal fun PassengerHistoryPanel(
     val context = LocalContext.current
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Histórico do passageiro", style = MaterialTheme.typography.headlineSmall)
-        TextButton(onClick = onBack) { Text("Voltar") }
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier.semantics { contentDescription = "Voltar para Passageiros" },
+        ) { Text("←") }
     }
     if (history == null) {
         Card(modifier = Modifier.fillMaxWidth()) {
