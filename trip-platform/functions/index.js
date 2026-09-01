@@ -683,6 +683,20 @@ function normalizeDriverTrip(raw, previous = null) {
   const blablaTripId = cleanText(raw.blablaTripId, 160);
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
   const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId);
+  const previousPublicationRevision = Math.max(0, Number(previous && previous.publicationRevision || 0));
+  const requestedPublicationRevision = raw.publicationRevision == null
+    ? previousPublicationRevision
+    : Math.max(0, Math.floor(Number(raw.publicationRevision || 0)));
+  const publicationRevision = Number.isSafeInteger(requestedPublicationRevision)
+    ? requestedPublicationRevision
+    : previousPublicationRevision;
+  const publicationTombstone = raw.publicationTombstone == null
+    ? (previous && previous.publicationTombstone === true)
+    : raw.publicationTombstone === true;
+  const publicationEventId = cleanText(
+    raw.publicationEventId == null ? (previous && previous.publicationEventId || "") : raw.publicationEventId,
+    120,
+  );
   return {
     localTripId: cleanText(raw.id, 100),
     title: cleanText(raw.title, 220),
@@ -699,6 +713,9 @@ function normalizeDriverTrip(raw, previous = null) {
     publishedSeats,
     rotaCertaSeatAllocation,
     capacityReliable: raw.capacityReliable !== false,
+    publicationRevision,
+    publicationTombstone,
+    publicationEventId,
     notes: cleanText(raw.notes, 1200),
   };
 }
@@ -5245,6 +5262,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const claimNamespace = cleanText(req.body && req.body.claimNamespace, 40);
   const snapshotRevision = cleanText(req.body && req.body.snapshotRevision, 128).replace(/[^A-Za-z0-9:_-]/g, "");
   const sourceComplete = req.body && req.body.sourceComplete === true;
+  const entityRevision = Math.max(0, Math.floor(Number(req.body && req.body.entityRevision || 0)));
+  const canonicalTripId = cleanText(req.body && req.body.canonicalTripId, 180);
+  const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
@@ -5259,11 +5279,42 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       if (previous.driverUsername && previous.driverUsername !== driver.username) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
+      const currentEntityRevision = Math.max(0, Math.floor(Number(previous.publicationRevision || 0)));
+      const currentEventId = cleanText(previous.publicationEventId, 120);
+      const deterministicRequest = entityRevision > 0;
+      const staleByRevision = deterministicRequest && entityRevision < currentEntityRevision;
+      const legacyAfterVersioned = !deterministicRequest && currentEntityRevision > 0;
+      const tombstoneBlocksLegacy = previous.publicationTombstone === true && !deterministicRequest;
+      if (staleByRevision || legacyAfterVersioned || tombstoneBlocksLegacy) {
+        const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+        return {
+          changed: false,
+          stale: true,
+          range,
+          entityRevision: currentEntityRevision,
+          occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+        };
+      }
+      if (deterministicRequest && entityRevision === currentEntityRevision && currentEntityRevision > 0) {
+        if (currentEventId && outboxEventId && currentEventId !== outboxEventId) {
+          throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
+        }
+        const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+        return {
+          changed: false,
+          stale: false,
+          range,
+          entityRevision: currentEntityRevision,
+          occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+        };
+      }
       if (previous.capacityReliable === true && cleanText(previous.capacitySnapshotRevision, 128) === snapshotRevision) {
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
         return {
           changed: false,
+          stale: false,
           range,
+          entityRevision: currentEntityRevision,
           occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
         };
       }
@@ -5329,13 +5380,19 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         capacityReliable: true,
         status,
         capacitySnapshotRevision: snapshotRevision,
+        publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
+        publicationTombstone: false,
+        publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
+        canonicalTripId: deterministicRequest && canonicalTripId ? canonicalTripId : cleanText(previous.canonicalTripId, 180),
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
         updatedAtMillis: now,
       });
       return {
         changed: true,
+        stale: false,
         range: capacityAvailabilityRange(candidateTrip, loads),
+        entityRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         occupancyRevision,
         snapshotOverbooked,
       };
@@ -5347,6 +5404,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       availableSeatsMaximum: result.range.maximum,
       occupancyRevision: result.occupancyRevision,
       changed: result.changed,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
+      stale: result.stale === true,
       snapshotOverbooked: result.snapshotOverbooked === true,
     });
   } catch (error) {
@@ -5414,7 +5473,10 @@ async function listDriverBookings(req, res, token) {
   const tripData = tripSnap.data();
   if (tripData.driverUsername && tripData.driverUsername !== driver.username) return fail(res, 403, "trip_owner_mismatch", "Viagem pertence a outro motorista.");
   const snapshot = await db.collection("trips").doc(token).collection("bookings").orderBy("createdAtMillis", "desc").limit(200).get();
-  return json(res, 200, { bookings: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data(), cancellationHash: undefined })) });
+  return json(res, 200, {
+    bookings: snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data(), cancellationHash: undefined })),
+    entityRevision: Math.max(0, Number(tripData.publicationRevision || 0)),
+  });
 }
 
 exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southamerica-east1" }, async (req, res) => {
