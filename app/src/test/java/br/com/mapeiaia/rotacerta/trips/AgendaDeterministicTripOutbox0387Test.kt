@@ -91,29 +91,24 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
-    fun blablaExactCardResultRequiresStrongIdentityAndOutbox() {
+    fun timelineNoLongerExposesManualExactCardSynchronization() {
         val timeline = source("TripTimelineUi.kt")
-        val start = timeline.indexOf("onResult = { nextResponse ->")
-        val end = timeline.indexOf("onChanged = onChanged", start)
-        assertTrue(start >= 0 && end > start)
-        val resultBlock = timeline.substring(start, end)
-        assertTrue(resultBlock.contains("exactProfileUuid"))
-        assertTrue(resultBlock.contains("exactTripId"))
-        assertTrue(resultBlock.contains("exactMatches.size != 1"))
-        assertTrue(resultBlock.contains("recordExternalManualMutation("))
-        assertTrue(resultBlock.contains("AgendaBackgroundSync0392.enqueueImmediate"))
-        assertFalse(resultBlock.contains("tripMutationCoordinator.drainPending()"))
-        assertFalse(resultBlock.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
+        assertFalse(timeline.contains("onResult = { nextResponse ->"))
+        assertFalse(timeline.contains("recordExternalManualMutation("))
+        assertFalse(timeline.contains("manual_card_shortcut"))
+        assertFalse(timeline.contains("syncExternalTripIncremental"))
+        assertTrue(timeline.contains("AgendaAutomaticSyncTimelineStatus0398"))
+        assertTrue(timeline.contains("AgendaTimelineDownloadButton0398"))
     }
 
     @Test
-    fun operationalClearUsesVersionedTombstonesWithoutBlablaMutation() {
+    fun operationalTimelineHasNoBulkClearAndKeepsLifecycleTombstoneInfrastructure() {
         val timeline = source("TripTimelineUi.kt")
         val outbox = source("TripPublicationOutbox0387.kt")
-        assertTrue(timeline.contains("Remover da operação + Agenda"))
-        assertTrue(timeline.contains("recordTombstone("))
-        assertTrue(timeline.contains("recordExternalTombstone("))
-        assertTrue(timeline.contains("blablaMutation=false"))
+        assertFalse(timeline.contains("Remover da operação + Agenda"))
+        assertFalse(timeline.contains("recordTombstone("))
+        assertFalse(timeline.contains("recordExternalTombstone("))
+        assertTrue(timeline.contains("clearLegacyBulkHiddenOnce0398()"))
         assertTrue(outbox.contains("publicationTombstone = true"))
         assertTrue(outbox.contains("status = TripStatus.CANCELLED"))
         assertTrue(outbox.contains("historyPreserved=true blablaMutation=false"))
