@@ -1845,33 +1845,6 @@ private fun TripBlaBlaTripActionRow(
                 contentPadding = COMPACT_ACTION_PADDING,
             ) { Text("👤➕") }
         }
-        if (onSyncSeatsOnly != null && target != null) {
-            TextButton(
-                enabled = seatState?.state != BlaBlaPublicationSeatSyncVisualState.SYNCING,
-                onClick = {
-                    UnifiedDebugEventStore.record(
-                        "AGENDA_SEAT_ONLY_SYNC_REQUESTED",
-                        context.packageName,
-                        "profileUuidPresent=true tripIdPresent=true",
-                    )
-                    onSyncSeatsOnly()
-                },
-                contentPadding = COMPACT_ACTION_PADDING,
-            ) { Text(seatLabel) }
-        }
-        if (onSyncExactCard != null && !entry.blablaProfileUuid.isNullOrBlank() && !entry.blablaTripId.isNullOrBlank()) {
-            TextButton(
-                onClick = {
-                    UnifiedDebugEventStore.record(
-                        "AGENDA_EXACT_CARD_SYNC_REQUESTED",
-                        context.packageName,
-                        "profileUuidPresent=true tripIdPresent=true",
-                    )
-                    onSyncExactCard()
-                },
-                contentPadding = COMPACT_ACTION_PADDING,
-            ) { Text("🔄") }
-        }
         if (!entry.blablaPublicHref.isNullOrBlank()) {
             TextButton(
                 onClick = {
@@ -1906,11 +1879,6 @@ private fun TripBlaBlaTripActionRow(
             )
         }
         }
-        Text(
-            seatState?.message ?: "💺🔄 Sincronizar somente as vagas deste card",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
