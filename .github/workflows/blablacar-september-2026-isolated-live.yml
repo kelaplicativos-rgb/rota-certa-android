@@ -1,0 +1,210 @@
+name: BlaBlaCar September 2026 isolated live audit
+
+on:
+  push:
+    branches:
+      - audit/blablacar-september-2026-search-only
+    paths:
+      - '.github/workflows/blablacar-september-2026-isolated-live.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        date:
+          - 2026-09-01
+          - 2026-09-02
+          - 2026-09-03
+          - 2026-09-04
+          - 2026-09-05
+          - 2026-09-06
+          - 2026-09-07
+          - 2026-09-08
+          - 2026-09-09
+          - 2026-09-10
+          - 2026-09-11
+          - 2026-09-12
+          - 2026-09-13
+          - 2026-09-14
+          - 2026-09-15
+          - 2026-09-16
+          - 2026-09-17
+          - 2026-09-18
+          - 2026-09-19
+          - 2026-09-20
+          - 2026-09-21
+          - 2026-09-22
+          - 2026-09-23
+          - 2026-09-24
+          - 2026-09-25
+          - 2026-09-26
+          - 2026-09-27
+          - 2026-09-28
+          - 2026-09-29
+          - 2026-09-30
+        direction: [ida, volta]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/blablacar-september-2026-search-only
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install collector
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+
+      - name: Build request
+        run: |
+          mkdir -p /tmp/blablacar-live
+          python3 - <<'PY'
+          import json, os
+          date = os.environ["DATE"]
+          direction = os.environ["DIRECTION"]
+          if direction == "ida":
+              origin = "Santo André, SP, Brasil"
+              destination = "São Thomé das Letras, MG, Brasil"
+          else:
+              origin = "São Thomé das Letras, MG, Brasil"
+              destination = "Santo André, SP, Brasil"
+          payload = {
+              "request_id": f"live-{date}-{direction}",
+              "from": origin,
+              "to": destination,
+              "date": date,
+              "seats": 1
+          }
+          with open("/tmp/blablacar-live/request.json","w",encoding="utf-8") as f:
+              json.dump(payload,f,ensure_ascii=False,indent=2)
+          PY
+        env:
+          DATE: ${{ matrix.date }}
+          DIRECTION: ${{ matrix.direction }}
+
+      - name: Collect one exact public search
+        continue-on-error: true
+        run: |
+          xvfb-run -a node tools/blablacar-public-search/collect-dom.mjs             /tmp/blablacar-live/request.json             /tmp/blablacar-live/result.json             /tmp/blablacar-live/result.md             /tmp/blablacar-live/result.png
+
+      - name: Preserve unique result
+        if: always()
+        run: |
+          mkdir -p out
+          cp /tmp/blablacar-live/result.json "out/${{ matrix.date }}-${{ matrix.direction }}.json"
+          test -f /tmp/blablacar-live/result.png && cp /tmp/blablacar-live/result.png "out/${{ matrix.date }}-${{ matrix.direction }}.png" || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: result-${{ matrix.date }}-${{ matrix.direction }}
+          path: out/*
+          retention-days: 7
+
+  aggregate:
+    needs: collect
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/blablacar-september-2026-search-only
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: result-*
+          path: downloaded
+          merge-multiple: true
+
+      - name: Aggregate validated evidence
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, unicodedata, re
+          root=pathlib.Path("downloaded")
+          def fold(s):
+              s=unicodedata.normalize("NFD",str(s or ""))
+              return "".join(c for c in s if unicodedata.category(c)!="Mn").lower().strip()
+          rows=[]; matches=[]
+          target_names={"ezequiel","ezequiel s","barbosa"}
+          for p in sorted(root.glob("*.json")):
+              d=json.loads(p.read_text(encoding="utf-8"))
+              req=d.get("request",{})
+              row={
+                "request_id": d.get("request_id"),
+                "collected_at": d.get("collected_at"),
+                "date": req.get("date"),
+                "from": req.get("from"),
+                "to": req.get("to"),
+                "status": d.get("status"),
+                "driver_cards_count": d.get("driver_cards_count",0),
+                "zero_results_confirmed": d.get("zero_results_confirmed",False),
+                "error": d.get("error"),
+              }
+              rows.append(row)
+              if d.get("status") != "validated":
+                  continue
+              for t in d.get("trips",[]):
+                  name=fold(t.get("driver_name"))
+                  if name not in target_names:
+                      continue
+                  trip_id=None
+                  href=t.get("trip_href")
+                  if href:
+                      m=re.search(r"[?&]id=([^&#]+)",href)
+                      if m: trip_id=m.group(1)
+                  matches.append({
+                    "date": row["date"],
+                    "search_from": row["from"],
+                    "search_to": row["to"],
+                    "collected_at": row["collected_at"],
+                    "driver_name": t.get("driver_name"),
+                    "departure_time": t.get("departure_time"),
+                    "arrival_time": t.get("arrival_time"),
+                    "actual_departure": t.get("actual_departure"),
+                    "actual_arrival": t.get("actual_arrival"),
+                    "price": t.get("price"),
+                    "flags": t.get("flags",[]),
+                    "availability": t.get("availability"),
+                    "trip_id": trip_id,
+                    "trip_href": href,
+                    "profile_uuid": t.get("profile_uuid"),
+                    "profile_uuid_evidence": t.get("profile_uuid_evidence"),
+                    "identity_status": "STRONG" if t.get("profile_uuid") or trip_id else "DISCOVERY_ONLY"
+                  })
+          out={
+            "schema_version":2,
+            "scope":"September 2026, Santo André <-> São Thomé das Letras, isolated one-query-per-runner",
+            "generated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            "queries_total":len(rows),
+            "queries_validated":sum(r["status"]=="validated" for r in rows),
+            "queries_error":sum(r["status"]=="error" for r in rows),
+            "queries_mismatch":sum(r["status"]=="mismatch" for r in rows),
+            "matches":matches,
+            "queries":rows,
+          }
+          pathlib.Path("collector/results/september-2026-isolated-live.json").write_text(json.dumps(out,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          print(json.dumps({k:out[k] for k in ["queries_total","queries_validated","queries_error","queries_mismatch"]},ensure_ascii=False))
+          print("matches",len(matches))
+          for m in matches: print(m)
+          PY
+
+      - name: Commit live evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add collector/results/september-2026-isolated-live.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data(blablacar): isolated September 2026 live audit [skip ci]"
+            git push
+          fi
