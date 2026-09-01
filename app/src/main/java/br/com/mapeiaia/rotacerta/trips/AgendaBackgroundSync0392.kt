@@ -527,6 +527,37 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
+        if (mode in setOf(AgendaBackgroundSyncMode0392.FULL_RECONCILE, AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE)) {
+            val online = store.onlineSettings()
+            if (online.configured) {
+                try {
+                    val remoteSeatReconcile = TripRemoteApi(online).reconcileAgendaSeatAllocation(
+                        rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                        configVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                    )
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILED_0398",
+                        appContext.packageName,
+                        "tenantKey=${seatSyncDiagnosticKey(tenantId)} allocation=${tenantSettings.rotaCertaSeatAllocation} configVersion=${tenantSettings.rotaCertaSeatAllocationVersion} processed=${remoteSeatReconcile.processed} updated=${remoteSeatReconcile.updated} failClosed=${remoteSeatReconcile.failClosed}",
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    failures++
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_FAILED_0398",
+                        appContext.packageName,
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE",
+                            component = "AgendaBackgroundSync0392",
+                            method = "runTenantCycle",
+                        ),
+                    )
+                }
+            }
+        }
+
         try {
             outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending()
         } catch (cancelled: CancellationException) {
