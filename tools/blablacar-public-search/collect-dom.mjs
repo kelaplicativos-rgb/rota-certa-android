@@ -231,6 +231,8 @@ try {
       const detailUrl = new URL(trip.trip_href, 'https://www.blablacar.com.br').toString();
       const detailNav = await detailPage.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
       await detailPage.waitForTimeout(5_000);
+      const safeDetailName = fold(target.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      await fs.writeFile(`collector/results/detail-${safeDetailName}.html`, await detailPage.content(), 'utf8');
       const detailHrefs = await detailPage.locator('a[href]').evaluateAll((links) =>
         links.map((a) => a.getAttribute('href')).filter(Boolean)
       );
