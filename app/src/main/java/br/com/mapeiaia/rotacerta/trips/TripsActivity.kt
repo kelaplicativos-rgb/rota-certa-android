@@ -287,7 +287,7 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.SideEffect {
-        AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
+        AgendaTrace.markContentMounted(activity, loading = false)
         if (firstCompositionEnded.compareAndSet(false, true)) {
             AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
         }
@@ -344,7 +344,7 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
