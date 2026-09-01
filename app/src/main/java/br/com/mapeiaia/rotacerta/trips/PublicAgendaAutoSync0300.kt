@@ -196,7 +196,7 @@ internal object PublicAgendaAutoSync0300 {
         )
 
         localTrips.forEach { original ->
-            val localBookings = snapshotBookings ?: store.bookingsFor(original.id)
+            val localBookings = store.bookingsFor(original.id)
             val localAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
             val localFailureTrip = original.copy(
                 rotaCertaSeatAllocation = localAllocation,
