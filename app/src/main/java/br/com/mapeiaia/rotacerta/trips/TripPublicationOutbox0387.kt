@@ -337,7 +337,7 @@ internal class TripMutationCoordinator0387(
         val bookings = store.bookingsFor(canonicalTripId)
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
-        val allocated = original.copy(rotaCertaSeatAllocation = allocation, publicBookingEnabled = true)
+        val allocated = original.copy(rotaCertaSeatAllocation = allocation)
         val publicTrip = allocated.copy(capacity = operationalInventoryCapacity(allocated, bookings))
         val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation)
         return outbox.enqueue(
