@@ -363,10 +363,27 @@ data class DriverCapacitySnapshotClaim(
 )
 
 @Serializable
+data class DriverProtectedBookingSnapshot(
+    val id: String,
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String,
+    val operationalStatus: PassengerOperationalStatus,
+    val paymentStatus: PassengerPaymentStatus,
+    val lastDriverSelection: String = "",
+    val holdExpiresAtMillis: Long? = null,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+)
+
+@Serializable
 data class DriverCapacitySnapshotRequest(
     val trip: Trip,
     val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
-    val protectedBookings: List<Booking> = emptyList(),
+    val protectedBookings: List<DriverProtectedBookingSnapshot> = emptyList(),
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
@@ -595,7 +612,23 @@ class TripRemoteApi(
                         holdExpiresAtMillis = booking.holdExpiresAtMillis,
                     )
                 },
-                protectedBookings = protectedBookings,
+                protectedBookings = protectedBookings.map { booking ->
+                    DriverProtectedBookingSnapshot(
+                        id = booking.id,
+                        passengerName = booking.passengerName,
+                        passengerContact = booking.passengerContact,
+                        boardingStopId = booking.boardingStopId,
+                        dropoffStopId = booking.dropoffStopId,
+                        seats = booking.seats,
+                        status = booking.status.name,
+                        operationalStatus = booking.operationalStatus,
+                        paymentStatus = booking.paymentStatus,
+                        lastDriverSelection = booking.lastDriverSelection,
+                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                        sourceReference = booking.sourceReference,
+                        occupancyGroupId = booking.occupancyGroupId,
+                    )
+                },
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
                 sourceComplete = true,
