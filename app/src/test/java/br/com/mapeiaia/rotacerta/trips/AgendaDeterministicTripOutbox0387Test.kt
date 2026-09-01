@@ -52,8 +52,10 @@ class AgendaDeterministicTripOutbox0387Test {
     @Test
     fun genericUiChangesNoLongerTriggerFullAgendaSync() {
         val activity = source("TripsActivity.kt")
-        assertEquals(1, Regex("""publicAgendaSyncRevision\+\+""").findAll(activity).count())
-        assertTrue(activity.contains("if (publicAgendaSyncRevision < 0) return@LaunchedEffect"))
+        assertFalse(activity.contains("publicAgendaSyncRevision"))
+        assertFalse(activity.contains("createPublicAgendaSyncCoordinator0373"))
+        assertFalse(activity.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
+        assertTrue(activity.contains("AgendaBackgroundSync0392.enqueueImmediate"))
         assertTrue(activity.contains("onChanged = { text -> refresh(); message = text }"))
         assertTrue(activity.contains("TripMutationCoordinator0387(activity, store)"))
     }
@@ -98,7 +100,8 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(resultBlock.contains("exactTripId"))
         assertTrue(resultBlock.contains("exactMatches.size != 1"))
         assertTrue(resultBlock.contains("recordExternalManualMutation("))
-        assertTrue(resultBlock.contains("tripMutationCoordinator.drainPending()"))
+        assertTrue(resultBlock.contains("AgendaBackgroundSync0392.enqueueImmediate"))
+        assertFalse(resultBlock.contains("tripMutationCoordinator.drainPending()"))
         assertFalse(resultBlock.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
     }
 
