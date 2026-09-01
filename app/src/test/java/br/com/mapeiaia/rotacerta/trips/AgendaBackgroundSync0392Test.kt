@@ -7,6 +7,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AgendaBackgroundSync0392Test {
+    private fun backgroundSource(): String =
+        File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
+
     @Test
     fun durableSilentPolicyUsesConfigurableCentralizedPeriodicCadence() {
         assertEquals(AgendaBackgroundSyncConfig0392.DEFAULT_INTERVAL_MINUTES, agendaBackgroundSyncIntervalMinutes0392())
@@ -62,9 +65,9 @@ class AgendaBackgroundSync0392Test {
         assertFalse(activity.contains("message = \"Sincronizando tudo:"))
         assertTrue(activity.contains("AgendaBackgroundSync0392.enqueueImmediate"))
         assertTrue(activity.contains("reason = \"timeline_open\""))
-        assertTrue(activity.contains("reason = \"timeline_pull_refresh\""))
-        assertTrue(activity.contains("blablaAutomatic=false"))
-        assertTrue(activity.contains("onRefresh = requestFullTimelineRefresh"))
+        assertFalse(activity.contains("reason = \"timeline_pull_refresh\""))
+        assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
+        assertTrue(activity.contains("onRefresh = requestTimelineVisualReload"))
     }
 
     @Test
@@ -74,8 +77,7 @@ class AgendaBackgroundSync0392Test {
 
         assertFalse(timeline.contains("tripMutationCoordinator.drainPending()"))
         assertFalse(timeline.contains("mutationCoordinator.drainPending()"))
-        assertTrue(timeline.contains("reason = \"blablacar_collection_result\""))
-        assertTrue(timeline.contains("AgendaBackgroundSync0392.enqueueImmediate"))
+        assertTrue(backgroundSource().contains("AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE"))
 
         assertFalse(push.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
         assertTrue(push.contains("AgendaBackgroundSync0392.enqueueImmediate"))
