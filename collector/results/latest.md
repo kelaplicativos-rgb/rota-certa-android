@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-04**
-- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,15 +12,15 @@
 
 ## Motoristas
 
-1. **Rafael** — 05:00 — São Bernardo do Campo → Minas Gerais — sem preço — Cheio
-2. **Mateus** — 07:30 — São Bernardo do Campo → Minas Gerais — R$ 86,00
-3. **Thay** — 08:00 — Poá → São Thomé das Letras — R$ 78,00 — Esgotará em breve
-4. **André** — 08:30 — São Paulo → São Thomé das Letras — R$ 85,00 — Esgotará em breve · Super Driver
-5. **Ezequiel** — 10:40 — Santo André → São Tomé das Letras — sem preço — Cheio
-6. **Guilherme** — 12:00 — São Paulo → Minas Gerais — sem preço — Cheio
-7. **Fabio** — 12:20 — São Paulo → São Thomé das Letras — R$ 102,00
-8. **Wanderlei Toledo Junior** — 13:00 — São Paulo → Lambari — R$ 52,00
-9. **Joyce** — 13:00 — São Paulo → São Thomé das Letras — sem preço — Cheio
-10. **Gabriel** — 13:00 — São Paulo → Três Corações — R$ 86,00
+1. **Wilson** — 03:45 — São Lourenço → São Paulo — R$ 88,00 — Esgotará em breve
+2. **Carlos** — 05:00 — Três Corações → São Paulo — sem preço — Cheio
+3. **Miller** — 05:20 — Minas Gerais → São Paulo — sem preço — Cheio · Super Driver
+4. **Wellington** — 06:50 — Três Corações → São Paulo — sem preço — Cheio · Super Driver
+5. **Daniel** — 08:00 — Campanha → São Paulo — R$ 86,00 — Esgotará em breve
+6. **Edipo** — 08:00 — São Thomé das Letras → Guarulhos — R$ 87,00
+7. **Alessandra** — 08:30 — São Tomé das Letras → São Paulo — sem preço — Cheio
+8. **Rodolfo** — 09:20 — Três Corações → São Paulo — sem preço — Cheio
+9. **Weslley** — 10:50 — Três Corações → São Paulo — sem preço — Cheio
+10. **Wagner** — 12:30 — Minas Gerais → São Paulo — sem preço — Cheio
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
