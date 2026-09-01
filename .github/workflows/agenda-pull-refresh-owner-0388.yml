@@ -141,6 +141,14 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPullRefreshGesture0388Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaSyncPanelScroll0385Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaSilentPublicSync0386Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0381Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPerformance0380Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSyncRegression0373Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.ReservationApproval0356Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BookingExternalSeatSync0353Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.TenantStorageFoundation0252Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
+      - name: Build app and instrumented-test APKs before emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
       - name: Run Compose real-touch pull regression on emulator
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
@@ -148,7 +156,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           cores: 2
-          ram-size: 3072M
+          ram-size: 2048M
           heap-size: 512M
           disable-animations: true
           script: bash .github/scripts/run-agenda-pull-emulator-0388.sh
