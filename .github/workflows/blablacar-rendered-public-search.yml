@@ -46,9 +46,10 @@ jobs:
           set -euo pipefail
           test -f collector/results/latest.json
           test -f collector/results/latest.md
+          test -f collector/results/latest.html
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add collector/results/latest.json collector/results/latest.md
+          git add collector/results/latest.json collector/results/latest.md collector/results/latest.html
           if ! git diff --cached --quiet; then
             git commit -m "data(blablacar): update rendered public search result [skip ci]"
             git push
@@ -63,6 +64,7 @@ jobs:
             collector/requests/current.json
             collector/results/latest.json
             collector/results/latest.md
+            collector/results/latest.html
             collector/results/latest.png
           if-no-files-found: warn
           retention-days: 30
