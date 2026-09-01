@@ -2,8 +2,8 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-08**
-- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
-- Motoristas visíveis: **4**
+- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Motoristas visíveis: **3**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
 - Indicador de demanda: **NÃO ENCONTRADO**
@@ -12,9 +12,8 @@
 
 ## Motoristas
 
-1. **Francisco** — 05:00 — São Thomé das Letras → São Paulo — R$ 103,00
-2. **Alessandra** — 08:30 — São Tomé das Letras → São Paulo — R$ 110,00
-3. **Edson** — 09:40 — Três Corações → São Paulo — R$ 74,00
-4. **Daniel** — 14:00 — São Thomé das Letras → São Paulo — R$ 87,00 — Esgotará em breve
+1. **Weslley** — 06:00 — São Paulo → Três Corações — sem preço — Cheio
+2. **Alessandra** — 16:30 — São Paulo → São Tomé das Letras — R$ 110,00
+3. **David** — 22:00 — São Paulo → Minas Gerais — R$ 92,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.

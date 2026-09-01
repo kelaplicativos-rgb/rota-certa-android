@@ -1,19 +1,19 @@
 {
   "schema_version": 5,
-  "request_id": "live-2026-09-08-stl-sa-identity",
-  "collected_at": "2026-09-01T23:17:46.466Z",
+  "request_id": "live-2026-09-08-sa-stl-identity",
+  "collected_at": "2026-09-01T23:19:10.821Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
   "request": {
-    "from": "São Thomé das Letras, MG, Brasil",
-    "to": "Santo André, SP, Brasil",
+    "from": "Santo André, SP, Brasil",
+    "to": "São Thomé das Letras, MG, Brasil",
     "date": "2026-09-08",
     "seats": 1
   },
   "resolved_place_ids": {
-    "from_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-    "to_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
   },
   "validation": {
     "http_status": 200,
@@ -22,11 +22,11 @@
     "exact_destination_match": true,
     "route_visible_in_page": true,
     "content_confirmed": true,
-    "final_url": "https://www.blablacar.com.br/search?fn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&tn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&db=2026-09-08&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
-    "page_title": "Caronas e viagens para Santo André, SP, Brasil"
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-09-08&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
   },
   "zero_results_confirmed": false,
-  "driver_cards_count": 4,
+  "driver_cards_count": 3,
   "ezequiel_s_visible": false,
   "barbosa_visible": false,
   "demand": {
@@ -38,15 +38,17 @@
   "trips": [
     {
       "card_index": 0,
-      "driver_name": "Francisco",
-      "departure_time": "05:00",
+      "driver_name": "Weslley",
+      "departure_time": "06:00",
       "arrival_time": "09:50",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 103,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=EpMRvKGFTUOD2ECaEq0zZw4SH_tDGCRzKlDCkkFBTTAw&requested_seats=1&search_origin=SEARCH&search_uuid=129311bc-a185-4d43-83d8-409a12ad3367",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null,
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
@@ -54,46 +56,29 @@
     {
       "card_index": 1,
       "driver_name": "Alessandra",
-      "departure_time": "08:30",
-      "arrival_time": "14:10",
-      "actual_departure": "São Tomé das Letras",
-      "actual_arrival": "São Paulo",
+      "departure_time": "16:30",
+      "arrival_time": "22:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Tomé das Letras",
       "price": "R$ 110,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=EpMRvKGFTUOD2ECaEq0zZwyfS3V8lHSuW4UxfxM87bSw&requested_seats=1&search_origin=SEARCH&search_uuid=129311bc-a185-4d43-83d8-409a12ad3367",
+      "trip_href": "/trip?source=CARPOOLING&id=K2WzUyefTnG8oW552uQZXgo9680sauRJaJ-NkrbpT8RQ&requested_seats=1&search_origin=SEARCH&search_uuid=2b65b353-279f-4e71-bca1-6e79dae4195e",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
     },
     {
       "card_index": 2,
-      "driver_name": "Edson",
-      "departure_time": "09:40",
-      "arrival_time": "13:30",
-      "actual_departure": "Três Corações",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 74,00",
+      "driver_name": "David",
+      "departure_time": "22:00",
+      "arrival_time": "01:50+1",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 92,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=EpMRvKGFTUOD2ECaEq0zZwsG9NI18NR_iwoVzmu3AicA&requested_seats=1&search_origin=SEARCH&search_uuid=129311bc-a185-4d43-83d8-409a12ad3367",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 3,
-      "driver_name": "Daniel",
-      "departure_time": "14:00",
-      "arrival_time": "18:40",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 87,00",
-      "flags": [
-        "Esgotará em breve"
-      ],
-      "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=EpMRvKGFTUOD2ECaEq0zZwOqdz-HxzS3-FsOvACMX8EA&requested_seats=1&search_origin=SEARCH&search_uuid=129311bc-a185-4d43-83d8-409a12ad3367",
+      "trip_href": "/trip?source=CARPOOLING&id=K2WzUyefTnG8oW552uQZXg2RBaw9XGROqM8bb0q8q0Aw&requested_seats=1&search_origin=SEARCH&search_uuid=2b65b353-279f-4e71-bca1-6e79dae4195e",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
