@@ -723,9 +723,6 @@ private fun TripApp(
                     bookings = bookings,
                     store = store,
                     onChanged = { text -> refresh(); message = text },
-                    autoSyncToken = 0,
-                    forceAllSyncToken = 0,
-                    onRequestBlaBlaSync = {},
                     onCreateTripForPassenger = { passengerId ->
                         pendingCreateForPassengerId = passengerId
                         parentRootScreen0396 = TripScreen.TIMELINE
