@@ -77,6 +77,9 @@ jobs:
           ! grep -Fq 'AgendaHeaderAction0396("Sincronizar BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'AgendaHeaderAction0396("Publicar agenda")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'AgendaHeaderAction0396("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'reason = "timeline_open"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'enqueueImmediate(activity, "timeline_resume")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'autoSyncToken' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'AgendaTimelineDownloadButton0398(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILED_0398' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq '/v1/driver/agenda/seat-allocation' trip-platform/functions/index.js
