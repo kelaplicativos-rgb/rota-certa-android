@@ -32,6 +32,8 @@ data class AppSettings(
     val proximityPopupAutoCloseEnabled: Boolean = true,
     /** Only manual seat input: seats explicitly allocated to the Rota Certa channel for each trip. Zero is valid. */
     val rotaCertaSeatAllocation: Int = 0,
+    /** Monotonic tenant configuration version owned by SettingsRepository. */
+    val rotaCertaSeatAllocationVersion: Long = 0L,
 )
 
 @Serializable
