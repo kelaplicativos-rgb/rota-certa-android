@@ -457,8 +457,7 @@ internal fun EnhancedPassengerTimelineSection(
                         onClick = {
                             val selectedTrip = trip
                             val booking = currentBooking
-                            val remoteTripId = selectedTrip?.remoteId
-                            if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                            if (selectedTrip == null || booking == null) {
                                 onChanged("Não foi possível localizar a viagem/reserva canônica para aprovar.")
                             } else {
                                 decisionRunning = "APPROVE"
@@ -524,8 +523,7 @@ internal fun EnhancedPassengerTimelineSection(
                             onClick = {
                                 val selectedTrip = trip
                                 val booking = currentBooking
-                                val remoteTripId = selectedTrip?.remoteId
-                                if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                                if (selectedTrip == null || booking == null) {
                                     rejectConfirmOpen = false
                                     onChanged("Não foi possível localizar a viagem/reserva canônica para recusar.")
                                 } else {
@@ -856,11 +854,7 @@ internal fun EnhancedPassengerTimelineSection(
                 onDismiss = { editManualRow = null },
                 onSave = { updated ->
                     if (updated.source == BookingSource.ROTA_CERTA) {
-                        val remoteTripId = currentTrip.remoteId
-                        if (remoteTripId.isNullOrBlank()) {
-                            onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de editar.")
-                        } else {
-                            scope.launch {
+                        scope.launch {
                                 runCatching {
                                     store.saveBooking(updated)
                                     val queued = mutationCoordinator.recordLocalMutation(
@@ -884,7 +878,6 @@ internal fun EnhancedPassengerTimelineSection(
                                     onChanged("Não foi possível persistir a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
                                 }
                             }
-                        }
                     } else {
                         store.saveBooking(updated)
                         editManualRow = null
