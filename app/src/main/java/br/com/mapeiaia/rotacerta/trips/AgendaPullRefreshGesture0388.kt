@@ -17,6 +17,11 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 
+internal fun shouldStartAgendaFullRefresh0388(
+    timelineActive: Boolean,
+    refreshAllRunning: Boolean,
+): Boolean = timelineActive && !refreshAllRunning
+
 internal enum class AgendaPullRefreshOutcome0388 {
     ACCEPTED,
     BLOCKED_NOT_AT_TOP,
