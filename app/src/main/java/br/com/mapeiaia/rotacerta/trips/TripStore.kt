@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.TenantStorageScope
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -46,22 +47,82 @@ class TripStore(context: Context) {
     fun publicExternalBinding(remoteTripId: String): PublicExternalTripBinding? =
         publicExternalBindings().firstOrNull { it.remoteTripId == remoteTripId }
 
+    fun publicExternalBindingForStrongIdentity(profileUuid: String, blablaTripId: String): PublicExternalTripBinding? {
+        val profile = profileUuid.trim()
+        val tripId = blablaTripId.trim()
+        if (profile.isBlank() || tripId.isBlank()) return null
+        return publicExternalBindings().firstOrNull {
+            it.profileUuid.trim().equals(profile, ignoreCase = true) && it.blablaTripId.trim() == tripId
+        }
+    }
+
     fun publicExternalBindingFor(entry: TripTimelineEntry): PublicExternalTripBinding? =
         publicExternalBindings().firstOrNull { it.matches(entry) }
 
-    fun savePublicExternalBinding(binding: PublicExternalTripBinding): PublicExternalTripBinding {
+    fun savePublicExternalBinding(binding: PublicExternalTripBinding): PublicExternalTripBinding = synchronized(CANONICAL_LOCK) {
         val normalized = binding.copy(updatedAtMillis = System.currentTimeMillis())
-        val current = publicExternalBindings().filterNot { it.remoteTripId == normalized.remoteTripId }
-        prefs.edit().putString(publicExternalBindingsKey, json.encodeToString(listOf(normalized) + current)).apply()
-        return normalized
+        val current = publicExternalBindings().filterNot {
+            it.remoteTripId == normalized.remoteTripId ||
+                (normalized.bookingTripId.isNotBlank() && it.bookingTripId == normalized.bookingTripId) ||
+                (normalized.profileUuid.isNotBlank() && normalized.blablaTripId.isNotBlank() &&
+                    it.profileUuid.equals(normalized.profileUuid, ignoreCase = true) && it.blablaTripId == normalized.blablaTripId)
+        }
+        require(prefs.edit().putString(publicExternalBindingsKey, json.encodeToString(listOf(normalized) + current)).commit()) {
+            "Falha ao persistir vínculo externo canônico."
+        }
+        normalized
     }
 
-    fun saveTrip(trip: Trip): Trip {
-        val normalized = trip.normalizedRecordOrigin().copy(updatedAtMillis = System.currentTimeMillis())
+    fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
+        val incoming = trip.normalizedRecordOrigin()
+        val existing = trips().firstOrNull { it.id == incoming.id }
+        if (existing != null && existing.canonicalRevision > 0L && incoming.canonicalRevision < existing.canonicalRevision) {
+            UnifiedDebugEventStore.record(
+                "TRIP_CANONICAL_WRITE",
+                appContext.packageName,
+                "tenantId=" + tenantScope.tenantId +
+                    " internalTripId=" + incoming.id +
+                    " source=TripStore oldRevision=" + existing.canonicalRevision +
+                    " newRevision=" + incoming.canonicalRevision +
+                    " changedFields=unknown publicationTarget=LOCAL result=SKIP_STALE_REVISION" +
+                    " reason=older_local_snapshot configVersion=" + existing.seatAllocationVersionUsed,
+            )
+            return@synchronized existing
+        }
+        val semanticChanged = existing == null || canonicalTripComparable0395(existing) != canonicalTripComparable0395(incoming)
+        if (existing != null && !semanticChanged && incoming.canonicalRevision <= existing.canonicalRevision) {
+            return@synchronized existing
+        }
+        val nextRevision = if (existing == null) {
+            maxOf(1L, incoming.canonicalRevision)
+        } else {
+            nextCanonicalTripRevision0395(existing.canonicalRevision, incoming.canonicalRevision, semanticChanged)
+        }
+        val normalized = incoming.copy(
+            canonicalRevision = nextRevision,
+            updatedAtMillis = System.currentTimeMillis(),
+        )
         val current = trips().filterNot { it.id == normalized.id }
-        prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).apply()
-        return normalized
+        require(prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).commit()) {
+            "Falha ao persistir estado canônico da viagem."
+        }
+        UnifiedDebugEventStore.record(
+            "TRIP_CANONICAL_WRITE",
+            appContext.packageName,
+            "tenantId=" + tenantScope.tenantId +
+                " internalTripId=" + normalized.id +
+                " source=TripStore oldRevision=" + (existing?.canonicalRevision ?: 0L) +
+                " newRevision=" + normalized.canonicalRevision +
+                " changedFields=trip publicationTarget=LOCAL result=UPDATE" +
+                " reason=canonical_mutation configVersion=" + normalized.seatAllocationVersionUsed,
+        )
+        normalized
     }
+
+    private fun canonicalTripComparable0395(trip: Trip): Trip = trip.copy(
+        canonicalRevision = 0L,
+        updatedAtMillis = 0L,
+    )
 
     /**
      * Reconciles active/future trips to the channel-derived inventory. The old
@@ -70,8 +131,20 @@ class TripStore(context: Context) {
     fun reconcileOperationalInventory(
         rotaCertaSeatAllocation: Int,
         nowMillis: Long = System.currentTimeMillis(),
-    ): Pair<Int, Int> {
+        seatAllocationVersion: Long = 0L,
+    ): Pair<Int, Int> = reconcileOperationalInventoryTripIds(
+        rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+        seatAllocationVersion = seatAllocationVersion,
+        nowMillis = nowMillis,
+    ).size to 0
+
+    internal fun reconcileOperationalInventoryTripIds(
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Set<String> = synchronized(CANONICAL_LOCK) {
         require(rotaCertaSeatAllocation in 0..999) { "Vagas do Rota Certa inválidas." }
+        require(seatAllocationVersion >= 0L) { "Versão de vagas do Rota Certa inválida." }
         val activeStatuses = setOf(
             TripStatus.DRAFT,
             TripStatus.PUBLISHED,
@@ -79,29 +152,39 @@ class TripStore(context: Context) {
             TripStatus.STARTING,
             TripStatus.ACTIVE,
         )
-        val allBookings = bookings()
+        val bookingsByTrip = bookings().groupBy(Booking::tripId)
+        val changedTripIds = linkedSetOf<String>()
         val currentTrips = trips()
-        var changedTrips = 0
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
-            if (!shouldApply) {
+            if (!shouldApply || trip.seatAllocationVersionUsed > seatAllocationVersion) {
                 trip
             } else {
-                val withAllocation = trip.copy(rotaCertaSeatAllocation = rotaCertaSeatAllocation)
-                val derivedCapacity = operationalInventoryCapacity(withAllocation, allBookings)
-                if (trip.capacity != derivedCapacity || trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation) {
-                    changedTrips++
-                    withAllocation.copy(capacity = derivedCapacity, updatedAtMillis = nowMillis)
-                } else {
-                    trip
-                }
+                val withAllocation = trip.copy(
+                    rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                    seatAllocationVersionUsed = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                )
+                val derivedCapacity = operationalInventoryCapacity(withAllocation, bookingsByTrip[trip.id].orEmpty())
+                val changed = trip.capacity != derivedCapacity ||
+                    trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation ||
+                    trip.seatAllocationVersionUsed < seatAllocationVersion
+                if (changed) {
+                    changedTripIds += trip.id
+                    withAllocation.copy(
+                        capacity = derivedCapacity,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        updatedAtMillis = nowMillis,
+                    )
+                } else trip
             }
         }
-        if (changedTrips > 0) {
-            prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).apply()
+        if (changedTripIds.isNotEmpty()) {
+            require(prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).commit()) {
+                "Falha ao persistir fan-out canônico de vagas."
+            }
         }
-        return changedTrips to 0
+        changedTripIds
     }
 
     @Deprecated("Legacy compatibility only; vehicle capacity no longer drives trip inventory.")
@@ -135,7 +218,7 @@ class TripStore(context: Context) {
     internal fun saveBookingsBatch(
         bookingsToSave: List<Booking>,
         preserveSourceUpdatedAt: Boolean,
-    ): List<Booking> {
+    ): List<Booking> = synchronized(CANONICAL_LOCK) {
         if (bookingsToSave.isEmpty()) return emptyList()
 
         val existingAll = bookings()
@@ -161,18 +244,29 @@ class TripStore(context: Context) {
             )
         }
 
+        val changedTripIds = normalized.asSequence()
+            .filter { incoming ->
+                val existing = existingById[incoming.id]
+                existing == null || existing.copy(updatedAtMillis = 0L) != incoming.copy(updatedAtMillis = 0L)
+            }
+            .map(Booking::tripId)
+            .toSet()
+        if (changedTripIds.isEmpty()) return@synchronized normalized
+
         val next = mergeBookingBatch0380(existingAll, normalized)
-        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
-        refreshTripStatusesBatch(
-            tripIds = normalized.map(Booking::tripId).toSet(),
+        require(prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit()) {
+            "Falha ao persistir reservas do estado canônico."
+        }
+        refreshCanonicalTripStateBatch0395(
+            tripIds = changedTripIds,
             bookingSnapshot = next,
             nowMillis = now,
         )
-        return normalized
+        normalized
     }
 
-    internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int {
-        if (tripIds.isEmpty()) return 0
+    internal fun reconcileBookingDerivedInventory(tripIds: Set<String>): Int = synchronized(CANONICAL_LOCK) {
+        if (tripIds.isEmpty()) return@synchronized 0
         val allBookings = bookings()
         val bookingsByTrip = allBookings.groupBy(Booking::tripId)
         val currentTrips = trips()
@@ -187,14 +281,20 @@ class TripStore(context: Context) {
                     trip
                 } else {
                     changed++
-                    trip.copy(capacity = derived, updatedAtMillis = now)
+                    trip.copy(
+                        capacity = derived,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        updatedAtMillis = now,
+                    )
                 }
             }
         }
         if (changed > 0) {
-            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+            require(prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).commit()) {
+                "Falha ao reconciliar inventário canônico."
+            }
         }
-        return changed
+        changed
     }
 
     private fun prepareBookingForPersistence(booking: Booking, existing: Booking?): Booking {
@@ -247,7 +347,7 @@ class TripStore(context: Context) {
         }
     }
 
-    private fun refreshTripStatusesBatch(
+    private fun refreshCanonicalTripStateBatch0395(
         tripIds: Set<String>,
         bookingSnapshot: List<Booking>,
         nowMillis: Long,
@@ -260,32 +360,37 @@ class TripStore(context: Context) {
             if (trip.id !in tripIds) {
                 trip
             } else {
-                val status = SeatAvailabilityEngine.suggestedStatus(trip, bookingsByTrip[trip.id].orEmpty())
-                if (status == trip.status) {
-                    trip
-                } else {
-                    changed = true
-                    trip.copy(status = status, updatedAtMillis = nowMillis)
-                }
+                val tripBookings = bookingsByTrip[trip.id].orEmpty()
+                val status = SeatAvailabilityEngine.suggestedStatus(trip, tripBookings)
+                val capacity = operationalInventoryCapacity(trip, tripBookings)
+                changed = true
+                trip.copy(
+                    status = status,
+                    capacity = capacity,
+                    canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                    updatedAtMillis = nowMillis,
+                )
             }
         }
         if (changed) {
-            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+            require(prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).commit()) {
+                "Falha ao persistir revisão canônica derivada de reservas."
+            }
         }
     }
 
-    fun deleteBooking(id: String) {
+    fun deleteBooking(id: String): Unit = synchronized(CANONICAL_LOCK) {
         val current = bookings()
-        val booking = current.firstOrNull { it.id == id }
+        val booking = current.firstOrNull { it.id == id } ?: return@synchronized
         val next = current.filterNot { it.id == id }
-        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
-        booking?.let {
-            refreshTripStatusesBatch(
-                tripIds = setOf(it.tripId),
-                bookingSnapshot = next,
-                nowMillis = System.currentTimeMillis(),
-            )
+        require(prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit()) {
+            "Falha ao remover reserva do estado canônico."
         }
+        refreshCanonicalTripStateBatch0395(
+            tripIds = setOf(booking.tripId),
+            bookingSnapshot = next,
+            nowMillis = System.currentTimeMillis(),
+        )
     }
 
     fun onlineSettings(): TripOnlineSettings {
@@ -329,6 +434,7 @@ class TripStore(context: Context) {
     }.getOrNull()
 
     companion object {
+        private val CANONICAL_LOCK = Any()
         private const val PREFS = "rota_certa_trips_stage47"
         private const val KEY_TRIPS = "trips"
         private const val KEY_BOOKINGS = "bookings"
@@ -350,6 +456,10 @@ data class PublicExternalTripBinding(
     val departureAtMillis: Long,
     val capacity: Int,
     val stops: List<TripStop>,
+    /** Stable tenant-scoped internal identity used by Timeline/Agenda reconciliation. */
+    val canonicalRevision: Long = 0L,
+    val seatAllocationVersionUsed: Long = 0L,
+    val externalFingerprint: String = "",
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {
     fun matches(entry: TripTimelineEntry): Boolean {
@@ -384,6 +494,8 @@ data class PublicExternalTripBinding(
         blablaManageUrl = blablaTripHref.takeIf(String::isNotBlank),
         blablaPublicUrl = blablaPublicHref.takeIf(String::isNotBlank),
         publicBookingEnabled = true,
+        canonicalRevision = canonicalRevision,
+        seatAllocationVersionUsed = seatAllocationVersionUsed,
     )
 }
 

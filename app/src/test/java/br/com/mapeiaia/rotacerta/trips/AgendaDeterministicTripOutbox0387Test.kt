@@ -177,12 +177,16 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
-    fun tenantWideSeatSettingPublishesOnlyComputedImpactAndNeverCallsBlablaNetworkSync() {
+    fun tenantWideSeatSettingUsesCanonicalDurableFanoutAndNeverDependsOnCompose() {
         val activity = source("TripsActivity.kt")
-        assertTrue(activity.contains("TENANT_SEAT_ALLOCATION_EXACT_IMPACT"))
-        assertTrue(activity.contains("externalAffected"))
-        assertTrue(activity.contains("recordExternalTenantMutation("))
-        assertTrue(activity.contains("fullSyncRequested=false blablaNetworkSync=false"))
+        val background = source("AgendaBackgroundSync0392.kt")
+        assertTrue(background.contains("reconcileTenantSeatAllocation0395("))
+        assertTrue(background.contains("recordExternalTenantMutation("))
+        assertTrue(background.contains("externalRetryPending"))
+        assertTrue(background.contains("fullSyncRequested=false"))
+        assertTrue(activity.contains("reconcileTenantSeatAllocation0395("))
+        assertFalse(activity.contains("TENANT_SEAT_ALLOCATION_EXACT_IMPACT"))
+        assertFalse(activity.contains("externalAffected"))
     }
 
     @Test

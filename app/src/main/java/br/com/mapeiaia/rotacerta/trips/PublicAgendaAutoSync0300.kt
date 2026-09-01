@@ -577,16 +577,39 @@ internal object PublicAgendaAutoSync0300 {
         entityRevision: Long = 0L,
         outboxEventId: String = "",
         externalAccountId: String = "",
+        canonicalTripId: String = "",
+        seatAllocationVersion: Long = 0L,
     ): Boolean = withContext(Dispatchers.IO) {
         if (source.identity_conflict) return@withContext false
+        val profileUuid = source.profile_uuid.trim()
+        val tripId = source.trip_id?.trim().orEmpty()
+        val boundInternalTripId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
+        val resolvedInternalTripId = canonicalTripId.takeIf(String::isNotBlank)
+            ?: boundInternalTripId.takeIf(String::isNotBlank)
+            ?: if (entityRevision > 0L) {
+                strongExternalCanonicalTripId0387(
+                    TripPublicationOutbox0387(context).tenantId,
+                    externalAccountId,
+                    profileUuid,
+                    tripId,
+                )
+            } else ""
         if (entityRevision > 0L) {
-            val profileUuid = source.profile_uuid.trim()
-            val tripId = source.trip_id?.trim().orEmpty()
             val accounts = BlaBlaDynamicAccountRegistry(context).list().filter { account ->
                 account.id == externalAccountId && account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
             }
-            require(profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1) {
-                "Sincronização externa determinística exige conta + profile UUID + tripId fortes."
+            val expectedStrongId = strongExternalCanonicalTripId0387(
+                TripPublicationOutbox0387(context).tenantId,
+                externalAccountId,
+                profileUuid,
+                tripId,
+            )
+            require(
+                profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1 &&
+                    resolvedInternalTripId.isNotBlank() &&
+                    (resolvedInternalTripId == expectedStrongId || resolvedInternalTripId == boundInternalTripId)
+            ) {
+                "Sincronização externa determinística exige internalTripId + conta + profile UUID + tripId fortes."
             }
         }
         val settings = store.onlineSettings()
@@ -631,15 +654,9 @@ internal object PublicAgendaAutoSync0300 {
                 traceId = AgendaTrace.currentTraceId(),
                 parentOperationId = null,
                 entityRevision = entityRevision,
-                canonicalTripId = if (entityRevision > 0L) {
-                    strongExternalCanonicalTripId0387(
-                        TripPublicationOutbox0387(context).tenantId,
-                        externalAccountId,
-                        source.profile_uuid.trim(),
-                        source.trip_id?.trim().orEmpty(),
-                    )
-                } else "",
+                canonicalTripId = resolvedInternalTripId,
                 outboxEventId = outboxEventId,
+                seatAllocationVersion = seatAllocationVersion,
             )
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
@@ -675,10 +692,14 @@ internal object PublicAgendaAutoSync0300 {
         entityRevision: Long = 0L,
         canonicalTripId: String = "",
         outboxEventId: String = "",
+        seatAllocationVersion: Long = 0L,
     ): ExternalCapacitySnapshotSyncResult {
         val publicTrip = synthesized.trip
         val diagnosticTripKey = sha256(publicTrip.publicToken).take(12)
-        val existingBinding = store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
+        val existingBinding = store.publicExternalBindingForStrongIdentity(
+            synthesized.profileUuid,
+            synthesized.blablaTripId,
+        ) ?: store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
 
         if (!synthesized.sourceComplete) {
             if (existingBinding != null) {
@@ -718,7 +739,16 @@ internal object PublicAgendaAutoSync0300 {
                 )
                 return ExternalCapacitySnapshotSyncResult(published = false, changed = false)
             }
-            saveExternalBinding(store, response.tripId, response.publicToken, synthesized, publicTrip)
+            saveExternalBinding(
+                store = store,
+                remoteTripId = response.tripId,
+                publicToken = response.publicToken,
+                synthesized = synthesized,
+                effectiveTrip = publicTrip,
+                canonicalTripId = canonicalTripId,
+                entityRevision = entityRevision,
+                seatAllocationVersion = 0L,
+            )
             UnifiedDebugEventStore.record(
                 "PUBLIC_CAPACITY_UNKNOWN_PUBLISHED",
                 context.packageName,
@@ -774,7 +804,16 @@ internal object PublicAgendaAutoSync0300 {
         if (entityRevision > 0L && response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
-        saveExternalBinding(store, remoteTripId, publicTrip.publicToken, synthesized, effectiveTrip)
+        saveExternalBinding(
+            store = store,
+            remoteTripId = remoteTripId,
+            publicToken = publicTrip.publicToken,
+            synthesized = synthesized,
+            effectiveTrip = effectiveTrip,
+            canonicalTripId = canonicalTripId,
+            entityRevision = entityRevision,
+            seatAllocationVersion = seatAllocationVersion,
+        )
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
@@ -801,12 +840,22 @@ internal object PublicAgendaAutoSync0300 {
         publicToken: String,
         synthesized: PublicAgendaExternalTrip,
         effectiveTrip: Trip,
+        canonicalTripId: String,
+        entityRevision: Long,
+        seatAllocationVersion: Long,
     ) {
+        val existing = store.publicExternalBindingForStrongIdentity(
+            synthesized.profileUuid,
+            synthesized.blablaTripId,
+        )
+        val stableInternalTripId = existing?.bookingTripId?.takeIf(String::isNotBlank)
+            ?: canonicalTripId.takeIf(String::isNotBlank)
+            ?: "public-external:$remoteTripId"
         store.savePublicExternalBinding(
             PublicExternalTripBinding(
                 remoteTripId = remoteTripId,
                 publicToken = publicToken,
-                bookingTripId = "public-external:$remoteTripId",
+                bookingTripId = stableInternalTripId,
                 profileUuid = synthesized.profileUuid,
                 blablaTripId = synthesized.blablaTripId,
                 blablaTripHref = synthesized.blablaTripHref,
@@ -815,6 +864,9 @@ internal object PublicAgendaAutoSync0300 {
                 departureAtMillis = effectiveTrip.departureAtMillis,
                 capacity = effectiveTrip.capacity,
                 stops = effectiveTrip.stops,
+                canonicalRevision = maxOf(existing?.canonicalRevision ?: 0L, entityRevision),
+                seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
+                externalFingerprint = synthesized.snapshotRevision,
             ),
         )
     }

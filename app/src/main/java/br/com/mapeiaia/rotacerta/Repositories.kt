@@ -5,8 +5,10 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -22,6 +24,7 @@ class SettingsRepository(private val context: Context) {
     private val tenantScope = RotaCertaTenantRegistry(context.applicationContext).activeScope()
     private fun stringKey(base: String) = stringPreferencesKey(tenantScope.key(base))
     private fun intKey(base: String) = intPreferencesKey(tenantScope.key(base))
+    private fun longKey(base: String) = longPreferencesKey(tenantScope.key(base))
     private fun doubleKey(base: String) = doublePreferencesKey(tenantScope.key(base))
     private fun booleanKey(base: String) = booleanPreferencesKey(tenantScope.key(base))
 
@@ -30,6 +33,7 @@ class SettingsRepository(private val context: Context) {
     private val tripDepartureAddress = stringKey("trip_departure_address")
     private val vehicleCapacity = intKey("vehicle_capacity")
     private val rotaCertaSeatAllocation = intKey("rota_certa_seat_allocation")
+    private val rotaCertaSeatAllocationVersion = longKey("rota_certa_seat_allocation_version")
     private val homeRadiusKm = doubleKey("home_radius_km")
     private val alternativeRadiusKm = doubleKey("alternative_radius_km")
     private val desiredKeywords = stringKey("desired_keywords")
@@ -67,6 +71,7 @@ class SettingsRepository(private val context: Context) {
             vehicleCapacity = (prefs[vehicleCapacity] ?: 0).coerceIn(0, 999),
             // Explicit 0 is a valid configured value. Never fall back to the legacy capacity key.
             rotaCertaSeatAllocation = (prefs[rotaCertaSeatAllocation] ?: 0).coerceIn(0, 999),
+            rotaCertaSeatAllocationVersion = (prefs[rotaCertaSeatAllocationVersion] ?: 0L).coerceAtLeast(0L),
             homeRadiusKm = prefs[homeRadiusKm] ?: 10.0,
             alternativeRadiusKm = prefs[alternativeRadiusKm] ?: 10.0,
             desiredKeywords = prefs[desiredKeywords].orEmpty(),
@@ -125,17 +130,27 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun saveSettings(settings: AppSettings) {
+        var seatAllocationChanged = false
+        var committedSeatAllocation = settings.rotaCertaSeatAllocation.coerceIn(0, 999)
+        var committedSeatAllocationVersion = 0L
         context.dataStore.edit { prefs ->
             prefs[homeAddress] = settings.homeAddress
             prefs[alternativeAddress] = settings.alternativeAddress
             prefs[tripDepartureAddress] = settings.tripDepartureAddress.trim()
             // vehicle_capacity intentionally stays untouched for old-installation compatibility.
             // New saves never create, rewrite or remove that legacy value.
-            if (settings.rotaCertaSeatAllocation in 0..999) {
-                prefs[rotaCertaSeatAllocation] = settings.rotaCertaSeatAllocation
+            val previousSeatAllocation = (prefs[rotaCertaSeatAllocation] ?: 0).coerceIn(0, 999)
+            val nextSeatAllocation = settings.rotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+            val previousSeatAllocationVersion = (prefs[rotaCertaSeatAllocationVersion] ?: 0L).coerceAtLeast(0L)
+            seatAllocationChanged = nextSeatAllocation != previousSeatAllocation
+            prefs[rotaCertaSeatAllocation] = nextSeatAllocation
+            committedSeatAllocation = nextSeatAllocation
+            committedSeatAllocationVersion = if (seatAllocationChanged) {
+                previousSeatAllocationVersion + 1L
             } else {
-                prefs.remove(rotaCertaSeatAllocation)
+                previousSeatAllocationVersion
             }
+            prefs[rotaCertaSeatAllocationVersion] = committedSeatAllocationVersion
             prefs[homeRadiusKm] = settings.homeRadiusKm
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
@@ -161,6 +176,14 @@ class SettingsRepository(private val context: Context) {
             }
             settings.homeCoordinate?.let { prefs[homeCoordinate] = json.encodeToString(it) } ?: prefs.remove(homeCoordinate)
             settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
+        }
+        if (seatAllocationChanged) {
+            AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
+                context = context.applicationContext,
+                rotaCertaSeatAllocation = committedSeatAllocation,
+                seatAllocationVersion = committedSeatAllocationVersion,
+            )
+            AgendaBackgroundSync0392.enqueueImmediate(context.applicationContext, "tenant_seat_allocation_changed")
         }
     }
 

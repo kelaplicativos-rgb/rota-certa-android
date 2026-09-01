@@ -205,7 +205,6 @@ private fun TripApp(
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
     val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
@@ -268,7 +267,11 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    androidx.compose.runtime.LaunchedEffect(
+        settingsLoaded,
+        appSettings.rotaCertaSeatAllocation,
+        appSettings.rotaCertaSeatAllocationVersion,
+    ) {
         if (!settingsLoaded) {
             AgendaTrace.event(
                 activity,
@@ -278,77 +281,28 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
-        val priorAllocation = previousRotaCertaSeatAllocation
-        previousRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation
-        val beforeTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
-        val (changedTrips, _) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            store.reconcileOperationalInventory(
-                rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-            )
-        }
-        if (changedTrips > 0) {
-            val reconciledTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
-            trips = reconciledTrips
-            val beforeById = beforeTrips.associateBy(Trip::id)
-            val changedLocalIds = reconciledTrips
-                .filter(Trip::isCanonicalLocalPublishSource)
-                .filter { trip ->
-                    val before = beforeById[trip.id]
-                    before == null || before.capacity != trip.capacity || before.rotaCertaSeatAllocation != trip.rotaCertaSeatAllocation
-                }
-                .map(Trip::id)
-            val mutationCoordinator = TripMutationCoordinator0387(activity, store)
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                changedLocalIds.forEach { tripId ->
-                    mutationCoordinator.recordLocalMutation(
-                        canonicalTripId = tripId,
-                        mutationType = "TENANT_SEAT_ALLOCATION_CHANGED",
-                        source = "ROTA_CERTA_SETTINGS",
-                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                        reconcileBookingInventory = false,
-                    )
-                }
-                val externalAffected = if (priorAllocation != null && priorAllocation != appSettings.rotaCertaSeatAllocation) {
-                    val publishedBindings = store.publicExternalBindings()
-                    BlaBlaCollectorStateStore(activity).lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
-                        .asSequence()
-                        .filterNot(BlaBlaCollectorTrip::identity_conflict)
-                        .filter { source -> source.profile_uuid.isNotBlank() && !source.trip_id.isNullOrBlank() }
-                        .filter { source ->
-                            publishedBindings.any { binding ->
-                                binding.profileUuid.equals(source.profile_uuid, ignoreCase = true) &&
-                                    binding.blablaTripId == source.trip_id
-                            }
-                        }
-                        .filter { source ->
-                            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, priorAllocation) !=
-                                PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, appSettings.rotaCertaSeatAllocation)
-                        }
-                        .toList()
-                } else emptyList()
-                externalAffected.forEach { source ->
-                    mutationCoordinator.recordExternalTenantMutation(
-                        sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                    )
-                }
-                AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
-                UnifiedDebugEventStore.record(
-                    "TENANT_SEAT_ALLOCATION_EXACT_IMPACT",
-                    activity.packageName,
-                    "previous=${priorAllocation ?: -1} current=${appSettings.rotaCertaSeatAllocation} localAffected=${changedLocalIds.size} externalAffected=${externalAffected.size} fullSyncRequested=false blablaNetworkSync=false",
-                )
-            }
-            UnifiedDebugEventStore.record(
-                "OPERATIONAL_INVENTORY_RECONCILED",
-                activity.packageName,
-                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips incrementalLocal=${changedLocalIds.size} incrementalExternal=false fullSyncRequested=false legacyVehicleCapacityIgnored=true",
-            )
-        }
+        val fanOut = AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
+            context = activity,
+            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = appSettings.rotaCertaSeatAllocationVersion,
+        )
+        trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+        UnifiedDebugEventStore.record(
+            "OPERATIONAL_INVENTORY_RECONCILED",
+            activity.packageName,
+            "rotaCertaSeatAllocation=" + appSettings.rotaCertaSeatAllocation +
+                " configVersion=" + appSettings.rotaCertaSeatAllocationVersion +
+                " localCanonicalUpdated=" + fanOut.localCanonicalUpdated +
+                " localPublicationQueued=" + fanOut.localPublicationQueued +
+                " externalPublicationQueued=" + fanOut.externalPublicationQueued +
+                " externalRetryPending=" + fanOut.externalRetryPending +
+                " fullSyncRequested=false legacyVehicleCapacityIgnored=true",
+        )
         AgendaTrace.event(
             activity,
             "INVENTORY_LOCAL_SETTINGS_RECEIVED",
-            "source=rota_certa_allocation value=${appSettings.rotaCertaSeatAllocation}",
+            "source=rota_certa_allocation value=" + appSettings.rotaCertaSeatAllocation +
+                " configVersion=" + appSettings.rotaCertaSeatAllocationVersion,
             traceId,
         )
     }
