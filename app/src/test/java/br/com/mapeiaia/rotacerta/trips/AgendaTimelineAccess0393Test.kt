@@ -15,6 +15,7 @@ class AgendaTimelineAccess0393Test {
 
         assertTrue(agendaBranch.contains(".horizontalScroll(rememberScrollState())"))
         assertTrue(agendaBranch.contains("Modifier.widthIn(min = 156.dp)"))
+        assertTrue(source.contains("listOf(\n            ResponsiveTripAction(\n                label = if (showPublicSearch)"))
         assertFalse(agendaBranch.contains("Column(verticalArrangement = Arrangement.spacedBy(7.dp)"))
         assertFalse(agendaBranch.contains("modifier = Modifier.fillMaxWidth()) { Text(action.label"))
     }
