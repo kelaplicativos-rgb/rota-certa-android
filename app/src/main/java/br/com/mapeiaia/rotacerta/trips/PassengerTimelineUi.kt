@@ -880,8 +880,22 @@ internal fun EnhancedPassengerTimelineSection(
                             }
                     } else {
                         store.saveBooking(updated)
+                        val queued = mutationCoordinator.recordLocalMutation(
+                            canonicalTripId = currentTrip.id,
+                            mutationType = "LOCAL_PASSENGER_BOOKING_CHANGED",
+                            source = "TIMELINE_BOOKING_EDIT",
+                        )
+                        if (queued != null) {
+                            scope.launch { mutationCoordinator.drainPending() }
+                        }
                         editManualRow = null
-                        onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
+                        onChanged(
+                            if (queued != null) {
+                                "Passageiro atualizado. Ocupação recalculada e delta desta viagem registrado."
+                            } else {
+                                "Passageiro atualizado. Ocupação física por trecho recalculada."
+                            },
+                        )
                         // BlaBlaCar is never synchronized automatically after an internal mutation.
                     }
                 },
