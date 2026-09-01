@@ -43,9 +43,6 @@ internal enum class AgendaRootSection0396(val label: String) {
 
 enum class AgendaTimelineCommand0396 {
     ADD_PASSENGER,
-    OPEN_PUBLISHER,
-    OPEN_BLABLACAR_SYNC,
-    OPEN_CLEAR_DIALOG,
     TOGGLE_ARCHIVED,
 }
 
