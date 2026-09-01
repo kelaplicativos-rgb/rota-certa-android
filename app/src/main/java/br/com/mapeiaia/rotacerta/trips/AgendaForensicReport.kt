@@ -86,6 +86,12 @@ internal object AgendaForensicReportBuilder {
         val emptyVisual = agendaEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE" }
         val emptyVisualLong = agendaEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE_LONG" }
         val errors = agendaEvents.count { it.stage == "OPERATION_ERROR" }
+        val failureEvidenceEvents = dedupeFailureEvidence(agendaEvents.filter(::isFailureEvidenceEvent))
+        val byteLevelFailures = failureEvidenceEvents.count { event ->
+            structuredDetail(event, "requestBytes").isNotBlank() ||
+                structuredDetail(event, "responseBytes").isNotBlank() ||
+                structuredDetail(event, "networkCallId").isNotBlank()
+        }
         val cancelled = agendaEvents.count { it.stage == "OPERATION_CANCELLED" }
         val retries = agendaEvents.count { "RETRY" in it.stage }
         val largestGapMs = agendaEvents.zipWithNext()
@@ -157,6 +163,8 @@ internal object AgendaForensicReportBuilder {
             appendLine("- tela vazia anormal: ${if (emptyVisual) "sim" else "não"}")
             appendLine("- tela vazia prolongada: ${if (emptyVisualLong) "sim" else "não"}")
             appendLine("- operações com erro: $errors")
+            appendLine("- evidências estruturadas de falha: ${failureEvidenceEvents.size}")
+            appendLine("- falhas com envelope byte a byte: $byteLevelFailures")
             appendLine("- operações canceladas: $cancelled")
             appendLine("- retries externos: $retries")
             appendLine("- operations START sem conclusão: ${incompleteOperations.size}")
@@ -165,6 +173,22 @@ internal object AgendaForensicReportBuilder {
             appendLine()
             appendLine("Alertas automáticos:")
             if (alerts.isEmpty()) appendLine("- nenhum alerta diagnóstico") else alerts.forEach { appendLine("- $it") }
+            appendLine()
+            appendLine("--- EVIDÊNCIAS ESTRUTURADAS DE FALHA ---")
+            if (failureEvidenceEvents.isEmpty()) {
+                appendLine("(nenhuma falha estruturada registrada nesta sessão)")
+            } else {
+                failureEvidenceEvents.sortedBy { it.monotonicNs }.forEach { event ->
+                    append(formatWall(event.atMillis))
+                    append(" | ").append(event.stage)
+                    val trace = structuredDetail(event, "traceId")
+                    if (trace.isNotBlank()) append(" | trace=").append(trace)
+                    val operationId = structuredDetail(event, "operationId")
+                    if (operationId.isNotBlank()) append(" | op=").append(operationId)
+                    append(" | ").append(event.details)
+                    appendLine()
+                }
+            }
             appendLine()
             appendLine("Custo do próprio debug:")
             appendLine("debugEventsRecorded=${snapshot.recordCalls}")
@@ -196,6 +220,20 @@ internal object AgendaForensicReportBuilder {
                         if (parent.isNotBlank()) append(" | parent=").append(parent)
                         val duration = detail(event, "durationMs")
                         if (duration.isNotBlank()) append(" | durationMs=").append(duration)
+                        if (isFailureEvidenceEvent(event)) {
+                            val fingerprint = structuredDetail(event, "failureFingerprint")
+                            val root = structuredDetail(event, "rootCauseClass")
+                            val phase = structuredDetail(event, "transportPhase")
+                            val http = structuredDetail(event, "httpStatus")
+                            val requestBytes = structuredDetail(event, "requestBytes")
+                            val responseBytes = structuredDetail(event, "responseBytes")
+                            if (fingerprint.isNotBlank()) append(" | failure=").append(fingerprint)
+                            if (root.isNotBlank()) append(" | root=").append(root)
+                            if (phase.isNotBlank()) append(" | phase=").append(phase)
+                            if (http.isNotBlank()) append(" | http=").append(http)
+                            if (requestBytes.isNotBlank()) append(" | requestBytes=").append(requestBytes)
+                            if (responseBytes.isNotBlank()) append(" | responseBytes=").append(responseBytes)
+                        }
                         appendLine()
                     }
                 }
@@ -268,6 +306,11 @@ internal object AgendaForensicReportBuilder {
             stage.startsWith("CAPACITY_") ||
             stage.startsWith("BOOKING_") ||
             stage.startsWith("PUBLIC_AGENDA_") ||
+            stage.startsWith("PUBLIC_BOOKING_") ||
+            stage.startsWith("PUBLIC_DRIVER_") ||
+            stage.startsWith("PUBLIC_LOCAL_") ||
+            stage.startsWith("PUBLIC_EXTERNAL_") ||
+            stage.startsWith("PUBLIC_CAPACITY_") ||
             stage.startsWith("PUBLIC_LINK_REMOTE_") ||
             stage.startsWith("PUBLIC_ACCESS_") ||
             stage.startsWith("PUBLIC_PRIVATE_AUTH_") ||
@@ -283,6 +326,44 @@ internal object AgendaForensicReportBuilder {
             stage.startsWith("USER_") ||
             stage.startsWith("OPERATION_") ||
             stage == "SLOW_OPERATION"
+    }
+
+    private fun isFailureEvidenceEvent(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        val stage = event.stage
+        return event.details.contains("failureFingerprint=") ||
+            stage == "AGENDA_FAILURE_EVIDENCE" ||
+            stage == "OPERATION_ERROR" ||
+            stage.endsWith("_FAILED") ||
+            stage.contains("_FAILED_") ||
+            stage == "PUBLIC_CAPACITY_FAIL_CLOSED"
+    }
+
+    private fun dedupeFailureEvidence(
+        events: List<UnifiedDebugEventStore.SnapshotEvent>,
+    ): List<UnifiedDebugEventStore.SnapshotEvent> {
+        val selected = linkedMapOf<String, UnifiedDebugEventStore.SnapshotEvent>()
+        events.sortedBy { it.monotonicNs }.forEach { event ->
+            val fingerprint = structuredDetail(event, "failureFingerprint")
+            val networkCallId = structuredDetail(event, "networkCallId")
+            val key = when {
+                fingerprint.isNotBlank() -> "fp:${fingerprint}"
+                networkCallId.isNotBlank() -> "net:${networkCallId}"
+                else -> "event:${event.stage}:${event.monotonicNs}"
+            }
+            val existing = selected[key]
+            if (existing == null || event.details.length > existing.details.length) {
+                selected[key] = event
+            }
+        }
+        return selected.values.toList()
+    }
+
+    private fun structuredDetail(event: UnifiedDebugEventStore.SnapshotEvent, key: String): String {
+        val pattern = Regex("(?:^|\\s)${Regex.escape(key)}=(?:\\\"([^\\\"]*)\\\"|([^\\s|]+))")
+        val match = pattern.find(event.details) ?: return ""
+        return match.groupValues.getOrNull(1).orEmpty().ifBlank {
+            match.groupValues.getOrNull(2).orEmpty()
+        }
     }
 
     private fun eventTrace(event: UnifiedDebugEventStore.SnapshotEvent): String =
