@@ -254,6 +254,7 @@ try {
   await Promise.all([jsonOut, markdownOut, screenshotOut].map(ensureParent));
   await fs.writeFile(jsonOut, `${JSON.stringify(result, null, 2)}\n`);
   await fs.writeFile(markdownOut, markdown(result));
+  await fs.writeFile('collector/results/latest.html', await page.content(), 'utf8');
   await page.screenshot({ path: screenshotOut, fullPage: true }).catch(() => {});
   console.log(JSON.stringify({ status: result.status, drivers: result.driver_cards_count, zero_results: result.zero_results_confirmed, place_resolution: result.place_resolution }));
   if (result.status !== 'validated') process.exitCode = 2;
