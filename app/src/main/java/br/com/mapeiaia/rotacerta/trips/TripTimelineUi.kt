@@ -41,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -95,6 +96,7 @@ fun TripTimelineScreen(
     val context = LocalContext.current
     val incrementalPublishScope = rememberCoroutineScope()
     val incrementalPublishMutex = remember { Mutex() }
+    val tripMutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
     val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
@@ -450,6 +452,61 @@ fun TripTimelineScreen(
         )
     }
 
+    val clearTimelineOperational: () -> Unit = {
+        val localTargets = physical.mapNotNull { entry ->
+            val persisted = entry.localTripId?.let(store::getTrip) ?: store.getTrip(entry.tripId)
+            persisted?.takeIf { trip ->
+                trip.isCanonicalLocalPublishSource() &&
+                    trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)
+            }
+        }.distinctBy(Trip::id)
+
+        val localEntryIds = localTargets.map(Trip::id).toSet()
+        val externalTargets = physical.mapNotNull { entry ->
+            val hasLocalCanonical = entry.localTripId?.let { it in localEntryIds } == true ||
+                entry.tripId in localEntryIds
+            if (hasLocalCanonical) null else store.publicExternalBindingFor(entry)
+        }.filter { binding ->
+            binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
+        }.distinctBy(PublicExternalTripBinding::remoteTripId)
+
+        localTargets.forEach { trip ->
+            store.saveTrip(
+                trip.copy(
+                    status = TripStatus.CANCELLED,
+                    publicBookingEnabled = false,
+                ),
+            )
+            tripMutationCoordinator.recordTombstone(
+                canonicalTripId = trip.id,
+                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
+                source = "TIMELINE_CLEAR",
+            )
+        }
+        externalTargets.forEach { binding ->
+            tripMutationCoordinator.recordExternalTombstone(
+                binding = binding,
+                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
+                source = "TIMELINE_CLEAR",
+            )
+        }
+
+        incrementalPublishScope.launch {
+            incrementalPublishMutex.withLock {
+                tripMutationCoordinator.drainPending()
+            }
+        }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_OPERATIONAL_CLEAR_COMMITTED",
+            context.packageName,
+            "localTombstones=${localTargets.size} externalTombstones=${externalTargets.size} passengerHistoryPreserved=true bookingsPreserved=true blablaMutation=false fullSyncRequested=false",
+        )
+        clearTimeline(true)
+        onChanged(
+            "Viagens removidas da operação no Rota Certa. Tombstones da Agenda foram gravados; passageiros, histórico e identidades foram preservados. BlaBlaCar não foi alterado.",
+        )
+    }
+
     ResponsiveTripActions(
         actions = listOf(
             ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
@@ -459,6 +516,11 @@ fun TripTimelineScreen(
             ResponsiveTripAction("Fixar atalho", onClick = onPinShortcut),
             ResponsiveTripAction("Integração online", onClick = onOpenOnlineSettings),
             ResponsiveTripAction(if (showSync) "Fechar sincronização" else "Sincronizar BlaBlaCar") {
+                if (!showSync) {
+                    // Toolbar opens the account/collection panel only. It must not inherit a previous card target.
+                    autoSyncProfileUuid = null
+                    autoSyncTripId = null
+                }
                 showSync = !showSync
                 UnifiedDebugEventStore.record(
                     if (showSync) "AGENDA_SYNC_PANEL_OPENED" else "AGENDA_SYNC_PANEL_CLOSED",
@@ -478,15 +540,16 @@ fun TripTimelineScreen(
             onDismissRequest = { showTimelineClearDialog = false },
             title = { Text("Limpar Timeline") },
             text = {
-                Text("Limpar aqui afeta somente a visualização. Nenhum passageiro, UUID, histórico ou reserva particular será apagado. Deseja ocultar também os cards manuais/por fora?")
+                Text("Ocultar só muda a visualização. “Remover da operação + Agenda” cancela as viagens visíveis no Rota Certa e envia tombstones versionados para a Agenda; passageiros, UUIDs, reservas, histórico e auditoria permanecem. O BlaBlaCar não é alterado.")
             },
             confirmButton = {
-                Button(onClick = { clearTimeline(false) }) { Text("Só sincronizadas") }
+                Button(onClick = clearTimelineOperational) { Text("Remover da operação + Agenda") }
             },
             dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { clearTimeline(false) }) { Text("Ocultar só sincronizadas") }
+                    TextButton(onClick = { clearTimeline(true) }) { Text("Só ocultar tudo") }
                     TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
-                    TextButton(onClick = { clearTimeline(true) }) { Text("Tudo da tela") }
                 }
             },
         )
@@ -520,87 +583,96 @@ fun TripTimelineScreen(
             stateStore = collectorStore,
             currentResponse = collectorResponse,
             onResult = { nextResponse ->
-                val previousByIdentity = collectorResponse?.trips.orEmpty()
-                    .mapNotNull { previous ->
-                        canonicalExternalTripIdentityKey(
-                            previous.profile_uuid,
-                            previous.trip_id,
-                            previous.trip_href,
-                        )?.let { key ->
-                            key to PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
-                                previous,
-                                appSettings.rotaCertaSeatAllocation,
-                            )
-                        }
-                    }
-                    .toMap()
+                val previousResponse = collectorResponse
                 collectorResponse = nextResponse
-                if (settingsLoaded) {
-                    val changed = nextResponse.trips
-                        .asSequence()
-                        .filterNot(BlaBlaCollectorTrip::identity_conflict)
-                        .filter { current ->
-                            val key = canonicalExternalTripIdentityKey(
-                                current.profile_uuid,
-                                current.trip_id,
-                                current.trip_href,
-                            ) ?: return@filter false
-                            val revision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
-                                current,
+                val exactProfileUuid = autoSyncProfileUuid?.trim().orEmpty()
+                val exactTripId = autoSyncTripId?.trim().orEmpty()
+                val exactRequested = !forceAllSyncActive && exactProfileUuid.isNotBlank() && exactTripId.isNotBlank()
+
+                if (settingsLoaded && exactRequested) {
+                    val exactMatches = nextResponse.trips.filter { source ->
+                        !source.identity_conflict &&
+                            source.profile_uuid.trim().equals(exactProfileUuid, ignoreCase = true) &&
+                            source.trip_id?.trim() == exactTripId
+                    }
+                    when {
+                        exactMatches.size != 1 -> {
+                            UnifiedDebugEventStore.record(
+                                "BLABLACAR_EXACT_CARD_RESULT_BLOCKED",
+                                context.packageName,
+                                "profileUuidPresent=true tripIdPresent=true matches=${exactMatches.size} reason=strong_identity_not_unique agendaPublication=false",
+                            )
+                        }
+                        else -> {
+                            val source = exactMatches.single()
+                            val currentRevision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                source,
                                 appSettings.rotaCertaSeatAllocation,
                             )
-                            previousByIdentity[key] != revision
-                        }
-                        .toList()
-                    if (changed.isNotEmpty()) {
-                        incrementalPublishScope.launch {
-                            incrementalPublishMutex.withLock {
-                                changed.forEach { source ->
-                                    runCatching {
-                                        PublicAgendaAutoSync0300.syncExternalTripIncremental(
-                                            context = context,
-                                            store = store,
-                                            source = source,
-                                            configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                                        )
-                                    }.onFailure { error ->
-                                        val sourceFailureContext = AgendaFailureTripContext(
-                                            tripKey = seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty()),
-                                            canonicalIdentity = canonicalExternalTripIdentityKey(
-                                                source.profile_uuid,
-                                                source.trip_id,
-                                                source.trip_href,
-                                            ).orEmpty(),
-                                            publicIdentity = "<unresolved>",
-                                            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
-                                            route = listOfNotNull(
-                                                source.actual_departure?.takeIf(String::isNotBlank) ?: source.search_from?.takeIf(String::isNotBlank),
-                                                source.actual_arrival?.takeIf(String::isNotBlank) ?: source.search_to?.takeIf(String::isNotBlank),
-                                            ).joinToString(" -> "),
-                                            date = source.date,
-                                            time = source.departure_time.orEmpty(),
-                                            revision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
-                                                source,
-                                                appSettings.rotaCertaSeatAllocation,
-                                            ),
-                                        )
-                                        UnifiedDebugEventStore.record(
-                                            "PUBLIC_AGENDA_INCREMENTAL_FAILED",
-                                            context.packageName,
-                                            "fullSyncRequested=false failClosed=true " +
-                                                AgendaFailureEvidence.describe(
-                                                    error = error,
-                                                    operation = "PUBLISH_INCREMENTAL_CAPACITY",
-                                                    component = "TripTimelineUi",
-                                                    method = "syncExternalTripIncremental",
-                                                    trip = sourceFailureContext,
-                                                ),
-                                        )
+                            val previousRevision = previousResponse?.trips.orEmpty()
+                                .singleOrNull { previous ->
+                                    !previous.identity_conflict &&
+                                        previous.profile_uuid.trim().equals(exactProfileUuid, ignoreCase = true) &&
+                                        previous.trip_id?.trim() == exactTripId
+                                }
+                                ?.let { previous ->
+                                    PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                        previous,
+                                        appSettings.rotaCertaSeatAllocation,
+                                    )
+                                }
+                            if (previousRevision != currentRevision) {
+                                incrementalPublishScope.launch {
+                                    incrementalPublishMutex.withLock {
+                                        runCatching {
+                                            tripMutationCoordinator.recordExternalManualMutation(
+                                                sourceTrip = source,
+                                                configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                                            )
+                                            tripMutationCoordinator.drainPending()
+                                        }.onFailure { error ->
+                                            UnifiedDebugEventStore.record(
+                                                "PUBLIC_AGENDA_EXACT_CARD_OUTBOX_FAILED",
+                                                context.packageName,
+                                                "fullSyncRequested=false profileUuidPresent=true tripIdPresent=true " +
+                                                    AgendaFailureEvidence.describe(
+                                                        error = error,
+                                                        operation = "PUBLISH_EXACT_CARD_OUTBOX",
+                                                        component = "TripTimelineUi",
+                                                        method = "TripMutationCoordinator0387",
+                                                        trip = AgendaFailureTripContext(
+                                                            tripKey = seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty()),
+                                                            canonicalIdentity = "strong_external_identity",
+                                                            publicIdentity = "<resolved_by_outbox>",
+                                                            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                                                            route = listOfNotNull(
+                                                                source.actual_departure?.takeIf(String::isNotBlank) ?: source.search_from?.takeIf(String::isNotBlank),
+                                                                source.actual_arrival?.takeIf(String::isNotBlank) ?: source.search_to?.takeIf(String::isNotBlank),
+                                                            ).joinToString(" -> "),
+                                                            date = source.date,
+                                                            time = source.departure_time.orEmpty(),
+                                                            revision = currentRevision,
+                                                        ),
+                                                    ),
+                                            )
+                                        }
                                     }
                                 }
+                            } else {
+                                UnifiedDebugEventStore.record(
+                                    "BLABLACAR_EXACT_CARD_NO_PUBLIC_DELTA",
+                                    context.packageName,
+                                    "profileUuidPresent=true tripIdPresent=true semanticChanged=false agendaPublication=false",
+                                )
                             }
                         }
                     }
+                } else if (settingsLoaded) {
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_COLLECTION_RESULT_STORED",
+                        context.packageName,
+                        "scope=collection_only exactCard=false agendaPublication=false automaticMutation=false",
+                    )
                 }
             },
             onChanged = onChanged,
@@ -738,9 +810,15 @@ fun TripTimelineScreen(
                         directionGeo = directionGeo,
                         currentCoordinate = currentCoordinate,
                         onManualSeatSyncRequested = {
-                            autoSyncProfileUuid = canonicalTimelineProfileUuid(entry)
-                            autoSyncTripId = null
-                            onRequestBlaBlaSync()
+                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+                            val tripId = entry.blablaTripId?.trim().orEmpty()
+                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
+                                autoSyncProfileUuid = profileUuid
+                                autoSyncTripId = tripId
+                                onRequestBlaBlaSync()
+                            } else {
+                                onChanged("Sincronização BlaBlaCar indisponível: este card não possui profile UUID + tripId fortes.")
+                            }
                         },
                         onSyncExactCard = {
                             val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
@@ -1236,6 +1314,7 @@ private fun TimelineEntryCard(
     )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
     val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
@@ -1383,12 +1462,27 @@ private fun TimelineEntryCard(
                                     else -> scope.launch {
                                         runCatching {
                                             val completed = target.copy(status = TripStatus.COMPLETED)
-                                            TripRemoteApi(settings).update(completed)
-                                            if (store.getTrip(target.id) != null) store.saveTrip(completed)
-                                        }.onSuccess {
-                                            onChanged("Viagem concluída. Créditos de indicações elegíveis foram processados.")
+                                            if (store.getTrip(target.id) != null) {
+                                                store.saveTrip(completed)
+                                            }
+                                            val queued = mutationCoordinator.recordLocalMutation(
+                                                canonicalTripId = target.id,
+                                                mutationType = "TRIP_COMPLETED",
+                                                source = "TIMELINE_CARD",
+                                                reconcileBookingInventory = false,
+                                            )
+                                            mutationCoordinator.drainPending()
+                                            queued != null
+                                        }.onSuccess { queued ->
+                                            onChanged(
+                                                if (queued) {
+                                                    "Viagem concluída no Rota Certa. A atualização desta viagem foi registrada e será entregue à Agenda; créditos elegíveis são processados quando o servidor confirmar."
+                                                } else {
+                                                    "Viagem concluída no Rota Certa."
+                                                },
+                                            )
                                         }.onFailure { error ->
-                                            onChanged("Não foi possível concluir a viagem: ${error.message ?: "erro de conexão"}")
+                                            onChanged("Viagem concluída localmente; publicação pendente: ${error.message ?: "erro de persistência"}")
                                         }
                                     }
                                 }

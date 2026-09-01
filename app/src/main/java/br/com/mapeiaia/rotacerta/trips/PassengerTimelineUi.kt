@@ -88,6 +88,7 @@ internal fun EnhancedPassengerTimelineSection(
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val completionService = remember(context) { PassengerCompletionService(context) }
+    val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val scope = rememberCoroutineScope()
     var identityRevision by remember { mutableIntStateOf(0) }
     var completionRevision by remember { mutableIntStateOf(0) }
@@ -332,41 +333,19 @@ internal fun EnhancedPassengerTimelineSection(
                     lastDriverSelection = selection,
                 )
                 store.saveBooking(localNext)
-
-                val settings = store.onlineSettings()
-                val remoteTripId = selectedTrip.remoteId
-                if (settings.configured && !remoteTripId.isNullOrBlank()) {
-                    runCatching {
-                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
-                            remoteTripId = remoteTripId,
-                            bookingId = booking.id,
-                            selection = selection,
-                        )
-                    }.onSuccess { response ->
-                        store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, localNext))
-                        UnifiedDebugEventStore.record(
-                            "PASSENGER_STATUS_REALTIME_PUBLISHED",
-                            context.packageName,
-                            "timeline=true selection=" + selection,
-                        )
-                    }.onFailure { error ->
-                        UnifiedDebugEventStore.record(
-                            "PASSENGER_STATUS_REALTIME_FAILED",
-                            context.packageName,
-                            "timeline=true selection=" + selection + " " +
-                                AgendaFailureEvidence.describe(
-                                    error = error,
-                                    operation = "PASSENGER_STATUS_REALTIME",
-                                    component = "PassengerTimelineUi",
-                                    method = "publishOperationalStatus",
-                                ),
-                        )
-                        onChanged(
-                            "Status salvo localmente; sincronização online pendente: " +
-                                (error.message ?: error.javaClass.simpleName),
-                        )
-                        return@launch
-                    }
+                val queued = mutationCoordinator.recordLocalMutation(
+                    canonicalTripId = selectedTrip.id,
+                    mutationType = "PASSENGER_STATUS_$selection",
+                    source = "TIMELINE_PASSENGER_STATUS",
+                )
+                val delivered = mutationCoordinator.drainPending()
+                UnifiedDebugEventStore.record(
+                    "PASSENGER_STATUS_OUTBOX",
+                    context.packageName,
+                    "timeline=true selection=$selection queued=${queued != null} delivered=$delivered fullSyncRequested=false blablaSync=false",
+                )
+                if (queued != null && delivered == 0) {
+                    onChanged("Status salvo localmente; publicação desta viagem ficou pendente na outbox.")
                 }
 
                 UnifiedDebugEventStore.record(
@@ -478,30 +457,37 @@ internal fun EnhancedPassengerTimelineSection(
                         onClick = {
                             val selectedTrip = trip
                             val booking = currentBooking
-                            val remoteTripId = selectedTrip?.remoteId
-                            if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                            if (selectedTrip == null || booking == null) {
                                 onChanged("Não foi possível localizar a viagem/reserva canônica para aprovar.")
                             } else {
                                 decisionRunning = "APPROVE"
                                 scope.launch {
-                                    val settings = store.onlineSettings()
                                     runCatching {
-                                        require(settings.configured) { "Integração online não configurada." }
-                                        TripRemoteApi(settings).decideDriverBooking(
-                                            remoteTripId = remoteTripId,
-                                            bookingId = booking.id,
-                                            action = "APPROVE",
+                                        val approved = booking.copy(
+                                            status = BookingStatus.CONFIRMED,
+                                            operationalStatus = PassengerOperationalStatus.CONFIRMED,
+                                            lastDriverSelection = "APPROVE",
                                         )
-                                    }.onSuccess { response ->
-                                        store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                        store.saveBooking(approved)
+                                        val queued = mutationCoordinator.recordLocalMutation(
+                                            canonicalTripId = selectedTrip.id,
+                                            mutationType = "RESERVATION_APPROVED",
+                                            source = "TIMELINE_RESERVATION_DECISION",
+                                        )
+                                        val delivered = mutationCoordinator.drainPending()
                                         BookingRealtimeEvents0356.notifyChanged()
-                                        onSyncSeatsOnly?.invoke()
-                                        onChanged("Reserva aprovada ✅")
-                                    }.onFailure { error ->
+                                        queued to delivered
+                                    }.onSuccess { (queued, delivered) ->
+                                        // BlaBlaCar is never synchronized automatically after an internal mutation.
                                         onChanged(
-                                            "Não foi possível aprovar. A solicitação continua aguardando aprovação: " +
-                                                (error.message ?: error.javaClass.simpleName),
+                                            if (queued != null && delivered == 0) {
+                                                "Reserva aprovada localmente ✅ Publicação desta viagem pendente na outbox."
+                                            } else {
+                                                "Reserva aprovada ✅"
+                                            },
                                         )
+                                    }.onFailure { error ->
+                                        onChanged("Não foi possível persistir a aprovação: ${error.message ?: error.javaClass.simpleName}")
                                     }
                                     decisionRunning = null
                                 }
@@ -537,34 +523,40 @@ internal fun EnhancedPassengerTimelineSection(
                             onClick = {
                                 val selectedTrip = trip
                                 val booking = currentBooking
-                                val remoteTripId = selectedTrip?.remoteId
-                                if (selectedTrip == null || booking == null || remoteTripId.isNullOrBlank()) {
+                                if (selectedTrip == null || booking == null) {
                                     rejectConfirmOpen = false
                                     onChanged("Não foi possível localizar a viagem/reserva canônica para recusar.")
                                 } else {
                                     decisionRunning = "REJECT"
                                     scope.launch {
-                                        val settings = store.onlineSettings()
                                         runCatching {
-                                            require(settings.configured) { "Integração online não configurada." }
-                                            TripRemoteApi(settings).decideDriverBooking(
-                                                remoteTripId = remoteTripId,
-                                                bookingId = booking.id,
-                                                action = "REJECT",
-                                                reason = rejectReason,
+                                            val rejected = booking.copy(
+                                                status = BookingStatus.REJECTED,
+                                                operationalStatus = PassengerOperationalStatus.PENDING,
+                                                lastDriverSelection = "REJECT",
                                             )
-                                        }.onSuccess { response ->
-                                            store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                            store.saveBooking(rejected)
+                                            val queued = mutationCoordinator.recordLocalMutation(
+                                                canonicalTripId = selectedTrip.id,
+                                                mutationType = "RESERVATION_REJECTED",
+                                                source = "TIMELINE_RESERVATION_DECISION",
+                                            )
+                                            val delivered = mutationCoordinator.drainPending()
                                             BookingRealtimeEvents0356.notifyChanged()
-                                            onSyncSeatsOnly?.invoke()
+                                            queued to delivered
+                                        }.onSuccess { (queued, delivered) ->
+                                            // BlaBlaCar is never synchronized automatically after an internal mutation.
                                             rejectConfirmOpen = false
                                             rejectReason = ""
-                                            onChanged("Solicitação recusada")
-                                        }.onFailure { error ->
                                             onChanged(
-                                                "Não foi possível recusar. A solicitação continua aguardando aprovação: " +
-                                                    (error.message ?: error.javaClass.simpleName),
+                                                if (queued != null && delivered == 0) {
+                                                    "Solicitação recusada localmente; publicação pendente na outbox."
+                                                } else {
+                                                    "Solicitação recusada"
+                                                },
                                             )
+                                        }.onFailure { error ->
+                                            onChanged("Não foi possível persistir a recusa: ${error.message ?: error.javaClass.simpleName}")
                                         }
                                         decisionRunning = null
                                     }
@@ -862,28 +854,49 @@ internal fun EnhancedPassengerTimelineSection(
                 onDismiss = { editManualRow = null },
                 onSave = { updated ->
                     if (updated.source == BookingSource.ROTA_CERTA) {
-                        val remoteTripId = currentTrip.remoteId
-                        if (remoteTripId.isNullOrBlank()) {
-                            onChanged("Reserva Rota Certa sem vínculo remoto. Sincronize a Agenda de Viagens antes de editar.")
-                        } else {
-                            scope.launch {
+                        scope.launch {
                                 runCatching {
-                                    TripRemoteApi(store.onlineSettings()).updateProtectedDriverBooking(remoteTripId, updated)
-                                }.onSuccess {
                                     store.saveBooking(updated)
+                                    val queued = mutationCoordinator.recordLocalMutation(
+                                        canonicalTripId = currentTrip.id,
+                                        mutationType = "BOOKING_CHANGED_BY_DRIVER",
+                                        source = "TIMELINE_BOOKING_EDIT",
+                                    )
+                                    val delivered = mutationCoordinator.drainPending()
+                                    queued to delivered
+                                }.onSuccess { (queued, delivered) ->
                                     editManualRow = null
-                                    onChanged("Reserva Rota Certa atualizada pelo painel administrativo. Vagas por trecho recalculadas.")
-                                    onSyncSeatsOnly?.invoke()
+                                    onChanged(
+                                        if (queued != null && delivered == 0) {
+                                            "Reserva Rota Certa atualizada localmente. Publicação desta viagem pendente na outbox."
+                                        } else {
+                                            "Reserva Rota Certa atualizada. Vagas por trecho recalculadas."
+                                        },
+                                    )
+                                    // BlaBlaCar is never synchronized automatically after an internal mutation.
                                 }.onFailure { error ->
-                                    onChanged("Não foi possível atualizar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
+                                    onChanged("Não foi possível persistir a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
                                 }
                             }
-                        }
                     } else {
                         store.saveBooking(updated)
+                        val queued = mutationCoordinator.recordLocalMutation(
+                            canonicalTripId = currentTrip.id,
+                            mutationType = "LOCAL_PASSENGER_BOOKING_CHANGED",
+                            source = "TIMELINE_BOOKING_EDIT",
+                        )
+                        if (queued != null) {
+                            scope.launch { mutationCoordinator.drainPending() }
+                        }
                         editManualRow = null
-                        onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
-                        onSyncSeatsOnly?.invoke()
+                        onChanged(
+                            if (queued != null) {
+                                "Passageiro atualizado. Ocupação recalculada e delta desta viagem registrado."
+                            } else {
+                                "Passageiro atualizado. Ocupação física por trecho recalculada."
+                            },
+                        )
+                        // BlaBlaCar is never synchronized automatically after an internal mutation.
                     }
                 },
                 onError = onChanged,
@@ -973,51 +986,19 @@ internal fun EnhancedPassengerTimelineSection(
                                         lastDriverSelection = "CANCELLED",
                                     ),
                                 )
-                                val settings = store.onlineSettings()
-                                val remoteTripId = selectedTrip.remoteId
-                                if (settings.configured && !remoteTripId.isNullOrBlank()) {
-                                    runCatching {
-                                        TripRemoteApi(settings).updateDriverPassengerOperationalStatus(
-                                            remoteTripId = remoteTripId,
-                                            bookingId = selectedBooking.id,
-                                            selection = "CANCELLED",
-                                        )
-                                    }.onSuccess { response ->
-                                        store.saveBooking(
-                                            response.booking.toLocalBooking(selectedTrip.id, localCancelled).copy(
-                                                status = BookingStatus.CANCELLED,
-                                                operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                                lastDriverSelection = "CANCELLED",
-                                            ),
-                                        )
-                                        onlineSyncSucceeded = true
-                                        UnifiedDebugEventStore.record(
-                                            "PUBLIC_BOOKING_CANCEL_SYNC",
-                                            context.packageName,
-                                            "$trace result=success passengerNotified=${response.passengerNotified}",
-                                        )
-                                    }.onFailure { error ->
-                                        onlineSyncPendingReason = (error.message ?: error.javaClass.simpleName).take(120)
-                                        UnifiedDebugEventStore.record(
-                                            "PUBLIC_BOOKING_CANCEL_SYNC",
-                                            context.packageName,
-                                            "$trace result=pending " +
-                                                AgendaFailureEvidence.describe(
-                                                    error = error,
-                                                    operation = "PUBLIC_BOOKING_CANCEL_SYNC",
-                                                    component = "PassengerTimelineUi",
-                                                    method = "cancelBooking",
-                                                ),
-                                        )
-                                    }
-                                } else {
-                                    onlineSyncPendingReason = "remote_unavailable"
-                                    UnifiedDebugEventStore.record(
-                                        "PUBLIC_BOOKING_CANCEL_SYNC",
-                                        context.packageName,
-                                        "$trace result=local_only reason=remote_unavailable",
-                                    )
-                                }
+                                val queued = mutationCoordinator.recordLocalMutation(
+                                    canonicalTripId = selectedTrip.id,
+                                    mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                    source = "TIMELINE_BOOKING_CANCEL",
+                                )
+                                val delivered = mutationCoordinator.drainPending()
+                                onlineSyncSucceeded = queued == null || delivered > 0
+                                onlineSyncPendingReason = if (queued != null && delivered == 0) "durable_outbox_pending" else null
+                                UnifiedDebugEventStore.record(
+                                    "PUBLIC_BOOKING_CANCEL_OUTBOX",
+                                    context.packageName,
+                                    "$trace queued=${queued != null} delivered=$delivered result=${if (onlineSyncSucceeded) "delivered_or_noop" else "pending"} fullSyncRequested=false blablaSync=false",
+                                )
 
                                 val afterLoads = SeatAvailabilityEngine.segmentLoads(
                                     selectedTrip,

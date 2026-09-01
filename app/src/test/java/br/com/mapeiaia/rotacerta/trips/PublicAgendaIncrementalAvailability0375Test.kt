@@ -131,12 +131,15 @@ class PublicAgendaIncrementalAvailability0375Test {
         val publisher = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
+        val outbox = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt").readText()
         assertTrue(publisher.contains("PUBLIC_CAPACITY_INCREMENTAL_NO_OP"))
         assertTrue(publisher.contains("fullSyncRequested=false"))
         assertTrue(publisher.contains("syncExternalTripIncremental"))
         assertTrue(publisher.contains("syncLocalTripIncremental"))
         assertTrue(remote.contains("/capacity-snapshot"))
-        assertTrue(timeline.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
+        assertTrue(timeline.contains("recordExternalManualMutation("))
+        assertTrue(outbox.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental("))
+        assertTrue(outbox.contains("PublicAgendaAutoSync0300.syncLocalTripIncremental("))
         assertTrue(timeline.contains("incrementalPublishMutex.withLock"))
     }
 

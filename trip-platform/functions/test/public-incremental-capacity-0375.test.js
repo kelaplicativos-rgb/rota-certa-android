@@ -8,6 +8,7 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
 const android = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"), "utf8");
 const timeline = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripTimelineUi.kt"), "utf8");
+const outbox = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripPublicationOutbox0387.kt"), "utf8");
 
 function bodyOf(source, name, nextName) {
   const start = source.indexOf(name);
@@ -53,17 +54,22 @@ test("LOTADO and unknown public cards keep details visible but expose no reserva
   assert.match(web, /if \(!trip \|\| trip\.capacityReliable !== true \|\| isFullTrip\(trip\)/);
 });
 
-test("single trip collector changes publish incrementally before the background full sync callback", () => {
+test("single exact-card collector change flows through durable per-trip outbox before incremental publication", () => {
   assert.match(android, /suspend fun syncExternalTripIncremental/);
   assert.match(android, /reconcileCapacitySnapshot/);
   assert.match(android, /PUBLIC_AGENDA_INCREMENTAL_END/);
   assert.match(android, /fullSyncRequested=false/);
   assert.match(timeline, /onResult = \{ nextResponse ->/);
-  assert.match(timeline, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
+  assert.match(timeline, /recordExternalManualMutation/);
+  assert.match(timeline, /tripMutationCoordinator\.drainPending\(\)/);
   assert.match(timeline, /incrementalPublishMutex\.withLock/);
+  assert.match(outbox, /TripPublicationOperation0387\.UPSERT_EXTERNAL/);
+  assert.match(outbox, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
   const onResult = timeline.indexOf("onResult = { nextResponse ->");
   const onChanged = timeline.indexOf("onChanged = onChanged", onResult);
   assert.ok(onResult >= 0 && onChanged > onResult);
+  const resultBlock = timeline.slice(onResult, onChanged);
+  assert.doesNotMatch(resultBlock, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
 });
 
 test("semantic revision ignores presentation PII but contains canonical occupancy fields", () => {

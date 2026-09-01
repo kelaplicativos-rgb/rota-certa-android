@@ -32,6 +32,7 @@ private data class BookingFetchTarget0373(
 private data class BookingFetchBatch0373(
     val target: BookingFetchTarget0373,
     val bookings: List<RemoteBooking>,
+    val entityRevision: Long = 0L,
 )
 
 internal data class BookingSingleFlightResult0380<T>(
@@ -172,10 +173,10 @@ internal object PublicBookingRemoteSync0296 {
             targets.map { target ->
                 async {
                     fetchSemaphore.withPermit {
-                        runCatching { api.listBookings(target.remoteTripId).bookings }
+                        runCatching { api.listBookings(target.remoteTripId) }
                             .fold(
-                                onSuccess = { remote ->
-                                    BookingFetchBatch0373(target, remote)
+                                onSuccess = { response ->
+                                    BookingFetchBatch0373(target, response.bookings, response.entityRevision)
                                 },
                                 onFailure = { error ->
                                     val targetTrip = persistedTrips.firstOrNull { it.id == target.localTripId }
@@ -289,15 +290,37 @@ internal object PublicBookingRemoteSync0296 {
         val inventoryUpdated = store.reconcileBookingDerivedInventory(changed)
         val tripsAfterImport = store.trips().associateBy(Trip::id)
         val bookingsAfterImport = store.bookings().groupBy(Booking::tripId)
+        val mutationCoordinator = TripMutationCoordinator0387(context, store)
         changed.forEach { tripId ->
             val trip = tripsAfterImport[tripId] ?: return@forEach
             val bookingsForTrip = bookingsAfterImport[tripId].orEmpty()
+            val remoteRevision = fetchedBatches.asSequence()
+                .filterNotNull()
+                .filter { it.target.localTripId == tripId }
+                .maxOfOrNull(BookingFetchBatch0373::entityRevision) ?: 0L
+            val outboxQueued = if (remoteRevision > 0L) {
+                mutationCoordinator.recordRemoteAppliedLocal(
+                    canonicalTripId = tripId,
+                    revision = remoteRevision,
+                    mutationType = "PUBLIC_BOOKING_RECONCILED",
+                    source = "PUBLIC_AGENDA_PULL",
+                    reconcileBookingInventory = false,
+                ) != null
+            } else {
+                mutationCoordinator.recordLocalMutation(
+                    canonicalTripId = tripId,
+                    mutationType = "PUBLIC_BOOKING_RECONCILED_LEGACY",
+                    source = "PUBLIC_AGENDA_PULL",
+                    reconcileBookingInventory = false,
+                ) != null
+            }
             UnifiedDebugEventStore.record(
                 "BOOKING_INVENTORY_RECALCULATED",
                 context.packageName,
-                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated",
+                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated entityRevisionObserved=$remoteRevision outboxQueued=$outboxQueued publicationAlreadyAppliedServerSide=${remoteRevision > 0L}",
             )
         }
+        mutationCoordinator.drainPending()
         UnifiedDebugEventStore.record(
             "PUBLIC_BOOKING_PULL_RECONCILED",
             context.packageName,

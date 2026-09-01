@@ -35,10 +35,13 @@ class AgendaFailureEvidence0382Test {
                 "PUBLIC_SEARCH_AUDIT_SNAPSHOT_FAILED",
                 "operation = \"PUBLIC_SEARCH_AUDIT_SNAPSHOT\"",
             ),
-            "PassengerTimelineUi.kt" to listOf(
-                "PASSENGER_STATUS_REALTIME_FAILED",
-                "operation = \"PASSENGER_STATUS_REALTIME\"",
-                "operation = \"PUBLIC_BOOKING_CANCEL_SYNC\"",
+            "TripPublicationOutbox0387.kt" to listOf(
+                "TRIP_MUTATION_OUTBOX_FAILED",
+                "failureSummary0387(error)",
+                "exceptionClass=",
+                "exceptionMessage=",
+                "rootCauseClass=",
+                "rootCauseMessage=",
             ),
             "RotaCertaBookingMessagingService.kt" to listOf(
                 "PUBLIC_BOOKING_PUSH_REGISTER_FAILED",

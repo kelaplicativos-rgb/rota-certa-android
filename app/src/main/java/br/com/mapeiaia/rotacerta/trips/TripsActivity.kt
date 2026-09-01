@@ -203,8 +203,11 @@ private fun TripApp(
     }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
-    var publicAgendaSyncRevision by remember { mutableStateOf(0) }
+    // Global Agenda revision is reserved for an explicit full rebuild/maintenance request.
+    // Normal mutations flow through TripMutationCoordinator0387 by canonicalTripId.
+    var publicAgendaSyncRevision by remember { mutableStateOf(-1) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
@@ -274,6 +277,8 @@ private fun TripApp(
             )
             return@LaunchedEffect
         }
+        val priorAllocation = previousRotaCertaSeatAllocation
+        previousRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation
         val beforeTrips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
         val (changedTrips, _) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             store.reconcileOperationalInventory(
@@ -291,35 +296,52 @@ private fun TripApp(
                     before == null || before.capacity != trip.capacity || before.rotaCertaSeatAllocation != trip.rotaCertaSeatAllocation
                 }
                 .map(Trip::id)
+            val mutationCoordinator = TripMutationCoordinator0387(activity, store)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 changedLocalIds.forEach { tripId ->
-                    runCatching {
-                        PublicAgendaAutoSync0300.syncLocalTripIncremental(
-                            context = activity,
-                            store = store,
-                            localTripId = tripId,
-                            configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                        )
-                    }
+                    mutationCoordinator.recordLocalMutation(
+                        canonicalTripId = tripId,
+                        mutationType = "TENANT_SEAT_ALLOCATION_CHANGED",
+                        source = "ROTA_CERTA_SETTINGS",
+                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        reconcileBookingInventory = false,
+                    )
                 }
-                BlaBlaCollectorStateStore(activity).lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
-                    .filterNot(BlaBlaCollectorTrip::identity_conflict)
-                    .forEach { source ->
-                        runCatching {
-                            PublicAgendaAutoSync0300.syncExternalTripIncremental(
-                                context = activity,
-                                store = store,
-                                source = source,
-                                configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                            )
+                val externalAffected = if (priorAllocation != null && priorAllocation != appSettings.rotaCertaSeatAllocation) {
+                    val publishedBindings = store.publicExternalBindings()
+                    BlaBlaCollectorStateStore(activity).lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+                        .asSequence()
+                        .filterNot(BlaBlaCollectorTrip::identity_conflict)
+                        .filter { source -> source.profile_uuid.isNotBlank() && !source.trip_id.isNullOrBlank() }
+                        .filter { source ->
+                            publishedBindings.any { binding ->
+                                binding.profileUuid.equals(source.profile_uuid, ignoreCase = true) &&
+                                    binding.blablaTripId == source.trip_id
+                            }
                         }
-                    }
+                        .filter { source ->
+                            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, priorAllocation) !=
+                                PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, appSettings.rotaCertaSeatAllocation)
+                        }
+                        .toList()
+                } else emptyList()
+                externalAffected.forEach { source ->
+                    mutationCoordinator.recordExternalTenantMutation(
+                        sourceTrip = source,
+                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    )
+                }
+                mutationCoordinator.drainPending()
+                UnifiedDebugEventStore.record(
+                    "TENANT_SEAT_ALLOCATION_EXACT_IMPACT",
+                    activity.packageName,
+                    "previous=${priorAllocation ?: -1} current=${appSettings.rotaCertaSeatAllocation} localAffected=${changedLocalIds.size} externalAffected=${externalAffected.size} fullSyncRequested=false blablaNetworkSync=false",
+                )
             }
-            publicAgendaSyncRevision++
             UnifiedDebugEventStore.record(
                 "OPERATIONAL_INVENTORY_RECONCILED",
                 activity.packageName,
-                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips incrementalLocal=${changedLocalIds.size} incrementalExternal=true legacyVehicleCapacityIgnored=true",
+                "rotaCertaSeatAllocation=${appSettings.rotaCertaSeatAllocation} trips=$changedTrips incrementalLocal=${changedLocalIds.size} incrementalExternal=false fullSyncRequested=false legacyVehicleCapacityIgnored=true",
             )
         }
         AgendaTrace.event(
@@ -357,6 +379,7 @@ private fun TripApp(
     val publicAgendaSyncCoordinator = remember(activity, store, shareScope) {
         createPublicAgendaSyncCoordinator0373(activity, store, shareScope)
     }
+    val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(publicAgendaSyncCoordinator) {
         publicAgendaSyncCoordinator.completions.collect { completion ->
             val result = completion.result
@@ -395,9 +418,8 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
-                // Exact external cancellation writes the canonical local Booking only after
-                // BlaBlaCar absence is verified. Republish that verified capacity/status.
-                publicAgendaSyncRevision++
+                // Resume only retries durable per-trip deltas. It never triggers a tenant-wide sync.
+                shareScope.launch { tripMutationCoordinator.drainPending() }
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -473,6 +495,20 @@ private fun TripApp(
         }
     }
 
+    androidx.compose.runtime.LaunchedEffect(tripMutationCoordinator) {
+        while (true) {
+            runCatching { tripMutationCoordinator.drainPending() }
+                .onFailure { error ->
+                    UnifiedDebugEventStore.record(
+                        "TRIP_MUTATION_OUTBOX_RETRY_FAILED",
+                        activity.packageName,
+                        failureSummary0387(error),
+                    )
+                }
+            kotlinx.coroutines.delay(30_000L)
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
         AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup background=true", traceId)
@@ -490,9 +526,8 @@ private fun TripApp(
                 message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
                 if (result.seatSyncQueued > 0) {
                     autoBlaBlaSyncToken++
-                } else {
-                    publicAgendaSyncRevision++
                 }
+                // PublicBookingRemoteSync0296 already enqueued/drained exact changedTripIds.
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             AgendaTrace.event(
@@ -560,12 +595,13 @@ private fun TripApp(
                     )
                 }
                 runCatching {
-                    PublicAgendaAutoSync0300.syncLocalTripIncremental(
-                        context = activity,
-                        store = store,
-                        localTripId = tripId,
+                    tripMutationCoordinator.recordLocalMutation(
+                        canonicalTripId = tripId,
+                        mutationType = "LOCAL_TRIP_SEMANTIC_CHANGE",
+                        source = "TIMELINE_STORE_OBSERVER",
                         configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     )
+                    tripMutationCoordinator.drainPending()
                 }.onFailure { error ->
                     UnifiedDebugEventStore.record(
                         "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
@@ -575,7 +611,7 @@ private fun TripApp(
                                 error = error,
                                 operation = "PUBLISH_INCREMENTAL_CAPACITY",
                                 component = "TripsActivity",
-                                method = "syncLocalTripIncremental",
+                                method = "TripMutationCoordinator0387",
                                 trip = failureContext,
                             ),
                     )
@@ -589,6 +625,7 @@ private fun TripApp(
         appSettings.rotaCertaSeatAllocation,
         publicAgendaSyncRevision,
     ) {
+        if (publicAgendaSyncRevision < 0) return@LaunchedEffect
         if (!settingsLoaded) {
             AgendaTrace.event(
                 activity,
@@ -743,7 +780,6 @@ private fun TripApp(
                     onSave = { trip ->
                         store.saveTrip(trip)
                         refresh()
-                        publicAgendaSyncRevision++
                         selectedId = trip.id
                         val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
                         pendingCreateForPassengerId = ""
@@ -762,7 +798,7 @@ private fun TripApp(
                     trips = trips,
                     bookings = bookings,
                     store = store,
-                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                    onChanged = { text -> refresh(); message = text },
                     autoSyncToken = autoBlaBlaSyncToken,
                     forceAllSyncToken = forceAllBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
@@ -815,7 +851,7 @@ private fun TripApp(
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
-                    onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                    onChanged = { text -> refresh(); message = text },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
@@ -898,7 +934,7 @@ private fun TripApp(
                                 trip = trip,
                                 expanded = selectedId == trip.id,
                                 onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
-                                onChanged = { text -> refresh(); publicAgendaSyncRevision++; message = text },
+                                onChanged = { text -> refresh(); message = text },
                                 onRequestBlaBlaSync = {
                                     autoBlaBlaSyncToken++
                                     screen = TripScreen.TIMELINE
@@ -1078,6 +1114,7 @@ private fun TripCard(
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
     val scope = rememberCoroutineScope()
+    val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     val bookings = store.bookingsFor(trip.id)
     val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
     val availabilityText = if (seatRange.variesBySegment) {
@@ -1132,9 +1169,16 @@ private fun TripCard(
                         store.saveTrip(next)
                         if (settings.configured && next.remoteId != null) {
                             scope.launch {
-                                runCatching { TripRemoteApi(settings).update(next) }
+                                runCatching {
+                                    mutationCoordinator.recordLocalMutation(
+                                        canonicalTripId = next.id,
+                                        mutationType = "PUBLIC_BOOKING_TOGGLE",
+                                        source = "TIMELINE_CARD",
+                                    )
+                                    mutationCoordinator.drainPending()
+                                }
                                     .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
-                                    .onFailure { onChanged("Estado salvo no Rota Certa, mas ainda não sincronizado online: ${it.message}") }
+                                    .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
                             onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. Publique/sincronize online para compartilhar." else "Reservas pelo link desativadas.")
@@ -1152,10 +1196,14 @@ private fun TripCard(
                     Button(onClick = {
                         scope.launch {
                             runCatching {
-                                val response = if (trip.remoteId == null) TripRemoteApi(settings).publish(trip) else TripRemoteApi(settings).update(trip)
-                                store.saveTrip(trip.copy(remoteId = response.tripId, publicToken = response.publicToken, publicUrl = response.publicUrl))
+                                mutationCoordinator.recordLocalMutation(
+                                    canonicalTripId = trip.id,
+                                    mutationType = "MANUAL_PUBLIC_CARD_SYNC",
+                                    source = "TIMELINE_CARD",
+                                )
+                                mutationCoordinator.drainPending()
                             }.onSuccess { onChanged("Viagem sincronizada com a agenda pública.") }
-                                .onFailure { onChanged("Falha online: ${it.message}") }
+                                .onFailure { onChanged("Falha online; o delta desta viagem permanece rastreável: ${it.message}") }
                         }
                     }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
                     if (trip.remoteId != null) {

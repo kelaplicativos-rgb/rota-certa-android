@@ -16,6 +16,8 @@ data class PublishedTripResponse(
     val tripId: String,
     val publicToken: String,
     val publicUrl: String,
+    val entityRevision: Long = 0L,
+    val stale: Boolean = false,
 )
 
 @Serializable
@@ -150,6 +152,7 @@ data class RemoteBooking(
 @Serializable
 data class DriverBookingsResponse(
     val bookings: List<RemoteBooking> = emptyList(),
+    val entityRevision: Long = 0L,
 )
 
 @Serializable
@@ -340,6 +343,7 @@ data class DriverBookingUpsertResponse(
     val availableSeatsMaximum: Int = 0,
     val changed: Boolean = false,
     val passengerNotified: Boolean = false,
+    val entityRevision: Long = 0L,
 )
 
 @Serializable
@@ -359,12 +363,33 @@ data class DriverCapacitySnapshotClaim(
 )
 
 @Serializable
+data class DriverProtectedBookingSnapshot(
+    val id: String,
+    val passengerName: String,
+    val passengerContact: String = "",
+    val boardingStopId: String,
+    val dropoffStopId: String,
+    val seats: Int = 1,
+    val status: String,
+    val operationalStatus: PassengerOperationalStatus,
+    val paymentStatus: PassengerPaymentStatus,
+    val lastDriverSelection: String = "",
+    val holdExpiresAtMillis: Long? = null,
+    val sourceReference: String = "",
+    val occupancyGroupId: String? = null,
+)
+
+@Serializable
 data class DriverCapacitySnapshotRequest(
     val trip: Trip,
     val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
+    val protectedBookings: List<DriverProtectedBookingSnapshot> = emptyList(),
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
+    val entityRevision: Long = 0L,
+    val canonicalTripId: String = "",
+    val outboxEventId: String = "",
 )
 
 @Serializable
@@ -375,6 +400,8 @@ data class DriverCapacitySnapshotResponse(
     val availableSeatsMaximum: Int = 0,
     val occupancyRevision: Long = 0L,
     val changed: Boolean = false,
+    val entityRevision: Long = 0L,
+    val stale: Boolean = false,
 )
 
 internal class TripRemoteApiException(
@@ -557,8 +584,12 @@ class TripRemoteApi(
         remoteTripId: String,
         trip: Trip,
         claims: List<Booking>,
+        protectedBookings: List<Booking> = emptyList(),
         claimNamespace: String,
         snapshotRevision: String,
+        entityRevision: Long = 0L,
+        canonicalTripId: String = "",
+        outboxEventId: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -581,9 +612,29 @@ class TripRemoteApi(
                         holdExpiresAtMillis = booking.holdExpiresAtMillis,
                     )
                 },
+                protectedBookings = protectedBookings.map { booking ->
+                    DriverProtectedBookingSnapshot(
+                        id = booking.id,
+                        passengerName = booking.passengerName,
+                        passengerContact = booking.passengerContact,
+                        boardingStopId = booking.boardingStopId,
+                        dropoffStopId = booking.dropoffStopId,
+                        seats = booking.seats,
+                        status = booking.status.name,
+                        operationalStatus = booking.operationalStatus,
+                        paymentStatus = booking.paymentStatus,
+                        lastDriverSelection = booking.lastDriverSelection,
+                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                        sourceReference = booking.sourceReference,
+                        occupancyGroupId = booking.occupancyGroupId,
+                    )
+                },
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
                 sourceComplete = true,
+                entityRevision = entityRevision,
+                canonicalTripId = canonicalTripId,
+                outboxEventId = outboxEventId,
             ),
         ),
         requireDriverToken = true,
