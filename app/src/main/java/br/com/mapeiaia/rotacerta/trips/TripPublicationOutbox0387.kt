@@ -185,6 +185,65 @@ internal class TripPublicationOutbox0387(context: Context) {
         }
     }
 
+    fun rebase(id: String, remoteRevision: Long): TripPublicationOutboxEvent0387? = synchronized(LOCK) {
+        val events = readEvents().toMutableList()
+        val index = events.indexOfFirst { it.id == id }
+        if (index < 0) return@synchronized null
+        val target = events[index]
+        val revisions = readRevisions().toMutableMap()
+        val newest = events.filter { it.canonicalTripId == target.canonicalTripId }.maxByOrNull { it.revision }
+        val now = System.currentTimeMillis()
+        if (newest != null && newest.id != target.id && newest.revision > target.revision) {
+            events[index] = target.copy(
+                status = TripPublicationStatus0387.SUPERSEDED,
+                updatedAtMillis = now,
+                lastError = "superseded_during_remote_rebase_${newest.revision}",
+            )
+            revisions[target.canonicalTripId] = maxOf(
+                revisions[target.canonicalTripId] ?: 0L,
+                remoteRevision,
+                newest.revision,
+            )
+            require(
+                prefs.edit()
+                    .putString(eventsKey, json.encodeToString(compact(events)))
+                    .putString(revisionsKey, json.encodeToString(revisions))
+                    .commit(),
+            ) { "Falha ao persistir rebase superseded." }
+            return@synchronized null
+        }
+
+        val nextRevision = maxOf(
+            remoteRevision,
+            revisions[target.canonicalTripId] ?: 0L,
+            newest?.revision ?: 0L,
+        ) + 1L
+        val rebased = target.copy(
+            id = publicationEventId0387(target.tenantId, target.canonicalTripId, nextRevision),
+            revision = nextRevision,
+            status = TripPublicationStatus0387.PENDING,
+            attempts = 0,
+            createdAtMillis = now,
+            updatedAtMillis = now,
+            lastError = "",
+            nextAttemptAtMillis = 0L,
+        )
+        events[index] = target.copy(
+            status = TripPublicationStatus0387.SUPERSEDED,
+            updatedAtMillis = now,
+            lastError = "rebased_from_${target.revision}_to_$nextRevision_remote_$remoteRevision",
+        )
+        events += rebased
+        revisions[target.canonicalTripId] = nextRevision
+        require(
+            prefs.edit()
+                .putString(eventsKey, json.encodeToString(compact(events)))
+                .putString(revisionsKey, json.encodeToString(revisions))
+                .commit(),
+        ) { "Falha ao persistir rebase da outbox." }
+        rebased
+    }
+
     internal fun snapshot(): List<TripPublicationOutboxEvent0387> = synchronized(LOCK) { readEvents() }
 
     private fun update(
@@ -462,7 +521,7 @@ internal class TripMutationCoordinator0387(
                             val settings = store.onlineSettings()
                             require(settings.configured) { "Agenda Pública não configurada." }
                             val remoteId = snapshotTrip.remoteId?.takeIf(String::isNotBlank) ?: snapshotTrip.publicToken
-                            TripRemoteApi(settings).update(
+                            val response = TripRemoteApi(settings).update(
                                 snapshotTrip.copy(
                                     remoteId = remoteId,
                                     publicationRevision = event.revision,
@@ -470,6 +529,7 @@ internal class TripMutationCoordinator0387(
                                     publicationEventId = event.id,
                                 ),
                             )
+                            if (response.stale) throw PublicationStaleRevision0387(response.entityRevision)
                         } else {
                             PublicAgendaAutoSync0300.syncLocalTripIncremental(
                                 context = appContext,
@@ -503,7 +563,7 @@ internal class TripMutationCoordinator0387(
                         val settings = store.onlineSettings()
                         require(settings.configured) { "Agenda Pública não configurada." }
                         val remoteId = snapshotTrip.remoteId?.takeIf(String::isNotBlank) ?: snapshotTrip.publicToken
-                        TripRemoteApi(settings).update(
+                        val response = TripRemoteApi(settings).update(
                             snapshotTrip.copy(
                                 remoteId = remoteId,
                                 status = TripStatus.CANCELLED,
@@ -513,6 +573,7 @@ internal class TripMutationCoordinator0387(
                                 publicationEventId = event.id,
                             ),
                         )
+                        if (response.stale) throw PublicationStaleRevision0387(response.entityRevision)
                     }
                 }
                 outbox.markDelivered(event.id)
@@ -521,6 +582,13 @@ internal class TripMutationCoordinator0387(
                     "TRIP_MUTATION_OUTBOX_DELIVERED",
                     event,
                     "publicationResult=delivered retryCount=${event.attempts} latencyMs=${(System.nanoTime() - startedNs) / 1_000_000L}",
+                )
+            } catch (stale: PublicationStaleRevision0387) {
+                val rebased = outbox.rebase(event.id, stale.remoteRevision)
+                recordEvent(
+                    "TRIP_MUTATION_OUTBOX_REBASED",
+                    event,
+                    "publicationResult=stale remoteRevision=${stale.remoteRevision} rebasedRevision=${rebased?.revision ?: -1} retryCount=${event.attempts} latencyMs=${(System.nanoTime() - startedNs) / 1_000_000L}",
                 )
             } catch (cancelled: CancellationException) {
                 outbox.markFailure(event.id, cancelled, retryable = true)
@@ -560,6 +628,10 @@ internal class TripMutationCoordinator0387(
         )
     }
 }
+
+internal class PublicationStaleRevision0387(
+    val remoteRevision: Long,
+) : IllegalStateException("Publicação obsoleta; revisão remota=$remoteRevision")
 
 internal fun strongExternalCanonicalTripId0387(
     tenantId: String,
