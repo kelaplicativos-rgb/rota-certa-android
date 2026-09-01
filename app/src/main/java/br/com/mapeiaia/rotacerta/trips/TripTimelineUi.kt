@@ -515,8 +515,7 @@ fun TripTimelineScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-            showSync) {
-        BlaBlaCollectorPanel(
+                    BlaBlaCollectorPanel(
             trips = trips,
             stateStore = collectorStore,
             currentResponse = collectorResponse,
@@ -609,8 +608,6 @@ fun TripTimelineScreen(
             autoSyncProfileUuid = if (forceAllSyncActive) null else autoSyncProfileUuid,
             autoSyncTripId = if (forceAllSyncActive) null else autoSyncTripId,
         )
-    }
-
                 }
             },
             confirmButton = {},
