@@ -1,19 +1,157 @@
 {
   "schema_version": 4,
   "request_id": "2026-09-01-ida",
-  "collected_at": "2026-08-24T21:30:41.036Z",
-  "status": "error",
+  "collected_at": "2026-09-01T10:49:44.801Z",
+  "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
-  "error": "página pública retornou HTTP 403",
+  "place_resolution": "static_corridor",
   "request": {
     "from": "Santo André, SP, Brasil",
     "to": "São Thomé das Letras, MG, Brasil",
     "date": "2026-09-01",
     "seats": 1
   },
+  "resolved_place_ids": {
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+  },
+  "validation": {
+    "http_status": 200,
+    "exact_date_match": true,
+    "exact_origin_match": true,
+    "exact_destination_match": true,
+    "route_visible_in_page": true,
+    "content_confirmed": true,
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-09-01&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
+  },
   "zero_results_confirmed": false,
-  "driver_cards_count": 0,
-  "ezequiel_s_visible": null,
-  "barbosa_visible": null,
-  "trips": []
+  "driver_cards_count": 10,
+  "ezequiel_s_visible": false,
+  "barbosa_visible": false,
+  "trips": [
+    {
+      "driver_name": "Rômulo",
+      "departure_time": "09:30",
+      "arrival_time": "13:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 110,00",
+      "flags": [
+        "Super Driver"
+      ],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_Qm3-udzsJTCmxA86rgyVYbw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Antonio",
+      "departure_time": "10:00",
+      "arrival_time": "13:40",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 82,00",
+      "flags": [
+        "Esgotará em breve",
+        "Super Driver"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQEH4404ASoeI57kFA43e7Q&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Danubia",
+      "departure_time": "10:00",
+      "arrival_time": "14:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 94,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QLDHenPxxS4qTbgHoASQljA&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Tulio",
+      "departure_time": "11:00",
+      "arrival_time": "15:30",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 76,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QK4Ujiy1oR42VUUI1OBbA_g&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Raphael",
+      "departure_time": "11:00",
+      "arrival_time": "15:00",
+      "actual_departure": "Santo André",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 90,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQB2wairvRgGyNqUOv-FUzw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Ricardo",
+      "departure_time": "12:00",
+      "arrival_time": "16:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 73,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QkizBs_4-T8KbRejtm5FWtg&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Alexandre",
+      "departure_time": "13:00",
+      "arrival_time": "16:40",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Campanha",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null
+    },
+    {
+      "driver_name": "Jaime",
+      "departure_time": "15:00",
+      "arrival_time": "19:50",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Tomé das Letras",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null
+    },
+    {
+      "driver_name": "Myrella",
+      "departure_time": "15:30",
+      "arrival_time": "19:30",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 90,00",
+      "flags": [
+        "Super Driver"
+      ],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QQayX0ZydR_myJ1L8hQ4wJw&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    },
+    {
+      "driver_name": "Renan",
+      "departure_time": "15:50",
+      "arrival_time": "19:40",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 93,00",
+      "flags": [
+        "Super Driver"
+      ],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=SlD0UKYjSn2rcP8guVlp_QUuuRQRX4TwyKHs8pnce09g&requested_seats=1&search_origin=SEARCH&search_uuid=4a50f450-a623-4a7d-ab70-ff20b95969fd"
+    }
+  ]
 }

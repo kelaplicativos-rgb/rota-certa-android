@@ -3,8 +3,8 @@
   "scope": "all public searches Santo André ↔ São Thomé das Letras, every date in September 2026",
   "method": "PR105 headed Chromium /search only; no login and no /user/show UUID page",
   "queries_total": 60,
-  "queries_validated": 0,
-  "queries_error": 60,
+  "queries_validated": 2,
+  "queries_error": 58,
   "queries_mismatch": 0,
   "matches": [],
   "queries": [
@@ -13,20 +13,20 @@
       "date": "2026-09-01",
       "from": "Santo André, SP, Brasil",
       "to": "São Thomé das Letras, MG, Brasil",
-      "status": "error",
-      "driver_cards_count": 0,
+      "status": "validated",
+      "driver_cards_count": 10,
       "zero_results_confirmed": false,
-      "error": "página pública retornou HTTP 403"
+      "error": null
     },
     {
       "request_id": "2026-09-01-volta",
       "date": "2026-09-01",
       "from": "São Thomé das Letras, MG, Brasil",
       "to": "Santo André, SP, Brasil",
-      "status": "error",
-      "driver_cards_count": 0,
+      "status": "validated",
+      "driver_cards_count": 9,
       "zero_results_confirmed": false,
-      "error": "página pública retornou HTTP 403"
+      "error": null
     },
     {
       "request_id": "2026-09-02-ida",

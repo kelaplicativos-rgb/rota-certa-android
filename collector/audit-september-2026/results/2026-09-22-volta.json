@@ -1,7 +1,7 @@
 {
   "schema_version": 4,
   "request_id": "2026-09-22-volta",
-  "collected_at": "2026-08-24T21:31:09.681Z",
+  "collected_at": "2026-09-01T10:50:08.165Z",
   "status": "error",
   "strategy": "headed_chromium_rendered_public_page",
   "error": "página pública retornou HTTP 403",
