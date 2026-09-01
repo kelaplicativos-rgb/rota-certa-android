@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -209,6 +210,7 @@ private fun TripApp(
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
+    val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
@@ -661,6 +663,25 @@ private fun TripApp(
         }
     }
 
+    val timelinePullGestureModifier = Modifier.agendaPullRefreshGestureOwner0388(
+        refreshing = refreshAllRunning,
+        canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
+        onRefresh = requestFullTimelineRefresh,
+        onDecision = { decision ->
+            if (
+                decision.accepted ||
+                decision.outcome == AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING
+            ) {
+                UnifiedDebugEventStore.record(
+                    "AGENDA_PULL_GESTURE_RECOGNIZED",
+                    activity.packageName,
+                    "accepted=${decision.accepted} dyPx=${decision.deltaY.toInt()} dxPx=${decision.deltaX.toInt()} " +
+                        "listAtTop=${decision.eligibleAtStart} blockedByRefresh=${decision.refreshingAtStart}",
+                )
+            }
+        },
+    )
+
     Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
         Column(
             modifier = if (screen == TripScreen.TIMELINE) {
@@ -668,6 +689,7 @@ private fun TripApp(
                     .padding(padding)
                     .padding(16.dp)
                     .fillMaxSize()
+                    .then(timelinePullGestureModifier)
             } else {
                 Modifier
                     .padding(padding)
@@ -830,6 +852,7 @@ private fun TripApp(
                     reservationPendingOnly = reservationPendingOnly,
                     refreshing = refreshAllRunning,
                     onRefresh = requestFullTimelineRefresh,
+                    listState = timelineListState,
                     listModifier = Modifier.weight(1f),
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
