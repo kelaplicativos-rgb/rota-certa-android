@@ -884,9 +884,25 @@ private fun AgendaPublicSearchRoot0396(
         onChanged = onChanged,
         showTitle = false,
     )
-    if (response != null) {
+    response?.let { result ->
         Text(
-            "Os resultados públicos permanecem auditáveis e serão inseridos cronologicamente na Timeline.",
+            "Resultado desta consulta pública",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (result.cards.isEmpty()) {
+            Text("Nenhum card público encontrado nesta consulta.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            result.cards
+                .sortedBy(::publicSearchCardDepartureSortMillis)
+                .forEach { card ->
+                    BlaBlaPublicTimelineCard(
+                        card = card,
+                        response = result,
+                    )
+                }
+        }
+        Text(
+            "Esta consulta possui Timeline própria e não é misturada à Timeline operacional.",
             style = MaterialTheme.typography.bodySmall,
         )
     }
