@@ -867,7 +867,6 @@ private fun TripApp(
                 }
             }
         }
-            }
         }
     }
 }
