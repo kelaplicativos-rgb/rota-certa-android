@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
 import java.time.Instant
@@ -75,6 +76,7 @@ internal object BlaBlaCollectorSessionModule {
  */
 class BlaBlaDynamicSessionStore(context: Context) {
     private val appContext = context.applicationContext
+    private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     fun read(account: BlaBlaDynamicAccount): BlaBlaDynamicSessionSnapshot? =
@@ -311,8 +313,11 @@ class BlaBlaDynamicSessionStore(context: Context) {
         }
     }
 
-    private fun file(id: String): File = File(appContext.filesDir, "blablacar-dynamic-session-$id.json")
-    private fun diagnosticDir(id: String): File = File(appContext.filesDir, "blablacar-dom/$id")
+    private fun file(id: String): File =
+        File(appContext.filesDir, tenantScope.keyAlias("blablacar-dynamic-session-$id") + ".json")
+
+    private fun diagnosticDir(id: String): File =
+        File(appContext.filesDir, "blablacar-dom/${tenantScope.keyAlias(id)}")
 
     private fun <T> withAccountLock(accountId: String, block: () -> T): T =
         synchronized(lockFor(accountId), block)

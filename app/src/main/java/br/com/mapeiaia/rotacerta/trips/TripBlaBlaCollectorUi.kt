@@ -829,11 +829,12 @@ fun BlaBlaCollectorPanel(
 }
 
 @Composable
-private fun DynamicAccountRow(
+internal fun DynamicAccountRow(
     account: BlaBlaDynamicAccount,
     snapshot: BlaBlaDynamicSessionSnapshot?,
     onOpen: () -> Unit,
     onRemove: () -> Unit,
+    showBrowserDetails: Boolean = false,
 ) {
     val connected = snapshot?.identityVerified == true && !account.profileUuid.isNullOrBlank()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -848,9 +849,15 @@ private fun DynamicAccountRow(
                 },
             )
             if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
+            if (showBrowserDetails) {
+                Text("Perfil do navegador: ${account.webProfileName}")
+                Text("Sessão isolada: ${if (snapshot == null) "ainda não iniciada" else "salva no aparelho"}")
+            }
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            OutlinedButton(onClick = onOpen) { Text(if (snapshot == null) "Entrar" else "Abrir") }
+            OutlinedButton(onClick = onOpen) {
+                Text(if (snapshot == null) "Entrar" else if (showBrowserDetails) "Abrir navegador" else "Abrir")
+            }
             TextButton(onClick = onRemove) { Text("Remover") }
         }
     }

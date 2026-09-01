@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -44,6 +45,7 @@ internal enum class AgendaRootSection0396(val label: String) {
 enum class AgendaTimelineCommand0396 {
     ADD_PASSENGER,
     TOGGLE_ARCHIVED,
+    DOWNLOAD_TIMELINE,
 }
 
 internal data class AgendaHeaderAction0396(
@@ -142,6 +144,7 @@ internal fun AgendaModuleHeader0396(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .heightIn(min = 64.dp)
                 .padding(horizontal = 2.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,

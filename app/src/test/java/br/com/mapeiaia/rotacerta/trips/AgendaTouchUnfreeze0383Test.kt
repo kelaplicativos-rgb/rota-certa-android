@@ -16,7 +16,8 @@ class AgendaTouchUnfreeze0383Test {
             activity.contains("PullToRefreshBox("),
             "TripsActivity must not wrap header/actions in a full-screen pull-to-refresh recognizer",
         )
-        assertTrue(activity.contains("Scaffold(modifier = Modifier.fillMaxSize())"))
+        assertTrue(activity.contains("topBar = {"))
+        assertTrue(activity.contains("AgendaModuleHeader0396("))
         assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
         assertTrue(activity.contains("refreshing = false"))
         assertTrue(activity.contains("onRefresh = requestTimelineVisualReload"))

@@ -2,12 +2,9 @@ package br.com.mapeiaia.rotacerta.trips
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import java.time.Instant
 import java.time.ZoneId
@@ -64,8 +61,9 @@ internal fun agendaTimelineDownloadFileName0398(nowMillis: Long = System.current
 }
 
 @Composable
-internal fun AgendaTimelineDownloadButton0398(
+internal fun AgendaTimelineDownloadAction0399(
     entries: List<TripTimelineEntry>,
+    triggerToken: Int,
     onChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -87,10 +85,9 @@ internal fun AgendaTimelineDownloadButton0398(
         }
     }
 
-    Button(
-        onClick = { launcher.launch(agendaTimelineDownloadFileName0398()) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text("⬇️ Baixar Timeline")
+    LaunchedEffect(triggerToken) {
+        if (triggerToken > 0) {
+            launcher.launch(agendaTimelineDownloadFileName0398())
+        }
     }
 }

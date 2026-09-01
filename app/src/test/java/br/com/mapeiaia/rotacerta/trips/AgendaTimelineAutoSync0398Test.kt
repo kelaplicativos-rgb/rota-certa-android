@@ -54,8 +54,12 @@ class AgendaTimelineAutoSync0398Test {
     @Test
     fun bothTimelinesOfferDownloadableAuditFiles() {
         assertTrue(download.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
-        assertTrue(download.contains("Text(\"⬇️ Baixar Timeline\")"))
-        assertTrue(timeline.contains("AgendaTimelineDownloadButton0398("))
+        assertTrue(activity.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
+        assertTrue(activity.contains("AgendaTimelineCommand0396.DOWNLOAD_TIMELINE"))
+        assertTrue(download.contains("AgendaTimelineDownloadAction0399("))
+        assertTrue(timeline.contains("AgendaTimelineDownloadAction0399("))
+        assertFalse(timeline.contains("AgendaTimelineDownloadButton0398("))
+        assertFalse(timeline.contains("timeline-download-0398"))
         assertTrue(collection.contains("Text(\"⬇️ Baixar coleta\")"))
         assertTrue(collection.contains("ActivityResultContracts.CreateDocument"))
         assertFalse(collection.contains("Text(\"📤 Compartilhar coleta\")"))
