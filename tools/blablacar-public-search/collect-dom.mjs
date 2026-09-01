@@ -244,6 +244,7 @@ try {
       page_title: await page.title(),
     },
     zero_results_confirmed: zeroResults,
+    diagnostic_body_excerpt: contentConfirmed ? null : body.slice(0, 5000),
     driver_cards_count: trips.length,
     ezequiel_s_visible: names.includes('ezequiel s'),
     barbosa_visible: names.includes('barbosa'),
