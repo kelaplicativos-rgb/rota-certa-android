@@ -103,6 +103,7 @@ fun TripTimelineScreen(
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
+    var downloadRequestToken0399 by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
     var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
@@ -117,6 +118,7 @@ fun TripTimelineScreen(
         when (uiCommand0396) {
             AgendaTimelineCommand0396.ADD_PASSENGER -> passengerAddRequestToken++
             AgendaTimelineCommand0396.TOGGLE_ARCHIVED -> showArchived = !showArchived
+            AgendaTimelineCommand0396.DOWNLOAD_TIMELINE -> downloadRequestToken0399++
             null -> Unit
         }
     }
@@ -372,6 +374,12 @@ fun TripTimelineScreen(
         )
     }
 
+    AgendaTimelineDownloadAction0399(
+        entries = visibleEntries,
+        triggerToken = downloadRequestToken0399,
+        onChanged = onChanged,
+    )
+
     GlobalPassengerFlowPanel(
         entries = entries,
         store = store,
@@ -523,12 +531,6 @@ fun TripTimelineScreen(
                 }
                 publicCardIndex++
             }
-        }
-        item(key = "timeline-download-0398") {
-            AgendaTimelineDownloadButton0398(
-                entries = visibleEntries,
-                onChanged = onChanged,
-            )
         }
             }
         }

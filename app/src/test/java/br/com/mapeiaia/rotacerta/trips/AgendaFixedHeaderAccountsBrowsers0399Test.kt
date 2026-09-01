@@ -33,10 +33,32 @@ class AgendaFixedHeaderAccountsBrowsers0399Test {
 
         assertTrue(actions.contains("AgendaHeaderAction0396(\"Contas e navegadores\")"))
         assertTrue(actions.contains("AgendaHeaderAction0396(\"Sincronização automática\")"))
+        assertTrue(actions.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
         assertTrue(activity.contains("TripScreen.ACCOUNTS_BROWSERS -> BlaBlaAccountsAndBrowsersScreen0399()"))
         listOf("Sincronizar agora", "Sincronizar BlaBlaCar", "Publicar agenda", "Limpar Timeline", "Limpar Agenda").forEach { label ->
             assertFalse(actions.contains("AgendaHeaderAction0396(\"$label\""), "Legacy action returned: $label")
         }
+    }
+
+    @Test
+    fun timelineDownloadLivesInOverflowAndNotAtLazyListEnd() {
+        val activity = source("TripsActivity.kt")
+        val timeline = source("TripTimelineUi.kt")
+        val download = source("AgendaTimelineDownload0398.kt")
+        val header = source("AgendaHeaderNavigation0396.kt")
+        val actions = activity
+            .substringAfter("TripScreen.TIMELINE -> listOf(")
+            .substringBefore("TripScreen.PUBLIC_SEARCH ->")
+
+        assertTrue(actions.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
+        assertTrue(header.contains("DOWNLOAD_TIMELINE"))
+        assertTrue(activity.contains("AgendaTimelineCommand0396.DOWNLOAD_TIMELINE"))
+        assertTrue(timeline.contains("AgendaTimelineDownloadAction0399("))
+        assertTrue(timeline.contains("triggerToken = downloadRequestToken0399"))
+        assertTrue(download.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
+        assertFalse(timeline.contains("timeline-download-0398"))
+        assertFalse(timeline.contains("AgendaTimelineDownloadButton0398("))
+        assertFalse(download.contains("Button("))
     }
 
     @Test

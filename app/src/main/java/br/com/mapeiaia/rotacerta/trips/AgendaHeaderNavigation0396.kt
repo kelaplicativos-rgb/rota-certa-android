@@ -45,6 +45,7 @@ internal enum class AgendaRootSection0396(val label: String) {
 enum class AgendaTimelineCommand0396 {
     ADD_PASSENGER,
     TOGGLE_ARCHIVED,
+    DOWNLOAD_TIMELINE,
 }
 
 internal data class AgendaHeaderAction0396(
