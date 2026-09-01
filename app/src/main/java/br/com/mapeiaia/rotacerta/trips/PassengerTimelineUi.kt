@@ -338,15 +338,15 @@ internal fun EnhancedPassengerTimelineSection(
                     mutationType = "PASSENGER_STATUS_$selection",
                     source = "TIMELINE_PASSENGER_STATUS",
                 )
-                val delivered = mutationCoordinator.drainPending()
+                if (queued != null) {
+                    AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_status")
+                }
+                BookingRealtimeEvents0356.notifyChanged()
                 UnifiedDebugEventStore.record(
                     "PASSENGER_STATUS_OUTBOX",
                     context.packageName,
-                    "timeline=true selection=$selection queued=${queued != null} delivered=$delivered fullSyncRequested=false blablaSync=false",
+                    "timeline=true selection=$selection queued=${queued != null} backgroundQueued=${queued != null} fullSyncRequested=false blablaSync=false",
                 )
-                if (queued != null && delivered == 0) {
-                    onChanged("Status salvo localmente; publicação desta viagem ficou pendente na outbox.")
-                }
 
                 UnifiedDebugEventStore.record(
                     if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
@@ -474,18 +474,14 @@ internal fun EnhancedPassengerTimelineSection(
                                             mutationType = "RESERVATION_APPROVED",
                                             source = "TIMELINE_RESERVATION_DECISION",
                                         )
-                                        val delivered = mutationCoordinator.drainPending()
+                                        if (queued != null) {
+                                            AgendaBackgroundSync0392.enqueueImmediate(context, "reservation_approved")
+                                        }
                                         BookingRealtimeEvents0356.notifyChanged()
-                                        queued to delivered
-                                    }.onSuccess { (queued, delivered) ->
+                                        queued
+                                    }.onSuccess {
                                         // BlaBlaCar is never synchronized automatically after an internal mutation.
-                                        onChanged(
-                                            if (queued != null && delivered == 0) {
-                                                "Reserva aprovada localmente ✅ Publicação desta viagem pendente na outbox."
-                                            } else {
-                                                "Reserva aprovada ✅"
-                                            },
-                                        )
+                                        onChanged("Reserva aprovada ✅")
                                     }.onFailure { error ->
                                         onChanged("Não foi possível persistir a aprovação: ${error.message ?: error.javaClass.simpleName}")
                                     }
@@ -541,20 +537,16 @@ internal fun EnhancedPassengerTimelineSection(
                                                 mutationType = "RESERVATION_REJECTED",
                                                 source = "TIMELINE_RESERVATION_DECISION",
                                             )
-                                            val delivered = mutationCoordinator.drainPending()
+                                            if (queued != null) {
+                                                AgendaBackgroundSync0392.enqueueImmediate(context, "reservation_rejected")
+                                            }
                                             BookingRealtimeEvents0356.notifyChanged()
-                                            queued to delivered
-                                        }.onSuccess { (queued, delivered) ->
+                                            queued
+                                        }.onSuccess {
                                             // BlaBlaCar is never synchronized automatically after an internal mutation.
                                             rejectConfirmOpen = false
                                             rejectReason = ""
-                                            onChanged(
-                                                if (queued != null && delivered == 0) {
-                                                    "Solicitação recusada localmente; publicação pendente na outbox."
-                                                } else {
-                                                    "Solicitação recusada"
-                                                },
-                                            )
+                                            onChanged("Solicitação recusada")
                                         }.onFailure { error ->
                                             onChanged("Não foi possível persistir a recusa: ${error.message ?: error.javaClass.simpleName}")
                                         }
@@ -812,7 +804,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 )
                             }.onSuccess { response ->
                                 if (blocking) {
-                                    runCatching { PublicBookingRemoteSync0296.pullAndReconcile(context, store) }
+                                    AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_block_changed")
                                 }
                                 onChanged(
                                     if (blocking) {
@@ -862,17 +854,14 @@ internal fun EnhancedPassengerTimelineSection(
                                         mutationType = "BOOKING_CHANGED_BY_DRIVER",
                                         source = "TIMELINE_BOOKING_EDIT",
                                     )
-                                    val delivered = mutationCoordinator.drainPending()
-                                    queued to delivered
-                                }.onSuccess { (queued, delivered) ->
+                                    if (queued != null) {
+                                        AgendaBackgroundSync0392.enqueueImmediate(context, "booking_changed_by_driver")
+                                    }
+                                    BookingRealtimeEvents0356.notifyChanged()
+                                    queued
+                                }.onSuccess {
                                     editManualRow = null
-                                    onChanged(
-                                        if (queued != null && delivered == 0) {
-                                            "Reserva Rota Certa atualizada localmente. Publicação desta viagem pendente na outbox."
-                                        } else {
-                                            "Reserva Rota Certa atualizada. Vagas por trecho recalculadas."
-                                        },
-                                    )
+                                    onChanged("Reserva Rota Certa atualizada. Vagas por trecho recalculadas.")
                                     // BlaBlaCar is never synchronized automatically after an internal mutation.
                                 }.onFailure { error ->
                                     onChanged("Não foi possível persistir a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
@@ -886,8 +875,9 @@ internal fun EnhancedPassengerTimelineSection(
                             source = "TIMELINE_BOOKING_EDIT",
                         )
                         if (queued != null) {
-                            scope.launch { mutationCoordinator.drainPending() }
+                            AgendaBackgroundSync0392.enqueueImmediate(context, "local_passenger_booking_changed")
                         }
+                        BookingRealtimeEvents0356.notifyChanged()
                         editManualRow = null
                         onChanged(
                             if (queued != null) {
@@ -991,13 +981,16 @@ internal fun EnhancedPassengerTimelineSection(
                                     mutationType = "BOOKING_CANCELLED_BY_DRIVER",
                                     source = "TIMELINE_BOOKING_CANCEL",
                                 )
-                                val delivered = mutationCoordinator.drainPending()
-                                onlineSyncSucceeded = queued == null || delivered > 0
-                                onlineSyncPendingReason = if (queued != null && delivered == 0) "durable_outbox_pending" else null
+                                if (queued != null) {
+                                    AgendaBackgroundSync0392.enqueueImmediate(context, "booking_cancelled_by_driver")
+                                }
+                                BookingRealtimeEvents0356.notifyChanged()
+                                onlineSyncSucceeded = queued == null
+                                onlineSyncPendingReason = if (queued != null) "background_delta_queued" else null
                                 UnifiedDebugEventStore.record(
                                     "PUBLIC_BOOKING_CANCEL_OUTBOX",
                                     context.packageName,
-                                    "$trace queued=${queued != null} delivered=$delivered result=${if (onlineSyncSucceeded) "delivered_or_noop" else "pending"} fullSyncRequested=false blablaSync=false",
+                                    "$trace queued=${queued != null} backgroundQueued=${queued != null} result=${if (queued == null) "no_op" else "pending"} fullSyncRequested=false blablaSync=false",
                                 )
 
                                 val afterLoads = SeatAvailabilityEngine.segmentLoads(

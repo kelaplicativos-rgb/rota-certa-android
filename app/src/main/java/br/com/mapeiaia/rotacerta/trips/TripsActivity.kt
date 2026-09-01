@@ -204,9 +204,6 @@ private fun TripApp(
     }
     var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
     var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
-    // Global Agenda revision is reserved for an explicit full rebuild/maintenance request.
-    // Normal mutations flow through TripMutationCoordinator0387 by canonicalTripId.
-    var publicAgendaSyncRevision by remember { mutableStateOf(-1) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var previousRotaCertaSeatAllocation by remember { mutableStateOf<Int?>(null) }
     var refreshAllRunning by remember { mutableStateOf(false) }
@@ -333,7 +330,7 @@ private fun TripApp(
                         configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     )
                 }
-                mutationCoordinator.drainPending()
+                AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                 UnifiedDebugEventStore.record(
                     "TENANT_SEAT_ALLOCATION_EXACT_IMPACT",
                     activity.packageName,
@@ -378,38 +375,8 @@ private fun TripApp(
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
     }
-    val publicAgendaSyncCoordinator = remember(activity, store, shareScope) {
-        createPublicAgendaSyncCoordinator0373(activity, store, shareScope)
-    }
+    // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
     val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
-    androidx.compose.runtime.LaunchedEffect(publicAgendaSyncCoordinator) {
-        publicAgendaSyncCoordinator.completions.collect { completion ->
-            val result = completion.result
-            if (result == null) {
-                message = "Não foi possível sincronizar a Agenda Pública. A próxima mudança real tentará novamente."
-                return@collect
-            }
-            runCatching {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    BookingPushRegistration0304.ensureRegistered(activity, store)
-                }
-            }
-            AgendaSyncCrashTraceStore.checkpoint(
-                activity,
-                "timeline_public_agenda_coordinator_result local=${result.localPublished} external=${result.externalPublished} failures=${result.failures} durationMs=${completion.durationMs}",
-            )
-            if (result.localPublished + result.externalPublished > 0) {
-                refresh()
-                // Successful background publication is intentionally silent in the UI.
-                // The coordinator checkpoint above remains the audit/diagnostic evidence.
-                message = null
-            } else if (result.failures > 0) {
-                message = "Não foi possível enviar as viagens para a Agenda Pública. Tente abrir a Agenda novamente."
-            } else {
-                message = null
-            }
-        }
-    }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         BookingRealtimeEvents0356.changes.collect {
             refresh()
@@ -421,7 +388,7 @@ private fun TripApp(
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
                 // Resume only retries durable per-trip deltas. It never triggers a tenant-wide sync.
-                shareScope.launch { tripMutationCoordinator.drainPending() }
+                AgendaBackgroundSync0392.enqueueImmediate(activity, "timeline_resume")
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -429,64 +396,22 @@ private fun TripApp(
     }
     val requestFullTimelineRefresh = {
         if (shouldStartAgendaFullRefresh0388(screen == TripScreen.TIMELINE, refreshAllRunning)) {
-            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
+            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh backgroundModule=true", traceId)
             AgendaSyncCrashTraceStore.arm(activity)
-            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
+            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested_background_0392")
             refreshAllRunning = true
-            message = "Sincronizando tudo: contas BlaBlaCar, reservas e Agenda Pública…"
-            UnifiedDebugEventStore.record(
-                "AGENDA_PULL_REFRESH_ALL_REQUESTED",
-                activity.packageName,
-                "scope=all_accounts public_bookings=true public_agenda=true source=timeline_pull",
+            refresh()
+            AgendaBackgroundSync0392.enqueueImmediate(
+                context = activity,
+                reason = "timeline_pull_refresh",
             )
-            shareScope.launch {
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_public_booking_reconcile")
-                AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=pull_refresh", traceId)
-                val bookingSync = runCatching {
-                    PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
-                }
-                bookingSync.exceptionOrNull()?.let { error ->
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_BOOKING_RECONCILE_FAILED",
-                        activity.packageName,
-                        AgendaFailureEvidence.describe(
-                            error = error,
-                            operation = "BOOKING_RECONCILE",
-                            component = "TripsActivity",
-                            method = "requestFullTimelineRefresh",
-                        ),
-                    )
-                }
-                AgendaTrace.event(
-                    activity,
-                    "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                    "source=pull_refresh success=${bookingSync.isSuccess} imported=${bookingSync.getOrNull()?.importedCount ?: 0}",
-                    traceId,
-                )
-                AgendaSyncCrashTraceStore.checkpoint(
-                    activity,
-                    "timeline_pull_after_public_booking_reconcile success=${bookingSync.isSuccess}",
-                )
-                refresh()
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_after_local_refresh")
-
-                val nextSyncToken = autoBlaBlaSyncToken + 1
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_before_blabla_token token=$nextSyncToken")
-                forceAllBlaBlaSyncToken = nextSyncToken
-                autoBlaBlaSyncToken = nextSyncToken
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_after_blabla_token token=$nextSyncToken")
-                publicAgendaSyncRevision++
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_public_agenda_revision_incremented")
-
-                refreshAllRunning = false
-                AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_dispatch_complete")
-                val imported = bookingSync.getOrNull()?.importedCount ?: 0
-                message = if (bookingSync.isFailure) {
-                    "Sincronização geral iniciada. BlaBlaCar e Agenda Pública continuam; a leitura das reservas públicas falhou e será tentada novamente no próximo ciclo."
-                } else {
-                    "Sincronização geral iniciada • todas as contas BlaBlaCar • Agenda Pública • $imported reserva(s) pública(s) recebida(s)."
-                }
-            }
+            refreshAllRunning = false
+            message = null
+            UnifiedDebugEventStore.record(
+                "AGENDA_PULL_REFRESH_BACKGROUND_REQUESTED_0392",
+                activity.packageName,
+                "timelineRefresh=true publicAgenda=true publicBookings=true blablaAutomatic=false silentUi=true",
+            )
         }
     }
 
@@ -497,68 +422,11 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(tripMutationCoordinator) {
-        while (true) {
-            runCatching { tripMutationCoordinator.drainPending() }
-                .onFailure { error ->
-                    UnifiedDebugEventStore.record(
-                        "TRIP_MUTATION_OUTBOX_RETRY_FAILED",
-                        activity.packageName,
-                        failureSummary0387(error),
-                    )
-                }
-            kotlinx.coroutines.delay(30_000L)
-        }
-    }
-
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_begin")
-        AgendaTrace.event(activity, "TIMELINE_PUBLIC_BOOKING_RECONCILE_START", "source=startup background=true", traceId)
-        try {
-            val result = PublicBookingRemoteSync0296.pullAndReconcile(activity, store)
-            AgendaTrace.event(
-                activity,
-                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                "source=startup result=ok imported=${result.importedCount} seatSyncQueued=${result.seatSyncQueued} background=true",
-                traceId,
-            )
-            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_startup_booking_reconcile_end imported=${result.importedCount}")
-            if (result.importedCount > 0) {
-                refresh()
-                message = "${result.importedCount} reserva(s) recebida(s) pelo link público."
-                if (result.seatSyncQueued > 0) {
-                    autoBlaBlaSyncToken++
-                }
-                // PublicBookingRemoteSync0296 already enqueued/drained exact changedTripIds.
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            AgendaTrace.event(
-                activity,
-                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                "source=startup result=caller_cancelled sharedFlightMayContinue=true background=true",
-                traceId,
-            )
-            throw cancelled
-        } catch (error: Throwable) {
-            val failureEvidence = AgendaFailureEvidence.describe(
-                error = error,
-                operation = "BOOKING_RECONCILE",
-                component = "TripsActivity",
-                method = "startupBackgroundReconcile",
-            )
-            AgendaTrace.event(
-                activity,
-                "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                "source=startup result=error background=true failureEvidence=" + failureEvidence,
-                traceId,
-            )
-            UnifiedDebugEventStore.record(
-                "PUBLIC_BOOKING_RECONCILE_FAILED",
-                activity.packageName,
-                failureEvidence,
-            )
-            message = "Agenda local pronta. A atualização de reservas públicas falhou em background e poderá ser repetida."
-        }
+        AgendaBackgroundSync0392.enqueueImmediate(
+            context = activity,
+            reason = "timeline_open",
+        )
     }
 
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
@@ -603,7 +471,7 @@ private fun TripApp(
                         source = "TIMELINE_STORE_OBSERVER",
                         configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     )
-                    tripMutationCoordinator.drainPending()
+                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                 }.onFailure { error ->
                     UnifiedDebugEventStore.record(
                         "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
@@ -619,47 +487,6 @@ private fun TripApp(
                     )
                 }
             }
-        }
-    }
-
-    androidx.compose.runtime.LaunchedEffect(
-        settingsLoaded,
-        appSettings.rotaCertaSeatAllocation,
-        publicAgendaSyncRevision,
-    ) {
-        if (publicAgendaSyncRevision < 0) return@LaunchedEffect
-        if (!settingsLoaded) {
-            AgendaTrace.event(
-                activity,
-                "CAPACITY_PUBLIC_SYNC_DEFERRED",
-                "reason=local_settings_not_loaded revision=$publicAgendaSyncRevision",
-                traceId,
-            )
-            return@LaunchedEffect
-        }
-        val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.onlineSettings() }
-        if (online.configured) {
-            val reason = "public_agenda_effect_revision_$publicAgendaSyncRevision"
-            AgendaSyncCrashTraceStore.checkpoint(
-                activity,
-                "timeline_public_agenda_effect_begin reason=$reason singleFlight=true enqueueOnly=true",
-            )
-            AgendaTrace.event(
-                activity,
-                "CAPACITY_PUBLIC_SYNC_REQUESTED",
-                "reason=$reason rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} singleFlight=true",
-                traceId,
-            )
-            AgendaTrace.event(
-                activity,
-                "CAPACITY_PUBLIC_SYNC_TRIGGERED",
-                "reason=$reason mode=single_flight_enqueue rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation}",
-                traceId,
-            )
-            publicAgendaSyncCoordinator.request(
-                rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                reason = reason,
-            )
         }
     }
 
@@ -1220,7 +1047,7 @@ private fun TripCard(
                                         mutationType = "PUBLIC_BOOKING_TOGGLE",
                                         source = "TIMELINE_CARD",
                                     )
-                                    mutationCoordinator.drainPending()
+                                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                                 }
                                     .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
                                     .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
@@ -1246,7 +1073,7 @@ private fun TripCard(
                                     mutationType = "MANUAL_PUBLIC_CARD_SYNC",
                                     source = "TIMELINE_CARD",
                                 )
-                                mutationCoordinator.drainPending()
+                                AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                             }.onSuccess { onChanged("Viagem sincronizada com a agenda pública.") }
                                 .onFailure { onChanged("Falha online; o delta desta viagem permanece rastreável: ${it.message}") }
                         }

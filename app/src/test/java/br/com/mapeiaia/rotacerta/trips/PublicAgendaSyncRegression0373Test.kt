@@ -296,12 +296,20 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
-    fun composeEffectOnlyQueuesAndDoesNotOwnLongRunningSync() {
+    fun composeNoLongerOwnsAgendaSyncAndBackgroundModuleOwnsDurableDelivery() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        val background = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
         val coordinator = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSyncCoordinator0373.kt").readText()
-        assertTrue(source.contains("publicAgendaSyncCoordinator.request("))
+
+        assertFalse(source.contains("publicAgendaSyncCoordinator.request("))
+        assertFalse(source.contains("createPublicAgendaSyncCoordinator0373"))
         assertFalse(source.contains("TripApp.publicAgendaEffect"))
         assertFalse(source.contains("appSettings.rotaCertaSeatAllocation,\n        appSettings.rotaCertaSeatAllocation"))
+        assertTrue(source.contains("AgendaBackgroundSync0392.enqueueImmediate"))
+        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(background.contains("PublicAgendaAutoSync0300.sync("))
+
+        // Retained coordinator remains valid for legacy/explicit callers, but is no longer a UI owner.
         assertTrue(coordinator.contains("Channel.CONFLATED"))
         assertTrue(coordinator.contains("CAPACITY_PUBLIC_SYNC_COALESCED"))
         assertTrue(coordinator.contains("CAPACITY_PUBLIC_SYNC_IDENTICAL_SKIPPED"))

@@ -78,10 +78,10 @@ test("server-side mutations journal one delivered outbox event at the same entit
 });
 
 test("normal Android mutations do not depend on global Agenda revision", () => {
-  const increments = activity.match(/publicAgendaSyncRevision\+\+/g) || [];
-  assert.equal(increments.length, 1);
-  assert.match(activity, /if \(publicAgendaSyncRevision < 0\) return@LaunchedEffect/);
+  assert.doesNotMatch(activity, /publicAgendaSyncRevision/);
+  assert.doesNotMatch(activity, /createPublicAgendaSyncCoordinator0373/);
   assert.match(activity, /TripMutationCoordinator0387\(activity, store\)/);
+  assert.match(activity, /AgendaBackgroundSync0392\.enqueueImmediate/);
   assert.match(activity, /TENANT_SEAT_ALLOCATION_EXACT_IMPACT/);
   assert.match(activity, /fullSyncRequested=false blablaNetworkSync=false/);
 });
@@ -104,7 +104,8 @@ test("protected booking state is part of the immutable versioned local snapshot 
   assert.match(autoSync, /booking\.paymentStatus\.name/);
   assert.match(autoSync, /booking\.lastDriverSelection\.trim\(\)/);
   assert.match(passenger, /mutationCoordinator\.recordLocalMutation\(/);
-  assert.match(passenger, /mutationCoordinator\.drainPending\(\)/);
+  assert.doesNotMatch(passenger, /mutationCoordinator\.drainPending\(\)/);
+  assert.match(passenger, /AgendaBackgroundSync0392\.enqueueImmediate/);
   assert.doesNotMatch(passenger, /TripRemoteApi\(settings\)\.updateDriverPassengerOperationalStatus\(/);
   assert.doesNotMatch(passenger, /TripRemoteApi\(settings\)\.decideDriverBooking\(/);
 });
@@ -118,7 +119,8 @@ test("BlaBlaCar exact-card channel requires strong identity and uses the outbox"
   assert.match(resultBlock, /exactTripId/);
   assert.match(resultBlock, /exactMatches\.size != 1/);
   assert.match(resultBlock, /recordExternalManualMutation/);
-  assert.match(resultBlock, /tripMutationCoordinator\.drainPending\(\)/);
+  assert.doesNotMatch(resultBlock, /tripMutationCoordinator\.drainPending\(\)/);
+  assert.match(resultBlock, /AgendaBackgroundSync0392\.enqueueImmediate/);
   assert.doesNotMatch(resultBlock, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
 });
 

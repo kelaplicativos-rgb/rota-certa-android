@@ -94,8 +94,8 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5684
-        versionName = "0.1.391"
+        versionCode = 5685
+        versionName = "0.1.392"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -154,6 +154,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.15.0")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.navigation:navigation-compose:2.8.5")
 
     implementation("com.google.android.gms:play-services-location:21.3.0")

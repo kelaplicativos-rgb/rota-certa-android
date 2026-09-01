@@ -493,7 +493,7 @@ fun TripTimelineScreen(
 
         incrementalPublishScope.launch {
             incrementalPublishMutex.withLock {
-                tripMutationCoordinator.drainPending()
+                AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
             }
         }
         UnifiedDebugEventStore.record(
@@ -585,6 +585,10 @@ fun TripTimelineScreen(
             onResult = { nextResponse ->
                 val previousResponse = collectorResponse
                 collectorResponse = nextResponse
+                AgendaBackgroundSync0392.enqueueImmediate(
+                    context = context,
+                    reason = "blablacar_collection_result",
+                )
                 val exactProfileUuid = autoSyncProfileUuid?.trim().orEmpty()
                 val exactTripId = autoSyncTripId?.trim().orEmpty()
                 val exactRequested = !forceAllSyncActive && exactProfileUuid.isNotBlank() && exactTripId.isNotBlank()
@@ -629,7 +633,7 @@ fun TripTimelineScreen(
                                                 sourceTrip = source,
                                                 configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                                             )
-                                            tripMutationCoordinator.drainPending()
+                                            AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
                                         }.onFailure { error ->
                                             UnifiedDebugEventStore.record(
                                                 "PUBLIC_AGENDA_EXACT_CARD_OUTBOX_FAILED",
@@ -1470,7 +1474,7 @@ private fun TimelineEntryCard(
                                                 source = "TIMELINE_CARD",
                                                 reconcileBookingInventory = false,
                                             )
-                                            mutationCoordinator.drainPending()
+                                            AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
                                             queued != null
                                         }.onSuccess { queued ->
                                             onChanged(
