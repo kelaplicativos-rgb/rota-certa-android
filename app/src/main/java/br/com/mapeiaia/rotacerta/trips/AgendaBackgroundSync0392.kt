@@ -19,6 +19,8 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,6 +31,14 @@ internal data class AgendaBackgroundSyncRun0392(
     val publicLocalPublished: Int = 0,
     val publicExternalPublished: Int = 0,
     val failures: Int = 0,
+)
+
+internal data class TenantSeatAllocationFanOut0395(
+    val configVersion: Long,
+    val localCanonicalUpdated: Int = 0,
+    val localPublicationQueued: Int = 0,
+    val externalPublicationQueued: Int = 0,
+    val externalRetryPending: Int = 0,
 )
 
 internal enum class AgendaBackgroundSyncMode0392 {
@@ -137,6 +147,108 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    internal suspend fun reconcileTenantSeatAllocation0395(
+        context: Context,
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+    ): TenantSeatAllocationFanOut0395 = withContext(Dispatchers.IO) {
+        val appContext = context.applicationContext
+        val store = TripStore(appContext)
+        val nowMillis = System.currentTimeMillis()
+        val changedLocalIds = store.reconcileOperationalInventoryTripIds(
+            rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+            seatAllocationVersion = seatAllocationVersion,
+            nowMillis = nowMillis,
+        )
+        val coordinator = TripMutationCoordinator0387(appContext, store)
+        var localQueued = 0
+        val recoverableLocalTrips = store.trips().filter { trip ->
+            trip.isCanonicalLocalPublishSource() &&
+                trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) &&
+                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE)) &&
+                trip.seatAllocationVersionUsed == seatAllocationVersion
+        }
+        if (seatAllocationVersion > 0L || changedLocalIds.isNotEmpty()) {
+            recoverableLocalTrips.forEach { trip ->
+                if (coordinator.recordLocalMutation(
+                        canonicalTripId = trip.id,
+                        mutationType = "TENANT_SEAT_ALLOCATION_CHANGED",
+                        source = "TENANT_CONFIG_CANONICAL_FANOUT",
+                        configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                        reconcileBookingInventory = false,
+                    ) != null
+                ) {
+                    localQueued++
+                }
+            }
+        }
+
+        var externalQueued = 0
+        var externalRetryPending = 0
+        if (seatAllocationVersion > 0L) {
+            val cachedExternalTrips = BlaBlaCollectorStateStore(appContext)
+                .lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+                .filterNot(BlaBlaCollectorTrip::identity_conflict)
+            val pendingBindings = store.publicExternalBindings().filter { binding ->
+                binding.departureAtMillis >= nowMillis &&
+                    binding.seatAllocationVersionUsed < seatAllocationVersion &&
+                    binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
+            }
+            pendingBindings.forEach { binding ->
+                val exactMatches = cachedExternalTrips.filter { source ->
+                    source.profile_uuid.trim().equals(binding.profileUuid.trim(), ignoreCase = true) &&
+                        source.trip_id?.trim() == binding.blablaTripId.trim()
+                }
+                if (exactMatches.size == 1) {
+                    if (coordinator.recordExternalTenantMutation(
+                            sourceTrip = exactMatches.single(),
+                            configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                            seatAllocationVersion = seatAllocationVersion,
+                        ) != null
+                    ) {
+                        externalQueued++
+                    }
+                } else {
+                    externalRetryPending++
+                    UnifiedDebugEventStore.record(
+                        "TENANT_SEAT_ALLOCATION_FANOUT_0395",
+                        appContext.packageName,
+                        "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
+                            " internalTripId=" + seatSyncDiagnosticKey(binding.bookingTripId) +
+                            " configVersion=" + seatAllocationVersion +
+                            " result=RETRY_PENDING reason=external_snapshot_unavailable exactMatches=" + exactMatches.size,
+                    )
+                }
+            }
+        }
+        BookingRealtimeEvents0356.notifyChanged()
+        val result = TenantSeatAllocationFanOut0395(
+            configVersion = seatAllocationVersion,
+            localCanonicalUpdated = changedLocalIds.size,
+            localPublicationQueued = localQueued,
+            externalPublicationQueued = externalQueued,
+            externalRetryPending = externalRetryPending,
+        )
+        UnifiedDebugEventStore.record(
+            "TENANT_SEAT_ALLOCATION_FANOUT_0395",
+            appContext.packageName,
+            "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
+                " configVersion=" + seatAllocationVersion +
+                " allocation=" + rotaCertaSeatAllocation +
+                " localCanonicalUpdated=" + result.localCanonicalUpdated +
+                " localPublicationQueued=" + result.localPublicationQueued +
+                " externalPublicationQueued=" + result.externalPublicationQueued +
+                " externalRetryPending=" + result.externalRetryPending +
+                " result=" + when {
+                    result.externalRetryPending > 0 -> "RETRY_PENDING"
+                    result.localCanonicalUpdated > 0 || result.localPublicationQueued > 0 || result.externalPublicationQueued > 0 -> "UPDATE"
+                    else -> "SKIP_ALREADY_CURRENT"
+                } +
+                " fullSyncRequested=false",
+        )
+        result
+    }
+
     internal suspend fun runCycle(context: Context, reason: String): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
@@ -158,6 +270,7 @@ internal object AgendaBackgroundSync0392 {
         var outboxDelivered = 0
         var publicLocalPublished = 0
         var publicExternalPublished = 0
+        val tenantSettings = SettingsRepository(appContext).settings.first()
 
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_START_0392",
@@ -191,6 +304,28 @@ internal object AgendaBackgroundSync0392 {
         }
 
         try {
+            reconcileTenantSeatAllocation0395(
+                context = appContext,
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            failures++
+            UnifiedDebugEventStore.record(
+                "TENANT_SEAT_ALLOCATION_FANOUT_FAILED_0395",
+                appContext.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "TENANT_SEAT_ALLOCATION_FANOUT",
+                    component = "AgendaBackgroundSync0392",
+                    method = "runTenantCycle",
+                ),
+            )
+        }
+
+        try {
             outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -214,7 +349,7 @@ internal object AgendaBackgroundSync0392 {
         )
         if (reconcileAllCanonicalTrips) {
             try {
-                val allocation = SettingsRepository(appContext).settings.first().rotaCertaSeatAllocation
+                val allocation = tenantSettings.rotaCertaSeatAllocation
                 val publicResult = PublicAgendaAutoSync0300.sync(
                     context = appContext,
                     store = store,
