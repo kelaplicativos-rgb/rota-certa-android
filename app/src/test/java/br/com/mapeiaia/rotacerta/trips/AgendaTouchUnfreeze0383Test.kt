@@ -27,15 +27,15 @@ class AgendaTouchUnfreeze0383Test {
     @Test
     fun timelineListUsesExplicitStateAndNoSecondPullRecognizer() {
         val timeline = source("TripTimelineUi.kt")
-        val actions = timeline.indexOf("ResponsiveTripActions(")
-        val search = timeline.indexOf("label = { Text(\"Buscar na Timeline\") }", actions)
+        val activity = source("TripsActivity.kt")
+        val search = timeline.indexOf("label = { Text(\"Buscar na Timeline\") }")
         val emptyState = timeline.indexOf("val timelineEmptyMessage = when", search)
         val region = timeline.indexOf("Box(", emptyState)
         val list = timeline.indexOf("LazyColumn(", region)
 
-        assertTrue(actions >= 0, "Timeline toolbar actions missing")
-        assertTrue(search > actions, "Search control must remain after toolbar actions")
-        assertTrue(region > search, "Timeline data region must remain after toolbar/search controls")
+        assertTrue(activity.contains("AgendaModuleHeader0396("), "Module header must remain outside the Timeline gesture owner")
+        assertTrue(search >= 0, "Timeline search control missing")
+        assertTrue(region > search, "Timeline data region must remain after the search control")
         assertTrue(list > region, "Timeline list must remain inside the weighted data region")
         assertFalse(timeline.contains("PullToRefreshBox("), "There must be only one canonical pull owner")
         assertTrue(timeline.contains("state = listState"))
@@ -73,20 +73,27 @@ class AgendaTouchUnfreeze0383Test {
     }
 
     @Test
-    fun allVisibleAgendaToolbarActionsRemainRealButtons() {
-        val timeline = source("TripTimelineUi.kt")
+    fun agendaHeaderAndContextActionsRemainRealTouchTargets() {
+        val activity = source("TripsActivity.kt")
+        val header = source("AgendaHeaderNavigation0396.kt")
+
         listOf(
-            "👥 Passageiros",
-            "➕ Adicionar a uma viagem",
-            "🛣️ Nova viagem",
+            "Nova viagem",
+            "Adicionar passageiro",
+            "Atualizar agora",
             "Publicar agenda",
             "Fixar atalho",
             "Integração online",
             "Sincronizar BlaBlaCar",
             "Limpar Timeline",
-            "Ver arquivadas",
         ).forEach { label ->
-            assertTrue(timeline.contains(label), "Missing Agenda toolbar action: $label")
+            assertTrue(activity.contains("AgendaHeaderAction0396(\"$label\""), "Missing Agenda contextual action: $label")
         }
+        assertTrue(header.contains("IconButton("), "Header navigation/overflow must be real touch targets")
+        assertTrue(header.contains("NavigationDrawerItem("), "Drawer destinations must be real navigation touch targets")
+        assertTrue(header.contains("DropdownMenuItem("), "Overflow actions must be real menu touch targets")
+        assertTrue(header.contains("enabled = action.enabled"))
+        assertTrue(header.contains("action.onClick()"))
+        assertFalse(header.contains("horizontalScroll"), "Root navigation must not return to a horizontal gesture strip")
     }
 }

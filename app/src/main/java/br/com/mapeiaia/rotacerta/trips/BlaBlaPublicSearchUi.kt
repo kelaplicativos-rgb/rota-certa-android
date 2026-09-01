@@ -48,6 +48,7 @@ fun BlaBlaPublicSearchPanel(
     currentResponse: BlaBlaPublicSearchResponse?,
     onResult: (BlaBlaPublicSearchResponse?) -> Unit,
     onChanged: (String) -> Unit,
+    showTitle: Boolean = true,
 ) {
     val context = LocalContext.current
     val store = remember(context) { BlaBlaPublicSearchStore(context) }
@@ -102,7 +103,9 @@ fun BlaBlaPublicSearchPanel(
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
+            if (showTitle) {
+                Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
+            }
             Text(
                 "Somente leitura e auditável. Todos os cards públicos encontrados são preservados; perfis configurados são usados apenas para confirmar propriedade por UUID.",
                 style = MaterialTheme.typography.bodySmall,

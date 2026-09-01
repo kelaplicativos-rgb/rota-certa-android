@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -122,7 +123,25 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, CREATE, SETTINGS, PASSENGERS }
+private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS }
+
+private fun TripScreen.isAgendaRoot0396(): Boolean =
+    this == TripScreen.TIMELINE || this == TripScreen.PUBLIC_SEARCH || this == TripScreen.PASSENGERS
+
+private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
+    TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
+    TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
+    else -> AgendaRootSection0396.ALL_TRIPS
+}
+
+private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
+    TripScreen.TIMELINE -> "Todas as viagens"
+    TripScreen.PUBLIC_SEARCH -> "Consulta pública"
+    TripScreen.PASSENGERS -> "Passageiros"
+    TripScreen.CREATE -> "Nova viagem"
+    TripScreen.SETTINGS -> "Integração online"
+    TripScreen.LIST -> "Gerenciar viagem"
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -211,16 +230,18 @@ private fun TripApp(
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeToken by remember { mutableStateOf(0) }
-    var screen by remember {
-        mutableStateOf(
-            when {
-                startCreating -> TripScreen.CREATE
-                openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.TIMELINE
-                initialTripId != null -> TripScreen.LIST
-                else -> TripScreen.TIMELINE
-            },
-        )
+    val initialScreen0396 = when {
+        startCreating -> TripScreen.CREATE
+        openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.TIMELINE
+        initialTripId != null -> TripScreen.LIST
+        else -> TripScreen.TIMELINE
     }
+    var screen by rememberSaveable { mutableStateOf(initialScreen0396) }
+    var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }
+    var passengerSubscreenOpen0396 by rememberSaveable { mutableStateOf(false) }
+    var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
+    var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
+    var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
@@ -446,47 +467,123 @@ private fun TripApp(
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-        Column(
-            modifier = if (screen == TripScreen.TIMELINE) {
-                Modifier
-                    .padding(padding)
-                    .padding(16.dp)
-                    .fillMaxSize()
-            } else {
-                Modifier
-                    .padding(padding)
-                    .padding(16.dp)
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+    val sendTimelineCommand0396: (AgendaTimelineCommand0396) -> Unit = { command ->
+        timelineUiCommand0396 = command
+        timelineUiCommandToken0396 += 1
+    }
+    val openSettings0396: () -> Unit = {
+        parentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
+        screen = TripScreen.SETTINGS
+    }
+    val notificationLabel0396 = if (driverUnreadCount > 0) {
+        "Notificações (" + (if (driverUnreadCount > 99) "99+" else driverUnreadCount.toString()) + ")"
+    } else {
+        "Notificações"
+    }
+    val headerActions0396 = when (screen) {
+        TripScreen.TIMELINE -> listOf(
+            AgendaHeaderAction0396("Nova viagem") {
+                pendingCreateForPassengerId = ""
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.CREATE
             },
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column {
-                    Text("Agenda de Viagens", style = MaterialTheme.typography.headlineSmall)
-                    Text("Rota Certa • viagens, vagas por trecho e calendário", style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedButton(
-                    onClick = {
-                        notificationsExpanded = !notificationsExpanded
-                        shareScope.launch { refreshDriverNotifications() }
-                    },
-                ) {
-                    BadgedBox(
-                        badge = {
-                            if (driverUnreadCount > 0) {
-                                Badge { Text(if (driverUnreadCount > 99) "99+" else driverUnreadCount.toString()) }
-                            }
-                        },
-                    ) {
-                        Text("🔔")
-                    }
-                }
+            AgendaHeaderAction0396("Adicionar passageiro") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
+            },
+            AgendaHeaderAction0396("Atualizar agora") { requestFullTimelineRefresh() },
+            AgendaHeaderAction0396("Publicar agenda") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_PUBLISHER)
+            },
+            AgendaHeaderAction0396("Sincronizar BlaBlaCar") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_BLABLACAR_SYNC)
+            },
+            AgendaHeaderAction0396("Alternar próximas / arquivadas") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
+            },
+            AgendaHeaderAction0396("Limpar Timeline") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_CLEAR_DIALOG)
+            },
+            AgendaHeaderAction0396("Fixar atalho") {
+                val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
+                message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
+            },
+            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
+            AgendaHeaderAction0396(notificationLabel0396) {
+                notificationsExpanded = !notificationsExpanded
+                shareScope.launch { refreshDriverNotifications() }
+            },
+        )
+        TripScreen.PUBLIC_SEARCH -> listOf(
+            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
+            AgendaHeaderAction0396(notificationLabel0396) {
+                notificationsExpanded = !notificationsExpanded
+                shareScope.launch { refreshDriverNotifications() }
+            },
+        )
+        TripScreen.PASSENGERS -> listOf(
+            AgendaHeaderAction0396("Integração online", onClick = openSettings0396),
+            AgendaHeaderAction0396(notificationLabel0396) {
+                notificationsExpanded = !notificationsExpanded
+                shareScope.launch { refreshDriverNotifications() }
+            },
+        )
+        else -> listOf(
+            AgendaHeaderAction0396(notificationLabel0396) {
+                notificationsExpanded = !notificationsExpanded
+                shareScope.launch { refreshDriverNotifications() }
+            },
+        )
+    }
+    val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
+    val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
+    val headerLabel0396 = if (passengerSubscreenActive0396) {
+        "Histórico do passageiro"
+    } else {
+        screen.agendaHeaderLabel0396()
+    }
+    val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
+
+    AgendaModuleDrawer0396(
+        currentSection = currentRootScreen0396.agendaRootSection0396(),
+        onSelect = { section ->
+            val target = when (section) {
+                AgendaRootSection0396.ALL_TRIPS -> TripScreen.TIMELINE
+                AgendaRootSection0396.PUBLIC_SEARCH -> TripScreen.PUBLIC_SEARCH
+                AgendaRootSection0396.PASSENGERS -> TripScreen.PASSENGERS
             }
+            parentRootScreen0396 = target
+            passengerSubscreenOpen0396 = false
+            screen = target
+        },
+    ) { openDrawer0396 ->
+        Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
+            Column(
+                modifier = if (screen == TripScreen.TIMELINE) {
+                    Modifier
+                        .padding(padding)
+                        .padding(16.dp)
+                        .fillMaxSize()
+                } else {
+                    Modifier
+                        .padding(padding)
+                        .padding(16.dp)
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AgendaModuleHeader0396(
+                    sectionLabel = headerLabel0396,
+                    root = headerIsRoot0396,
+                    onNavigationClick = {
+                        when {
+                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
+                            screen.isAgendaRoot0396() -> openDrawer0396()
+                            else -> screen = parentRootScreen0396
+                        }
+                    },
+                    overflowActions = headerActions0396,
+                )
             if (notificationsExpanded) {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -560,7 +657,7 @@ private fun TripApp(
                     defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     onCancel = {
                         pendingCreateForPassengerId = ""
-                        screen = TripScreen.TIMELINE
+                        screen = parentRootScreen0396
                     },
                     onSave = { trip ->
                         store.saveTrip(trip)
@@ -576,7 +673,7 @@ private fun TripApp(
                         } else {
                             message = "Viagem criada. Publique quando estiver pronta."
                         }
-                        screen = TripScreen.TIMELINE
+                        screen = parentRootScreen0396
                     },
                 )
                 TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
@@ -630,28 +727,21 @@ private fun TripApp(
                     autoSyncToken = autoBlaBlaSyncToken,
                     forceAllSyncToken = forceAllBlaBlaSyncToken,
                     onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
-                    onCreateTrip = {
-                        pendingCreateForPassengerId = ""
-                        screen = TripScreen.CREATE
-                    },
                     onCreateTripForPassenger = { passengerId ->
                         pendingCreateForPassengerId = passengerId
+                        parentRootScreen0396 = TripScreen.TIMELINE
                         screen = TripScreen.CREATE
                     },
                     addPassengerResumeToken = addPassengerResumeToken,
                     addPassengerResumePassengerId = addPassengerResumePassengerId,
                     addPassengerResumeTripId = addPassengerResumeTripId,
-                    onPinShortcut = {
-                        val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
-                        message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
-                    },
-                    onOpenOnlineSettings = { screen = TripScreen.SETTINGS },
-                    onOpenPassengers = { screen = TripScreen.PASSENGERS },
                     onManageLocal = { tripId ->
                         selectedId = tripId
+                        parentRootScreen0396 = TripScreen.TIMELINE
                         screen = TripScreen.LIST
                     },
-                    onBack = { activity.finish() },
+                    uiCommand0396 = timelineUiCommand0396,
+                    uiCommandToken0396 = timelineUiCommandToken0396,
                     focusedTripId = focusedTripId
                         ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
                     focusedBookingId = focusedBookingId,
@@ -676,16 +766,23 @@ private fun TripApp(
                     },
                     )
                 }
+                TripScreen.PUBLIC_SEARCH -> AgendaPublicSearchRoot0396(
+                    trips = trips,
+                    onChanged = { text -> message = text },
+                )
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
                     onChanged = { text -> refresh(); message = text },
+                    showHeader = false,
+                    externalBackToken = passengerExternalBackToken0396,
+                    onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
                         store.saveOnlineSettings(saved)
-                        screen = TripScreen.TIMELINE
+                        screen = parentRootScreen0396
                         if (saved.configured) {
                             message = "Salvando Integração online…"
                             shareScope.launch {
@@ -711,12 +808,9 @@ private fun TripApp(
                     onRotateLink = { expected, replacement ->
                         store.replacePublicAgendaLinkAfterConfirmedRotation(expected, replacement)
                     },
-                    onCancel = { screen = TripScreen.TIMELINE },
+                    onCancel = { screen = parentRootScreen0396 },
                 )
                 TripScreen.LIST -> {
-                    OutlinedButton(onClick = { screen = TripScreen.TIMELINE }) {
-                        Text("Voltar à Timeline")
-                    }
                     val onlineSettings = store.onlineSettings()
                     if (onlineSettings.publicAgendaUrl != null) {
                         OutlinedButton(onClick = {
@@ -773,8 +867,34 @@ private fun TripApp(
                 }
             }
         }
+        }
     }
 }
+
+@Composable
+private fun AgendaPublicSearchRoot0396(
+    trips: List<Trip>,
+    onChanged: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
+    var response by remember(context) { mutableStateOf(publicSearchStore.lastResponse()) }
+
+    BlaBlaPublicSearchPanel(
+        trips = trips,
+        currentResponse = response,
+        onResult = { response = it },
+        onChanged = onChanged,
+        showTitle = false,
+    )
+    if (response != null) {
+        Text(
+            "Os resultados públicos permanecem auditáveis e serão inseridos cronologicamente na Timeline.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
 
 internal fun tripEditorDepartureMillis(
     selection: RotaCertaDateSelection,
