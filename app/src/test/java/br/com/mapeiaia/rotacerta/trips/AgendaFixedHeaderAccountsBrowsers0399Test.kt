@@ -51,7 +51,7 @@ class AgendaFixedHeaderAccountsBrowsers0399Test {
         assertTrue(screen.contains("BlaBlaDynamicSessionStore(context)"))
         assertTrue(screen.contains("BlaBlaDynamicSessionIntents.login(context, account)"))
         assertTrue(screen.contains("DynamicAccountRow("))
-        assertTrue(legacyUi.contains("Perfil do navegador: ${account.webProfileName}"))
+        assertTrue(legacyUi.contains("Perfil do navegador: \${account.webProfileName}"))
         assertTrue(accountAuthority.contains("profileUuid: String?"))
         assertTrue(accountAuthority.contains("webProfileName: String"))
         assertTrue(sessionAuthority.contains("BlaBlaDynamicSessionSnapshot"))
@@ -70,7 +70,7 @@ class AgendaFixedHeaderAccountsBrowsers0399Test {
         assertTrue(accountAuthority.contains("RotaCertaTenantRegistry(appContext).activeScope()"))
         assertTrue(accountAuthority.contains("tenantScope.key(KEY_ACCOUNTS)"))
         assertTrue(sessionAuthority.contains("RotaCertaTenantRegistry(appContext).activeScope()"))
-        assertTrue(sessionAuthority.contains("tenantScope.keyAlias(\"blablacar-dynamic-session-$id\")"))
+        assertTrue(sessionAuthority.contains("tenantScope.keyAlias(\"blablacar-dynamic-session-\$id\")"))
         assertTrue(sessionAuthority.contains("tenantScope.keyAlias(id)"))
     }
 }

@@ -27,7 +27,7 @@ import androidx.webkit.WebViewFeature
  * Configuration-only projection of the existing BlaBlaCar account/browser authority.
  *
  * This screen intentionally owns no synchronization state. Opening it or returning
- * from an isolated login/profile WebView never enqueues AgendaBackgroundSync0392.
+ * from an isolated login/profile WebView never enqueues background synchronization work.
  */
 @Composable
 internal fun BlaBlaAccountsAndBrowsersScreen0399() {
