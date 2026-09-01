@@ -8,6 +8,9 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const activity = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripsActivity.kt"), "utf8");
 const timeline = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripTimelineUi.kt"), "utf8");
 const outbox = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripPublicationOutbox0387.kt"), "utf8");
+const passenger = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerTimelineUi.kt"), "utf8");
+const autoSync = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"), "utf8");
+const remoteApi = fs.readFileSync(path.join(__dirname, "..", "..", "..", "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripRemoteApi.kt"), "utf8");
 
 function bodyOf(source, name, nextName) {
   const start = source.indexOf(name);
@@ -23,6 +26,10 @@ test("capacity snapshots enforce monotonic entity revision and legacy cannot dow
   assert.match(fn, /publication_revision_conflict/);
   assert.match(fn, /stale: true/);
   assert.match(fn, /publicationRevision: deterministicRequest \? entityRevision : currentEntityRevision/);
+  assert.match(fn, /rawProtectedBookings/);
+  assert.match(fn, /protected_snapshot_requires_revision/);
+  assert.match(fn, /normalizeProtectedSnapshotBooking/);
+  assert.match(fn, /ANDROID_OUTBOX_SNAPSHOT/);
 });
 
 test("driver trip tombstone and update path rejects stale or unversioned writes after versioning", () => {
@@ -88,6 +95,18 @@ test("durable outbox is tenant scoped idempotent retryable and rebases stale rev
   assert.match(outbox, /fun rebase\(/);
   assert.match(outbox, /publicationEventId0387\(target\.tenantId, target\.canonicalTripId, nextRevision\)/);
   assert.match(outbox, /processing_lease_expired/);
+});
+
+test("protected booking state is part of the immutable versioned local snapshot and card actions are local-first", () => {
+  assert.match(remoteApi, /protectedBookings: List<DriverProtectedBookingSnapshot>/);
+  assert.match(autoSync, /protectedBookings = if \(entityRevision > 0L\)/);
+  assert.match(autoSync, /booking\.operationalStatus\.name/);
+  assert.match(autoSync, /booking\.paymentStatus\.name/);
+  assert.match(autoSync, /booking\.lastDriverSelection\.trim\(\)/);
+  assert.match(passenger, /mutationCoordinator\.recordLocalMutation\(/);
+  assert.match(passenger, /mutationCoordinator\.drainPending\(\)/);
+  assert.doesNotMatch(passenger, /TripRemoteApi\(settings\)\.updateDriverPassengerOperationalStatus\(/);
+  assert.doesNotMatch(passenger, /TripRemoteApi\(settings\)\.decideDriverBooking\(/);
 });
 
 test("BlaBlaCar exact-card channel requires strong identity and uses the outbox", () => {
