@@ -4216,12 +4216,6 @@ async function createBooking(req, res, token) {
         });
       }
       writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
-      tx.update(tripRef, {
-        ...canonicalCapacityPersistence(trip, candidateRecords, reconciledCapacityState, now),
-        bookingsCount: existing.length + 1,
-        status: statusForReconciledLoads(trip, reconciled),
-        updatedAtMillis: now,
-      });
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "RESERVATION_REQUESTED",
         tripToken: token,
@@ -4237,9 +4231,20 @@ async function createBooking(req, res, token) {
         changes: [{ field: "status", before: null, after: "REQUESTED" }, { field: "seats", before: 0, after: seats }],
         driverNotification: driverNotificationCopy("RESERVATION_REQUESTED", candidate, cleanText(trip.title, 180)),
       });
+      const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      tx.update(tripRef, {
+        ...canonicalCapacityPersistence(trip, candidateRecords, reconciledCapacityState, now),
+        bookingsCount: existing.length + 1,
+        status: statusForReconciledLoads(trip, reconciled),
+        publicationRevision: entityRevision,
+        publicationTombstone: false,
+        publicationEventId: eventId,
+        updatedAtMillis: now,
+      });
       return {
         replayed: false,
         eventId,
+        entityRevision,
         availableSeats: availableForBooking(trip, candidateRecords, reconciled, fromIndex, toIndex, now),
         farePerSeatCents,
         totalFareCents,
@@ -4378,12 +4383,7 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         changeVersion,
         updatedAtMillis: now,
       });
-      tx.update(tripRef, {
-        ...canonicalCapacityPersistence(trip, reconciledRecords, capacityState, now),
-        status: statusForReconciledLoads(trip, loads),
-        updatedAtMillis: now,
-      });
-      writeChangeEventAndNotifications(tx, {
+      const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "BOOKING_CANCELLED",
         tripToken: token,
         bookingId,
@@ -4395,8 +4395,18 @@ async function cancelPublicBooking(req, res, token, bookingId) {
         changes: bookingRelevantChanges(booking, updated),
         driverNotification: driverNotificationCopy("BOOKING_CANCELLED", updated, cleanText(trip.title, 180)),
       });
+      const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      tx.update(tripRef, {
+        ...canonicalCapacityPersistence(trip, reconciledRecords, capacityState, now),
+        status: statusForReconciledLoads(trip, loads),
+        publicationRevision: entityRevision,
+        publicationTombstone: false,
+        publicationEventId: eventId,
+        updatedAtMillis: now,
+      });
       return {
         changed: true,
+        entityRevision,
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
         seats: Number(booking.seats || 0),
@@ -4532,13 +4542,9 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
       movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
+      let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
-        tx.update(tripRef, {
-          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
-          status: statusForReconciledLoads(trip, loads),
-          updatedAtMillis: now,
-        });
-        writeChangeEventAndNotifications(tx, {
+        const eventId = writeChangeEventAndNotifications(tx, {
           eventType: "BOOKING_CHANGED",
           tripToken: token,
           bookingId,
@@ -4550,6 +4556,15 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
           changes,
           driverNotification: driverNotificationCopy("BOOKING_CHANGED", updated, cleanText(trip.title, 180)),
         });
+        entityRevision += 1;
+        tx.update(tripRef, {
+          ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
+          status: statusForReconciledLoads(trip, loads),
+          publicationRevision: entityRevision,
+          publicationTombstone: false,
+          publicationEventId: eventId,
+          updatedAtMillis: now,
+        });
       }
       return {
         booking: updated,
@@ -4557,6 +4572,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
         driverUsername: debugDriverUsername,
         tripTitle: cleanText(trip.title, 180),
         changed: changes.length > 0,
+        entityRevision,
       };
     });
 
