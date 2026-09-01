@@ -1314,6 +1314,7 @@ private fun TimelineEntryCard(
     )
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
     val seatPlan = timelineDesiredSeatSyncPlan(entry, trip, store)
@@ -1461,12 +1462,27 @@ private fun TimelineEntryCard(
                                     else -> scope.launch {
                                         runCatching {
                                             val completed = target.copy(status = TripStatus.COMPLETED)
-                                            TripRemoteApi(settings).update(completed)
-                                            if (store.getTrip(target.id) != null) store.saveTrip(completed)
-                                        }.onSuccess {
-                                            onChanged("Viagem concluída. Créditos de indicações elegíveis foram processados.")
+                                            if (store.getTrip(target.id) != null) {
+                                                store.saveTrip(completed)
+                                            }
+                                            val queued = mutationCoordinator.recordLocalMutation(
+                                                canonicalTripId = target.id,
+                                                mutationType = "TRIP_COMPLETED",
+                                                source = "TIMELINE_CARD",
+                                                reconcileBookingInventory = false,
+                                            )
+                                            mutationCoordinator.drainPending()
+                                            queued != null
+                                        }.onSuccess { queued ->
+                                            onChanged(
+                                                if (queued) {
+                                                    "Viagem concluída no Rota Certa. A atualização desta viagem foi registrada e será entregue à Agenda; créditos elegíveis são processados quando o servidor confirmar."
+                                                } else {
+                                                    "Viagem concluída no Rota Certa."
+                                                },
+                                            )
                                         }.onFailure { error ->
-                                            onChanged("Não foi possível concluir a viagem: ${error.message ?: "erro de conexão"}")
+                                            onChanged("Viagem concluída localmente; publicação pendente: ${error.message ?: "erro de persistência"}")
                                         }
                                     }
                                 }
