@@ -82,8 +82,8 @@ test("normal Android mutations do not depend on global Agenda revision", () => {
   assert.doesNotMatch(activity, /createPublicAgendaSyncCoordinator0373/);
   assert.match(activity, /TripMutationCoordinator0387\(activity, store\)/);
   assert.match(activity, /AgendaBackgroundSync0392\.enqueueImmediate/);
-  assert.match(activity, /TENANT_SEAT_ALLOCATION_EXACT_IMPACT/);
-  assert.match(activity, /fullSyncRequested=false blablaNetworkSync=false/);
+  assert.match(activity, /reconcileTenantSeatAllocation0395/);
+  assert.doesNotMatch(activity, /TENANT_SEAT_ALLOCATION_EXACT_IMPACT/);
 });
 
 test("durable outbox is tenant scoped idempotent retryable and rebases stale revisions", () => {
