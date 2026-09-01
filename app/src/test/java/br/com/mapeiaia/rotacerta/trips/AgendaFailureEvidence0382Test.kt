@@ -1,0 +1,131 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import java.io.File
+import kotlin.test.Test
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class AgendaFailureEvidence0382Test {
+    private fun source(name: String): String =
+        File("src/main/java/br/com/mapeiaia/rotacerta/trips/$name").readText()
+
+    @Test
+    fun allKnownAgendaThrowableProducersUseStructuredFailureEnvelope() {
+        val expectations = mapOf(
+            "TripsActivity.kt" to listOf(
+                "DRIVER_NOTIFICATION_CENTER_REFRESH_FAILED",
+                "operation = \"DRIVER_NOTIFICATION_CENTER_REFRESH\"",
+                "failureEvidence=",
+            ),
+            "BlaBlaBrowserOrchestrator.kt" to listOf(
+                "BROWSER_REQUEST_DECODE_ERROR",
+                "operation = \"BROWSER_REQUEST_DECODE\"",
+                "BROWSER_REQUEST_SCRIPT_ERROR",
+                "operation = \"BROWSER_REQUEST_SCRIPT\"",
+            ),
+            "BlaBlaHarvestNavigationWatchdogProvider.kt" to listOf(
+                "HARVEST_FAST_PATH_REFLECTION_FAILED",
+                "operation = \"HARVEST_FAST_PATH_REFLECTION\"",
+            ),
+            "BlaBlaManualSeatAutomation.kt" to listOf(
+                "MHTML_ARCHIVE_FAILED",
+                "operation = \"MHTML_ARCHIVE_SAVE\"",
+            ),
+            "BlaBlaPublicSearchActivity.kt" to listOf(
+                "PUBLIC_SEARCH_AUDIT_SNAPSHOT_FAILED",
+                "operation = \"PUBLIC_SEARCH_AUDIT_SNAPSHOT\"",
+            ),
+            "PassengerTimelineUi.kt" to listOf(
+                "PASSENGER_STATUS_REALTIME_FAILED",
+                "operation = \"PASSENGER_STATUS_REALTIME\"",
+                "operation = \"PUBLIC_BOOKING_CANCEL_SYNC\"",
+            ),
+            "RotaCertaBookingMessagingService.kt" to listOf(
+                "PUBLIC_BOOKING_PUSH_REGISTER_FAILED",
+                "operation = \"PUBLIC_BOOKING_PUSH_REGISTER\"",
+                "PUBLIC_BOOKING_NOTIFICATION_FAILED",
+                "operation = \"PUBLIC_BOOKING_NOTIFICATION\"",
+            ),
+        )
+
+        expectations.forEach { (file, required) ->
+            val text = source(file)
+            required.forEach { marker ->
+                assertTrue(text.contains(marker), "$file missing $marker")
+            }
+        }
+    }
+
+    @Test
+    fun forensicFailureEventsDoNotUseLegacyClassOnlyPayloads() {
+        val checks = mapOf(
+            "TripsActivity.kt" to listOf(
+                "\"reason=\" + error.javaClass.simpleName",
+                "background=true errorClass=",
+            ),
+            "BlaBlaBrowserOrchestrator.kt" to listOf(
+                "error=\${error.javaClass.simpleName}",
+            ),
+            "BlaBlaHarvestNavigationWatchdogProvider.kt" to listOf(
+                "error=\${it.javaClass.simpleName}",
+            ),
+            "BlaBlaManualSeatAutomation.kt" to listOf(
+                "reason=\${it.javaClass.simpleName}",
+            ),
+            "BlaBlaPublicSearchActivity.kt" to listOf(
+                "exception=\${error.javaClass.simpleName}",
+            ),
+            "PassengerTimelineUi.kt" to listOf(
+                "reasonClass=\${error.javaClass.simpleName}",
+            ),
+            "RotaCertaBookingMessagingService.kt" to listOf(
+                "reason=\${error.javaClass.simpleName}",
+            ),
+        )
+
+        checks.forEach { (file, forbidden) ->
+            val text = source(file)
+            forbidden.forEach { marker ->
+                assertFalse(text.contains(marker), "$file still contains class-only diagnostic: $marker")
+            }
+        }
+    }
+
+    @Test
+    fun forensicReportIncludesEveryStructuredAgendaFailureProducer() {
+        val report = source("AgendaForensicReport.kt")
+        listOf(
+            "stage.startsWith(\"BROWSER_\")",
+            "stage.startsWith(\"HARVEST_\")",
+            "stage.startsWith(\"MHTML_\")",
+            "stage.startsWith(\"PASSENGER_\")",
+            "stage.startsWith(\"DRIVER_NOTIFICATION_\")",
+            "stage.startsWith(\"PUBLIC_SEARCH_\")",
+        ).forEach { marker ->
+            assertTrue(report.contains(marker), "AgendaForensicReport missing $marker")
+        }
+        assertTrue(report.contains("event.details.contains(\"failureFingerprint=\")"))
+    }
+
+    @Test
+    fun remoteByteEnvelopeFrom0381RemainsMandatory() {
+        val remote = source("TripRemoteApi.kt")
+        val evidence = source("AgendaFailureEvidence.kt")
+        listOf(
+            "requestBytes = requestBytes.size",
+            "responseBytes = responseBytes.size",
+            "requestSha256 = sha256Hex(requestBytes)",
+            "responseSha256 = sha256Hex(responseBytes)",
+            "networkCallId = networkCallId",
+            "transportPhase = phase",
+        ).forEach { marker -> assertTrue(remote.contains(marker), "TripRemoteApi missing $marker") }
+        listOf(
+            "field(\"failureFingerprint\"",
+            "field(\"networkCallId\"",
+            "intField(\"requestBytes\"",
+            "intField(\"responseBytes\"",
+            "field(\"requestSha256\"",
+            "field(\"responseSha256\"",
+        ).forEach { marker -> assertTrue(evidence.contains(marker), "AgendaFailureEvidence missing $marker") }
+    }
+}

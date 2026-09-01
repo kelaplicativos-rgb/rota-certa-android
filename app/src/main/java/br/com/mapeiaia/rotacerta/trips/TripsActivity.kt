@@ -247,7 +247,12 @@ private fun TripApp(
                     UnifiedDebugEventStore.record(
                         "DRIVER_NOTIFICATION_CENTER_REFRESH_FAILED",
                         activity.packageName,
-                        "reason=" + error.javaClass.simpleName,
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "DRIVER_NOTIFICATION_CENTER_REFRESH",
+                            component = "TripsActivity",
+                            method = "refreshDriverNotifications",
+                        ),
                     )
                 }
         }
@@ -495,21 +500,22 @@ private fun TripApp(
             )
             throw cancelled
         } catch (error: Throwable) {
+            val failureEvidence = AgendaFailureEvidence.describe(
+                error = error,
+                operation = "BOOKING_RECONCILE",
+                component = "TripsActivity",
+                method = "startupBackgroundReconcile",
+            )
             AgendaTrace.event(
                 activity,
                 "TIMELINE_PUBLIC_BOOKING_RECONCILE_END",
-                "source=startup result=error background=true errorClass=${error.javaClass.simpleName}",
+                "source=startup result=error background=true failureEvidence=" + failureEvidence,
                 traceId,
             )
             UnifiedDebugEventStore.record(
                 "PUBLIC_BOOKING_RECONCILE_FAILED",
                 activity.packageName,
-                AgendaFailureEvidence.describe(
-                    error = error,
-                    operation = "BOOKING_RECONCILE",
-                    component = "TripsActivity",
-                    method = "startupBackgroundReconcile",
-                ),
+                failureEvidence,
             )
             message = "Agenda local pronta. A atualização de reservas públicas falhou em background e poderá ser repetida."
         }

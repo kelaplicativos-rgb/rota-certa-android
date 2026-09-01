@@ -353,8 +353,13 @@ internal fun EnhancedPassengerTimelineSection(
                         UnifiedDebugEventStore.record(
                             "PASSENGER_STATUS_REALTIME_FAILED",
                             context.packageName,
-                            "timeline=true selection=" + selection + " reason=" +
-                                (error.message ?: error.javaClass.simpleName).take(120),
+                            "timeline=true selection=" + selection + " " +
+                                AgendaFailureEvidence.describe(
+                                    error = error,
+                                    operation = "PASSENGER_STATUS_REALTIME",
+                                    component = "PassengerTimelineUi",
+                                    method = "publishOperationalStatus",
+                                ),
                         )
                         onChanged(
                             "Status salvo localmente; sincronização online pendente: " +
@@ -996,7 +1001,13 @@ internal fun EnhancedPassengerTimelineSection(
                                         UnifiedDebugEventStore.record(
                                             "PUBLIC_BOOKING_CANCEL_SYNC",
                                             context.packageName,
-                                            "$trace result=pending reasonClass=${error.javaClass.simpleName}",
+                                            "$trace result=pending " +
+                                                AgendaFailureEvidence.describe(
+                                                    error = error,
+                                                    operation = "PUBLIC_BOOKING_CANCEL_SYNC",
+                                                    component = "PassengerTimelineUi",
+                                                    method = "cancelBooking",
+                                                ),
                                         )
                                     }
                                 } else {

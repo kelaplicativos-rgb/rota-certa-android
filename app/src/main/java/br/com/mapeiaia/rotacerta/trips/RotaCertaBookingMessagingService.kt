@@ -54,7 +54,12 @@ internal object BookingPushRegistration0304 {
             UnifiedDebugEventStore.record(
                 "PUBLIC_BOOKING_PUSH_REGISTER_FAILED",
                 context.packageName,
-                "reason=${error.javaClass.simpleName}",
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PUBLIC_BOOKING_PUSH_REGISTER",
+                    component = "BookingPushRegistration0304",
+                    method = "ensureRegistered",
+                ),
             )
             return@withContext false
         }
@@ -239,7 +244,13 @@ private object BookingNotificationCenter0304 {
             UnifiedDebugEventStore.record(
                 "PUBLIC_BOOKING_NOTIFICATION_FAILED",
                 context.packageName,
-                "event=$event reason=${error.javaClass.simpleName}",
+                "event=$event " +
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "PUBLIC_BOOKING_NOTIFICATION",
+                        component = "RotaCertaBookingMessagingService",
+                        method = "showBookingNotification",
+                    ),
             )
         }
     }
