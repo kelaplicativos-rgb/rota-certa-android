@@ -88,6 +88,7 @@ internal fun EnhancedPassengerTimelineSection(
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val completionService = remember(context) { PassengerCompletionService(context) }
+    val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val scope = rememberCoroutineScope()
     var identityRevision by remember { mutableIntStateOf(0) }
     var completionRevision by remember { mutableIntStateOf(0) }
@@ -344,6 +345,12 @@ internal fun EnhancedPassengerTimelineSection(
                         )
                     }.onSuccess { response ->
                         store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, localNext))
+                        mutationCoordinator.recordRemoteAppliedLocal(
+                            canonicalTripId = selectedTrip.id,
+                            revision = response.entityRevision,
+                            mutationType = "PASSENGER_STATUS_$selection",
+                            source = "TIMELINE_REMOTE_MUTATION",
+                        )
                         UnifiedDebugEventStore.record(
                             "PASSENGER_STATUS_REALTIME_PUBLISHED",
                             context.packageName,
@@ -494,6 +501,12 @@ internal fun EnhancedPassengerTimelineSection(
                                         )
                                     }.onSuccess { response ->
                                         store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                        mutationCoordinator.recordRemoteAppliedLocal(
+                                            canonicalTripId = selectedTrip.id,
+                                            revision = response.entityRevision,
+                                            mutationType = "RESERVATION_APPROVED",
+                                            source = "TIMELINE_REMOTE_MUTATION",
+                                        )
                                         BookingRealtimeEvents0356.notifyChanged()
                                         // BlaBlaCar is never synchronized automatically after an internal mutation.
                                         onChanged("Reserva aprovada ✅")
@@ -555,6 +568,12 @@ internal fun EnhancedPassengerTimelineSection(
                                             )
                                         }.onSuccess { response ->
                                             store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
+                                            mutationCoordinator.recordRemoteAppliedLocal(
+                                                canonicalTripId = selectedTrip.id,
+                                                revision = response.entityRevision,
+                                                mutationType = "RESERVATION_REJECTED",
+                                                source = "TIMELINE_REMOTE_MUTATION",
+                                            )
                                             BookingRealtimeEvents0356.notifyChanged()
                                             // BlaBlaCar is never synchronized automatically after an internal mutation.
                                             rejectConfirmOpen = false
@@ -869,8 +888,14 @@ internal fun EnhancedPassengerTimelineSection(
                             scope.launch {
                                 runCatching {
                                     TripRemoteApi(store.onlineSettings()).updateProtectedDriverBooking(remoteTripId, updated)
-                                }.onSuccess {
-                                    store.saveBooking(updated)
+                                }.onSuccess { response ->
+                                    store.saveBooking(response.booking.toLocalBooking(currentTrip.id, updated))
+                                    mutationCoordinator.recordRemoteAppliedLocal(
+                                        canonicalTripId = currentTrip.id,
+                                        revision = response.entityRevision,
+                                        mutationType = "BOOKING_CHANGED_BY_DRIVER",
+                                        source = "TIMELINE_REMOTE_MUTATION",
+                                    )
                                     editManualRow = null
                                     onChanged("Reserva Rota Certa atualizada pelo painel administrativo. Vagas por trecho recalculadas.")
                                     // BlaBlaCar is never synchronized automatically after an internal mutation.
@@ -989,6 +1014,12 @@ internal fun EnhancedPassengerTimelineSection(
                                                 operationalStatus = PassengerOperationalStatus.CANCELLED,
                                                 lastDriverSelection = "CANCELLED",
                                             ),
+                                        )
+                                        mutationCoordinator.recordRemoteAppliedLocal(
+                                            canonicalTripId = selectedTrip.id,
+                                            revision = response.entityRevision,
+                                            mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                            source = "TIMELINE_REMOTE_MUTATION",
                                         )
                                         onlineSyncSucceeded = true
                                         UnifiedDebugEventStore.record(
