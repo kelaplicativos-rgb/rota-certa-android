@@ -1142,7 +1142,7 @@ private fun TripCard(
                                     .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
-                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. Publique/sincronize online para compartilhar." else "Reservas pelo link desativadas.")
+                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. A sincronização automática publicará a alteração quando a integração online estiver disponível." else "Reservas pelo link desativadas.")
                         }
                     }) { Text(if (trip.publicBookingEnabled) "Reservas pelo link: ATIVADAS" else "Reservas pelo link: DESATIVADAS") }
                     if (trip.publicBookingEnabled && !trip.publicUrl.isNullOrBlank()) {
@@ -1153,37 +1153,7 @@ private fun TripCard(
                         }) { Text("📲 Compartilhar reservas") }
                     }
                 }
-                if (settings.configured && trip.status != TripStatus.DRAFT && trip.status != TripStatus.CANCELLED) {
-                    Button(onClick = {
-                        scope.launch {
-                            runCatching {
-                                mutationCoordinator.recordLocalMutation(
-                                    canonicalTripId = trip.id,
-                                    mutationType = "MANUAL_PUBLIC_CARD_SYNC",
-                                    source = "TIMELINE_CARD",
-                                )
-                                AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
-                            }.onSuccess { onChanged("Viagem sincronizada com a agenda pública.") }
-                                .onFailure { onChanged("Falha online; o delta desta viagem permanece rastreável: ${it.message}") }
-                        }
-                    }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
-                    if (trip.remoteId != null) {
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                runCatching {
-                                    TripRemoteApi(settings).listBookings(trip.remoteId).bookings
-                                }.onSuccess { remoteBookings ->
-                                    remoteBookings.forEach { remote ->
-                                        store.saveBooking(remote.toLocalBooking(trip.id))
-                                    }
-                                    onChanged("Reservas online atualizadas: ${remoteBookings.size}.")
-                                }.onFailure {
-                                    onChanged("Falha ao atualizar reservas: ${it.message}")
-                                }
-                            }
-                        }) { Text("Atualizar reservas online") }
-                    }
-                } else if (!settings.configured) {
+                if (!settings.configured) {
                     Text("Modo online não configurado. Compartilhamento local, Google Agenda e ICS continuam funcionando.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) {
