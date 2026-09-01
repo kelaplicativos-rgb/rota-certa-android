@@ -144,9 +144,12 @@ jobs:
       - name: Run Compose real-touch pull regression on emulator
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 30
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          cores: 2
+          ram-size: 3072M
+          heap-size: 512M
           disable-animations: true
           script: bash .github/scripts/run-agenda-pull-emulator-0388.sh
 
