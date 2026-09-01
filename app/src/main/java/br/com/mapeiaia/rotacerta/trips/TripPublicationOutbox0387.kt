@@ -89,6 +89,7 @@ internal class TripPublicationOutbox0387(context: Context) {
             if (
                 latest != null && latest.operation == operation &&
                 latest.snapshot.semanticSignature == snapshot.semanticSignature &&
+                latest.snapshot.seatAllocationVersion == snapshot.seatAllocationVersion &&
                 latest.status != TripPublicationStatus0387.FAILED_FINAL
             ) return null
 
