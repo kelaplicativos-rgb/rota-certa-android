@@ -1114,6 +1114,7 @@ private fun TripCard(
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
     val scope = rememberCoroutineScope()
+    val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     val bookings = store.bookingsFor(trip.id)
     val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
     val availabilityText = if (seatRange.variesBySegment) {
@@ -1168,9 +1169,16 @@ private fun TripCard(
                         store.saveTrip(next)
                         if (settings.configured && next.remoteId != null) {
                             scope.launch {
-                                runCatching { TripRemoteApi(settings).update(next) }
+                                runCatching {
+                                    mutationCoordinator.recordLocalMutation(
+                                        canonicalTripId = next.id,
+                                        mutationType = "PUBLIC_BOOKING_TOGGLE",
+                                        source = "TIMELINE_CARD",
+                                    )
+                                    mutationCoordinator.drainPending()
+                                }
                                     .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
-                                    .onFailure { onChanged("Estado salvo no Rota Certa, mas ainda não sincronizado online: ${it.message}") }
+                                    .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
                             onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. Publique/sincronize online para compartilhar." else "Reservas pelo link desativadas.")
@@ -1188,10 +1196,14 @@ private fun TripCard(
                     Button(onClick = {
                         scope.launch {
                             runCatching {
-                                val response = if (trip.remoteId == null) TripRemoteApi(settings).publish(trip) else TripRemoteApi(settings).update(trip)
-                                store.saveTrip(trip.copy(remoteId = response.tripId, publicToken = response.publicToken, publicUrl = response.publicUrl))
+                                mutationCoordinator.recordLocalMutation(
+                                    canonicalTripId = trip.id,
+                                    mutationType = "MANUAL_PUBLIC_CARD_SYNC",
+                                    source = "TIMELINE_CARD",
+                                )
+                                mutationCoordinator.drainPending()
                             }.onSuccess { onChanged("Viagem sincronizada com a agenda pública.") }
-                                .onFailure { onChanged("Falha online: ${it.message}") }
+                                .onFailure { onChanged("Falha online; o delta desta viagem permanece rastreável: ${it.message}") }
                         }
                     }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
                     if (trip.remoteId != null) {
