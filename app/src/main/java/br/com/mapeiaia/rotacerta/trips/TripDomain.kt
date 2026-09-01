@@ -105,6 +105,12 @@ data class Trip(
     val rotaCertaSeatAllocation: Int? = null,
     /** Canonical persisted origin. Old 0.1.372 external backings are resolved by strong-identity migration. */
     val recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL,
+    /** Monotonic public-entity revision. Zero keeps compatibility with legacy/full-sync payloads. */
+    val publicationRevision: Long = 0L,
+    /** Versioned public deletion marker. Local history/bookings remain preserved. */
+    val publicationTombstone: Boolean = false,
+    /** Durable outbox event id used only for publication idempotency/audit. */
+    val publicationEventId: String = "",
 )
 
 @Serializable
