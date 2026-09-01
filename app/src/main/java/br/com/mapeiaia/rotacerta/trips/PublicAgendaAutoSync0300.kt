@@ -474,6 +474,11 @@ internal object PublicAgendaAutoSync0300 {
             remoteTripId = remoteTripId,
             trip = publicTrip.copy(remoteId = remoteTripId),
             claims = mirrors,
+            protectedBookings = if (entityRevision > 0L) {
+                localBookings.filter { it.source == BookingSource.ROTA_CERTA }
+            } else {
+                emptyList()
+            },
             claimNamespace = LOCAL_MIRROR_PREFIX,
             snapshotRevision = revision,
             entityRevision = entityRevision,
@@ -553,7 +558,9 @@ internal object PublicAgendaAutoSync0300 {
             }
             bookings.sortedBy(Booking::id).forEach { booking ->
                 append(booking.id).append('~').append(booking.boardingStopId).append('~').append(booking.dropoffStopId).append('~')
-                append(booking.seats).append('~').append(booking.status.name).append('~').append(booking.source.name).append('~')
+                append(booking.seats).append('~').append(booking.status.name).append('~')
+                append(booking.operationalStatus.name).append('~').append(booking.paymentStatus.name).append('~')
+                append(booking.lastDriverSelection.trim()).append('~').append(booking.source.name).append('~')
                 append(booking.capacityClaimType.name).append('~').append(booking.sourceReference).append('~')
                 append(booking.occupancyGroupId.orEmpty()).append(',')
             }
