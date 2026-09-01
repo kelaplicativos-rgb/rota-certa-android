@@ -35,7 +35,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.R
 import java.math.RoundingMode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal data class PassengerAdminCandidate(
     val key: String,
@@ -77,11 +79,27 @@ fun PassengerAdminScreen(
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
     var blockCandidate by remember { mutableStateOf<PassengerAdminCandidate?>(null) }
-    val settings = store.onlineSettings()
+    var settingsState by remember(store) { mutableStateOf<TripOnlineSettings?>(null) }
+    var localProfiles by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
+    var collectedTrips by remember { mutableStateOf<List<BlaBlaCollectorTrip>>(emptyList()) }
+    var passengerHistories by remember { mutableStateOf<Map<String, PassengerPersistentHistory>>(emptyMap()) }
+    val settings = settingsState ?: TripOnlineSettings()
 
-    val localProfiles = remember(revision, remotePassengers) { passengerStore.profiles() }
-    val collectedTrips = remember(revision) {
-        collectorStore.lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+    LaunchedEffect(store) {
+        settingsState = withContext(Dispatchers.IO) { store.onlineSettings() }
+    }
+    LaunchedEffect(revision) {
+        val snapshot = withContext(Dispatchers.IO) {
+            passengerStore.profiles() to collectorStore.lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
+        }
+        localProfiles = snapshot.first
+        collectedTrips = snapshot.second
+    }
+    LaunchedEffect(localProfiles) {
+        val ids = localProfiles.map(PassengerProfile::id).toSet()
+        passengerHistories = withContext(Dispatchers.IO) {
+            passengerStore.persistentHistorySnapshot(ids)
+        }
     }
     val collectedPassengers = remember(collectedTrips) {
         collectedTrips.flatMap { trip -> trip.passengers }.filter { it.name.isNotBlank() }
@@ -94,25 +112,36 @@ fun PassengerAdminScreen(
         }.joinToString("|")
     }
     LaunchedEffect(collectedIdentityKey) {
-        var changed = false
-        collectedTrips.forEach { trip ->
-            trip.passengers.forEach { passenger ->
-                val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
-                val observed = passengerStore.observeExternalPassenger(
-                    displayName = passenger.name,
-                    whatsapp = passenger.phone,
-                    externalPassengerId = externalId,
-                    reservationKey = externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href),
-                    externalTripId = trip.trip_id,
-                    driverProfileUuid = trip.profile_uuid,
-                )
-                if (observed != null) changed = true
+        if (collectedIdentityKey.isBlank()) return@LaunchedEffect
+        val changed = withContext(Dispatchers.IO) {
+            var anyChanged = false
+            collectedTrips.forEach { trip ->
+                trip.passengers.forEach { passenger ->
+                    val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
+                    val observed = passengerStore.observeExternalPassenger(
+                        displayName = passenger.name,
+                        whatsapp = passenger.phone,
+                        externalPassengerId = externalId,
+                        reservationKey = externalPassengerReservationKey(trip.profile_uuid, passenger.booking_href),
+                        externalTripId = trip.trip_id,
+                        driverProfileUuid = trip.profile_uuid,
+                    )
+                    if (observed != null) anyChanged = true
+                }
             }
+            anyChanged
         }
         if (changed) revision++
     }
-    val canonicalSearchIds = remember(search, revision) {
-        if (search.isBlank()) emptySet() else passengerRepository.search(search, 50).map(PassengerProfile::id).toSet()
+    var canonicalSearchIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    LaunchedEffect(search, revision) {
+        canonicalSearchIds = if (search.isBlank()) {
+            emptySet()
+        } else {
+            withContext(Dispatchers.IO) {
+                passengerRepository.search(search, 50).map(PassengerProfile::id).toSet()
+            }
+        }
     }
     val candidates = remember(localProfiles, collectedPassengers, remotePassengers, search, canonicalSearchIds) {
         mergePassengerAdminCandidates(localProfiles, collectedPassengers, remotePassengers)
@@ -125,42 +154,49 @@ fun PassengerAdminScreen(
             }
     }
 
-    val newPassengerSuggestions = remember(newName, newWhatsapp, revision) {
+    var newPassengerSuggestions by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
+    LaunchedEffect(newName, newWhatsapp, revision) {
         val query = newWhatsapp.takeIf { it.filter(Char::isDigit).length >= 4 } ?: newName
-        passengerRepository.search(query, 6)
+        newPassengerSuggestions = withContext(Dispatchers.IO) {
+            passengerRepository.search(query, 6)
+        }
     }
 
     suspend fun reloadRemote() {
         if (!settings.configured) return
-        runCatching { TripRemoteApi(settings).listDriverPassengers() }
-            .onSuccess { response ->
-                response.passengers.forEach { access ->
-                    val current = passengerStore.resolveCanonicalPassenger(
-                        onlineIdentityId = access.id,
-                        whatsapp = access.passengerContact,
-                    ) ?: access.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
-                        passengerStore.createProfile(name, access.passengerContact)
-                    }
-                    if (current != null) {
-                        val refreshed = passengerStore.saveProfile(
-                            current.copy(
-                                displayName = access.displayName.trim().ifBlank { current.displayName },
-                                agendaAccessWhatsapp = access.passengerContact.trim().ifBlank { current.agendaAccessWhatsapp },
-                                publicAccessStatus = access.status,
-                                referredByContact = access.referredByContact,
-                                creditBalanceCents = access.creditBalanceCents,
-                                creditEarnedCents = access.creditEarnedCents,
-                                creditSpentCents = access.creditSpentCents,
-                            ),
-                        )
-                        stableExternalPassengerId(access.id)?.let { passengerStore.linkOnlineIdentityId(refreshed.id, it) }
-                    }
-                }
-                remotePassengers = response.passengers
-                referralCreditCents = response.referralCreditCents
-                creditValue = formatCreditInput(response.referralCreditCents)
+        val response = runCatching { TripRemoteApi(settings).listDriverPassengers() }
+            .getOrElse { error ->
+                onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
+                return
             }
-            .onFailure { onChanged("Não foi possível carregar acessos dos passageiros: ${it.message ?: "erro de conexão"}") }
+        withContext(Dispatchers.IO) {
+            response.passengers.forEach { access ->
+                val current = passengerStore.resolveCanonicalPassenger(
+                    onlineIdentityId = access.id,
+                    whatsapp = access.passengerContact,
+                ) ?: access.displayName.trim().takeIf(String::isNotEmpty)?.let { name ->
+                    passengerStore.createProfile(name, access.passengerContact)
+                }
+                if (current != null) {
+                    val refreshed = passengerStore.saveProfile(
+                        current.copy(
+                            displayName = access.displayName.trim().ifBlank { current.displayName },
+                            agendaAccessWhatsapp = access.passengerContact.trim().ifBlank { current.agendaAccessWhatsapp },
+                            publicAccessStatus = access.status,
+                            referredByContact = access.referredByContact,
+                            creditBalanceCents = access.creditBalanceCents,
+                            creditEarnedCents = access.creditEarnedCents,
+                            creditSpentCents = access.creditSpentCents,
+                        ),
+                    )
+                    stableExternalPassengerId(access.id)?.let { passengerStore.linkOnlineIdentityId(refreshed.id, it) }
+                }
+            }
+        }
+        remotePassengers = response.passengers
+        referralCreditCents = response.referralCreditCents
+        creditValue = formatCreditInput(response.referralCreditCents)
+        localProfiles = withContext(Dispatchers.IO) { passengerStore.profiles() }
     }
 
     LaunchedEffect(settings.driverUsername, settings.driverToken, revision) {
@@ -435,9 +471,9 @@ fun PassengerAdminScreen(
                     }
                 }
                 localProfile?.let { profile ->
-                    val durableHistory = passengerStore.persistentHistory(profile.id)
+                    val durableHistory = passengerHistories[profile.id]
                     Text(
-                        "${durableHistory?.totalRides ?: passengerStore.rideHistory(profile.id).totalRides} concluída(s) • ${durableHistory?.totalOccurrences ?: 0} ocorrência(s)/reserva(s)",
+                        "${durableHistory?.totalRides ?: 0} concluída(s) • ${durableHistory?.totalOccurrences ?: 0} ocorrência(s)/reserva(s)",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (profile.blocked) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
@@ -533,7 +569,7 @@ fun PassengerAdminScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Salvar WhatsApp de acesso") }
 
-                    val canonicalAccessProfile = candidate.localProfile ?: canonicalProfile(candidate)
+                    val canonicalAccessProfile = candidate.localProfile
                     Text(
                         if (canonicalAccessProfile?.blocked == true) {
                             "🔴 Não aceito no meu carro • acesso negado"

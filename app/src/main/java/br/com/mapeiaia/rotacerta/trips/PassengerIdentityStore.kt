@@ -614,6 +614,46 @@ class PassengerIdentityStore(context: Context) {
             .distinctBy(PassengerRideRecord::rideKey)
             .sortedByDescending(PassengerRideRecord::observedAtMillis)
 
+    /**
+     * Batch history snapshot for UI rendering. Decodes each backing collection once,
+     * instead of re-reading the full passenger history for every visible card.
+     */
+    internal fun persistentHistorySnapshot(
+        profileIds: Set<String>,
+    ): Map<String, PassengerPersistentHistory> {
+        if (profileIds.isEmpty()) return emptyMap()
+        val profileById = profiles()
+            .filter { it.id in profileIds }
+            .associateBy(PassengerProfile::id)
+        if (profileById.isEmpty()) return emptyMap()
+
+        val observationsByProfile = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+            .orEmpty()
+            .asSequence()
+            .filter { it.passengerId in profileById }
+            .groupBy(PassengerIdentityObservation::passengerId)
+            .mapValues { (_, items) -> items.sortedByDescending(PassengerIdentityObservation::observedAtMillis) }
+
+        val ridesByProfile = decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
+            .orEmpty()
+            .asSequence()
+            .filter { it.passengerId in profileById }
+            .groupBy(PassengerRideRecord::passengerId)
+            .mapValues { (_, items) ->
+                items
+                    .distinctBy(PassengerRideRecord::rideKey)
+                    .sortedByDescending(PassengerRideRecord::observedAtMillis)
+            }
+
+        return profileById.mapValues { (profileId, profile) ->
+            PassengerPersistentHistory(
+                profile = profile,
+                observations = observationsByProfile[profileId].orEmpty(),
+                rides = ridesByProfile[profileId].orEmpty(),
+            )
+        }
+    }
+
     fun persistentHistory(profileId: String): PassengerPersistentHistory? {
         val target = profile(profileId) ?: return null
         return PassengerPersistentHistory(target, observations(profileId), rideRecords(profileId))
