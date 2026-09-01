@@ -57,7 +57,7 @@ class AgendaHeaderNavigation0396Test {
             .substringAfter("val headerActions0396 = when (screen) {")
             .substringBefore("val currentRootScreen0396")
 
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Atualizar agora\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Limpar Timeline\")"))
