@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -34,8 +35,17 @@ internal data class AgendaFailureBackendContext(
     val httpStatus: Int? = null,
     val backendErrorCode: String = "",
     val sanitizedResponse: String = "",
+    val sanitizedRequest: String = "",
     val requestId: String = "",
     val correlationId: String = "",
+    val networkCallId: String = "",
+    val transportPhase: String = "",
+    val requestBytes: Int = 0,
+    val responseBytes: Int = 0,
+    val requestSha256: String = "",
+    val responseSha256: String = "",
+    val responseContentType: String = "",
+    val elapsedMs: Long = 0L,
 )
 
 internal data class AgendaCauseResolution(
@@ -54,6 +64,7 @@ internal object AgendaFailureEvidence {
     private const val MAX_STACK_FRAMES = 6
     private const val MAX_MESSAGE_CHARS = 140
     private const val MAX_RESPONSE_CHARS = 180
+    private const val MAX_REQUEST_CHARS = 180
     private const val MAX_STACK_CHARS = 220
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
     private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -109,16 +120,47 @@ internal object AgendaFailureEvidence {
         val resolvedBackend = backend ?: causes.chain.firstNotNullOfOrNull(::backendContextFrom)
         val sourceFrame = firstRotaCertaFrame(root) ?: firstRotaCertaFrame(error) ?: root.stackTrace.firstOrNull()
         val stack = boundedStack(causes.chain)
+        val resolvedMethod = method.ifBlank { sourceFrame?.methodName.orEmpty() }
+        val fingerprint = failureFingerprint(
+            operation = operation,
+            component = component,
+            method = resolvedMethod,
+            root = root,
+            backend = resolvedBackend,
+            trip = trip,
+        )
         return buildString {
             field("timestampMs", timestampMillis.toString())
+            field("failureFingerprint", fingerprint)
             field("operation", operation)
             field("component", component)
-            field("method", method.ifBlank { sourceFrame?.methodName.orEmpty() })
+            field("method", resolvedMethod)
             field("exceptionClass", error.javaClass.simpleName.ifBlank { error.javaClass.name })
             nullableField("exceptionMessage", error.message)
             field("rootCauseClass", root.javaClass.simpleName.ifBlank { root.javaClass.name })
             nullableField("rootCauseMessage", root.message)
-            field("causes", causeSummary(causes))
+
+            // Backend/transport evidence comes before trip/stack context so the
+            // bounded flight-recorder line cannot trim the byte-level facts away.
+            resolvedBackend?.let { value ->
+                field("networkCallId", value.networkCallId)
+                field("transportPhase", value.transportPhase)
+                field("httpMethod", value.httpMethod)
+                field("endpoint", value.endpoint)
+                intField("httpStatus", value.httpStatus)
+                field("backendErrorCode", value.backendErrorCode)
+                intField("requestBytes", value.requestBytes)
+                intField("responseBytes", value.responseBytes)
+                field("requestSha256", value.requestSha256)
+                field("responseSha256", value.responseSha256)
+                longField("networkElapsedMs", value.elapsedMs)
+                field("responseContentType", value.responseContentType)
+                field("requestId", value.requestId)
+                field("correlationId", value.correlationId)
+                field("request", value.sanitizedRequest, MAX_REQUEST_CHARS)
+                field("response", value.sanitizedResponse, MAX_RESPONSE_CHARS)
+            }
+
             trip?.let { value ->
                 field("tripKey", value.tripKey)
                 field("canonicalIdentity", value.canonicalIdentity)
@@ -139,15 +181,8 @@ internal object AgendaFailureEvidence {
                 field("previousState", value.previousState)
                 field("intendedState", value.intendedState)
             }
-            resolvedBackend?.let { value ->
-                field("endpoint", value.endpoint)
-                field("httpMethod", value.httpMethod)
-                intField("httpStatus", value.httpStatus)
-                field("backendErrorCode", value.backendErrorCode)
-                field("response", value.sanitizedResponse, MAX_RESPONSE_CHARS)
-                field("requestId", value.requestId)
-                field("correlationId", value.correlationId)
-            }
+
+            field("causes", causeSummary(causes))
             sourceFrame?.let { frame ->
                 field("source", "${frame.fileName ?: frame.className}:${frame.methodName}:${frame.lineNumber}")
             }
@@ -190,11 +225,20 @@ internal object AgendaFailureEvidence {
             AgendaFailureBackendContext(
                 endpoint = remote.endpoint,
                 httpMethod = remote.httpMethod,
-                httpStatus = remote.httpStatus,
+                httpStatus = remote.httpStatus.takeIf { it > 0 },
                 backendErrorCode = remote.backendErrorCode,
                 sanitizedResponse = remote.sanitizedResponse,
+                sanitizedRequest = remote.sanitizedRequest,
                 requestId = remote.requestId,
                 correlationId = remote.correlationId,
+                networkCallId = remote.networkCallId,
+                transportPhase = remote.transportPhase,
+                requestBytes = remote.requestBytes,
+                responseBytes = remote.responseBytes,
+                requestSha256 = remote.requestSha256,
+                responseSha256 = remote.responseSha256,
+                responseContentType = remote.responseContentType,
+                elapsedMs = remote.elapsedMs,
             )
         }
 
@@ -242,6 +286,40 @@ internal object AgendaFailureEvidence {
         if (value == null) return
         if (isNotEmpty()) append(' ')
         append(name).append('=').append(value)
+    }
+
+    private fun StringBuilder.longField(name: String, value: Long) {
+        if (value < 0L) return
+        if (isNotEmpty()) append(' ')
+        append(name).append('=').append(value)
+    }
+
+    private fun failureFingerprint(
+        operation: String,
+        component: String,
+        method: String,
+        root: Throwable,
+        backend: AgendaFailureBackendContext?,
+        trip: AgendaFailureTripContext?,
+    ): String {
+        val material = buildString {
+            append(operation).append('|')
+            append(component).append('|')
+            append(method).append('|')
+            append(root.javaClass.name).append('|')
+            append(root.message.orEmpty()).append('|')
+            append(backend?.transportPhase.orEmpty()).append('|')
+            append(backend?.httpMethod.orEmpty()).append('|')
+            append(backend?.endpoint.orEmpty()).append('|')
+            append(backend?.httpStatus ?: 0).append('|')
+            append(backend?.backendErrorCode.orEmpty()).append('|')
+            append(trip?.tripKey.orEmpty()).append('|')
+            append(trip?.publicIdentity.orEmpty())
+        }
+        return MessageDigest.getInstance("SHA-256")
+            .digest(material.toByteArray(Charsets.UTF_8))
+            .take(10)
+            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
     }
 
     private fun sanitize(raw: String, maxChars: Int): String =
