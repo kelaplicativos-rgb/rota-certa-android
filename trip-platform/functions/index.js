@@ -2631,6 +2631,45 @@ async function updateDriverTrip(req, res, token) {
       if (previous.driverUsername && previous.driverUsername !== driver.username) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
+      const requestedTombstone = req.body && req.body.publicationTombstone === true;
+      const requestedPublicationRevision = Math.max(0, Math.floor(Number(req.body && req.body.publicationRevision || 0)));
+      const currentPublicationRevision = Math.max(0, Math.floor(Number(previous.publicationRevision || 0)));
+      const requestedPublicationEventId = cleanText(req.body && req.body.publicationEventId, 120);
+      if (requestedTombstone) {
+        if (requestedPublicationRevision <= 0) {
+          throw Object.assign(new Error("Tombstone exige revisão monotônica."), { httpStatus: 409, code: "tombstone_revision_required" });
+        }
+        if (requestedPublicationRevision < currentPublicationRevision) {
+          return {
+            publicUrl: previous.publicUrl || publicUrlFor(req, token, previous.driverUsername || driver.username),
+            ownerUsername: previous.driverUsername || driver.username,
+            becameCompleted: false,
+            becameCancelled: false,
+            eventType: "",
+            notifiedPassengers: 0,
+            stale: true,
+            entityRevision: currentPublicationRevision,
+          };
+        }
+        if (requestedPublicationRevision === currentPublicationRevision) {
+          const sameEvent = !cleanText(previous.publicationEventId, 120) ||
+            !requestedPublicationEventId ||
+            cleanText(previous.publicationEventId, 120) === requestedPublicationEventId;
+          if (previous.publicationTombstone === true && sameEvent) {
+            return {
+              publicUrl: previous.publicUrl || publicUrlFor(req, token, previous.driverUsername || driver.username),
+              ownerUsername: previous.driverUsername || driver.username,
+              becameCompleted: false,
+              becameCancelled: false,
+              eventType: "",
+              notifiedPassengers: 0,
+              stale: false,
+              entityRevision: currentPublicationRevision,
+            };
+          }
+          throw Object.assign(new Error("A mesma revisão já pertence a outro estado público."), { httpStatus: 409, code: "publication_revision_conflict" });
+        }
+      }
       let normalized = normalizeDriverTrip(req.body || {}, previous);
       const preserveReliableCapacity = isExternalBlaBlaTrip(token, previous) &&
         previous.capacityReliable === true && normalized.capacityReliable === false;
@@ -2727,6 +2766,8 @@ async function updateDriverTrip(req, res, token) {
         becameCancelled: previous.status !== "CANCELLED" && normalized.status === "CANCELLED",
         eventType,
         notifiedPassengers,
+        stale: false,
+        entityRevision: Math.max(0, Number(normalized.publicationRevision || currentPublicationRevision)),
       };
     });
     if (result.becameCompleted) await processReferralCreditsForCompletedTrip(token, result.ownerUsername);
@@ -2744,6 +2785,8 @@ async function updateDriverTrip(req, res, token) {
       publicToken: token,
       publicUrl: result.publicUrl,
       passengerNotificationsCreated: result.notifiedPassengers,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
+      stale: result.stale === true,
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "update_failed", error.message || "Falha ao atualizar viagem.");
