@@ -112,19 +112,10 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             "event=${event.take(40)} remoteTripPresent=${remoteTripId.isNotBlank()} bookingPresent=${bookingId.isNotBlank()} seats=$seats",
         )
 
-        serviceScope.launch {
-            try {
-                withTimeoutOrNull(10_000L) {
-                    PublicBookingRemoteSync0296.pullAndReconcile(
-                        context = this@RotaCertaBookingMessagingService,
-                        store = TripStore(this@RotaCertaBookingMessagingService),
-                    )
-                }
-            } finally {
-                BookingRealtimeEvents0356.notifyChanged()
-                TripWidgetProvider.updateAll(this@RotaCertaBookingMessagingService)
-            }
-        }
+        AgendaBackgroundSync0392.enqueueImmediate(
+            context = this,
+            reason = "booking_push:${event.take(40)}",
+        )
     }
 
     override fun onDestroy() {
