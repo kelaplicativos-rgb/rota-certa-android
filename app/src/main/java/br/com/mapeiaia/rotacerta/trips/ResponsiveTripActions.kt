@@ -5,11 +5,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,55 +75,101 @@ fun ResponsiveTripActions(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier.fillMaxWidth()) {
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val narrow = maxWidth < 360.dp || effectiveActions.size > 2
-            if (narrow) {
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+            if (agendaToolbar) {
+                // The Agenda has many actions. Stacking them vertically consumes the complete
+                // phone viewport before the weighted Timeline can receive any height.
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                ) {
                     effectiveActions.forEach { action ->
                         val tracedClick = {
                             AgendaTrace.action(context, action.traceKey, action.label)
                             action.onClick()
                         }
+                        val actionModifier = Modifier.widthIn(min = 156.dp)
                         if (action.outlined) {
-                            OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            OutlinedButton(tracedClick, enabled = action.enabled, modifier = actionModifier) {
+                                Text(action.label, maxLines = 1)
+                            }
                         } else {
-                            Button(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            Button(tracedClick, enabled = action.enabled, modifier = actionModifier) {
+                                Text(action.label, maxLines = 1)
+                            }
                         }
                     }
                 }
             } else {
-                val gap = 8.dp
-                val width = (maxWidth - gap * (effectiveActions.size - 1)) / effectiveActions.size
-                Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
-                    effectiveActions.forEach { action ->
-                        val tracedClick = {
-                            AgendaTrace.action(context, action.traceKey, action.label)
-                            action.onClick()
+                val narrow = maxWidth < 360.dp || effectiveActions.size > 2
+                if (narrow) {
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                        effectiveActions.forEach { action ->
+                            val tracedClick = {
+                                AgendaTrace.action(context, action.traceKey, action.label)
+                                action.onClick()
+                            }
+                            if (action.outlined) {
+                                OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            } else {
+                                Button(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                            }
                         }
-                        if (action.outlined) {
-                            OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
-                        } else {
-                            Button(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                    }
+                } else {
+                    val gap = 8.dp
+                    val width = (maxWidth - gap * (effectiveActions.size - 1)) / effectiveActions.size
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
+                        effectiveActions.forEach { action ->
+                            val tracedClick = {
+                                AgendaTrace.action(context, action.traceKey, action.label)
+                                action.onClick()
+                            }
+                            if (action.outlined) {
+                                OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                            } else {
+                                Button(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                            }
                         }
                     }
                 }
             }
         }
+    }
 
-        if (agendaToolbar && showPublicSearch) {
-            BlaBlaPublicSearchPanel(
-                trips = agendaTrips,
-                currentResponse = publicResponse,
-                onResult = {
-                    publicResponse = it
-                    onPublicSearchResponse?.invoke(it)
-                },
-                onChanged = { message ->
-                    if (message.isNotBlank()) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                },
-            )
-            if (publicResponse != null) {
-                Text("Resultados inseridos cronologicamente na Timeline abaixo.")
-            }
-        }
+    if (agendaToolbar && showPublicSearch) {
+        AlertDialog(
+            onDismissRequest = { showPublicSearch = false },
+            title = { Text("Consulta pública") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 650.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    BlaBlaPublicSearchPanel(
+                        trips = agendaTrips,
+                        currentResponse = publicResponse,
+                        onResult = {
+                            publicResponse = it
+                            onPublicSearchResponse?.invoke(it)
+                        },
+                        onChanged = { message ->
+                            if (message.isNotBlank()) Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                        },
+                    )
+                    if (publicResponse != null) {
+                        Text("Resultados inseridos cronologicamente na Timeline.")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showPublicSearch = false }) { Text("Fechar") }
+            },
+        )
     }
 }
