@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -588,18 +590,30 @@ fun BlaBlaAuditableCollectionActions(
     if (snapshot == null) return
     val context = LocalContext.current
     var showSummary by remember(snapshot.generatedAt) { mutableStateOf(false) }
+    val downloadPayload = remember(snapshot.generatedAt) { BlaBlaAuditableCollectionJson.encode(snapshot) }
+    val downloadLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument(BlaBlaAuditableCollectionShare.MIME_TYPE),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")
+                ?.bufferedWriter(Charsets.UTF_8)
+                ?.use { it.write(downloadPayload) }
+                ?: error("Não foi possível abrir o arquivo de destino.")
+        }.onSuccess {
+            onChanged("Download da coleta concluído.")
+        }.onFailure { error ->
+            onChanged("Não foi possível baixar a coleta: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { showSummary = true }, modifier = Modifier.fillMaxWidth()) {
             Text("📄 Ver resumo")
         }
         Button(
-            onClick = {
-                runCatching { BlaBlaAuditableCollectionShare.share(context, snapshot) }
-                    .onSuccess { onChanged("Coleta JSON pronta para compartilhar.") }
-                    .onFailure { onChanged("Não foi possível compartilhar a coleta: ${it.javaClass.simpleName}") }
-            },
+            onClick = { downloadLauncher.launch(BlaBlaAuditableCollectionShare.fileName(snapshot)) },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("📤 Compartilhar coleta") }
+        ) { Text("⬇️ Baixar coleta") }
     }
     if (showSummary) {
         AlertDialog(

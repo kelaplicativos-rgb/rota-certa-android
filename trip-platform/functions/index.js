@@ -5800,6 +5800,122 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   }
 }
 
+async function reconcileDriverAgendaSeatAllocation(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const rawAllocation = Number(req.body && req.body.rotaCertaSeatAllocation);
+  if (!Number.isInteger(rawAllocation) || rawAllocation < 0 || rawAllocation > 999) {
+    return fail(res, 400, "invalid_rota_certa_allocation", "Cota Rota Certa inválida.");
+  }
+  const allocation = rawAllocation;
+  const configVersion = Math.max(0, Math.floor(Number(req.body && req.body.configVersion || 0)));
+  const now = Date.now();
+  try {
+    const snapshot = await db.collection("trips")
+      .where("driverUsername", "==", driver.username)
+      .limit(300)
+      .get();
+    let processed = 0;
+    let updated = 0;
+    let failClosed = 0;
+
+    for (const doc of snapshot.docs) {
+      const initial = doc.data();
+      if (!PUBLIC_STATUSES.has(initial.status) || Number(initial.departureAtMillis || 0) <= now) continue;
+      const token = doc.id;
+      const tripRef = db.collection("trips").doc(token);
+      const result = await db.runTransaction(async (tx) => {
+        const tripSnap = await tx.get(tripRef);
+        if (!tripSnap.exists) return { processed: false, changed: false, failClosed: false };
+        const previous = tripSnap.data();
+        if (previous.driverUsername && previous.driverUsername !== driver.username) {
+          return { processed: false, changed: false, failClosed: false };
+        }
+        if (!PUBLIC_STATUSES.has(previous.status) || Number(previous.departureAtMillis || 0) <= now) {
+          return { processed: false, changed: false, failClosed: false };
+        }
+
+        const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+        const records = bookingsSnap.docs.map((bookingDoc) => ({ id: bookingDoc.id, ...bookingDoc.data() }));
+        const external = isExternalBlaBlaTrip(token, previous);
+        if (!external) return { processed: false, changed: false, failClosed: false };
+        const rawPublished = previous.publishedSeats == null ? null : Number(previous.publishedSeats);
+        const publishedSeats = Number.isInteger(rawPublished) && rawPublished >= 0 && rawPublished <= 999
+          ? rawPublished
+          : null;
+
+        let candidate = {
+          ...previous,
+          rotaCertaSeatAllocation: allocation,
+        };
+        let capacityKnown = true;
+        if (publishedSeats != null) {
+          candidate.capacity = Math.min(999, publishedSeats + allocation);
+          candidate.capacityReliable = true;
+        } else {
+          // For an external publication without a fresh authoritative BlaBlaCar
+          // quota, never preserve an old Rota Certa contribution as if current.
+          capacityKnown = false;
+          candidate.capacityReliable = false;
+        }
+
+        const capacityState = reconciledSegmentCapacity(candidate, records, now);
+        const persistence = canonicalCapacityPersistence(candidate, records, capacityState, now);
+        const canonicalUpdate = capacityKnown
+          ? persistence
+          : {
+              ...persistence,
+              blablaAvailableSeats: 0,
+              rotaCertaAllocatedSeats: allocation,
+              rotaCertaAvailableSeats: 0,
+              totalAvailableSeats: 0,
+              totalConsideredSeats: 0,
+              operationalAvailableSeats: 0,
+            };
+        const nextStatus = capacityKnown
+          ? statusForReconciledLoads(candidate, capacityState.loads)
+          : previous.status;
+        const alreadyCurrent =
+          Number(previous.rotaCertaSeatAllocation || 0) === allocation &&
+          Number(previous.rotaCertaAllocatedSeats || 0) === Number(canonicalUpdate.rotaCertaAllocatedSeats || 0) &&
+          Number(previous.rotaCertaAvailableSeats || 0) === Number(canonicalUpdate.rotaCertaAvailableSeats || 0) &&
+          Number(previous.operationalAvailableSeats || 0) === Number(canonicalUpdate.operationalAvailableSeats || 0) &&
+          Boolean(previous.capacityReliable !== false) === Boolean(candidate.capacityReliable !== false) &&
+          Number(previous.capacity || 0) === Number(candidate.capacity || 0) &&
+          Number(previous.seatAllocationConfigVersion || 0) >= configVersion;
+
+        if (alreadyCurrent) {
+          return { processed: true, changed: false, failClosed: !capacityKnown };
+        }
+
+        tx.update(tripRef, {
+          rotaCertaSeatAllocation: allocation,
+          seatAllocationConfigVersion: configVersion,
+          capacity: Math.max(0, Number(candidate.capacity || 0)),
+          capacityReliable: candidate.capacityReliable !== false,
+          status: nextStatus,
+          ...canonicalUpdate,
+          updatedAtMillis: Date.now(),
+        });
+        return { processed: true, changed: true, failClosed: !capacityKnown };
+      });
+      if (!result.processed) continue;
+      processed++;
+      if (result.changed) updated++;
+      if (result.failClosed) failClosed++;
+    }
+
+    return json(res, 200, { processed, updated, failClosed });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "agenda_seat_allocation_reconcile_failed",
+      error.message || "Falha ao reconciliar a cota Rota Certa da Agenda.",
+    );
+  }
+}
+
 async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -5901,6 +6017,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/regenerate") return await regenerateDriverPublicAgenda(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/agenda/seat-allocation") return await reconcileDriverAgendaSeatAllocation(req, res);
     if (req.method === "GET" && path === "/v1/driver/test-link") return await getDriverTesterLinkStatus(req, res);
     if (req.method === "POST" && path === "/v1/driver/test-link/generate") return await generateDriverTesterLink(req, res);
     if (req.method === "POST" && path === "/v1/driver/test-link/revoke") return await revokeDriverTesterLink(req, res);

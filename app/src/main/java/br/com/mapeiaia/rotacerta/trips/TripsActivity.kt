@@ -229,10 +229,7 @@ private fun TripApp(
             throw error
         }
     }
-    var autoBlaBlaSyncToken by remember { mutableStateOf(0) }
-    var forceAllBlaBlaSyncToken by remember { mutableStateOf(0) }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var refreshAllRunning by remember { mutableStateOf(false) }
     val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
@@ -290,7 +287,7 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.SideEffect {
-        AgendaTrace.markContentMounted(activity, loading = refreshAllRunning)
+        AgendaTrace.markContentMounted(activity, loading = false)
         if (firstCompositionEnded.compareAndSet(false, true)) {
             AgendaTrace.operationEnd(activity, firstCompositionOperation, result = "content_mounted")
         }
@@ -347,11 +344,11 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, refreshAllRunning, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    androidx.compose.runtime.LaunchedEffect(screen, trips.size, bookings.size, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             activity,
             "AGENDA_RENDER_STATE",
-            "loading=$refreshAllRunning empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=$refreshAllRunning screen=${screen.name.lowercase()}",
+            "loading=false empty=${trips.isEmpty() && bookings.isEmpty()} items=${trips.size} capacityPresent=${settingsLoaded && appSettings.rotaCertaSeatAllocation in 0..999} settingsLoaded=$settingsLoaded syncRunning=false screen=${screen.name.lowercase()}",
             traceId,
         )
     }
@@ -372,32 +369,19 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
-                // Resume only retries durable per-trip deltas. It never triggers a tenant-wide sync.
-                AgendaBackgroundSync0392.enqueueImmediate(activity, "timeline_resume")
             }
         }
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
-    val requestFullTimelineRefresh = {
-        if (shouldStartAgendaFullRefresh0388(screen == TripScreen.TIMELINE, refreshAllRunning)) {
-            AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh backgroundModule=true", traceId)
-            AgendaSyncCrashTraceStore.arm(activity)
-            AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested_background_0392")
-            refreshAllRunning = true
-            refresh()
-            AgendaBackgroundSync0392.enqueueImmediate(
-                context = activity,
-                reason = "timeline_pull_refresh",
-            )
-            refreshAllRunning = false
-            message = null
-            UnifiedDebugEventStore.record(
-                "AGENDA_PULL_REFRESH_BACKGROUND_REQUESTED_0392",
-                activity.packageName,
-                "timelineRefresh=true publicAgenda=true publicBookings=true blablaAutomatic=false silentUi=true",
-            )
-        }
+    val requestTimelineVisualReload = {
+        refresh()
+        message = null
+        UnifiedDebugEventStore.record(
+            "AGENDA_TIMELINE_VISUAL_RELOAD_0398",
+            activity.packageName,
+            "networkSync=false automaticSyncOnly=true",
+        )
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -407,12 +391,6 @@ private fun TripApp(
         }
     }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        AgendaBackgroundSync0392.enqueueImmediate(
-            context = activity,
-            reason = "timeline_open",
-        )
-    }
 
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
         if (!settingsLoaded) return@LaunchedEffect
@@ -494,18 +472,8 @@ private fun TripApp(
             AgendaHeaderAction0396("Adicionar passageiro") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
             },
-            AgendaHeaderAction0396("Sincronizar agora") { requestFullTimelineRefresh() },
-            AgendaHeaderAction0396("Publicar agenda") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_PUBLISHER)
-            },
-            AgendaHeaderAction0396("Sincronizar BlaBlaCar") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_BLABLACAR_SYNC)
-            },
             AgendaHeaderAction0396("Alternar próximas / arquivadas") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
-            },
-            AgendaHeaderAction0396("Limpar Timeline") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.OPEN_CLEAR_DIALOG)
             },
             AgendaHeaderAction0396("Fixar atalho") {
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
@@ -701,9 +669,9 @@ private fun TripApp(
                 )
                 TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    refreshing = refreshAllRunning,
+                    refreshing = false,
                     canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
-                    onRefresh = requestFullTimelineRefresh,
+                    onRefresh = requestTimelineVisualReload,
                     onPointerDown = { position, canRefreshAtStart, refreshRunningAtStart ->
                         UnifiedDebugEventStore.record(
                             "AGENDA_PULL_GESTURE_DOWN_0390",
@@ -747,9 +715,6 @@ private fun TripApp(
                     bookings = bookings,
                     store = store,
                     onChanged = { text -> refresh(); message = text },
-                    autoSyncToken = autoBlaBlaSyncToken,
-                    forceAllSyncToken = forceAllBlaBlaSyncToken,
-                    onRequestBlaBlaSync = { autoBlaBlaSyncToken++ },
                     onCreateTripForPassenger = { passengerId ->
                         pendingCreateForPassengerId = passengerId
                         parentRootScreen0396 = TripScreen.TIMELINE
@@ -881,10 +846,7 @@ private fun TripApp(
                                 expanded = selectedId == trip.id,
                                 onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
                                 onChanged = { text -> refresh(); message = text },
-                                onRequestBlaBlaSync = {
-                                    autoBlaBlaSyncToken++
-                                    screen = TripScreen.TIMELINE
-                                },
+                                onRequestBlaBlaSync = {},
                             )
                         }
                     }
@@ -910,11 +872,32 @@ private fun AgendaPublicSearchRoot0396(
         onResult = { response = it },
         onChanged = onChanged,
         showTitle = false,
+        showCollectionActions = false,
     )
-    if (response != null) {
+    response?.let { result ->
         Text(
-            "Os resultados públicos permanecem auditáveis e serão inseridos cronologicamente na Timeline.",
+            "Resultado desta consulta pública",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (result.cards.isEmpty()) {
+            Text("Nenhum card público encontrado nesta consulta.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            result.cards
+                .sortedBy(::publicSearchCardDepartureSortMillis)
+                .forEach { card ->
+                    BlaBlaPublicTimelineCard(
+                        card = card,
+                        response = result,
+                    )
+                }
+        }
+        Text(
+            "Esta consulta possui Timeline própria e não é misturada à Timeline operacional.",
             style = MaterialTheme.typography.bodySmall,
+        )
+        BlaBlaAuditableCollectionActions(
+            snapshot = BlaBlaAuditableCollectionBuilder.build(context, result),
+            onChanged = onChanged,
         )
     }
 }
@@ -1153,7 +1136,7 @@ private fun TripCard(
                                     .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
-                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. Publique/sincronize online para compartilhar." else "Reservas pelo link desativadas.")
+                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. A sincronização automática publicará a alteração quando a integração online estiver disponível." else "Reservas pelo link desativadas.")
                         }
                     }) { Text(if (trip.publicBookingEnabled) "Reservas pelo link: ATIVADAS" else "Reservas pelo link: DESATIVADAS") }
                     if (trip.publicBookingEnabled && !trip.publicUrl.isNullOrBlank()) {
@@ -1164,37 +1147,7 @@ private fun TripCard(
                         }) { Text("📲 Compartilhar reservas") }
                     }
                 }
-                if (settings.configured && trip.status != TripStatus.DRAFT && trip.status != TripStatus.CANCELLED) {
-                    Button(onClick = {
-                        scope.launch {
-                            runCatching {
-                                mutationCoordinator.recordLocalMutation(
-                                    canonicalTripId = trip.id,
-                                    mutationType = "MANUAL_PUBLIC_CARD_SYNC",
-                                    source = "TIMELINE_CARD",
-                                )
-                                AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
-                            }.onSuccess { onChanged("Viagem sincronizada com a agenda pública.") }
-                                .onFailure { onChanged("Falha online; o delta desta viagem permanece rastreável: ${it.message}") }
-                        }
-                    }) { Text(if (trip.remoteId == null) "Publicar online" else "Sincronizar online") }
-                    if (trip.remoteId != null) {
-                        OutlinedButton(onClick = {
-                            scope.launch {
-                                runCatching {
-                                    TripRemoteApi(settings).listBookings(trip.remoteId).bookings
-                                }.onSuccess { remoteBookings ->
-                                    remoteBookings.forEach { remote ->
-                                        store.saveBooking(remote.toLocalBooking(trip.id))
-                                    }
-                                    onChanged("Reservas online atualizadas: ${remoteBookings.size}.")
-                                }.onFailure {
-                                    onChanged("Falha ao atualizar reservas: ${it.message}")
-                                }
-                            }
-                        }) { Text("Atualizar reservas online") }
-                    }
-                } else if (!settings.configured) {
+                if (!settings.configured) {
                     Text("Modo online não configurado. Compartilhamento local, Google Agenda e ICS continuam funcionando.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) {

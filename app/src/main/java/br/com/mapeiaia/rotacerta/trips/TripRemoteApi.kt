@@ -393,6 +393,19 @@ data class DriverCapacitySnapshotRequest(
 )
 
 @Serializable
+data class DriverAgendaSeatAllocationReconcileResponse(
+    val processed: Int = 0,
+    val updated: Int = 0,
+    val failClosed: Int = 0,
+)
+
+@Serializable
+data class DriverAgendaSeatAllocationReconcileRequest(
+    val rotaCertaSeatAllocation: Int,
+    val configVersion: Long = 0L,
+)
+
+@Serializable
 data class DriverCapacitySnapshotResponse(
     val tripId: String,
     val publicToken: String,
@@ -577,6 +590,21 @@ class TripRemoteApi(
         method = "PUT",
         path = "/v1/driver/trips/${trip.remoteId ?: trip.id}",
         body = json.encodeToString(trip),
+        requireDriverToken = true,
+    )
+
+    suspend fun reconcileAgendaSeatAllocation(
+        rotaCertaSeatAllocation: Int,
+        configVersion: Long,
+    ): DriverAgendaSeatAllocationReconcileResponse = request(
+        method = "PUT",
+        path = "/v1/driver/agenda/seat-allocation",
+        body = json.encodeToString(
+            DriverAgendaSeatAllocationReconcileRequest(
+                rotaCertaSeatAllocation = rotaCertaSeatAllocation.coerceIn(0, 999),
+                configVersion = configVersion.coerceAtLeast(0L),
+            ),
+        ),
         requireDriverToken = true,
     )
 

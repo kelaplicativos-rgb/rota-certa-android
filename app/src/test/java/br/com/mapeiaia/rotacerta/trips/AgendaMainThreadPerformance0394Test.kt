@@ -38,8 +38,11 @@ class AgendaMainThreadPerformance0394Test {
         assertTrue(source.contains("delay(30_000L)"))
         assertTrue(source.contains("val publicExternalBindings = remember(trips, bookings, collectorResponse)"))
         assertTrue(source.contains("val internallyCancelledExternalReservationKeys = remember(trips, bookings, collectorResponse)"))
-        assertTrue(source.contains("val seatSyncStates = remember(entries, autoSyncToken, forceAllSyncToken, showSync)"))
+        assertTrue(source.contains("val seatSyncStates = remember(entries)"))
         assertTrue(source.contains("val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }"))
+        assertFalse(source.contains("autoSyncToken"))
+        assertFalse(source.contains("forceAllSyncToken"))
+        assertFalse(source.contains("showSync"))
         assertFalse(source.contains("var collectorResponse by remember { mutableStateOf(collectorStore.lastResponseRecoveringDynamicSessions()) }"))
     }
 

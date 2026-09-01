@@ -57,10 +57,13 @@ class AgendaHeaderNavigation0396Test {
             .substringAfter("val headerActions0396 = when (screen) {")
             .substringBefore("val currentRootScreen0396")
 
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Limpar Timeline\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Nova viagem\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Adicionar passageiro\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Alternar próximas / arquivadas\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Limpar Timeline\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Todas as viagens\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Consulta pública\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Passageiros\")"))
@@ -89,6 +92,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(timeline.contains("ResponsiveTripActions("))
         assertTrue(activity.contains("listModifier = Modifier.weight(1f)"))
         assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
+        assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
     }
 
     @Test

@@ -73,9 +73,6 @@ fun TripTimelineScreen(
     bookings: List<Booking>,
     store: TripStore,
     onChanged: (String) -> Unit,
-    autoSyncToken: Int,
-    forceAllSyncToken: Int,
-    onRequestBlaBlaSync: () -> Unit,
     onCreateTripForPassenger: (String) -> Unit,
     addPassengerResumeToken: Int,
     addPassengerResumePassengerId: String?,
@@ -96,20 +93,15 @@ fun TripTimelineScreen(
     val tripMutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
-    val publicSearchStore = remember(context) { BlaBlaPublicSearchStore(context) }
     val seatSyncStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
-    val archiveStore = remember(context) { TripTimelineArchiveStore(context) }
+    val archiveStore = remember(context) {
+        TripTimelineArchiveStore(context).also { it.clearLegacyBulkHiddenOnce0398() }
+    }
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
     var collectorResponse by remember { mutableStateOf<BlaBlaCollectorMonthResponse?>(null) }
-    var publicSearchResponse by remember { mutableStateOf<BlaBlaPublicSearchResponse?>(null) }
-    var showTimelineClearDialog by remember { mutableStateOf(false) }
     var archiveRevision by remember { mutableIntStateOf(0) }
     var showArchived by remember { mutableStateOf(false) }
-    var showSync by remember { mutableStateOf(false) }
-    var autoSyncProfileUuid by remember { mutableStateOf<String?>(null) }
-    var autoSyncTripId by remember { mutableStateOf<String?>(null) }
-    var showPublisher by remember { mutableStateOf(false) }
     var passengerAddRequestToken by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
@@ -119,54 +111,25 @@ fun TripTimelineScreen(
     val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
     val settingsLoaded = appSettingsState != null
     val appSettings = appSettingsState ?: AppSettings()
-    val forceAllSyncActive = autoSyncToken > 0 && forceAllSyncToken == autoSyncToken
 
     LaunchedEffect(uiCommandToken0396, uiCommand0396) {
         if (uiCommandToken0396 <= 0) return@LaunchedEffect
         when (uiCommand0396) {
             AgendaTimelineCommand0396.ADD_PASSENGER -> passengerAddRequestToken++
-            AgendaTimelineCommand0396.OPEN_PUBLISHER -> showPublisher = true
-            AgendaTimelineCommand0396.OPEN_BLABLACAR_SYNC -> {
-                autoSyncProfileUuid = null
-                autoSyncTripId = null
-                showSync = true
-                UnifiedDebugEventStore.record(
-                    "AGENDA_SYNC_PANEL_OPENED",
-                    context.packageName,
-                    "source=header_overflow autoSyncStarted=false",
-                )
-            }
-            AgendaTimelineCommand0396.OPEN_CLEAR_DIALOG -> showTimelineClearDialog = true
             AgendaTimelineCommand0396.TOGGLE_ARCHIVED -> showArchived = !showArchived
             null -> Unit
         }
     }
 
-    LaunchedEffect(autoSyncToken, forceAllSyncToken) {
-        if (autoSyncToken > 0) {
-            showSync = true
-            if (forceAllSyncActive) {
-                autoSyncProfileUuid = null
-                autoSyncTripId = null
-                UnifiedDebugEventStore.record(
-                    "AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED",
-                    context.packageName,
-                    "scope=all_accounts source=timeline_pull token=$autoSyncToken",
-                )
-            }
-        }
-    }
     LaunchedEffect(Unit) {
         val startupSnapshot = withContext(Dispatchers.IO) {
-            Triple(
+            Pair(
                 collectorStore.lastResponseRecoveringDynamicSessions(),
-                publicSearchStore.lastResponse(),
                 referenceStore.read(),
             )
         }
         collectorResponse = startupSnapshot.first
-        publicSearchResponse = startupSnapshot.second
-        referenceOrigin = startupSnapshot.third
+        referenceOrigin = startupSnapshot.second
         while (true) {
             currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
             delay(30_000L)
@@ -325,7 +288,7 @@ fun TripTimelineScreen(
         }
     }
 
-    val seatSyncStates = remember(entries, autoSyncToken, forceAllSyncToken, showSync) {
+    val seatSyncStates = remember(entries) {
         seatSyncStateStore.snapshot().associateBy { state ->
             state.profileUuid.trim().lowercase() + "|" + state.tripId
         }
@@ -363,14 +326,10 @@ fun TripTimelineScreen(
     } else {
         reservationFilteredEntries
     }
-    val publicResponseForTimeline = publicSearchResponse.takeIf {
-        !showArchived && !syncPendingOnly && !reservationPendingOnly && focusedTripId == null && focusedBookingTripId == null
-    }
-    val publicTimelineCards = remember(publicResponseForTimeline, searchQuery) {
-        publicResponseForTimeline?.cards.orEmpty()
-            .filter { card -> publicSearchCardMatchesTimelineSearch(card, searchQuery) }
-            .sortedBy(::publicSearchCardDepartureSortMillis)
-    }
+    // Consulta pública tem Timeline própria; nunca misturar cards de pesquisa
+    // com a Timeline operacional sincronizada.
+    val publicResponseForTimeline: BlaBlaPublicSearchResponse? = null
+    val publicTimelineCards: List<BlaBlaPublicSearchCard> = emptyList()
     val timelineCalendarDays = remember(visibleEntries, publicResponseForTimeline, publicTimelineCards) {
         combinedTimelineCalendarDays(
             entries = visibleEntries,
@@ -398,11 +357,11 @@ fun TripTimelineScreen(
             onFirstUsableFrame(visibleEntries.size + publicTimelineCards.size)
         }
     }
-    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, showSync, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
+    LaunchedEffect(visibleEntries.size, publicTimelineCards.size, settingsLoaded, appSettings.rotaCertaSeatAllocation) {
         AgendaTrace.event(
             context,
             "TIMELINE_RENDER_STATE",
-            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} inventorySettingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} syncRunning=$showSync",
+            "loading=false empty=${visibleEntries.isEmpty() && publicTimelineCards.isEmpty()} items=${visibleEntries.size + publicTimelineCards.size} inventorySettingsLoaded=$settingsLoaded rotaCertaAllocation=${appSettings.rotaCertaSeatAllocation} syncRunning=false",
             traceId,
         )
         AgendaTrace.event(
@@ -433,270 +392,8 @@ fun TripTimelineScreen(
         resumeTripId = addPassengerResumeTripId,
     )
 
-    val clearTimeline: (Boolean) -> Unit = { includeManualCards ->
-        // First forget any old archive aliases tied to synchronized identities. When the
-        // user chooses "Tudo da tela", re-archive only the persistent local/manual
-        // identity so a hybrid local+BlaBla card cannot reappear after its external half
-        // is removed.
-        archiveStore.clearExternal(physical)
-        val manualVisualHidden = if (includeManualCards) {
-            archiveStore.archiveLocalVisualEntries(physical)
-        } else {
-            0
-        }
-        val externalBackingHistoryPreserved = store.trips().count {
-            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING
-        }
-        val externalClear = collectorStore.clearSynchronizedTimelineData()
-        collectorResponse = externalClear.response
-
-        if (includeManualCards) {
-            publicSearchStore.clearResponse()
-            publicSearchResponse = null
-            syncPendingOnly = false
-            showSync = false
-            showPublisher = false
-            archiveRevision++
-        }
-
-        showArchived = false
-        searchQuery = ""
-        showTimelineClearDialog = false
-        UnifiedDebugEventStore.record(
-            "TIMELINE_VISUAL_CLEARED_BY_USER",
-            context.packageName,
-            "externalTripsRemoved=${externalClear.externalTripsRemoved} includeManualCards=$includeManualCards manualVisualHidden=$manualVisualHidden publicSearchCleared=$includeManualCards passengerHistoryPreserved=true localTripsPreserved=true localBookingsPreserved=true externalBackingHistoryPreserved=$externalBackingHistoryPreserved externalBackingPublishableAsLocal=false sessionAccountsTouched=${externalClear.sessionAccountsTouched}",
-        )
-        onChanged(
-            if (includeManualCards) {
-                "Timeline zerada visualmente. Cards sincronizados, manuais, consulta pública e linhas de datas foram removidos da tela; os dados permanentes foram preservados."
-            } else {
-                "Cards sincronizados foram removidos da visualização. Passageiros e histórico permanente foram preservados."
-            },
-        )
-    }
-
-    val clearTimelineOperational: () -> Unit = {
-        val localTargets = physical.mapNotNull { entry ->
-            val persisted = entry.localTripId?.let(store::getTrip) ?: store.getTrip(entry.tripId)
-            persisted?.takeIf { trip ->
-                trip.isCanonicalLocalPublishSource() &&
-                    trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)
-            }
-        }.distinctBy(Trip::id)
-
-        val localEntryIds = localTargets.map(Trip::id).toSet()
-        val externalTargets = physical.mapNotNull { entry ->
-            val hasLocalCanonical = entry.localTripId?.let { it in localEntryIds } == true ||
-                entry.tripId in localEntryIds
-            if (hasLocalCanonical) null else store.publicExternalBindingFor(entry)
-        }.filter { binding ->
-            binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
-        }.distinctBy(PublicExternalTripBinding::remoteTripId)
-
-        localTargets.forEach { trip ->
-            store.saveTrip(
-                trip.copy(
-                    status = TripStatus.CANCELLED,
-                    publicBookingEnabled = false,
-                ),
-            )
-            tripMutationCoordinator.recordTombstone(
-                canonicalTripId = trip.id,
-                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
-                source = "TIMELINE_CLEAR",
-            )
-        }
-        externalTargets.forEach { binding ->
-            tripMutationCoordinator.recordExternalTombstone(
-                binding = binding,
-                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
-                source = "TIMELINE_CLEAR",
-            )
-        }
-
-        incrementalPublishScope.launch {
-            incrementalPublishMutex.withLock {
-                AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
-            }
-        }
-        UnifiedDebugEventStore.record(
-            "TIMELINE_OPERATIONAL_CLEAR_COMMITTED",
-            context.packageName,
-            "localTombstones=${localTargets.size} externalTombstones=${externalTargets.size} passengerHistoryPreserved=true bookingsPreserved=true blablaMutation=false fullSyncRequested=false",
-        )
-        clearTimeline(true)
-        onChanged(
-            "Viagens removidas da operação no Rota Certa. Tombstones da Agenda foram gravados; passageiros, histórico e identidades foram preservados. BlaBlaCar não foi alterado.",
-        )
-    }
-
-    if (showTimelineClearDialog) {
-        AlertDialog(
-            onDismissRequest = { showTimelineClearDialog = false },
-            title = { Text("Limpar Timeline") },
-            text = {
-                Text("Ocultar só muda a visualização. “Remover da operação + Agenda” cancela as viagens visíveis no Rota Certa e envia tombstones versionados para a Agenda; passageiros, UUIDs, reservas, histórico e auditoria permanecem. O BlaBlaCar não é alterado.")
-            },
-            confirmButton = {
-                Button(onClick = clearTimelineOperational) { Text("Remover da operação + Agenda") }
-            },
-            dismissButton = {
-                Column(horizontalAlignment = Alignment.End) {
-                    TextButton(onClick = { clearTimeline(false) }) { Text("Ocultar só sincronizadas") }
-                    TextButton(onClick = { clearTimeline(true) }) { Text("Só ocultar tudo") }
-                    TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
-                }
-            },
-        )
-    }
-
-    if (showPublisher) {
-        AgendaBatchPublisherPanel(onChanged = onChanged)
-    }
-
-    if (showSync) {
-        AlertDialog(
-            onDismissRequest = {
-                showSync = false
-                UnifiedDebugEventStore.record(
-                    "AGENDA_SYNC_PANEL_CLOSED",
-                    context.packageName,
-                    "source=modal_dismiss",
-                )
-            },
-            title = { Text("Sincronizar BlaBlaCar") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 650.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    BlaBlaCollectorPanel(
-            trips = trips,
-            stateStore = collectorStore,
-            currentResponse = collectorResponse,
-            onResult = { nextResponse ->
-                val previousResponse = collectorResponse
-                collectorResponse = nextResponse
-                AgendaBackgroundSync0392.enqueueImmediate(
-                    context = context,
-                    reason = "blablacar_collection_result",
-                )
-                val exactProfileUuid = autoSyncProfileUuid?.trim().orEmpty()
-                val exactTripId = autoSyncTripId?.trim().orEmpty()
-                val exactRequested = !forceAllSyncActive && exactProfileUuid.isNotBlank() && exactTripId.isNotBlank()
-
-                if (settingsLoaded && exactRequested) {
-                    val exactMatches = nextResponse.trips.filter { source ->
-                        !source.identity_conflict &&
-                            source.profile_uuid.trim().equals(exactProfileUuid, ignoreCase = true) &&
-                            source.trip_id?.trim() == exactTripId
-                    }
-                    when {
-                        exactMatches.size != 1 -> {
-                            UnifiedDebugEventStore.record(
-                                "BLABLACAR_EXACT_CARD_RESULT_BLOCKED",
-                                context.packageName,
-                                "profileUuidPresent=true tripIdPresent=true matches=${exactMatches.size} reason=strong_identity_not_unique agendaPublication=false",
-                            )
-                        }
-                        else -> {
-                            val source = exactMatches.single()
-                            val currentRevision = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
-                                source,
-                                appSettings.rotaCertaSeatAllocation,
-                            )
-                            val previousRevision = previousResponse?.trips.orEmpty()
-                                .singleOrNull { previous ->
-                                    !previous.identity_conflict &&
-                                        previous.profile_uuid.trim().equals(exactProfileUuid, ignoreCase = true) &&
-                                        previous.trip_id?.trim() == exactTripId
-                                }
-                                ?.let { previous ->
-                                    PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
-                                        previous,
-                                        appSettings.rotaCertaSeatAllocation,
-                                    )
-                                }
-                            if (previousRevision != currentRevision) {
-                                incrementalPublishScope.launch {
-                                    incrementalPublishMutex.withLock {
-                                        runCatching {
-                                            tripMutationCoordinator.recordExternalManualMutation(
-                                                sourceTrip = source,
-                                                configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
-                                            )
-                                            AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
-                                        }.onFailure { error ->
-                                            UnifiedDebugEventStore.record(
-                                                "PUBLIC_AGENDA_EXACT_CARD_OUTBOX_FAILED",
-                                                context.packageName,
-                                                "fullSyncRequested=false profileUuidPresent=true tripIdPresent=true " +
-                                                    AgendaFailureEvidence.describe(
-                                                        error = error,
-                                                        operation = "PUBLISH_EXACT_CARD_OUTBOX",
-                                                        component = "TripTimelineUi",
-                                                        method = "TripMutationCoordinator0387",
-                                                        trip = AgendaFailureTripContext(
-                                                            tripKey = seatSyncDiagnosticKey(source.profile_uuid + "|" + source.trip_id.orEmpty()),
-                                                            canonicalIdentity = "strong_external_identity",
-                                                            publicIdentity = "<resolved_by_outbox>",
-                                                            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
-                                                            route = listOfNotNull(
-                                                                source.actual_departure?.takeIf(String::isNotBlank) ?: source.search_from?.takeIf(String::isNotBlank),
-                                                                source.actual_arrival?.takeIf(String::isNotBlank) ?: source.search_to?.takeIf(String::isNotBlank),
-                                                            ).joinToString(" -> "),
-                                                            date = source.date,
-                                                            time = source.departure_time.orEmpty(),
-                                                            revision = currentRevision,
-                                                        ),
-                                                    ),
-                                            )
-                                        }
-                                    }
-                                }
-                            } else {
-                                UnifiedDebugEventStore.record(
-                                    "BLABLACAR_EXACT_CARD_NO_PUBLIC_DELTA",
-                                    context.packageName,
-                                    "profileUuidPresent=true tripIdPresent=true semanticChanged=false agendaPublication=false",
-                                )
-                            }
-                        }
-                    }
-                } else if (settingsLoaded) {
-                    UnifiedDebugEventStore.record(
-                        "BLABLACAR_COLLECTION_RESULT_STORED",
-                        context.packageName,
-                        "scope=collection_only exactCard=false agendaPublication=false automaticMutation=false",
-                    )
-                }
-            },
-            onChanged = onChanged,
-            autoSyncToken = autoSyncToken,
-            autoSyncProfileUuid = if (forceAllSyncActive) null else autoSyncProfileUuid,
-            autoSyncTripId = if (forceAllSyncActive) null else autoSyncTripId,
-        )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showSync = false
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_SYNC_PANEL_CLOSED",
-                            context.packageName,
-                            "source=modal_button",
-                        )
-                    },
-                ) { Text("Fechar") }
-            },
-        )
-    }
+    val automaticSyncStatus0398 = AgendaBackgroundSyncConfig0392.status(context)
+    AgendaAutomaticSyncTimelineStatus0398(automaticSyncStatus0398)
 
     OutlinedTextField(
         value = searchQuery,
@@ -808,28 +505,6 @@ fun TripTimelineScreen(
                         referenceRadiusKm = directionReference.radiusKm,
                         directionGeo = directionGeo,
                         currentCoordinate = currentCoordinate,
-                        onManualSeatSyncRequested = {
-                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-                            val tripId = entry.blablaTripId?.trim().orEmpty()
-                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
-                                autoSyncProfileUuid = profileUuid
-                                autoSyncTripId = tripId
-                                onRequestBlaBlaSync()
-                            } else {
-                                onChanged("Sincronização BlaBlaCar indisponível: este card não possui profile UUID + tripId fortes.")
-                            }
-                        },
-                        onSyncExactCard = {
-                            val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-                            val tripId = entry.blablaTripId?.trim().orEmpty()
-                            if (profileUuid.isNotBlank() && tripId.isNotBlank()) {
-                                autoSyncProfileUuid = profileUuid
-                                autoSyncTripId = tripId
-                                onRequestBlaBlaSync()
-                            } else {
-                                onChanged("Sincronização individual indisponível: identidade forte da publicação ausente.")
-                            }
-                        },
                         focusedBookingId = focusedBookingId,
                     ) {
                         archiveStore.setArchived(entry, !archived)
@@ -848,6 +523,12 @@ fun TripTimelineScreen(
                 }
                 publicCardIndex++
             }
+        }
+        item(key = "timeline-download-0398") {
+            AgendaTimelineDownloadButton0398(
+                entries = visibleEntries,
+                onChanged = onChanged,
+            )
         }
             }
         }
@@ -1299,8 +980,6 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
-    onManualSeatSyncRequested: () -> Unit,
-    onSyncExactCard: () -> Unit,
     focusedBookingId: String? = null,
     onArchive: () -> Unit,
 ) {
@@ -1319,16 +998,6 @@ private fun TimelineEntryCard(
     val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
-
-    fun requestSeatOnlySync(@Suppress("UNUSED_PARAMETER") selectedTrip: Trip?, reason: String) {
-        UnifiedDebugEventStore.record(
-            "EXTERNAL_SEAT_WRITE_SKIPPED",
-            context.packageName,
-            "reason=independent_channel_inventory source=$reason trip=${entry.tripId}",
-        )
-        onChanged("Sincronizando a leitura BlaBlaCar sem alterar vagas externas.")
-        onManualSeatSyncRequested()
-    }
 
     Card(
         modifier = Modifier
@@ -1431,8 +1100,6 @@ private fun TimelineEntryCard(
                 store = store,
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
-                onSyncExactCard = onSyncExactCard,
-                onSyncSeatsOnly = { requestSeatOnlySync(trip, "manual_card_shortcut") },
                 focusedBookingId = focusedBookingId,
                 onAddManualPassenger = {
                     runCatching { prepareTimelineTripForPassenger(entry, store) }
@@ -1523,7 +1190,18 @@ private fun TimelineEntryCard(
             trip = selectedTrip,
             store = store,
             onChanged = onChanged,
-            onTargetSync = { requestSeatOnlySync(selectedTrip, "automatic_after_passenger_change") },
+            onTargetSync = {
+                runCatching {
+                    mutationCoordinator.recordLocalMutation(
+                        canonicalTripId = selectedTrip.id,
+                        mutationType = "PASSENGER_MUTATION",
+                        source = "TIMELINE_QUICK_PASSENGER",
+                    )
+                    AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
+                }.onFailure { error ->
+                    onChanged("Alteração salva; atualização automática pendente: ${error.message ?: "erro de persistência"}")
+                }
+            },
             onDismiss = { directPassengerTrip = null },
         )
     }
@@ -1657,6 +1335,14 @@ private fun openBlaBlaHref(context: Context, entry: TripTimelineEntry, href: Str
 private class TripTimelineArchiveStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    fun clearLegacyBulkHiddenOnce0398() {
+        if (prefs.getBoolean(KEY_BULK_HIDE_MIGRATED_0398, false)) return
+        prefs.edit()
+            .clear()
+            .putBoolean(KEY_BULK_HIDE_MIGRATED_0398, true)
+            .commit()
+    }
+
     fun isArchived(entry: TripTimelineEntry): Boolean = aliases(entry).any { key -> prefs.getBoolean(key, false) }
 
     fun setArchived(entry: TripTimelineEntry, archived: Boolean) {
@@ -1704,5 +1390,6 @@ private class TripTimelineArchiveStore(context: Context) {
 
     companion object {
         private const val PREFS = "rota_certa_timeline_archive_v1"
+        private const val KEY_BULK_HIDE_MIGRATED_0398 = "bulk_hide_removed_0398"
     }
 }
