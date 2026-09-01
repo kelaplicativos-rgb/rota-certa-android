@@ -373,22 +373,24 @@ class TripStore(context: Context) {
             }
         }
         if (changed) {
-            prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).apply()
+            require(prefs.edit().putString(tripsKey, json.encodeToString(nextTrips)).commit()) {
+                "Falha ao persistir revisão canônica derivada de reservas."
+            }
         }
     }
 
-    fun deleteBooking(id: String) {
+    fun deleteBooking(id: String): Unit = synchronized(CANONICAL_LOCK) {
         val current = bookings()
-        val booking = current.firstOrNull { it.id == id }
+        val booking = current.firstOrNull { it.id == id } ?: return@synchronized
         val next = current.filterNot { it.id == id }
-        prefs.edit().putString(bookingsKey, json.encodeToString(next)).apply()
-        booking?.let {
-            refreshCanonicalTripStateBatch0395(
-                tripIds = setOf(it.tripId),
-                bookingSnapshot = next,
-                nowMillis = System.currentTimeMillis(),
-            )
+        require(prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit()) {
+            "Falha ao remover reserva do estado canônico."
         }
+        refreshCanonicalTripStateBatch0395(
+            tripIds = setOf(booking.tripId),
+            bookingSnapshot = next,
+            nowMillis = System.currentTimeMillis(),
+        )
     }
 
     fun onlineSettings(): TripOnlineSettings {
