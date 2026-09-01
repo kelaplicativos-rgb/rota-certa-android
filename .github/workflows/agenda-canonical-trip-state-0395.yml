@@ -1,4 +1,5 @@
 name: Agenda canonical trip state 0.1.395
+# Exact-SHA validation for the canonical trip-state branch.
 
 on:
   push:
