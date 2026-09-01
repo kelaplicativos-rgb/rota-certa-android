@@ -589,7 +589,12 @@ internal class TripMutationCoordinator0387(
             operation = TripPublicationOperation0387.TOMBSTONE,
             mutationType = mutationType,
             source = source,
-            snapshot = TripPublicationSnapshot0387(trip = trip, bookings = bookings, semanticSignature = signature),
+            snapshot = TripPublicationSnapshot0387(
+                trip = trip,
+                bookings = bookings,
+                seatAllocationVersion = trip.seatAllocationVersionUsed,
+                semanticSignature = signature,
+            ),
         )?.also { event ->
             recordEvent("TRIP_MUTATION_TOMBSTONE_ENQUEUED", event, "historyPreserved=true blablaMutation=false")
         }
