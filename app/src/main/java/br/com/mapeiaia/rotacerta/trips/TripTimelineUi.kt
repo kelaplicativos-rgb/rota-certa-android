@@ -15,8 +15,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -494,7 +497,25 @@ fun TripTimelineScreen(
     }
 
     if (showSync) {
-        BlaBlaCollectorPanel(
+        AlertDialog(
+            onDismissRequest = {
+                showSync = false
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_PANEL_CLOSED",
+                    context.packageName,
+                    "source=modal_dismiss",
+                )
+            },
+            title = { Text("Sincronizar BlaBlaCar") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 650.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    BlaBlaCollectorPanel(
             trips = trips,
             stateStore = collectorStore,
             currentResponse = collectorResponse,
@@ -586,6 +607,22 @@ fun TripTimelineScreen(
             autoSyncToken = autoSyncToken,
             autoSyncProfileUuid = if (forceAllSyncActive) null else autoSyncProfileUuid,
             autoSyncTripId = if (forceAllSyncActive) null else autoSyncTripId,
+        )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showSync = false
+                        UnifiedDebugEventStore.record(
+                            "AGENDA_SYNC_PANEL_CLOSED",
+                            context.packageName,
+                            "source=modal_button",
+                        )
+                    },
+                ) { Text("Fechar") }
+            },
         )
     }
 
