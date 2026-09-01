@@ -152,7 +152,7 @@ class TripStore(context: Context) {
             TripStatus.STARTING,
             TripStatus.ACTIVE,
         )
-        val allBookings = bookings()
+        val bookingsByTrip = bookings().groupBy(Booking::tripId)
         val changedTripIds = linkedSetOf<String>()
         val currentTrips = trips()
         val reconciledTrips = currentTrips.map { trip ->
@@ -165,7 +165,7 @@ class TripStore(context: Context) {
                     rotaCertaSeatAllocation = rotaCertaSeatAllocation,
                     seatAllocationVersionUsed = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
                 )
-                val derivedCapacity = operationalInventoryCapacity(withAllocation, allBookings)
+                val derivedCapacity = operationalInventoryCapacity(withAllocation, bookingsByTrip[trip.id].orEmpty())
                 val changed = trip.capacity != derivedCapacity ||
                     trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation ||
                     trip.seatAllocationVersionUsed < seatAllocationVersion
