@@ -291,6 +291,13 @@ internal class BlaBlaSyncCompletionGate {
     }
 }
 
+internal const val BLABLA_TRIP_DETAIL_CAPTURE_TIMEOUT_MS_0389 = 10_000L
+
+internal fun blaBlaDynamicCollectionTimeoutMs0389(request: BlaBlaBrowserRequest): Long = when (request) {
+    BlaBlaBrowserRequest.TRIP_DETAIL -> BLABLA_TRIP_DETAIL_CAPTURE_TIMEOUT_MS_0389
+    else -> 0L
+}
+
 internal fun nextBlaBlaCandidateIndex(current: Int, size: Int): Int = when {
     size <= 0 -> 0
     current < 0 -> 0
@@ -2484,6 +2491,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             deserializer = serializer<T>(),
             arguments = arguments,
             reason = "dynamic_account_collection",
+            timeoutMs = blaBlaDynamicCollectionTimeoutMs0389(request),
         ) { result ->
             callback(result)
         }
