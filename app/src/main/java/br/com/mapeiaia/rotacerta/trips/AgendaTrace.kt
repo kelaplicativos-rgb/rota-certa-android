@@ -37,7 +37,14 @@ class AgendaTraceProvider : ContentProvider() {
         val application = context?.applicationContext as? Application ?: return false
         AgendaTrace.install(application)
         // Only schedules durable WorkManager work; no network runs on the provider/main thread.
-        AgendaBackgroundSync0392.ensureScheduled(application)
+        runCatching { AgendaBackgroundSync0392.ensureScheduled(application) }
+            .onFailure { error ->
+                UnifiedDebugEventStore.record(
+                    "AGENDA_BACKGROUND_SYNC_SCHEDULE_FAILED_0392",
+                    application.packageName,
+                    "reason=provider_initialization error=${error.javaClass.simpleName}",
+                )
+            }
         return true
     }
 
