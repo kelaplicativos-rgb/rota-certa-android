@@ -1,14 +1,10 @@
 {
-  "request_id": "live-2026-09-08-sa-stl-identity",
+  "request_id": "live-2026-09-07-sa-stl-barbosa-identity",
   "from": "Santo André, SP, Brasil",
   "to": "São Thomé das Letras, MG, Brasil",
-  "date": "2026-09-08",
+  "date": "2026-09-07",
   "seats": 1,
   "identity_targets": [
-    {
-      "name": "Ezequiel",
-      "uuid": "7371f028-9c55-4903-8444-308015823efd"
-    },
     {
       "name": "Barbosa",
       "uuid": "175a7068-50d8-40c3-a27a-214b9c6e0461"
