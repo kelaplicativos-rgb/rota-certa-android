@@ -59,7 +59,6 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
-          grep -Fxq 'app/src/main/java/br/com/mapeia/rotacerta/trips/AgendaBackgroundSync0392.kt' changed-files.txt 2>/dev/null || true
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt' changed-files.txt
