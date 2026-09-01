@@ -95,9 +95,15 @@ class AgendaHeaderNavigation0396Test {
     fun rootStateSurvivesRecompositionAndSubscreensReturnHierarchically() {
         assertTrue(activity.contains("var screen by rememberSaveable"))
         assertTrue(activity.contains("var parentRootScreen0396 by rememberSaveable"))
-        assertTrue(activity.contains("root = screen.isAgendaRoot0396()"))
+        assertTrue(activity.contains("val passengerSubscreenActive0396"))
+        assertTrue(activity.contains("root = headerIsRoot0396"))
+        assertTrue(activity.contains("\"Histórico do passageiro\""))
+        assertTrue(activity.contains("passengerExternalBackToken0396 += 1"))
+        assertTrue(activity.contains("onHierarchyChanged = { passengerSubscreenOpen0396 = it }"))
         assertTrue(activity.contains("screen = parentRootScreen0396"))
         assertTrue(activity.contains("uiCommand0396 = timelineUiCommand0396"))
         assertTrue(timeline.contains("LaunchedEffect(uiCommandToken0396, uiCommand0396)"))
+        assertTrue(passengers.contains("externalBackToken: Int = 0"))
+        assertTrue(passengers.contains("onHierarchyChanged(historyProfileId != null)"))
     }
 }
