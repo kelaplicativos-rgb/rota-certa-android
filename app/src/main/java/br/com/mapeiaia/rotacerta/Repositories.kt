@@ -131,6 +131,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun saveSettings(settings: AppSettings) {
         var seatAllocationChanged = false
+        var committedSeatAllocation = settings.rotaCertaSeatAllocation.coerceIn(0, 999)
+        var committedSeatAllocationVersion = 0L
         context.dataStore.edit { prefs ->
             prefs[homeAddress] = settings.homeAddress
             prefs[alternativeAddress] = settings.alternativeAddress
@@ -142,11 +144,13 @@ class SettingsRepository(private val context: Context) {
             val previousSeatAllocationVersion = (prefs[rotaCertaSeatAllocationVersion] ?: 0L).coerceAtLeast(0L)
             seatAllocationChanged = nextSeatAllocation != previousSeatAllocation
             prefs[rotaCertaSeatAllocation] = nextSeatAllocation
-            prefs[rotaCertaSeatAllocationVersion] = if (seatAllocationChanged) {
+            committedSeatAllocation = nextSeatAllocation
+            committedSeatAllocationVersion = if (seatAllocationChanged) {
                 previousSeatAllocationVersion + 1L
             } else {
                 previousSeatAllocationVersion
             }
+            prefs[rotaCertaSeatAllocationVersion] = committedSeatAllocationVersion
             prefs[homeRadiusKm] = settings.homeRadiusKm
             prefs[alternativeRadiusKm] = settings.alternativeRadiusKm
             prefs[desiredKeywords] = settings.desiredKeywords
@@ -174,6 +178,11 @@ class SettingsRepository(private val context: Context) {
             settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
         }
         if (seatAllocationChanged) {
+            AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
+                context = context.applicationContext,
+                rotaCertaSeatAllocation = committedSeatAllocation,
+                seatAllocationVersion = committedSeatAllocationVersion,
+            )
             AgendaBackgroundSync0392.enqueueImmediate(context.applicationContext, "tenant_seat_allocation_changed")
         }
     }
