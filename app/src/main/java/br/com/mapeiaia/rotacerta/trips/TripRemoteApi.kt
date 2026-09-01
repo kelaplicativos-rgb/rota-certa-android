@@ -366,6 +366,7 @@ data class DriverCapacitySnapshotClaim(
 data class DriverCapacitySnapshotRequest(
     val trip: Trip,
     val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
+    val protectedBookings: List<Booking> = emptyList(),
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
@@ -566,6 +567,7 @@ class TripRemoteApi(
         remoteTripId: String,
         trip: Trip,
         claims: List<Booking>,
+        protectedBookings: List<Booking> = emptyList(),
         claimNamespace: String,
         snapshotRevision: String,
         entityRevision: Long = 0L,
@@ -593,6 +595,7 @@ class TripRemoteApi(
                         holdExpiresAtMillis = booking.holdExpiresAtMillis,
                     )
                 },
+                protectedBookings = protectedBookings,
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
                 sourceComplete = true,
