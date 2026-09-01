@@ -451,6 +451,61 @@ fun TripTimelineScreen(
         )
     }
 
+    val clearTimelineOperational: () -> Unit = {
+        val localTargets = physical.mapNotNull { entry ->
+            val persisted = entry.localTripId?.let(store::getTrip) ?: store.getTrip(entry.tripId)
+            persisted?.takeIf { trip ->
+                trip.isCanonicalLocalPublishSource() &&
+                    trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)
+            }
+        }.distinctBy(Trip::id)
+
+        val localEntryIds = localTargets.map(Trip::id).toSet()
+        val externalTargets = physical.mapNotNull { entry ->
+            val hasLocalCanonical = entry.localTripId?.let { it in localEntryIds } == true ||
+                entry.tripId in localEntryIds
+            if (hasLocalCanonical) null else store.publicExternalBindingFor(entry)
+        }.filter { binding ->
+            binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
+        }.distinctBy(PublicExternalTripBinding::remoteTripId)
+
+        localTargets.forEach { trip ->
+            store.saveTrip(
+                trip.copy(
+                    status = TripStatus.CANCELLED,
+                    publicBookingEnabled = false,
+                ),
+            )
+            tripMutationCoordinator.recordTombstone(
+                canonicalTripId = trip.id,
+                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
+                source = "TIMELINE_CLEAR",
+            )
+        }
+        externalTargets.forEach { binding ->
+            tripMutationCoordinator.recordExternalTombstone(
+                binding = binding,
+                mutationType = "TIMELINE_OPERATIONAL_CLEAR",
+                source = "TIMELINE_CLEAR",
+            )
+        }
+
+        incrementalPublishScope.launch {
+            incrementalPublishMutex.withLock {
+                tripMutationCoordinator.drainPending()
+            }
+        }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_OPERATIONAL_CLEAR_COMMITTED",
+            context.packageName,
+            "localTombstones=${localTargets.size} externalTombstones=${externalTargets.size} passengerHistoryPreserved=true bookingsPreserved=true blablaMutation=false fullSyncRequested=false",
+        )
+        clearTimeline(true)
+        onChanged(
+            "Viagens removidas da operação no Rota Certa. Tombstones da Agenda foram gravados; passageiros, histórico e identidades foram preservados. BlaBlaCar não foi alterado.",
+        )
+    }
+
     ResponsiveTripActions(
         actions = listOf(
             ResponsiveTripAction("👥 Passageiros", onClick = onOpenPassengers),
@@ -484,15 +539,16 @@ fun TripTimelineScreen(
             onDismissRequest = { showTimelineClearDialog = false },
             title = { Text("Limpar Timeline") },
             text = {
-                Text("Limpar aqui afeta somente a visualização. Nenhum passageiro, UUID, histórico ou reserva particular será apagado. Deseja ocultar também os cards manuais/por fora?")
+                Text("Ocultar só muda a visualização. “Remover da operação + Agenda” cancela as viagens visíveis no Rota Certa e envia tombstones versionados para a Agenda; passageiros, UUIDs, reservas, histórico e auditoria permanecem. O BlaBlaCar não é alterado.")
             },
             confirmButton = {
-                Button(onClick = { clearTimeline(false) }) { Text("Só sincronizadas") }
+                Button(onClick = clearTimelineOperational) { Text("Remover da operação + Agenda") }
             },
             dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { clearTimeline(false) }) { Text("Ocultar só sincronizadas") }
+                    TextButton(onClick = { clearTimeline(true) }) { Text("Só ocultar tudo") }
                     TextButton(onClick = { showTimelineClearDialog = false }) { Text("Cancelar") }
-                    TextButton(onClick = { clearTimeline(true) }) { Text("Tudo da tela") }
                 }
             },
         )
