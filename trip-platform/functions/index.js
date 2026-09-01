@@ -2655,8 +2655,7 @@ async function updateDriverTrip(req, res, token) {
         };
       }
       if (requestedVersioned && requestedPublicationRevision === currentPublicationRevision) {
-        const sameEvent = (!currentPublicationEventId && !requestedPublicationEventId) ||
-          (currentPublicationEventId && requestedPublicationEventId && currentPublicationEventId === requestedPublicationEventId);
+        const sameEvent = currentPublicationEventId === requestedPublicationEventId;
         const sameTombstoneKind = (previous.publicationTombstone === true) === requestedTombstone;
         if (sameEvent && sameTombstoneKind) {
           return {
