@@ -66,7 +66,7 @@ jobs:
           exit 0
           SH
           chmod +x /tmp/run_one.sh
-          find collector/audit-september-2026/requests -name '*.json' -print0 | sort -z | xargs -0 -n1 -P2 /tmp/run_one.sh
+          find collector/audit-september-2026/requests -name '*.json' -print0 | sort -z | xargs -0 -n1 -P1 /tmp/run_one.sh
 
       - name: Aggregate Barbosa and Ezequiel evidence
         run: |
