@@ -139,8 +139,6 @@ internal fun EnhancedPassengerTimelineSection(
     store: TripStore,
     currentCoordinate: Coordinate?,
     onChanged: (String) -> Unit,
-    onSyncExactCard: (() -> Unit)? = null,
-    onSyncSeatsOnly: (() -> Unit)? = null,
     onAddManualPassenger: (() -> Unit)? = null,
     focusedBookingId: String? = null,
 ) {
@@ -196,7 +194,7 @@ internal fun EnhancedPassengerTimelineSection(
     @Suppress("UNUSED_VARIABLE")
     val completionRefresh = completionRevision
     if (hasExternalTripActionEvidence(entry)) {
-        TripBlaBlaTripActionRow(entry, onSyncExactCard, onSyncSeatsOnly, onAddManualPassenger)
+        TripBlaBlaTripActionRow(entry, onAddManualPassenger)
     }
     if (renderSnapshot == null) {
         Text("Carregando passageiros…", style = MaterialTheme.typography.bodySmall)
@@ -1811,8 +1809,6 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
 @Composable
 private fun TripBlaBlaTripActionRow(
     entry: TripTimelineEntry,
-    onSyncExactCard: (() -> Unit)?,
-    onSyncSeatsOnly: (() -> Unit)?,
     onAddManualPassenger: (() -> Unit)?,
 ) {
     val context = LocalContext.current
@@ -1851,7 +1847,7 @@ private fun TripBlaBlaTripActionRow(
                     if (!openPublicTripBlaBla(context, entry.blablaPublicHref, entry.blablaTripId)) {
                         Toast.makeText(
                             context,
-                            "Link público desta viagem não confere com o card. Sincronize novamente.",
+                            "Link público desta viagem não confere com o card. Aguarde a próxima atualização automática.",
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -1864,7 +1860,7 @@ private fun TripBlaBlaTripActionRow(
                 if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
                     Toast.makeText(
                         context,
-                        "Link direto da viagem indisponível. Sincronize o BlaBlaCar para recuperar a referência desta publicação.",
+                        "Link direto da viagem indisponível. A referência será recuperada pela atualização automática quando houver evidência suficiente.",
                         Toast.LENGTH_LONG,
                     ).show()
                 }
