@@ -495,7 +495,7 @@ internal fun EnhancedPassengerTimelineSection(
                                     }.onSuccess { response ->
                                         store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
                                         BookingRealtimeEvents0356.notifyChanged()
-                                        onSyncSeatsOnly?.invoke()
+                                        // BlaBlaCar is never synchronized automatically after an internal mutation.
                                         onChanged("Reserva aprovada ✅")
                                     }.onFailure { error ->
                                         onChanged(
@@ -556,7 +556,7 @@ internal fun EnhancedPassengerTimelineSection(
                                         }.onSuccess { response ->
                                             store.saveBooking(response.booking.toLocalBooking(selectedTrip.id, booking))
                                             BookingRealtimeEvents0356.notifyChanged()
-                                            onSyncSeatsOnly?.invoke()
+                                            // BlaBlaCar is never synchronized automatically after an internal mutation.
                                             rejectConfirmOpen = false
                                             rejectReason = ""
                                             onChanged("Solicitação recusada")
@@ -873,7 +873,7 @@ internal fun EnhancedPassengerTimelineSection(
                                     store.saveBooking(updated)
                                     editManualRow = null
                                     onChanged("Reserva Rota Certa atualizada pelo painel administrativo. Vagas por trecho recalculadas.")
-                                    onSyncSeatsOnly?.invoke()
+                                    // BlaBlaCar is never synchronized automatically after an internal mutation.
                                 }.onFailure { error ->
                                     onChanged("Não foi possível atualizar a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
                                 }
@@ -883,7 +883,7 @@ internal fun EnhancedPassengerTimelineSection(
                         store.saveBooking(updated)
                         editManualRow = null
                         onChanged("Passageiro atualizado. Ocupação física por trecho recalculada.")
-                        onSyncSeatsOnly?.invoke()
+                        // BlaBlaCar is never synchronized automatically after an internal mutation.
                     }
                 },
                 onError = onChanged,
