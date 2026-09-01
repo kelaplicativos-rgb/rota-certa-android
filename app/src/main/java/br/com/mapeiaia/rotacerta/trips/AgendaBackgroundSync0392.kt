@@ -188,12 +188,12 @@ internal object AgendaBackgroundSync0392 {
 
 class AgendaBackgroundSyncWorker0392(
     appContext: Context,
-    workerParameters: WorkerParameters,
-) : CoroutineWorker(appContext, workerParameters) {
+    private val parameters: WorkerParameters,
+) : CoroutineWorker(appContext, parameters) {
     override suspend fun doWork(): Result {
         val result = AgendaBackgroundSync0392.runCycle(
             context = applicationContext,
-            reason = AgendaBackgroundSync0392.reason(workerParams),
+            reason = AgendaBackgroundSync0392.reason(parameters),
         )
         return if (result.failures > 0 && runAttemptCount < 5) Result.retry() else Result.success()
     }
