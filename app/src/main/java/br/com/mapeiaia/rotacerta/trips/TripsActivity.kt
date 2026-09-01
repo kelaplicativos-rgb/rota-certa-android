@@ -428,7 +428,7 @@ private fun TripApp(
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
     val requestFullTimelineRefresh = {
-        if (screen == TripScreen.TIMELINE && !refreshAllRunning) {
+        if (shouldStartAgendaFullRefresh0388(screen == TripScreen.TIMELINE, refreshAllRunning)) {
             AgendaTrace.event(activity, "USER_SYNC_ALL", "source=pull_to_refresh", traceId)
             AgendaSyncCrashTraceStore.arm(activity)
             AgendaSyncCrashTraceStore.checkpoint(activity, "timeline_pull_requested")
