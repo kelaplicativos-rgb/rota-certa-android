@@ -61,8 +61,8 @@ test("single exact-card collector change flows through durable per-trip outbox b
   assert.match(android, /fullSyncRequested=false/);
   assert.match(timeline, /onResult = \{ nextResponse ->/);
   assert.match(timeline, /recordExternalManualMutation/);
-  assert.match(timeline, /tripMutationCoordinator\.drainPending\(\)/);
-  assert.match(timeline, /incrementalPublishMutex\.withLock/);
+  assert.doesNotMatch(timeline, /tripMutationCoordinator\.drainPending\(\)/);
+  assert.match(timeline, /AgendaBackgroundSync0392\.enqueueImmediate/);
   assert.match(outbox, /TripPublicationOperation0387\.UPSERT_EXTERNAL/);
   assert.match(outbox, /PublicAgendaAutoSync0300\.syncExternalTripIncremental/);
   const onResult = timeline.indexOf("onResult = { nextResponse ->");
