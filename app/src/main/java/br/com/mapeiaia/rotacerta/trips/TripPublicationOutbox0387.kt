@@ -27,6 +27,7 @@ internal data class TripPublicationSnapshot0387(
     val bookings: List<Booking> = emptyList(),
     val externalTrip: BlaBlaCollectorTrip? = null,
     val externalAccountId: String = "",
+    val configuredRotaCertaSeatAllocation: Int = 0,
     val semanticSignature: String,
 )
 
@@ -330,6 +331,7 @@ internal class TripMutationCoordinator0387(
             snapshot = TripPublicationSnapshot0387(
                 externalTrip = sourceTrip,
                 externalAccountId = accountId,
+                configuredRotaCertaSeatAllocation = allocation,
                 semanticSignature = signature,
             ),
         )?.also { event ->
@@ -394,7 +396,7 @@ internal class TripMutationCoordinator0387(
                             context = appContext,
                             store = store,
                             source = sourceTrip,
-                            configuredRotaCertaSeatAllocation = 0,
+                            configuredRotaCertaSeatAllocation = event.snapshot.configuredRotaCertaSeatAllocation,
                             entityRevision = event.revision,
                             outboxEventId = event.id,
                             externalAccountId = event.snapshot.externalAccountId,
