@@ -238,6 +238,8 @@ private fun TripApp(
     }
     var screen by rememberSaveable { mutableStateOf(initialScreen0396) }
     var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }
+    var passengerSubscreenOpen0396 by rememberSaveable { mutableStateOf(false) }
+    var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
     var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
     var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
     var selectedId by remember { mutableStateOf(initialTripId) }
@@ -532,6 +534,13 @@ private fun TripApp(
             },
         )
     }
+    val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
+    val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
+    val headerLabel0396 = if (passengerSubscreenActive0396) {
+        "Histórico do passageiro"
+    } else {
+        screen.agendaHeaderLabel0396()
+    }
     val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
 
     AgendaModuleDrawer0396(
@@ -543,6 +552,7 @@ private fun TripApp(
                 AgendaRootSection0396.PASSENGERS -> TripScreen.PASSENGERS
             }
             parentRootScreen0396 = target
+            passengerSubscreenOpen0396 = false
             screen = target
         },
     ) { openDrawer0396 ->
@@ -563,13 +573,13 @@ private fun TripApp(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 AgendaModuleHeader0396(
-                    sectionLabel = screen.agendaHeaderLabel0396(),
-                    root = screen.isAgendaRoot0396(),
+                    sectionLabel = headerLabel0396,
+                    root = headerIsRoot0396,
                     onNavigationClick = {
-                        if (screen.isAgendaRoot0396()) {
-                            openDrawer0396()
-                        } else {
-                            screen = parentRootScreen0396
+                        when {
+                            passengerSubscreenActive0396 -> passengerExternalBackToken0396 += 1
+                            screen.isAgendaRoot0396() -> openDrawer0396()
+                            else -> screen = parentRootScreen0396
                         }
                     },
                     overflowActions = headerActions0396,
@@ -765,6 +775,8 @@ private fun TripApp(
                     onBack = { screen = TripScreen.TIMELINE },
                     onChanged = { text -> refresh(); message = text },
                     showHeader = false,
+                    externalBackToken = passengerExternalBackToken0396,
+                    onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
