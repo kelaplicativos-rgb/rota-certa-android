@@ -543,16 +543,22 @@ internal object AgendaBackgroundSync0392 {
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Throwable) {
-                    failures++
+                    val backendUpgradePending = error is TripRemoteApiException && error.httpStatus == 404
+                    if (!backendUpgradePending) failures++
                     UnifiedDebugEventStore.record(
-                        "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_FAILED_0398",
+                        if (backendUpgradePending) {
+                            "PUBLIC_AGENDA_SEAT_ALLOCATION_BACKEND_PENDING_0398"
+                        } else {
+                            "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_FAILED_0398"
+                        },
                         appContext.packageName,
-                        AgendaFailureEvidence.describe(
-                            error = error,
-                            operation = "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE",
-                            component = "AgendaBackgroundSync0392",
-                            method = "runTenantCycle",
-                        ),
+                        "backendUpgradePending=$backendUpgradePending " +
+                            AgendaFailureEvidence.describe(
+                                error = error,
+                                operation = "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE",
+                                component = "AgendaBackgroundSync0392",
+                                method = "runTenantCycle",
+                            ),
                     )
                 }
             }
