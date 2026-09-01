@@ -4831,6 +4831,7 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
       segmentLoads: result.segmentLoads,
       changed: result.changed,
       passengerNotified: result.changed,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "booking_decision_failed", error.message || "Não foi possível resolver a solicitação.");
@@ -5027,6 +5028,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
       booking: result.booking,
       changed: result.changed,
       passengerNotified: result.changed,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
     });
   } catch (error) {
     return fail(
@@ -5202,6 +5204,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       availableSeats: result.availableSeats,
       changed: result.changed,
       passengerNotified: result.notified,
+      entityRevision: Math.max(0, Number(result.entityRevision || 0)),
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "protected_booking_admin_failed", error.message || "Falha ao administrar a reserva.");
