@@ -30,6 +30,7 @@ const request = {
   seats: 1,
   identity_targets: [
     { name: 'Ezequiel S', uuid: '7371f028-9c55-4903-8444-308015823efd' },
+    { name: 'Ezequiel', uuid: '7371f028-9c55-4903-8444-308015823efd' },
     { name: 'Barbosa', uuid: '175a7068-50d8-40c3-a27a-214b9c6e0461' }
   ]
 };

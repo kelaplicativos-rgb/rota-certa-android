@@ -180,9 +180,10 @@ try {
   const zeroResults = /Ainda não existem viagens entre essas cidades/i.test(body) || /0 viagem disponível/i.test(body);
   const demand = extractDemand(body);
 
-  const rawCards = await page.locator('[data-testid="e2e-srp-card"]').evaluateAll((cards) => cards.map((card) => {
+  const rawCards = await page.locator('[data-testid="e2e-srp-card"]').evaluateAll((cards) => cards.map((card, card_index) => {
     const text = (selector) => card.querySelector(selector)?.textContent?.trim() || null;
     return {
+      card_index,
       driver_name: text('[data-testid="e2e-tripcard-driver-name"]'),
       departure_time: text('[data-testid="e2e-itinerary-departure-time"]'),
       arrival_time: text('[data-testid="e2e-itinerary-arrival-time"]'),
@@ -202,6 +203,7 @@ try {
     .map((card) => {
       const flags = detectFlags(card.text);
       return {
+        card_index: card.card_index,
         driver_name: card.driver_name,
         departure_time: card.departure_time,
         arrival_time: card.arrival_time,
@@ -222,17 +224,36 @@ try {
       .filter((target) => target?.name && target?.uuid)
       .map((target) => [fold(target.name), { name: String(target.name), uuid: String(target.uuid).toLowerCase() }]),
   );
+  const searchHtmlSnapshot = await page.content();
 
   for (const trip of trips) {
     const target = identityTargets.get(fold(trip.driver_name));
-    if (!target || !trip.trip_href) continue;
-    const detailPage = await context.newPage();
+    if (!target) continue;
+
+    let detailPage = page;
+    let ownsDetailPage = false;
+    let detailNav = null;
     try {
-      const detailUrl = new URL(trip.trip_href, 'https://www.blablacar.com.br').toString();
-      const detailNav = await detailPage.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      if (trip.trip_href) {
+        detailPage = await context.newPage();
+        ownsDetailPage = true;
+        const detailUrl = new URL(trip.trip_href, 'https://www.blablacar.com.br').toString();
+        detailNav = await detailPage.goto(detailUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      } else {
+        const card = page.locator('[data-testid="e2e-srp-card"]').nth(trip.card_index);
+        const beforeUrl = page.url();
+        await card.scrollIntoViewIfNeeded();
+        const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
+        await card.click({ timeout: 15_000 });
+        detailNav = await navigation;
+        if (page.url() === beforeUrl) throw new Error('card_click_did_not_navigate');
+      }
+
       await detailPage.waitForTimeout(5_000);
+      const detailHtml = await detailPage.content();
       const safeDetailName = fold(target.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      await fs.writeFile(`collector/results/detail-${safeDetailName}.html`, await detailPage.content(), 'utf8');
+      await fs.writeFile(`collector/results/detail-${safeDetailName}.html`, detailHtml, 'utf8');
+
       const detailHrefs = await detailPage.locator('a[href]').evaluateAll((links) =>
         links.map((a) => a.getAttribute('href')).filter(Boolean)
       );
@@ -240,6 +261,8 @@ try {
         /\/user\/show\/|\/profile(?:\/|\?)|\/member(?:\/|\?)/i.test(String(href))
       );
       const canonicalProfileUuids = uuidsFromHrefs(canonicalProfileHrefs);
+      const expectedUuidInHtml = detailHtml.toLowerCase().includes(target.uuid);
+      const confirmed = canonicalProfileUuids.includes(target.uuid) || expectedUuidInHtml;
       trip.identity_check = {
         expected_name: target.name,
         expected_uuid: target.uuid,
@@ -247,8 +270,13 @@ try {
         detail_url: detailPage.url(),
         canonical_profile_hrefs: canonicalProfileHrefs,
         canonical_profile_uuids: canonicalProfileUuids,
-        confirmed: canonicalProfileUuids.includes(target.uuid),
-        evidence: canonicalProfileUuids.includes(target.uuid) ? 'TRIP_DETAIL_CANONICAL_PROFILE_LINK' : null,
+        expected_uuid_literal_in_html: expectedUuidInHtml,
+        confirmed,
+        evidence: canonicalProfileUuids.includes(target.uuid)
+          ? 'TRIP_DETAIL_CANONICAL_PROFILE_LINK'
+          : expectedUuidInHtml
+            ? 'TRIP_DETAIL_UUID_LITERAL'
+            : null,
       };
     } catch (error) {
       trip.identity_check = {
@@ -259,7 +287,12 @@ try {
         error: String(error?.message ?? error),
       };
     } finally {
-      await detailPage.close().catch(() => {});
+      if (ownsDetailPage) {
+        await detailPage.close().catch(() => {});
+      } else if (page.url() !== searchUrl) {
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {});
+        await page.waitForTimeout(3_000).catch(() => {});
+      }
     }
   }
 
@@ -291,7 +324,7 @@ try {
     },
     zero_results_confirmed: zeroResults,
     driver_cards_count: trips.length,
-    ezequiel_s_visible: names.includes('ezequiel s'),
+    ezequiel_s_visible: names.includes('ezequiel s') || names.includes('ezequiel'),
     barbosa_visible: names.includes('barbosa'),
     demand,
     trips,
@@ -300,7 +333,7 @@ try {
   await Promise.all([jsonOut, markdownOut, screenshotOut].map(ensureParent));
   await fs.writeFile(jsonOut, `${JSON.stringify(result, null, 2)}\n`);
   await fs.writeFile(markdownOut, markdown(result));
-  await fs.writeFile('collector/results/latest.html', await page.content(), 'utf8');
+  await fs.writeFile('collector/results/latest.html', searchHtmlSnapshot, 'utf8');
   await page.screenshot({ path: screenshotOut, fullPage: true }).catch(() => {});
   console.log(JSON.stringify({ status: result.status, drivers: result.driver_cards_count, zero_results: result.zero_results_confirmed, place_resolution: result.place_resolution }));
   if (result.status !== 'validated') process.exitCode = 2;
