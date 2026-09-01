@@ -234,7 +234,9 @@ private fun TripApp(
     val shareScope = rememberCoroutineScope()
 
     val refreshDriverNotifications: suspend () -> Unit = {
-        val online = store.onlineSettings()
+        val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            store.onlineSettings()
+        }
         if (!online.configured) {
             driverNotifications = emptyList()
             driverUnreadCount = 0
