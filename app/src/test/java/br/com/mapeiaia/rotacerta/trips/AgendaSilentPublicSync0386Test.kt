@@ -41,7 +41,7 @@ class AgendaSilentPublicSync0386Test {
     fun successfulSyncStillKeepsInternalAuditEvidence() {
         val activity = activitySource()
         assertTrue(activity.contains("timeline_public_agenda_coordinator_result local="))
-        assertTrue(activity.contains("durationMs=${completion.durationMs}"))
+        assertTrue(activity.contains("durationMs=\${completion.durationMs}"))
         assertTrue(activity.contains("BookingPushRegistration0304.ensureRegistered(activity, store)"))
     }
 }
