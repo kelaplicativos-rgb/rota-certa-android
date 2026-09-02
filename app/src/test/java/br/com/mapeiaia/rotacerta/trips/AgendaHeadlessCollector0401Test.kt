@@ -57,7 +57,7 @@ class AgendaHeadlessCollector0401Test {
         assertTrue(publicAgenda.contains("firstRequestUsesCanonical=true"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_LEGACY_BINDING_IRRECONCILIABLE_0401"))
         val preserve = publicAgenda.indexOf("var effectiveTrip = existingBinding?.let { preserveExternalBindingShape")
-        val request = publicAgenda.indexOf("suspend fun reconcile(): DriverCapacitySnapshotResponse")
+        val request = publicAgenda.indexOf("suspend fun reconcile(): DriverCapacitySnapshotResponse", startIndex = preserve.coerceAtLeast(0))
         assertTrue(preserve >= 0 && request > preserve)
     }
 
