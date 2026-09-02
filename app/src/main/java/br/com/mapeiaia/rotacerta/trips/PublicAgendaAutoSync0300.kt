@@ -895,11 +895,19 @@ internal object PublicAgendaAutoSync0300 {
         } catch (firstError: Throwable) {
             if (firstError is CancellationException) throw firstError
             when {
-                existingBinding == null && isRemoteTripNotFound(firstError) -> {
+                isRemoteTripNotFound(firstError) -> {
+                    val staleRemoteTripId = remoteTripId
                     val created = api.publish(publicTrip.copy(capacityReliable = false))
                     createdPlaceholder = true
                     remoteTripId = created.tripId
                     effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
+                    effectiveClaims = synthesized.capacityClaims
+                    shapePreserved = false
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410",
+                        context.packageName,
+                        "tripKey=$diagnosticTripKey staleRemotePresent=${staleRemoteTripId.isNotBlank()} localBindingPresent=${existingBinding != null} recreatedRemoteChanged=${staleRemoteTripId != remoteTripId} strongIdentity=true canonicalTripIdPresent=${canonicalTripId.isNotBlank()}",
+                    )
                     reconcile()
                 }
                 (existingBinding != null || remoteStateHint0402 != null) && isImmutablePublicTripShapeFailure(firstError) -> {
