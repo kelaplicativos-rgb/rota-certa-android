@@ -466,13 +466,26 @@ class BlaBlaPublicSearchActivity : Activity() {
             queries.any { it.coverageStatus in setOf("COMPLETE", "PARTIAL") } -> "partial"
             else -> "error"
         }
+        val rawCards = matches
+            .distinctBy { listOf(it.queryId, it.tripId.orEmpty(), it.captureIndex.toString(), it.tripHref.orEmpty(), it.driverName).joinToString("|") }
+            .sortedWith(compareBy<BlaBlaPublicSearchCard> { it.date }.thenBy { it.direction }.thenBy { it.departureTime.orEmpty() }.thenBy { it.captureIndex })
+        val knownProfiles = BlaBlaDynamicAccountRegistry(this).list().map { account ->
+            BlaBlaPublicSearchPlanner.KnownProfile(
+                name = account.profileName?.trim().takeUnless { it.isNullOrBlank() } ?: account.displayLabel,
+                profileUuid = account.profileUuid,
+            )
+        }
+        val requestedCards = BlaBlaPublicSearchPlanner.filterRequestedCards(
+            rawCards = rawCards,
+            request = request,
+            knownProfiles = knownProfiles,
+        )
         val response = BlaBlaPublicSearchResponse(
             collectedAtMillis = System.currentTimeMillis(),
             status = status,
             request = request,
-            cards = matches
-                .distinctBy { listOf(it.queryId, it.tripId.orEmpty(), it.captureIndex.toString(), it.tripHref.orEmpty(), it.driverName).joinToString("|") }
-                .sortedWith(compareBy<BlaBlaPublicSearchCard> { it.date }.thenBy { it.direction }.thenBy { it.departureTime.orEmpty() }.thenBy { it.captureIndex }),
+            cards = requestedCards,
+            rawCards = rawCards,
             queries = queries.sortedWith(compareBy<BlaBlaPublicSearchQueryResult> { it.date }.thenBy { it.direction }.thenBy { it.queryId }),
             demands = demands.distinctBy { listOf(it.date, it.from, it.to).joinToString("|") }
                 .sortedWith(compareBy(BlaBlaPublicSearchDemand::date, BlaBlaPublicSearchDemand::from, BlaBlaPublicSearchDemand::to)),
@@ -497,7 +510,7 @@ class BlaBlaPublicSearchActivity : Activity() {
         UnifiedDebugEventStore.record(
             "PUBLIC_SEARCH_COMPLETED",
             packageName,
-            "status=$status tasks=${response.queries.size} complete=${response.completeQueries} failed=${response.failedQueries} cards=${response.cards.size} demandRecords=${response.demands.size} snapshotImmutable=true",
+            "status=$status tasks=${response.queries.size} complete=${response.completeQueries} failed=${response.failedQueries} rawCards=${response.rawCards.size} resultCards=${response.cards.size} targets=${request.targetNames.size} demandRecords=${response.demands.size} snapshotImmutable=true",
         )
         setResult(
             if (status == "error") RESULT_CANCELED else RESULT_OK,
