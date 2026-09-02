@@ -112,6 +112,7 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
             "event=${event.take(40)} remoteTripPresent=${remoteTripId.isNotBlank()} bookingPresent=${bookingId.isNotBlank()} seats=$seats",
         )
 
+        BookingRealtimeEvents0356.notifyChanged()
         AgendaBackgroundSync0392.enqueueImmediate(
             context = this,
             reason = "booking_push:${event.take(40)}",
