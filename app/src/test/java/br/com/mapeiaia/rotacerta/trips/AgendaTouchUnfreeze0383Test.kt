@@ -82,7 +82,9 @@ class AgendaTouchUnfreeze0383Test {
         listOf(
             "Nova viagem",
             "Adicionar passageiro",
-            "Alternar próximas / arquivadas",
+            "Vagas extra",
+            "Próximas / arquivadas",
+            "Baixar Timeline",
             "Fixar atalho",
         ).forEach { label ->
             assertTrue(activity.contains("AgendaHeaderAction0396(\"$label\""), "Missing Agenda contextual action: $label")
