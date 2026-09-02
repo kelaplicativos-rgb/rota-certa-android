@@ -19,6 +19,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
@@ -2160,11 +2161,17 @@ class AgendaBackgroundSyncWorker0392(
             return Result.success()
         }
 
-        if (reason == "periodic" || reason == "trip_reverify" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
+        if (
+            reason == "periodic" ||
+            reason == "trip_reverify" ||
+            reason.startsWith("admin_update_now:") ||
+            agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+        ) {
             setForeground(agendaBackgroundSyncForegroundInfo0402(applicationContext, reason))
         }
 
         val startedElapsed = android.os.SystemClock.elapsedRealtime()
+        val startedWallMillis0417 = System.currentTimeMillis()
         AgendaBackgroundSyncConfig0392.recordRunStarted(
             context = applicationContext,
             reason = reason,
@@ -2221,7 +2228,9 @@ class AgendaBackgroundSyncWorker0392(
             }
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
             val collectorWasRequested =
-                reason == "periodic" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+                reason == "periodic" ||
+                    reason.startsWith("admin_update_now:") ||
+                    agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
             val collectorTerminalProblem =
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
@@ -2270,6 +2279,39 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionReadbackFailures0411 == 0 &&
                     cycle.projectionValidated0411 == cycle.projectionExpected0411 -> "VERIFIED"
                 else -> "SUCCESS"
+            }
+            runCatching {
+                val store0417 = TripStore(applicationContext)
+                val settings0417 = store0417.onlineSettings()
+                if (settings0417.configured) {
+                    TripRemoteApi(settings0417).reportAdminSyncHealth0417(
+                        DriverAdminSyncHealthRequest0417(
+                            startedAtMillis = startedWallMillis0417,
+                            finishedAtMillis = System.currentTimeMillis(),
+                            result = resultLabel,
+                            trigger = agendaBackgroundSyncTrigger0397(reason),
+                            correlationId = reason.substringAfter(':', "").takeIf { reason.startsWith("admin_") }.orEmpty(),
+                            failures = reportedFailures,
+                            changed = cycle.collectorChangedTrips + cycle.publicLocalPublished + cycle.publicExternalPublished,
+                            skipped = cycle.collectorSkippedTrips,
+                            pending = cycle.projectionPending0411,
+                            divergent = cycle.projectionDivergent0411,
+                            readbackFailures = cycle.projectionReadbackFailures0411,
+                            appVersion = BuildConfig.VERSION_NAME,
+                        ),
+                    )
+                }
+            }.onFailure { error ->
+                UnifiedDebugEventStore.record(
+                    "AGENDA_ADMIN_SYNC_HEALTH_REPORT_FAILED_0417",
+                    applicationContext.packageName,
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "ADMIN_SYNC_HEALTH_REPORT",
+                        component = "AgendaBackgroundSyncWorker0392",
+                        method = "doWork",
+                    ),
+                )
             }
             if (targetedResult != null && !retryPending) {
                 BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(targetedResult)
