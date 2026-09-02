@@ -6284,6 +6284,22 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   const parts = path.split("/").filter(Boolean);
   try {
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
+    if (req.method === "POST" && path === "/v1/public/admin/session") return await agendaAdmin0417.createAdminSession0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/logout") return await agendaAdmin0417.logoutAdmin0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/me") return await agendaAdmin0417.getAdminMe0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/overview") return await agendaAdmin0417.getAdminOverview0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/trips") return await agendaAdmin0417.listAdminTrips0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/settings") return await agendaAdmin0417.getAdminSettings0417(req, res);
+    if (req.method === "PUT" && path === "/v1/admin/settings/public") return await agendaAdmin0417.updateAdminPublicSettings0417(req, res);
+    if (req.method === "PUT" && path === "/v1/admin/settings/sync") return await agendaAdmin0417.updateAdminSyncSettings0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/sync/update-now") return await agendaAdmin0417.requestAdminUpdateNow0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/sync/reconcile") return await agendaAdmin0417.requestAdminFullReconcile0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/logs") return await agendaAdmin0417.listAdminLogs0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/export") return await agendaAdmin0417.exportAdminLogs0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/sessions") return await agendaAdmin0417.listAdminSessions0417(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/admin/password") return await agendaAdmin0417.setDriverAdminPassword0417(req, res);
+    if (req.method === "GET" && path === "/v1/driver/admin/sync-policy") return await agendaAdmin0417.getDriverAdminSyncPolicy0417(req, res);
+    if (req.method === "POST" && path === "/v1/driver/admin/sync-health") return await agendaAdmin0417.reportDriverAdminSyncHealth0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
@@ -6327,6 +6343,12 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
+      return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-attestation" && req.method === "POST") {
+      return await agendaAdmin0417.recordDriverPublicAttestation0417(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-readback" && req.method === "GET") {
       return await getDriverPublicTripReadback0411(req, res, parts[3]);
