@@ -246,7 +246,7 @@ class TripStore(context: Context) {
                         .thenByDescending { it.updatedAtMillis },
                 )
             }
-            val dedupedBindings = orderedBindingGroups.map(List<PublicExternalTripBinding>::first)
+            val dedupedBindings = orderedBindingGroups.map { it.first() }
             val duplicateBindingsForCleanup = orderedBindingGroups.flatMap { ordered ->
                 val keeperRemoteId = ordered.first().remoteTripId
                 ordered.drop(1)
