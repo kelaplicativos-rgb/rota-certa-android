@@ -9,6 +9,7 @@ test("driver sync-state exposes server canonical stops and snapshot revision beh
   assert.match(source, /async function listDriverTripSyncState0402\(req, res\)/);
   assert.match(source, /const driver = await requireDriver\(req, res\)/);
   assert.match(source, /capacitySnapshotRevision: cleanText\(data\.capacitySnapshotRevision, 128\)/);
+  assert.match(source, /canonicalStateHash: cleanText\(data\.canonicalStateHash, 160\)/);
   assert.match(source, /stops: Array\.isArray\(data\.stops\) \? data\.stops : \[\]/);
   assert.match(source, /GET" && path === "\/v1\/driver\/trips\/sync-state"/);
 });
