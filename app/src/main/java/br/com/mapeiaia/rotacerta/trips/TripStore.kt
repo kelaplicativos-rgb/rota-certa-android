@@ -41,6 +41,86 @@ class TripStore(context: Context) {
 
     fun getTrip(id: String): Trip? = trips().firstOrNull { it.id == id }
 
+    internal fun recordPublicationCommitted0411(
+        canonicalTripId: String,
+        publicationRevision: Long,
+        publicationEventId: String,
+        tombstone: Boolean,
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        if (canonicalTripId.isBlank() || publicationRevision <= 0L) return@synchronized getTrip(canonicalTripId)
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (publicationRevision < existing.publicationRevision) {
+            UnifiedDebugEventStore.record(
+                "PUBLICATION_METADATA_STALE_REJECTED_0411",
+                appContext.packageName,
+                "tenantId=${tenantScope.tenantId} internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} incomingRevision=$publicationRevision currentRevision=${existing.publicationRevision}",
+            )
+            return@synchronized existing
+        }
+        val nextState = if (tombstone) {
+            PublicMirrorAttestationState0411.UNPROVEN
+        } else if (
+            existing.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
+            existing.publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
+            existing.publicMirrorAttestedCanonicalRevision0411 == existing.canonicalRevision
+        ) {
+            existing.publicMirrorAttestationState0411
+        } else {
+            PublicMirrorAttestationState0411.PENDING
+        }
+        val updated = existing.copy(
+            publicationRevision = publicationRevision,
+            publicationTombstone = tombstone,
+            publicationEventId = publicationEventId.take(120),
+            publicMirrorAttestationState0411 = nextState,
+            publicMirrorAttestationReason0411 = if (tombstone) "PUBLICATION_TOMBSTONED" else "PUBLICATION_COMMITTED_AWAITING_READBACK",
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
+
+    internal fun recordPublicMirrorAttestation0411(
+        canonicalTripId: String,
+        expectedCanonicalRevision: Long,
+        expectedPublicationRevision: Long,
+        state: PublicMirrorAttestationState0411,
+        expectedHash: String,
+        readbackHash: String,
+        mismatchFields: List<String>,
+        reason: String,
+        readbackLatencyMillis: Long,
+        publicUrlFromReadback: String? = null,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (
+            existing.canonicalRevision != expectedCanonicalRevision ||
+            existing.publicationRevision != expectedPublicationRevision
+        ) {
+            val invalidated = existing.invalidatePublicMirror0411("REVISION_CHANGED_DURING_READBACK")
+            if (invalidated != existing) persistCanonicalTrip0406(invalidated, current)
+            return@synchronized invalidated
+        }
+        val updated = existing.copy(
+            publicUrl = existing.publicUrl?.takeIf(String::isNotBlank)
+                ?: publicUrlFromReadback?.trim()?.takeIf(String::isNotBlank),
+            publicMirrorAttestationState0411 = state,
+            publicMirrorAttestedCanonicalRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedCanonicalRevision else 0L,
+            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedPublicationRevision else 0L,
+            publicMirrorExpectedHash0411 = expectedHash.take(96),
+            publicMirrorReadbackHash0411 = readbackHash.take(96),
+            publicMirrorAttestedAtMillis0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) nowMillis else 0L,
+            publicMirrorReadbackLatencyMillis0411 = readbackLatencyMillis.coerceAtLeast(0L),
+            publicMirrorAttestationReason0411 = reason.take(160),
+            publicMirrorMismatchFields0411 = mismatchFields.distinct().take(24),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
+
     fun publicExternalBindings(): List<PublicExternalTripBinding> =
         decode<List<PublicExternalTripBinding>>(prefs.getString(publicExternalBindingsKey, null)).orEmpty()
             .sortedByDescending(PublicExternalTripBinding::departureAtMillis)
