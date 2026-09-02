@@ -82,7 +82,10 @@ jobs:
           grep -Fq 'EXTERNAL_CANONICAL_SKIP_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'EXTERNAL_CANONICAL_MISSING_PRESERVED_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'recordExternalCollectionMutation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
-          grep -Fq 'eventSource = "EXTERNAL_COLLECTION"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'eventSource = if (remoteProjectionDivergenceObserved) "PROJECTION_RECONCILER" else "EXTERNAL_COLLECTION"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'shouldDeduplicatePublicationEvent0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'reason == "periodic" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
