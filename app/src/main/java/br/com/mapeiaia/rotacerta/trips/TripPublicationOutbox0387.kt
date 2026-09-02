@@ -464,7 +464,7 @@ internal class TripMutationCoordinator0387(
             bookings,
             allocation,
         )
-        return outbox.recordDeliveredAtRevision(
+        val delivered = outbox.recordDeliveredAtRevision(
             canonicalTripId = canonicalTripId,
             revision = revision,
             operation = if (original.status == TripStatus.CANCELLED) {
@@ -486,13 +486,21 @@ internal class TripMutationCoordinator0387(
                     signature
                 },
             ),
-        )?.also { event ->
+        )
+        if (delivered != null) {
+            store.recordPublicationCommitted0411(
+                canonicalTripId = canonicalTripId,
+                publicationRevision = revision,
+                publicationEventId = delivered.id,
+                tombstone = original.status == TripStatus.CANCELLED,
+            )
             recordEvent(
                 "TRIP_MUTATION_REMOTE_APPLIED",
-                event,
-                "publicationResult=already_applied_remote resultingRevision=${event.revision}",
+                delivered,
+                "publicationResult=already_applied_remote resultingRevision=${delivered.revision}",
             )
         }
+        return delivered
     }
 
     fun recordExternalManualMutation(
