@@ -581,15 +581,19 @@ internal object PublicAgendaAutoSync0300 {
                 append(normalizePlace(stop.address)).append('~').append(stop.priceToNextCents).append(',')
             }
             bookings.sortedBy(Booking::id).forEach { booking ->
-                append(booking.id).append('~').append(booking.boardingStopId).append('~').append(booking.dropoffStopId).append('~')
+                append(booking.id).append('~').append(booking.passengerId.trim()).append('~')
+                append(booking.passengerName.trim()).append('~').append(booking.passengerContact.trim()).append('~')
+                append(booking.boardingStopId).append('~').append(booking.dropoffStopId).append('~')
+                append(normalizePlace(booking.boardingAddress)).append('~').append(normalizePlace(booking.dropoffAddress)).append('~')
                 append(booking.seats).append('~').append(booking.status.name).append('~')
                 append(booking.operationalStatus.name).append('~').append(booking.paymentStatus.name).append('~')
                 append(booking.lastDriverSelection.trim()).append('~').append(booking.source.name).append('~')
                 append(booking.capacityClaimType.name).append('~').append(booking.sourceReference).append('~')
-                append(booking.occupancyGroupId.orEmpty()).append(',')
+                append(booking.occupancyGroupId.orEmpty()).append('~')
+                append(booking.fareMinorUnits ?: -1L).append('~').append(booking.fareCurrencyCode.trim()).append(',')
             }
         }
-        return "localcap-v1:${sha256(semantic)}"
+        return "localcap-v2:${sha256(semantic)}"
     }
 
     suspend fun syncExternalTripIncremental(
@@ -1277,20 +1281,27 @@ internal object PublicAgendaAutoSync0300 {
         val semantic = buildString {
             append(source.profile_uuid.trim()).append('|')
             append(source.trip_id.orEmpty().trim()).append('|')
-            append(source.date.trim()).append('|').append(source.departure_time.orEmpty().trim()).append('|')
-            append(source.actual_departure.orEmpty().trim()).append('|').append(source.actual_arrival.orEmpty().trim()).append('|')
+            append(source.date.trim()).append('|')
+            append(source.departure_time.orEmpty().trim()).append('|').append(source.arrival_time.orEmpty().trim()).append('|')
+            append(normalizePlace(source.search_from.orEmpty())).append('|').append(normalizePlace(source.search_to.orEmpty())).append('|')
+            append(normalizePlace(source.actual_departure.orEmpty())).append('|').append(normalizePlace(source.actual_arrival.orEmpty())).append('|')
             append(source.price.orEmpty().trim()).append('|').append(source.availability.trim()).append('|')
+            append(source.flags.map(String::trim).filter(String::isNotBlank).sorted().joinToString("~")).append('|')
+            append(source.uuid_validation.trim()).append('|').append(source.identity_conflict).append('|')
+            append(source.trip_href.orEmpty().substringBefore("&search_uuid=").trim()).append('|')
+            append(source.public_trip_href.orEmpty().substringBefore("&search_uuid=").trim()).append('|')
             append(source.published_seats ?: -1).append('|').append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
             append(source.booked_seats.coerceAtLeast(0)).append('|').append(source.passenger_roster_complete).append('|')
             append(source.itinerary_authoritative).append('|').append(source.itinerary_stops.joinToString(">") { normalizePlace(it) }).append('|')
             source.passengers.forEachIndexed { index, passenger ->
-                append(index).append('~').append(passenger.booking_href.orEmpty().trim()).append('~')
+                append(index).append('~').append(passenger.booking_href.orEmpty().substringBefore("&search_uuid=").trim()).append('~')
+                append(passenger.name.trim()).append('~').append(passenger.phone.orEmpty().trim()).append('~')
                 append(passenger.seats.coerceAtLeast(1)).append('~')
                 append(normalizePlace(passenger.boarding.orEmpty())).append('~')
                 append(normalizePlace(passenger.dropoff.orEmpty())).append(',')
             }
         }
-        return "bbcap-v1:${sha256(semantic)}"
+        return "bbcap-v2:${sha256(semantic)}"
     }
 
     internal fun parsePriceCents(raw: String?): Long {
