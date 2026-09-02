@@ -77,6 +77,20 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
+    fun canonicalProjectionKeepsPersistedPermalinkWhenFreshCollectorCardOmitsIt() {
+        val canonicalUrl = "https://www.blablacar.com.br/trip?id=$tripIdA"
+        val canonical = trip(tripIdA, canonicalUrl)
+        val projection = PublicAgendaAutoSync0300.toCanonicalExternalProjection0406(
+            canonical = canonical,
+            source = source(tripIdA, null),
+            nowMillis = 0L,
+        )
+        assertEquals(canonicalUrl, projection?.trip?.blablaPublicUrl)
+        assertEquals(canonicalUrl, projection?.blablaPublicHref)
+        assertEquals(tripIdA, projection?.blablaTripId)
+    }
+
+    @Test
     fun publicPermalinkPersistsWithTheSameStrongTripIdentity() {
         val original = trip(tripIdA, "https://www.blablacar.com.br/trip?id=$tripIdA")
         val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
