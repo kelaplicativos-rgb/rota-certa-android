@@ -6,10 +6,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -80,31 +85,10 @@ internal fun AgendaModuleDrawer0396(
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                 ) {
                     Text("Agenda de Viagens", style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        "Navegação",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
                 HorizontalDivider()
-                NavigationDrawerItem(
-                    label = { Text(AgendaRootSection0396.ALL_TRIPS.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    selected = currentSection == AgendaRootSection0396.ALL_TRIPS,
-                    onClick = {
-                        onSelect(AgendaRootSection0396.ALL_TRIPS)
-                        scope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
-                Text(
-                    "Central do Rota Certa",
-                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 listOf(
-                    AgendaRootSection0396.ASSISTANT,
+                    AgendaRootSection0396.ALL_TRIPS,
                     AgendaRootSection0396.AUTOMATIC_SYNC,
                     AgendaRootSection0396.PUBLIC_SEARCH,
                     AgendaRootSection0396.PASSENGERS,
@@ -193,20 +177,31 @@ internal fun AgendaModuleHeader0396(
                     )
                 }
             }
+            val unread = notificationUnreadCount.coerceAtLeast(0)
+            val notificationsDescription = if (unread > 0) {
+                "Notificações, $unread não lidas"
+            } else {
+                "Notificações"
+            }
             IconButton(
                 onClick = { onNotificationsClick?.invoke() },
                 enabled = onNotificationsClick != null,
-                modifier = Modifier.semantics { contentDescription = "Abrir Central de Notificações" },
+                modifier = Modifier.semantics { contentDescription = notificationsDescription },
             ) {
-                val badge = if (notificationUnreadCount > 0) {
-                    if (notificationUnreadCount > 99) "99+" else notificationUnreadCount.toString()
-                } else {
-                    ""
+                BadgedBox(
+                    badge = {
+                        if (unread > 0) {
+                            Badge {
+                                Text(if (unread > 99) "99+" else unread.toString())
+                            }
+                        }
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Notifications,
+                        contentDescription = null,
+                    )
                 }
-                Text(
-                    text = if (badge.isBlank()) "🔔" else "🔔$badge",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
             }
             IconButton(
                 onClick = { overflowExpanded = true },
