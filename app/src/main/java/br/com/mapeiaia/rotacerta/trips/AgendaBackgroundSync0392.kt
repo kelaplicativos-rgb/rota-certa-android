@@ -1426,6 +1426,7 @@ internal object AgendaBackgroundSync0392 {
         seatAllocationVersion: Long,
         repair: Boolean,
         completeCoverage: BlaBlaCollectorMonthResponse? = null,
+        completeProfileUuids: Set<String> = emptySet(),
         nowMillis: Long = System.currentTimeMillis(),
     ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
@@ -1587,7 +1588,11 @@ internal object AgendaBackgroundSync0392 {
             attributable && canonical.none { trip -> remoteMatchesCanonicalProjection0408(trip, remote) }
         }
         orphanStates.forEach { orphan ->
-            val destructiveAllowed = remoteProjectionWithinCompleteScope0408(orphan, completeCoverage)
+            val destructiveAllowed = remoteProjectionWithinCompleteScope0408(
+                orphan,
+                completeCoverage,
+                completeProfileUuids,
+            )
             UnifiedDebugEventStore.record(
                 "PROJECTION_ORPHAN_DETECTED_0408",
                 context.applicationContext.packageName,
@@ -1744,6 +1749,7 @@ internal object AgendaBackgroundSync0392 {
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 collectionRunId = "collector:" + collectorState.completedGeneration,
                 collectionGeneration = collectorState.completedGeneration,
+                completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
             if (collectorCanonical.changedTrips > 0) {
                 BookingRealtimeEvents0356.notifyChanged()
@@ -1785,6 +1791,11 @@ internal object AgendaBackgroundSync0392 {
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 collectionRunId = if (collectorTarget0407 != null) "trip-reverify" else "collector:" + collectorState.generation,
                 collectionGeneration = if (collectorTarget0407 != null) 0L else collectorState.generation,
+                completeProfileUuids = if (collectorTarget0407 == null) {
+                    completeCollectorProfileUuids0408(appContext, collectorState)
+                } else {
+                    emptySet()
+                },
             )
             collectorCanonical = freshCanonical
             if (freshCanonical.changedTrips > 0) {
@@ -1934,6 +1945,7 @@ internal object AgendaBackgroundSync0392 {
             seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
             repair = true,
             completeCoverage = collectorResponseForThisCycle0407(),
+            completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
         )
         if (projectionIntegrity.repairQueued > 0) {
             try {
@@ -1960,6 +1972,7 @@ internal object AgendaBackgroundSync0392 {
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 repair = false,
                 completeCoverage = collectorResponseForThisCycle0407(),
+                completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
         }
         failures += projectionIntegrity.failures
