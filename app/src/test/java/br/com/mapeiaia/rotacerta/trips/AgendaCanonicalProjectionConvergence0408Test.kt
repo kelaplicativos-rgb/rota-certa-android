@@ -213,6 +213,32 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
+    fun legacySyncStateWithoutExtendedAvailabilityDoesNotCreateRepairLoop() {
+        val canonical = trip(
+            profileA,
+            "legacy-sync-state",
+            now + 21L * 86_400_000L,
+            publishedSeats = 2,
+        )
+        val legacy = DriverTripSyncState0402(
+            remoteTripId = "legacy-remote",
+            status = "PUBLISHED",
+            departureAtMillis = canonical.departureAtMillis,
+            stops = canonical.stops,
+            capacityReliable = true,
+            publicationRevision = canonical.publicationRevision,
+            canonicalTripId = canonical.id,
+            canonicalStateHash = canonical.canonicalStateHash,
+            tripKey = canonical.tripKey,
+            blablaProfileUuid = canonical.blablaProfileUuid.orEmpty(),
+            blablaTripId = canonical.blablaTripId.orEmpty(),
+            title = canonical.title,
+            capacity = operationalInventoryCapacity(canonical, emptyList()),
+        )
+        assertTrue(projectionCapacityMatches0408(canonical, emptyList(), legacy, now))
+    }
+
+    @Test
     fun productionSourceHasNoBarbosaOrFixtureSpecificBusinessRule() {
         val background = source("AgendaBackgroundSync0392.kt")
         val publicSync = source("PublicAgendaAutoSync0300.kt")
