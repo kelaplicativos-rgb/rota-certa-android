@@ -1385,6 +1385,7 @@ internal object AgendaBackgroundSync0392 {
         rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         repair: Boolean,
+        completeCoverage: BlaBlaCollectorMonthResponse? = null,
         nowMillis: Long = System.currentTimeMillis(),
     ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
@@ -1422,8 +1423,12 @@ internal object AgendaBackgroundSync0392 {
             .associateBy(DriverTripSyncState0402::canonicalTripId)
         val coordinator = TripMutationCoordinator0387(context, store)
         var missing = 0
+        var duplicates = 0
         var revisionMismatch = 0
         var hashMismatch = 0
+        var capacityMismatch = 0
+        var statusMismatch = 0
+        var revisionRegression = 0
         var repairQueued = 0
 
         fun queueRepair(trip: Trip): Boolean {
