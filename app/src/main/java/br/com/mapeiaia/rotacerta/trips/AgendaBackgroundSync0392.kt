@@ -49,6 +49,11 @@ internal data class AgendaBackgroundSyncRun0392(
     val collectorTombstonedTrips: Int = 0,
     val collectorOrphanProjectionTombstones: Int = 0,
     val collectorStaleResultsRejected: Int = 0,
+    val projectionMissingAgenda: Int = 0,
+    val projectionRevisionMismatch: Int = 0,
+    val projectionHashMismatch: Int = 0,
+    val projectionOrphans: Int = 0,
+    val projectionFailures: Int = 0,
 )
 
 internal data class AgendaAutomaticCollectorState0400(
@@ -638,6 +643,20 @@ internal fun externalCanonicalTripWithinCompleteScope0406(
         tripProfile in profileScope && date.startsWith(month)
 }
 
+internal data class ProjectionIntegrity0406(
+    val canonicalActive: Int = 0,
+    val agendaProjections: Int = 0,
+    val missingAgenda: Int = 0,
+    val revisionMismatch: Int = 0,
+    val hashMismatch: Int = 0,
+    val orphans: Int = 0,
+    val repairQueued: Int = 0,
+    val failures: Int = 0,
+) {
+    val verified: Boolean
+        get() = failures == 0 && missingAgenda == 0 && revisionMismatch == 0 && hashMismatch == 0 && orphans == 0
+}
+
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
     incomingFingerprint: String,
@@ -1094,13 +1113,18 @@ internal object AgendaBackgroundSync0392 {
             store.publicExternalBindings().forEach { binding ->
                 val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
                     ?: return@forEach
+                val observedKey = canonicalExternalTripIdentityKey(
+                    binding.profileUuid,
+                    binding.blablaTripId,
+                    binding.blablaTripHref,
+                ) ?: return@forEach
                 val bindingMonth = runCatching {
                     Instant.ofEpochMilli(binding.departureAtMillis)
                         .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
                 }.getOrDefault("")
                 if (
                     key !in canonicalKeys &&
-                    canonicalExternalTripIdentityKey(binding.profileUuid, binding.blablaTripId, binding.blablaTripHref) !in observedStrongKeys &&
+                    observedKey !in observedStrongKeys &&
                     binding.profileUuid.trim().lowercase() in profileScope &&
                     month.isNotBlank() && bindingMonth == month
                 ) {
@@ -1154,6 +1178,135 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    internal suspend fun reconcileProjectionIntegrity0406(
+        context: Context,
+        store: TripStore,
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+        repair: Boolean,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
+        val settings = store.onlineSettings()
+        if (!settings.configured) return@withContext ProjectionIntegrity0406()
+        val remoteStates = try {
+            TripRemoteApi(settings).listDriverTripSyncStates0402().trips
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            UnifiedDebugEventStore.record(
+                "PROJECTION_RECONCILER_REMOTE_READ_FAILED_0406",
+                context.applicationContext.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PROJECTION_VERIFY",
+                    component = "AgendaBackgroundSync0392",
+                    method = "reconcileProjectionIntegrity0406",
+                ),
+            )
+            return@withContext ProjectionIntegrity0406(failures = 1)
+        }
+        val publicStatuses = setOf(
+            TripStatus.PUBLISHED,
+            TripStatus.FULL,
+            TripStatus.STARTING,
+            TripStatus.ACTIVE,
+        )
+        val canonical = store.trips().filter {
+            !it.deleted && it.departureAtMillis > nowMillis && it.status in publicStatuses
+        }
+        val canonicalById = canonical.associateBy(Trip::id)
+        val bindings = store.publicExternalBindings()
+        val remoteById = remoteStates.associateBy(DriverTripSyncState0402::remoteTripId)
+        val remoteByCanonicalId = remoteStates
+            .filter { it.canonicalTripId.isNotBlank() }
+            .associateBy(DriverTripSyncState0402::canonicalTripId)
+        val coordinator = TripMutationCoordinator0387(context, store)
+        var missing = 0
+        var revisionMismatch = 0
+        var hashMismatch = 0
+        var repairQueued = 0
+
+        fun queueRepair(trip: Trip): Boolean {
+            return if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
+                val source = trip.externalSnapshot ?: return false
+                if (!trip.externalSnapshotComplete) return false
+                coordinator.recordExternalCollectionMutation(
+                    sourceTrip = source,
+                    configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
+                        ?: rotaCertaSeatAllocation,
+                    seatAllocationVersion = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                ) != null
+            } else {
+                coordinator.recordLocalMutation(
+                    canonicalTripId = trip.id,
+                    mutationType = "PROJECTION_RECONCILER",
+                    source = "CANONICAL_VERIFY",
+                    configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
+                        ?: rotaCertaSeatAllocation,
+                ) != null
+            }
+        }
+
+        canonical.forEach { trip ->
+            val binding = if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
+                val profile = trip.blablaProfileUuid.orEmpty()
+                val externalId = trip.blablaTripId.orEmpty()
+                store.publicExternalBindingForStrongIdentity(profile, externalId)
+            } else null
+            val remoteId = binding?.remoteTripId
+                ?: trip.remoteId?.takeIf(String::isNotBlank)
+                ?: trip.publicToken.takeIf(String::isNotBlank)
+            val remote = remoteId?.let(remoteById::get) ?: remoteByCanonicalId[trip.id]
+            var needsRepair = false
+            if (remote == null) {
+                missing++
+                needsRepair = true
+            } else {
+                if (trip.canonicalStateHash.isNotBlank() && remote.canonicalStateHash != trip.canonicalStateHash) {
+                    hashMismatch++
+                    needsRepair = true
+                }
+                val expectedRevision = binding?.canonicalRevision?.takeIf { it > 0L }
+                    ?: trip.publicationRevision.takeIf { it > 0L }
+                if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
+                    revisionMismatch++
+                    needsRepair = true
+                }
+            }
+            if (repair && needsRepair && queueRepair(trip)) repairQueued++
+        }
+        val knownRemoteIds = bindings.map(PublicExternalTripBinding::remoteTripId).filter(String::isNotBlank).toSet() +
+            canonical.mapNotNull(Trip::remoteId).toSet() +
+            canonical.map(Trip::publicToken).filter(String::isNotBlank).toSet()
+        val orphans = remoteStates.count { remote ->
+            val canonicalId = remote.canonicalTripId
+            remote.remoteTripId in knownRemoteIds &&
+                canonicalId.isNotBlank() &&
+                canonicalId !in canonicalById
+        }
+        val report = ProjectionIntegrity0406(
+            canonicalActive = canonical.size,
+            agendaProjections = remoteStates.size,
+            missingAgenda = missing,
+            revisionMismatch = revisionMismatch,
+            hashMismatch = hashMismatch,
+            orphans = orphans,
+            repairQueued = repairQueued,
+        )
+        UnifiedDebugEventStore.record(
+            "PROJECTION_RECONCILER_0406",
+            context.applicationContext.packageName,
+            "canonical=" + report.canonicalActive +
+                " agenda=" + report.agendaProjections +
+                " missingAgenda=" + report.missingAgenda +
+                " revisionMismatch=" + report.revisionMismatch +
+                " hashMismatch=" + report.hashMismatch +
+                " orphans=" + report.orphans +
+                " repairQueued=" + report.repairQueued +
+                " repair=" + repair,
+        )
+        report
+    }
+
     internal suspend fun runCycle(context: Context, reason: String): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
@@ -1188,6 +1341,7 @@ internal object AgendaBackgroundSync0392 {
         var publicLocalPublished = 0
         var publicExternalPublished = 0
         var collectorCanonical = ExternalCollectorCanonicalBatch0403()
+        var projectionIntegrity = ProjectionIntegrity0406()
         val tenantSettings = SettingsRepository(appContext).settings.first()
 
         UnifiedDebugEventStore.record(
@@ -1393,6 +1547,40 @@ internal object AgendaBackgroundSync0392 {
         }
 
         AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "VERIFYING")
+        projectionIntegrity = reconcileProjectionIntegrity0406(
+            context = appContext,
+            store = store,
+            rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            repair = true,
+        )
+        if (projectionIntegrity.repairQueued > 0) {
+            try {
+                outboxDelivered += TripMutationCoordinator0387(appContext, store).drainPending(limit = 128)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                failures++
+                UnifiedDebugEventStore.record(
+                    "PROJECTION_REPAIR_OUTBOX_FAILED_0406",
+                    appContext.packageName,
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "PROJECTION_REPAIR_OUTBOX",
+                        component = "AgendaBackgroundSync0392",
+                        method = "runTenantCycle",
+                    ),
+                )
+            }
+            projectionIntegrity = reconcileProjectionIntegrity0406(
+                context = appContext,
+                store = store,
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                repair = false,
+            )
+        }
+        failures += projectionIntegrity.failures
         runCatching {
             BookingPushRegistration0304.ensureRegistered(appContext, store)
         }
@@ -1423,6 +1611,11 @@ internal object AgendaBackgroundSync0392 {
             collectorTombstonedTrips = collectorCanonical.tombstonedTrips,
             collectorOrphanProjectionTombstones = collectorCanonical.orphanProjectionTombstones,
             collectorStaleResultsRejected = collectorCanonical.staleResultsRejected,
+            projectionMissingAgenda = projectionIntegrity.missingAgenda,
+            projectionRevisionMismatch = projectionIntegrity.revisionMismatch,
+            projectionHashMismatch = projectionIntegrity.hashMismatch,
+            projectionOrphans = projectionIntegrity.orphans,
+            projectionFailures = projectionIntegrity.failures,
         )
     }
 
@@ -1520,6 +1713,12 @@ class AgendaBackgroundSyncWorker0392(
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+                fullReconcileComplete &&
+                    cycle.projectionMissingAgenda == 0 &&
+                    cycle.projectionRevisionMismatch == 0 &&
+                    cycle.projectionHashMismatch == 0 &&
+                    cycle.projectionOrphans == 0 &&
+                    cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
             }
             val fullReconcileComplete = when {

@@ -401,7 +401,8 @@ internal class TripMutationCoordinator0387(
             ?: original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
         val allocated = original.copy(rotaCertaSeatAllocation = allocation)
         val publicTrip = allocated.copy(capacity = operationalInventoryCapacity(allocated, bookings))
-        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation)
+        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation) +
+            "|state:" + publicTrip.canonicalStateHash
         outbox.ensureRevisionAtLeast(canonicalTripId, (publicTrip.canonicalRevision - 1L).coerceAtLeast(0L))
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
@@ -566,7 +567,8 @@ internal class TripMutationCoordinator0387(
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
-        val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation)
+        val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation) +
+            "|state:" + canonicalExternalTrip?.canonicalStateHash.orEmpty()
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
             operation = TripPublicationOperation0387.UPSERT_EXTERNAL,

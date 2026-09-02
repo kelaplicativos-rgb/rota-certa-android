@@ -415,6 +415,7 @@ data class DriverTripSyncState0402(
     val capacitySnapshotRevision: String = "",
     val publicationRevision: Long = 0L,
     val canonicalTripId: String = "",
+    val canonicalStateHash: String = "",
 )
 
 @Serializable
