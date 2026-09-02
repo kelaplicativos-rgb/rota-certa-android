@@ -1484,8 +1484,9 @@ internal object AgendaBackgroundSync0392 {
     ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
         if (!settings.configured) return@withContext ProjectionIntegrity0406()
+        val api = TripRemoteApi(settings)
         val remoteStates = try {
-            TripRemoteApi(settings).listDriverTripSyncStates0402().trips
+            api.listDriverTripSyncStates0402().trips
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             UnifiedDebugEventStore.record(
@@ -1519,6 +1520,25 @@ internal object AgendaBackgroundSync0392 {
         var statusMismatch = 0
         var revisionRegression = 0
         var repairQueued = 0
+        var attestationValidated0411 = 0
+        var attestationPending0411 = 0
+        var attestationDivergent0411 = 0
+        var attestationInvalidIdentity0411 = 0
+        var attestationInvalidLink0411 = 0
+        var attestationStaleRevision0411 = 0
+        var attestationReadbackFailures0411 = 0
+        var attestationReadbackLatencyMillis0411 = 0L
+
+        fun accumulateAttestation0411(batch: PublicMirrorAttestationBatch0411) {
+            attestationValidated0411 += batch.validated
+            attestationPending0411 += batch.pending
+            attestationDivergent0411 += batch.divergent
+            attestationInvalidIdentity0411 += batch.invalidIdentity
+            attestationInvalidLink0411 += batch.invalidLink
+            attestationStaleRevision0411 += batch.staleRevision
+            attestationReadbackFailures0411 += batch.readbackFailures
+            attestationReadbackLatencyMillis0411 += batch.readbackLatencyMillis
+        }
 
         fun queueRepair(trip: Trip): Boolean {
             return if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
@@ -1584,6 +1604,19 @@ internal object AgendaBackgroundSync0392 {
             if (remote == null) {
                 missing++
                 needsRepair = true
+                val current = store.getTrip(trip.id) ?: trip
+                store.recordPublicMirrorAttestation0411(
+                    canonicalTripId = current.id,
+                    expectedCanonicalRevision = current.canonicalRevision,
+                    expectedPublicationRevision = current.publicationRevision,
+                    state = PublicMirrorAttestationState0411.PENDING,
+                    expectedHash = "",
+                    readbackHash = "",
+                    mismatchFields = listOf("projectionMissing"),
+                    reason = "PUBLIC_PROJECTION_MISSING",
+                    readbackLatencyMillis = 0L,
+                )
+                attestationPending0411++
             } else {
                 val bookings = store.bookingsFor(trip.id)
                 if (trip.canonicalStateHash.isNotBlank() && remote.canonicalStateHash != trip.canonicalStateHash) {
@@ -1616,6 +1649,25 @@ internal object AgendaBackgroundSync0392 {
                 val expectedStatus = expectedProjectionStatus0408(trip, bookings, nowMillis)
                 if (remote.status != expectedStatus) {
                     statusMismatch++
+                    needsRepair = true
+                }
+
+                val attestation = PublicMirrorAttestationCoordinator0411.attest(
+                    context = context,
+                    store = store,
+                    api = api,
+                    trip = trip,
+                    remote = remote,
+                    force = needsRepair,
+                    nowMillis = nowMillis,
+                )
+                accumulateAttestation0411(attestation)
+                if (
+                    attestation.divergent > 0 ||
+                    attestation.invalidIdentity > 0 ||
+                    attestation.invalidLink > 0 ||
+                    attestation.staleRevision > 0
+                ) {
                     needsRepair = true
                 }
             }
@@ -1665,6 +1717,15 @@ internal object AgendaBackgroundSync0392 {
             revisionRegression = revisionRegression,
             orphans = orphanStates.size,
             repairQueued = repairQueued,
+            failures = attestationReadbackFailures0411,
+            attestationValidated0411 = attestationValidated0411,
+            attestationPending0411 = attestationPending0411,
+            attestationDivergent0411 = attestationDivergent0411,
+            attestationInvalidIdentity0411 = attestationInvalidIdentity0411,
+            attestationInvalidLink0411 = attestationInvalidLink0411,
+            attestationStaleRevision0411 = attestationStaleRevision0411,
+            attestationReadbackFailures0411 = attestationReadbackFailures0411,
+            attestationReadbackLatencyMillis0411 = attestationReadbackLatencyMillis0411,
         )
         UnifiedDebugEventStore.record(
             "PROJECTION_RECONCILER_0408",
@@ -1680,6 +1741,14 @@ internal object AgendaBackgroundSync0392 {
                 " revisionRegression=" + report.revisionRegression +
                 " orphans=" + report.orphans +
                 " repairQueued=" + report.repairQueued +
+                " validated0411=" + report.attestationValidated0411 +
+                " pending0411=" + report.attestationPending0411 +
+                " divergent0411=" + report.attestationDivergent0411 +
+                " invalidIdentity0411=" + report.attestationInvalidIdentity0411 +
+                " invalidLink0411=" + report.attestationInvalidLink0411 +
+                " staleRevision0411=" + report.attestationStaleRevision0411 +
+                " readbackFailures0411=" + report.attestationReadbackFailures0411 +
+                " readbackLatencyMs0411=" + report.attestationReadbackLatencyMillis0411 +
                 " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
                 " repair=" + repair,
         )
