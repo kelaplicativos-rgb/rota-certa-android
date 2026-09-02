@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.ContextThemeWrapper
 import android.view.ViewGroup
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -305,6 +306,26 @@ internal class BlaBlaSyncCompletionGate {
 
 internal const val BLABLA_TRIP_DETAIL_CAPTURE_TIMEOUT_MS_0389 = 10_000L
 
+internal const val BLABLA_MAIN_FRAME_RECOVERY_MAX_ATTEMPTS_0418 = 3
+
+internal fun shouldRetryBlaBlaMainFrameNavigation0418(
+    errorCode: Int,
+    isMainFrame: Boolean,
+    interactiveMode: Boolean,
+    allowedUrl: Boolean,
+    completedAttempts: Int,
+): Boolean =
+    isMainFrame &&
+        interactiveMode &&
+        allowedUrl &&
+        completedAttempts < BLABLA_MAIN_FRAME_RECOVERY_MAX_ATTEMPTS_0418 &&
+        errorCode in setOf(
+            WebViewClient.ERROR_CONNECT,
+            WebViewClient.ERROR_HOST_LOOKUP,
+            WebViewClient.ERROR_TIMEOUT,
+            WebViewClient.ERROR_IO,
+        )
+
 internal fun blaBlaDynamicCollectionTimeoutMs0389(request: BlaBlaBrowserRequest): Long = when (request) {
     BlaBlaBrowserRequest.TRIP_DETAIL -> BLABLA_TRIP_DETAIL_CAPTURE_TIMEOUT_MS_0389
     else -> 0L
@@ -442,6 +463,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var automaticCollectionReported = false
     private var headlessPageFinishedNavigationGeneration0404 = -1L
     private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())
+    private var mainFrameRecoveryKey0418 = ""
+    private var mainFrameRecoveryAttempts0418 = 0
+    private var mainFrameRecoveryRunnable0418: Runnable? = null
+    private var mainFrameNavigationErrorActive0418 = false
 
     fun start() {
         registry = BlaBlaDynamicAccountRegistry(this)
@@ -536,8 +561,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         when (mode) {
             BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
             BlaBlaDynamicSessionIntents.MODE_PROFILE -> beginProfileSync()
-            BlaBlaDynamicSessionIntents.MODE_MANAGE -> webView.loadUrl(manageTargetUrl() ?: RIDES_URL)
-            else -> webView.loadUrl(HOME_URL)
+            BlaBlaDynamicSessionIntents.MODE_MANAGE -> loadInteractiveUrl0418(manageTargetUrl() ?: RIDES_URL)
+            else -> loadInteractiveUrl0418(HOME_URL)
         }
     }
 
@@ -559,8 +584,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 setOnClickListener { onClick() }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        action("Perfil") { webView.loadUrl(PROFILE_URL) }
-        action("Suas viagens") { webView.loadUrl(RIDES_URL) }
+        action("Perfil") { loadInteractiveUrl0418(PROFILE_URL) }
+        action("Suas viagens") { loadInteractiveUrl0418(RIDES_URL) }
         action("Sincronizar") { beginSync() }
         action("Voltar") { finishSeen() }
         root.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -610,6 +635,15 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, url)
             }
 
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                super.onReceivedError(view, request, error)
+                handleMainFrameNavigationError0418(view, request, error)
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 if (isAutomaticHeadless0404()) {
@@ -620,7 +654,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$navigationGeneration phase=${phase.name} allowed=${BlaBlaCollectorUrlModule.isAllowed(url)} browserOpened=false",
                     )
                 }
-                if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
+                if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC && !mainFrameNavigationErrorActive0418) {
                     statusView.text = "${account.displayLabel} • ${url.take(110)}"
                 }
                 when (phase) {
@@ -651,6 +685,109 @@ internal class BlaBlaDynamicAccountSessionController0401(
         }
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+    }
+
+    private fun isInteractiveNavigationMode0418(): Boolean =
+        phase == Phase.IDLE &&
+            (mode == BlaBlaDynamicSessionIntents.MODE_LOGIN ||
+                mode == BlaBlaDynamicSessionIntents.MODE_MANAGE)
+
+    private fun cancelMainFrameRecovery0418() {
+        val pending = mainFrameRecoveryRunnable0418
+        if (pending != null && ::webView.isInitialized) {
+            webView.removeCallbacks(pending)
+        }
+        mainFrameRecoveryRunnable0418 = null
+    }
+
+    private fun loadInteractiveUrl0418(url: String) {
+        cancelMainFrameRecovery0418()
+        mainFrameRecoveryKey0418 = BlaBlaCollectorUrlModule.canonical(url)
+        mainFrameRecoveryAttempts0418 = 0
+        mainFrameNavigationErrorActive0418 = false
+        webView.loadUrl(url)
+    }
+
+    private fun handleMainFrameNavigationError0418(
+        view: WebView,
+        request: WebResourceRequest,
+        error: WebResourceError,
+    ) {
+        if (!request.isForMainFrame) return
+        val targetUrl = request.url?.toString().orEmpty()
+        val targetKey = BlaBlaCollectorUrlModule.canonical(targetUrl)
+        val allowedUrl = targetKey.isNotBlank()
+        val interactiveMode = isInteractiveNavigationMode0418()
+
+        if (allowedUrl && targetKey != mainFrameRecoveryKey0418) {
+            cancelMainFrameRecovery0418()
+            mainFrameRecoveryKey0418 = targetKey
+            mainFrameRecoveryAttempts0418 = 0
+        }
+
+        mainFrameNavigationErrorActive0418 = true
+        val errorCode = error.errorCode
+        val retry = shouldRetryBlaBlaMainFrameNavigation0418(
+            errorCode = errorCode,
+            isMainFrame = true,
+            interactiveMode = interactiveMode,
+            allowedUrl = allowedUrl,
+            completedAttempts = mainFrameRecoveryAttempts0418,
+        )
+        val nextAttempt = if (retry) mainFrameRecoveryAttempts0418 + 1 else mainFrameRecoveryAttempts0418
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_MAIN_FRAME_NAVIGATION_ERROR_0418",
+            packageName,
+            "accountKey=${seatSyncDiagnosticKey(account.id)} mode=$mode code=$errorCode " +
+                "description=${error.description?.toString().orEmpty().replace(Regex("\\s+"), " ").take(160)} " +
+                "url=${BlaBlaCollectorUrlModule.sanitizeForLog(targetUrl)} " +
+                "attempt=$nextAttempt/$BLABLA_MAIN_FRAME_RECOVERY_MAX_ATTEMPTS_0418 retryScheduled=$retry",
+        )
+
+        if (!retry) {
+            if (interactiveMode) {
+                statusView.text =
+                    "${account.displayLabel} • BlaBlaCar não carregou. " +
+                        "Toque em Perfil, Suas viagens ou Sincronizar para tentar novamente."
+            }
+            return
+        }
+
+        mainFrameRecoveryAttempts0418 = nextAttempt
+        statusView.text =
+            "${account.displayLabel} • reconectando ao BlaBlaCar… " +
+                "($nextAttempt/$BLABLA_MAIN_FRAME_RECOVERY_MAX_ATTEMPTS_0418)"
+
+        val expectedKey = mainFrameRecoveryKey0418
+        val expectedAttempt = mainFrameRecoveryAttempts0418
+        val delayMs = when (nextAttempt) {
+            1 -> 900L
+            2 -> 2_200L
+            else -> 5_000L
+        }
+        val retryAction = Runnable {
+            if (
+                destroyed ||
+                !isInteractiveNavigationMode0418() ||
+                mainFrameRecoveryKey0418 != expectedKey ||
+                mainFrameRecoveryAttempts0418 != expectedAttempt
+            ) {
+                return@Runnable
+            }
+            mainFrameRecoveryRunnable0418 = null
+            mainFrameNavigationErrorActive0418 = false
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_MAIN_FRAME_NAVIGATION_RETRY_0418",
+                packageName,
+                "accountKey=${seatSyncDiagnosticKey(account.id)} mode=$mode " +
+                    "attempt=$expectedAttempt/$BLABLA_MAIN_FRAME_RECOVERY_MAX_ATTEMPTS_0418 " +
+                    "url=${BlaBlaCollectorUrlModule.sanitizeForLog(targetUrl)}",
+            )
+            view.loadUrl(targetUrl)
+        }
+        cancelMainFrameRecovery0418()
+        mainFrameRecoveryRunnable0418 = retryAction
+        view.postDelayed(retryAction, delayMs)
     }
 
     private fun interceptPhoneNavigation(rawUrl: String?): Boolean {
@@ -2849,6 +2986,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         networkDiagnosticRecorder?.finishFirstCard("host_closed")
         networkDiagnosticRecorder?.close()
         headlessDelayedHandler0405.removeCallbacksAndMessages(null)
+        cancelMainFrameRecovery0418()
         if (::webView.isInitialized) webView.destroy()
         syncCrashGuard?.close()
     }
