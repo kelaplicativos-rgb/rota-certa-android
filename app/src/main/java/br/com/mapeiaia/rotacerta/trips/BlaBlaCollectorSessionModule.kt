@@ -135,8 +135,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     previous.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
             val effectiveSkippedTrips = when {
-                exactTargetId != null && previous == null -> maxOf(skippedTrips, 1)
-                exactTargetId != null -> previous.skippedTrips
+                exactTargetId != null -> previous?.skippedTrips ?: maxOf(skippedTrips, 1)
                 dateScopeKeys == null -> skippedTrips
                 else -> maxOf(skippedTrips, previous?.skippedTrips ?: 0)
             }
