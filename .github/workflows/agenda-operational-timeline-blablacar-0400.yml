@@ -236,7 +236,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/canonical-central-sync-0.1.403'
+    if: github.ref_name == 'agent/canonical-projection-convergence-0.1.408'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35
