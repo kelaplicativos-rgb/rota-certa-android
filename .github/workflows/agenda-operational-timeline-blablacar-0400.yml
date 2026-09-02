@@ -60,7 +60,7 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
-          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
+          ! grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt' changed-files.txt
 
           # Timeline operational is collector-backed only.
@@ -83,6 +83,8 @@ jobs:
           ! grep -Fq 'AgendaHeaderAction0396("Sincronizar BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'AgendaHeaderAction0396("Publicar agenda")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'AgendaHeaderAction0396("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'trips_activity_resume' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
 
       - name: Configure Firebase Android app
         shell: bash
