@@ -145,7 +145,7 @@ class AgendaDeterministicTripOutbox0387Test {
         assertFalse(timeline.contains("recordExternalManualMutation("))
         assertFalse(timeline.contains("manual_card_shortcut"))
         assertFalse(timeline.contains("syncExternalTripIncremental"))
-        assertTrue(timeline.contains("AgendaAutomaticSyncTimelineStatus0398"))
+        assertFalse(timeline.contains("AgendaAutomaticSyncTimelineStatus0398("))
         assertTrue(timeline.contains("AgendaTimelineDownloadAction0399"))
     }
 

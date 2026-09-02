@@ -28,7 +28,8 @@ class AgendaTimelineAutoSync0398Test {
     @Test
     fun synchronizationIsAutomaticAndReadOnlyInTimeline() {
         assertTrue(automaticSync.contains("Esta é a única central de sincronização"))
-        assertTrue(timeline.contains("AgendaAutomaticSyncTimelineStatus0398"))
+        assertFalse(timeline.contains("AgendaAutomaticSyncTimelineStatus0398("))
+        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()"))
         assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
         assertFalse(automaticSync.contains("Sincronizar agora"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))

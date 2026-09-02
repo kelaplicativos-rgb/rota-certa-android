@@ -15,6 +15,7 @@ class AgendaHeaderNavigation0396Test {
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
         assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
+        assertTrue(header.contains("ASSISTANT(\"Assistente Rota Certa\")"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
         assertTrue(header.contains("NavigationDrawerItem("))
@@ -31,6 +32,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(header.contains("\"Agenda de Viagens\""))
         assertTrue(header.contains("sectionLabel"))
         assertTrue(header.contains("contentDescription = navigationDescription"))
+        assertTrue(header.contains("contentDescription = \"Abrir Central de Notificações\""))
         assertTrue(header.contains("contentDescription = \"Mais ações desta tela\""))
         assertTrue(header.contains("maxLines = 1"))
         assertTrue(header.contains("TextOverflow.Ellipsis"))
@@ -79,6 +81,9 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(publicSearch.contains("showTitle: Boolean = true"))
         assertTrue(publicSearch.contains("if (showTitle)"))
         assertTrue(activity.contains("showTitle = false"))
+        assertTrue(activity.contains("TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410("))
+        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()"))
+        assertTrue(activity.contains("TripScreen.NOTIFICATIONS -> {"))
     }
 
     @Test
