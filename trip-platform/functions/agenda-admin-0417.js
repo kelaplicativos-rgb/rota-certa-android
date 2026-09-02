@@ -623,16 +623,15 @@ function createAgendaAdmin0417({
     if (!tripSnap.exists || clean0417(tripSnap.data().driverUsername, 40) !== session.driverUsername) {
       return fail0417(res, 404, "trip_not_found", "Viagem não encontrada.");
     }
-    req.query = { ...(req.query || {}), tripId: clean0417(tripId, 120) };
-    return listAdminLogs0417WithSession0417(req, res, session);
+    return listAdminLogs0417WithSession0417(req, res, session, clean0417(tripId, 120));
   }
 
-  async function listAdminLogs0417WithSession0417(req, res, session) {
+  async function listAdminLogs0417WithSession0417(req, res, session, forcedTripId = "") {
     const [debugSnap, auditSnap] = await Promise.all([
       db.collection("tripPublicDebugEvents").where("driverUsername", "==", session.driverUsername).limit(500).get(),
       db.collection("tripChangeEvents").where("driverUsername", "==", session.driverUsername).limit(500).get(),
     ]);
-    const tripId = clean0417(req.query && req.query.tripId, 120);
+    const tripId = forcedTripId || clean0417(req.query && req.query.tripId, 120);
     const tripHash = tripId ? sha256Hex0417("trip:" + tripId).slice(0, 24) : "";
     const events = [
       ...debugSnap.docs.map((doc) => ({ id: doc.id, ...doc.data(), category: "DEBUG" }))
