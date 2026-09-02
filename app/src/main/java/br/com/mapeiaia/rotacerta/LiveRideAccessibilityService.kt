@@ -42,7 +42,6 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import br.com.mapeiaia.rotacerta.trips.BookingRealtimeEvents0356
 import br.com.mapeiaia.rotacerta.trips.DriverNotificationProjection0416
-import br.com.mapeiaia.rotacerta.trips.RotaCertaTenantRegistry
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
