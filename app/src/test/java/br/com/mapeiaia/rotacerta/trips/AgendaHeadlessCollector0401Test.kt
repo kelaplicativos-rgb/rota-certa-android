@@ -65,8 +65,9 @@ class AgendaHeadlessCollector0401Test {
     }
 
     @Test
-    fun publicAgendaUsesPersistedCollectorSnapshotAndCanonicalStopIdsFirst() {
-        assertTrue(publicAgenda.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
+    fun publicAgendaUsesCanonicalTripStoreProjectionAndCanonicalStopIdsFirst() {
+        assertFalse(publicAgenda.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
+        assertTrue(publicAgenda.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_REUSED_0401"))
         assertTrue(publicAgenda.contains("firstRequestUsesCanonical=true"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402"))
