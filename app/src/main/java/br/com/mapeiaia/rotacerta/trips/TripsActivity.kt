@@ -57,7 +57,6 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.roundToLong
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withLock
 
 class TripsActivity : ComponentActivity() {
     private var agendaTimelineCrashGuard: AgendaTimelineCrashGuard? = null
@@ -263,41 +262,23 @@ private fun TripApp(
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
     var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
     var message by remember { mutableStateOf<String?>(null) }
-    var driverNotifications by remember { mutableStateOf<List<DriverNotificationItem>>(emptyList()) }
-    var driverUnreadCount by remember { mutableStateOf(0) }
+    val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
+    val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
+    val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.notifications
+    } else {
+        emptyList()
+    }
+    val driverUnreadCount = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.unreadCount.coerceAtLeast(0)
+    } else {
+        0
+    }
     val shareScope = rememberCoroutineScope()
-    val notificationRefreshMutex0416 = remember { kotlinx.coroutines.sync.Mutex() }
 
     val refreshDriverNotifications: suspend () -> Unit = {
-        notificationRefreshMutex0416.withLock {
-            val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                store.onlineSettings()
-            }
-            if (!online.configured) {
-                driverNotifications = emptyList()
-                driverUnreadCount = 0
-            } else {
-                runCatching { TripRemoteApi(online).listDriverNotifications() }
-                    .onSuccess { response ->
-                        // Remote unread state is authoritative. The mutex prevents an older response
-                        // from racing a newer read/push invalidation and winning the UI projection.
-                        driverNotifications = response.notifications
-                        driverUnreadCount = response.unreadCount.coerceAtLeast(0)
-                    }
-                    .onFailure { error ->
-                        UnifiedDebugEventStore.record(
-                            "DRIVER_NOTIFICATION_CENTER_REFRESH_FAILED",
-                            activity.packageName,
-                            AgendaFailureEvidence.describe(
-                                error = error,
-                                operation = "DRIVER_NOTIFICATION_CENTER_REFRESH",
-                                component = "TripsActivity",
-                                method = "refreshDriverNotifications",
-                            ),
-                        )
-                    }
-            }
-        }
+        DriverNotificationProjection0416.refresh(activity)
+        Unit
     }
 
     androidx.compose.runtime.SideEffect {
