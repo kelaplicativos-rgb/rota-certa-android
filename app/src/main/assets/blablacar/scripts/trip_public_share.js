@@ -14,11 +14,21 @@
     }
   } catch (_) {}
 
+  const isOfficialBlaBlaHost = (hostname) => {
+    const labels = clean(hostname).toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+    const root = labels[0] === 'www' ? labels.slice(1) : labels;
+    if (root[0] !== 'blablacar') return false;
+    const suffix = root.slice(1);
+    if (suffix.length === 1) return suffix[0] === 'com' || /^[a-z]{2}$/.test(suffix[0]);
+    if (suffix.length === 2) return ['com', 'co'].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+    return false;
+  };
+
   const exactPublicTripUrl = (raw) => {
     if (!tripId) return '';
     try {
       const url = new URL(raw || '', location.href);
-      if (url.protocol !== 'https:' || url.hostname.toLowerCase() !== 'www.blablacar.com.br') return '';
+      if (url.protocol !== 'https:' || !isOfficialBlaBlaHost(url.hostname)) return '';
       const path = url.pathname.replace(/\/+$/, '').toLowerCase();
       if (path !== '/trip' && !path.startsWith('/trip/')) return '';
       let id = clean(url.searchParams.get('id'));
