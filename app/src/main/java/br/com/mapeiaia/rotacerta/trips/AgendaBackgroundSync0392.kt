@@ -1073,7 +1073,7 @@ internal object AgendaBackgroundSync0392 {
                     externalRetryPending++
                 } else if (coordinator.recordExternalTenantMutation(
                         sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = allocation,
+                        configuredRotaCertaSeatAllocation = perTripAllocation,
                         seatAllocationVersion = trip.seatAllocationVersionUsed,
                         mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
                     ) != null
@@ -1111,7 +1111,7 @@ internal object AgendaBackgroundSync0392 {
         context: Context,
         store: TripStore,
         response: BlaBlaCollectorMonthResponse?,
-        rotaCertaSeatAllocation: Int,
+        @Suppress("UNUSED_PARAMETER") rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         nowMillis: Long = System.currentTimeMillis(),
         collectionRunId: String = response?.collected_at.orEmpty(),
@@ -1119,7 +1119,6 @@ internal object AgendaBackgroundSync0392 {
         completeProfileUuids: Set<String> = emptySet(),
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
-        val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
         val coordinator = TripMutationCoordinator0387(context, store)
         var changedTrips = 0
         var skippedTrips = 0
@@ -1150,6 +1149,7 @@ internal object AgendaBackgroundSync0392 {
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
+            val perTripAllocation = existing?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
             if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
                 staleResultsRejected++
                 UnifiedDebugEventStore.record(
@@ -1168,7 +1168,7 @@ internal object AgendaBackgroundSync0392 {
                     blockedTrips++
                     return@forEach
                 }
-            val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, allocation)
+            val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, perTripAllocation)
             val incomingComplete = source.published_seats != null && source.passenger_roster_complete
             val decision = externalCollectorDeltaDecision0403(
                 existingFingerprint = existing?.externalSnapshotFingerprint.orEmpty(),
@@ -1213,9 +1213,9 @@ internal object AgendaBackgroundSync0392 {
                     val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
                     val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
                         source = source,
-                        capacity = (blablaQuota + allocation).coerceIn(0, 999),
+                        capacity = (blablaQuota + perTripAllocation).coerceIn(0, 999),
                         nowMillis = Long.MIN_VALUE,
-                        rotaCertaSeatAllocation = allocation,
+                        rotaCertaSeatAllocation = perTripAllocation,
                     )
                     if (synthesized == null) {
                         blockedTrips++
@@ -1312,7 +1312,7 @@ internal object AgendaBackgroundSync0392 {
                 if (
                     coordinator.recordExternalCollectionMutation(
                         sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = allocation,
+                        configuredRotaCertaSeatAllocation = perTripAllocation,
                         seatAllocationVersion = seatAllocationVersion,
                     ) != null
                 ) {
@@ -1923,7 +1923,7 @@ internal object AgendaBackgroundSync0392 {
                     context = appContext,
                     store = store,
                     configuredVehicleCapacity = 0,
-                    configuredRotaCertaSeatAllocation = allocation,
+                    configuredRotaCertaSeatAllocation = perTripAllocation,
                 )
                 publicLocalPublished = publicResult.localPublished
                 publicExternalPublished = publicResult.externalPublished
