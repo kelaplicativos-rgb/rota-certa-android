@@ -76,6 +76,68 @@ private fun readAssistantJsonFile0413(
     }
 }
 
+
+internal fun assistantVehicleReadResult0414(
+    settings: TripOnlineSettings,
+    accounts: List<BlaBlaDynamicAccount>,
+    snapshots: List<BlaBlaPublicProfileSnapshot>,
+): String {
+    val selectedAccountId = settings.selectedPublicProfileAccountId.trim()
+    val candidates = if (selectedAccountId.isNotBlank()) {
+        accounts.filter { it.id == selectedAccountId }
+    } else {
+        accounts
+    }
+
+    val verified = candidates.mapNotNull { account ->
+        val expectedUuid = account.profileUuid?.trim().orEmpty()
+        val snapshot = snapshots.firstOrNull { candidate ->
+            candidate.accountId == account.id &&
+                candidate.identityVerified &&
+                expectedUuid.isNotBlank() &&
+                candidate.profileUuid.equals(expectedUuid, ignoreCase = true)
+        }
+        snapshot?.let { account to it }
+    }
+
+    if (verified.isEmpty()) {
+        return if (selectedAccountId.isNotBlank()) {
+            "O perfil BlaBlaCar selecionado ainda não tem snapshot autenticado confirmado. Atualize o perfil antes de confiar nos dados do veículo."
+        } else {
+            "Não encontrei snapshot autenticado de perfil BlaBlaCar com identidade confirmada para informar o veículo."
+        }
+    }
+
+    val withVehicle = verified.filter { (_, snapshot) ->
+        snapshot.vehicleMakeModel.isNotBlank() ||
+            snapshot.vehicleColor.isNotBlank() ||
+            snapshot.amenities.isNotBlank()
+    }
+    if (withVehicle.isEmpty()) {
+        return "O perfil BlaBlaCar está autenticado, mas marca/modelo, cor e comodidades do veículo não foram confirmados no snapshot atual."
+    }
+
+    fun label(account: BlaBlaDynamicAccount, snapshot: BlaBlaPublicProfileSnapshot): String {
+        val parts = buildList {
+            snapshot.vehicleMakeModel.trim().takeIf(String::isNotBlank)?.let(::add)
+            snapshot.vehicleColor.trim().takeIf(String::isNotBlank)?.let { add("cor $it") }
+            snapshot.amenities.trim().takeIf(String::isNotBlank)?.let { add("comodidades: $it") }
+        }
+        return account.displayLabel + ": " + parts.joinToString(" • ")
+    }
+
+    return if (withVehicle.size == 1) {
+        "Veículo confirmado no snapshot autenticado: " +
+            label(withVehicle.single().first, withVehicle.single().second) +
+            "."
+    } else {
+        withVehicle.joinToString(
+            prefix = "Veículos confirmados nos snapshots autenticados: ",
+            separator = " | ",
+        ) { (account, snapshot) -> label(account, snapshot) }
+    }
+}
+
 private class RotaCertaAssistantIdempotencyStore0410(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(
         "rota_certa_assistant_idempotency_0410",
@@ -511,7 +573,15 @@ internal fun RotaCertaAssistantPanel0410(
                 contactBookings = if (plan.action == RotaCertaAction0410.READ_PASSENGERS && plan.trip != null) {
                     assistantActivePassengerBookings0411(plan.trip, bookings)
                 } else emptyList()
-                result = assistantReadResult0410(command, plan, trips, bookings)
+                result = if (plan.action == RotaCertaAction0410.READ_VEHICLE) {
+                    assistantVehicleReadResult0414(
+                        settings = store.onlineSettings(),
+                        accounts = BlaBlaDynamicAccountRegistry(context).list(),
+                        snapshots = BlaBlaPublicProfileStore(context).all(),
+                    )
+                } else {
+                    assistantReadResult0410(command, plan, trips, bookings)
+                }
                 pending = null
             }
         }

@@ -356,6 +356,61 @@ class RotaCertaCommand0410Test {
     }
 
     @Test
+    fun readVehicleReturnsConfirmedSnapshotDetailsInsteadOfGenericMessage() {
+        val account = BlaBlaDynamicAccount(
+            id = "account-a",
+            label = "Perfil principal",
+            webProfileName = "profile-a",
+            profileUuid = "11111111-1111-4111-8111-111111111111",
+            profileName = "Motorista",
+        )
+        val snapshot = BlaBlaPublicProfileSnapshot(
+            accountId = account.id,
+            profileUuid = account.profileUuid!!,
+            vehicleMakeModel = "Renault Kwid",
+            vehicleColor = "Branco",
+            amenities = "Ar-condicionado",
+            identityVerified = true,
+        )
+        val result = assistantVehicleReadResult0414(
+            settings = TripOnlineSettings(
+                selectedPublicProfileAccountId = account.id,
+            ),
+            accounts = listOf(account),
+            snapshots = listOf(snapshot),
+        )
+        assertTrue(result.contains("Renault Kwid"))
+        assertTrue(result.contains("Branco"))
+        assertTrue(result.contains("Ar-condicionado"))
+        assertFalse(result.contains("detalhes desnecessários"))
+    }
+
+    @Test
+    fun readVehicleFailsClosedWhenSnapshotIdentityDoesNotMatchAccount() {
+        val account = BlaBlaDynamicAccount(
+            id = "account-a",
+            label = "Perfil principal",
+            webProfileName = "profile-a",
+            profileUuid = "11111111-1111-4111-8111-111111111111",
+        )
+        val mismatched = BlaBlaPublicProfileSnapshot(
+            accountId = account.id,
+            profileUuid = "22222222-2222-4222-8222-222222222222",
+            vehicleMakeModel = "Veículo incorreto",
+            identityVerified = true,
+        )
+        val result = assistantVehicleReadResult0414(
+            settings = TripOnlineSettings(
+                selectedPublicProfileAccountId = account.id,
+            ),
+            accounts = listOf(account),
+            snapshots = listOf(mismatched),
+        )
+        assertTrue(result.contains("não tem snapshot autenticado confirmado"))
+        assertFalse(result.contains("Veículo incorreto"))
+    }
+
+    @Test
     fun publicSearchUsesExistingAuditableCollectorAndRequiresRoute() {
         val missing = RotaCertaCommandPlanner0410.plan(
             command(RotaCertaAction0410.PUBLIC_SEARCH).copy(publicTargetNames = listOf("Alessandra")),
