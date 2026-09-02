@@ -84,7 +84,6 @@
       </button>
     </div>
   </div>
-  <button id="openAgendaAdmin0417" class="adminEntry0417" type="button">Administração da Agenda</button>
 
   <aside id="testModeBanner" class="testModeBanner hidden" role="status" aria-live="polite">
     <strong>🧪 MODO TESTE</strong>
@@ -274,6 +273,11 @@
           </div>
           <div id="portalNotifications" class="notificationList"><p class="muted">Nenhuma notificação.</p></div>
         </div>
+        <div id="portalAgendaAdminCard0418" class="card hidden">
+          <h2>Administração da Agenda</h2>
+          <p class="muted">Você foi autorizado pelo proprietário desta Agenda.</p>
+          <button id="openAgendaAdmin0418" class="primary" type="button">Abrir Administração da Agenda</button>
+        </div>
         <div class="card">
           <h2>Meus créditos</h2>
           <div id="portalCreditBalance" class="priceTotal">R$ 0,00</div>
@@ -310,15 +314,7 @@
     </div>
     <p id="adminMessage0417" class="muted"></p>
 
-    <div id="adminLoginCard0417" class="card">
-      <h2>Entrar como administrador</h2>
-      <p class="muted">Use o WhatsApp do proprietário da Agenda e a senha definida no aplicativo Rota Certa.</p>
-      <label>WhatsApp<input id="adminWhatsapp0417" autocomplete="username" inputmode="tel"></label>
-      <label>Senha<input id="adminPassword0417" type="password" autocomplete="current-password" maxlength="72"></label>
-      <button id="adminLogin0417" class="primary" type="button">Entrar</button>
-    </div>
-
-    <div id="adminPanel0417" class="hidden">
+    <div id="adminPanel0417">
       <div class="card">
         <div class="adminHeader0417"><h2 class="adminPanelTitle0417">Visão Geral</h2><button id="adminRefresh0417" class="secondary" type="button">Atualizar painel</button></div>
         <div id="adminHealthGrid0417" class="adminGrid0417"></div>
@@ -384,7 +380,7 @@
         <h2>Segurança e sessões</h2>
         <p class="muted">“Última atividade” não é tratada como logout. Logout explícito e expiração são auditados separadamente.</p>
         <div id="adminSessions0417"></div>
-        <button id="adminLogout0417" class="dangerButton" type="button">Sair da Administração</button>
+        <button id="adminBackToTrips0418" class="secondary" type="button">Voltar para Minhas Viagens</button>
       </div>
     </div>
   </section>
@@ -499,6 +495,6 @@
 </main>
 <script src="/date-selection.js" defer></script>
 <script src="/app.js?v=0.1.417" defer></script>
-<script src="/admin-0417.js?v=0.1.417" defer></script>
+<script src="/admin-0417.js?v=0.1.418" defer></script>
 </body>
 </html>
