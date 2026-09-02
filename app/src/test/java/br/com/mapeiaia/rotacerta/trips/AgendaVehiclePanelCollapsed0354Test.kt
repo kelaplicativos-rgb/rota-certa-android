@@ -9,45 +9,41 @@ class AgendaVehiclePanelCollapsed0354Test {
     private fun source(path: String): String = File("src/main/java/$path").readText()
 
     @Test
-    fun vehicleEntryIsRemovedFromTimelineAdministration() {
-        val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        val header = timeline.indexOf("Text(if (showArchived)")
-        val passengers = timeline.indexOf("GlobalPassengerFlowPanel(", header)
-        val topAdministration = timeline.substring(header, passengers)
-
-        assertFalse(topAdministration.contains("driverDefaultsExpanded"))
-        assertFalse(topAdministration.contains("\"Dados do veículo\""))
-        assertFalse(topAdministration.contains("\"Fechar dados do veículo\""))
-        assertFalse(topAdministration.contains("TripDriverDefaultsCard("))
-    }
-
-    @Test
-    fun integrationVehicleExpanderReusesCanonicalLocalVehicleSettings() {
+    fun vehicleIsNoLongerAnOperationalIntegrationCategory() {
         val settings = source("br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt")
-        val vehicleToggle = settings.indexOf("if (vehicleExpanded) \"🚗 Veículo ▲\" else \"🚗 Veículo ▼\"")
-        val vehicleGate = settings.indexOf("if (vehicleExpanded) {", vehicleToggle)
-        val nextSection = settings.indexOf("PublicProfileTextField(\"Preferências\"", vehicleGate)
-        val vehicleSection = settings.substring(vehicleGate, nextSection)
-
-        assertTrue(vehicleToggle >= 0)
-        assertTrue(vehicleGate > vehicleToggle)
-        assertTrue(vehicleSection.contains("TripDriverDefaultsCard("))
-        assertTrue(vehicleSection.contains("vehicleSettingsRepository"))
-        assertTrue(vehicleSection.contains("vehicleReferenceOrigin"))
-        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Marca/modelo\""))
-        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Cor\""))
-        assertTrue(vehicleSection.contains("PublicProfileTextField(\"Comodidades\""))
+        val integration = settings.substringAfter("internal fun OnlineSettingsEditor(").substringBefore("@Composable\ninternal fun AgendaAppSettingsScreen0416")
+        assertFalse(integration.contains("🚗 Veículo"))
+        assertFalse(integration.contains("TripDriverDefaultsCard("))
+        assertFalse(integration.contains("PublicProfileTextField(\"Marca/modelo\""))
+        assertTrue(settings.contains("internal fun AgendaAppSettingsScreen0416("))
+        assertTrue(settings.contains("Text(\"Dados do veículo\""))
+        assertTrue(settings.contains("Text(\"Marca/modelo\")"))
+        assertTrue(settings.contains("Text(\"Cor\")"))
     }
 
     @Test
-    fun canonicalVehicleEditorStillUsesOriginalSettingsRepositoryAndStorageContract() {
+    fun gpsReferenceIsSeparatedFromVehicleAndManualSeats() {
         val timeline = source("br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt")
-        assertTrue(timeline.contains("internal fun TripDriverDefaultsCard("))
-        assertTrue(timeline.contains("repository.saveSettings("))
-        assertFalse(timeline.contains("vehicleCapacity = parsed"))
-        assertTrue(timeline.contains("rotaCertaSeatAllocation = parsedRotaCerta"))
-        assertFalse(timeline.contains("Capacidade de passageiros"))
-        assertTrue(timeline.contains("Vagas disponibilizadas no Rota Certa"))
-        assertTrue(timeline.contains("referenceStore.save(origin)"))
+        assertTrue(timeline.contains("internal fun TripReferenceOriginSettingsCard0416("))
+        assertTrue(timeline.contains("TripReferenceOriginStore(context)"))
+        assertTrue(timeline.contains("Origem operacional de referência"))
+        val gps = timeline.substringAfter("internal fun TripReferenceOriginSettingsCard0416(")
+            .substringBefore("/** Compatibility entry point")
+        assertFalse(gps.contains("rotaCertaSeatAllocation"))
+        assertFalse(gps.contains("Vagas disponibilizadas no Rota Certa"))
+    }
+
+    @Test
+    fun extraSeatsAreTripScopedAndUseCanonicalMutationPipeline() {
+        val activity = source("br/com/mapeiaia/rotacerta/trips/TripsActivity.kt")
+        val seats = activity.substringAfter("private fun TripExtraSeatsScreen0416(")
+            .substringBefore("@Composable\nprivate fun AgendaPublicSearchRoot0396")
+        assertTrue(seats.contains("trip.rotaCertaSeatAllocation"))
+        assertTrue(seats.contains("store.saveTrip("))
+        assertTrue(seats.contains("canonicalTripId = saved.id"))
+        assertTrue(seats.contains("recordExternalManualMutation("))
+        assertTrue(seats.contains("configuredRotaCertaSeatAllocation = parsed"))
+        assertTrue(seats.contains("AgendaBackgroundSync0392.enqueueImmediate(activity, \"trip_mutation\")"))
+        assertFalse(seats.contains("settings.copy(rotaCertaSeatAllocation"))
     }
 }
