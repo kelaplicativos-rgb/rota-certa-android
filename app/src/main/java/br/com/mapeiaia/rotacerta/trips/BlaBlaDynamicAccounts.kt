@@ -1651,7 +1651,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         } else {
             null
         }
-        val searchUrl = task?.let(BlaBlaPublicPlaceDirectory::searchUrl)
+        val providerOrigin = BlaBlaCollectorUrlModule.origin(candidate.href) ?: BlaBlaCollectorUrlModule.origin(webView.url)
+        val searchUrl = task?.let { BlaBlaPublicPlaceDirectory.searchUrl(it, providerOrigin) }
         val tripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
         if (tripId.isBlank() || searchUrl.isNullOrBlank()) {
             UnifiedDebugEventStore.record(
@@ -1721,6 +1722,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val captured = exactPublicTripHrefForTrip(
                 expectedTripId = tripId,
                 hrefs = evidence?.cards.orEmpty().map { it.href },
+                providerOrigin = BlaBlaCollectorUrlModule.origin(webView.url)
+                    ?: BlaBlaCollectorUrlModule.origin(candidate.href),
             )
             if (captured != null) {
                 pendingTripDetail = pendingTripDetail?.copy(publicTripHref = captured)
