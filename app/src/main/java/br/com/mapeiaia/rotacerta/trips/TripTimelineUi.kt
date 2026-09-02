@@ -1101,10 +1101,24 @@ private fun TimelineEntryCard(
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
-            Text(
-                date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = "●",
+                    color = publicMirrorDotColor0417(trip),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier
+                        .clickable { showMirrorDiagnostic0417 = true }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
             timelineDirectionDisplayLabel(direction)?.let { label ->
                 val chipColor = when (direction) {
                     TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF285A34) else Color(0xFFB8E6C4)
