@@ -325,9 +325,20 @@ class TripStore(context: Context) {
                     trip.id in winnerIds
             }
             val bookingsByTrip = remappedBookings.groupBy(Booking::tripId)
+            val activeTimezone = ZoneId.systemDefault().id
             val hashedTrips = retainedTrips.map { trip ->
-                val stateHash = canonicalTripStateHash0406(trip, bookingsByTrip[trip.id].orEmpty())
-                if (trip.canonicalStateHash == stateHash) trip else trip.copy(canonicalStateHash = stateHash)
+                val migrated = if (trip.publicTimezoneId0411.isBlank()) {
+                    trip.copy(
+                        publicTimezoneId0411 = activeTimezone,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        canonicalStateHash = "",
+                        updatedAtMillis = nowMillis,
+                    ).invalidatePublicMirror0411("LEGACY_PUBLIC_TIMEZONE_MIGRATED")
+                } else {
+                    trip
+                }
+                val stateHash = canonicalTripStateHash0406(migrated, bookingsByTrip[migrated.id].orEmpty())
+                if (migrated.canonicalStateHash == stateHash) migrated else migrated.copy(canonicalStateHash = stateHash)
             }
             val canonicalByKey = hashedTrips.filter { it.tripKey.isNotBlank() }.associateBy(Trip::tripKey)
             val originalBindings = publicExternalBindings()
