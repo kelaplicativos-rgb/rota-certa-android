@@ -3,7 +3,7 @@ name: Agenda operational Timeline BlaBlaCar auto collection 0.1.401
 on:
   push:
     branches:
-      - agent/timeline-blablacar-auto-collection-0.1.401
+      - agent/timeline-blablacar-auto-collection-0.1.400
   workflow_dispatch:
 
 permissions:
