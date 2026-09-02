@@ -1,9 +1,9 @@
-name: Agenda operational Timeline BlaBlaCar auto collection 0.1.402
+name: Agenda canonical central sync 0.1.403
 
 on:
   push:
     branches:
-      - agent/timeline-blablacar-auto-collection-0.1.400
+      - agent/canonical-central-sync-0.1.403
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5695' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.402"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5696' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.403"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -63,13 +63,26 @@ jobs:
           ! grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt' changed-files.txt
 
-          # Timeline operational is collector-backed only.
-          grep -Fq 'BlaBlaTimelineAdapter.merge(emptyList(), collectorResponseForTimeline)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          # Timeline is now a canonical TripStore projection; the collector is input-only.
+          grep -Fq 'canonicalCollectorResponse0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'BlaBlaTimelineAdapter.merge(emptyList(), canonicalCollectorResponseForTimeline0403)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'collectorStore.lastResponseRecoveringDynamicSessions()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'BlaBlaCollectorTimelineEvents0400.revision.collectAsState()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'TripTimelineEngine.fromLocalAgenda(trips, bookings)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'val publicResponseForTimeline: BlaBlaPublicSearchResponse? = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'val externalSnapshot: BlaBlaCollectorTrip?' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'externalSnapshotFingerprint' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
 
-          # Central scheduler calls the existing collector and preserves truthful coverage.
+          # Central scheduler calls the existing collector, commits per-trip canonical deltas, then drains one outbox.
           grep -Fq 'requestAutomaticCollector0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'reconcileCollectedExternalTrips0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'EXTERNAL_CANONICAL_SKIP_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'EXTERNAL_CANONICAL_MISSING_PRESERVED_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'recordExternalCollectionMutation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'eventSource = "EXTERNAL_COLLECTION"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'reason == "periodic" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'cycle.collectorPending -> "COLLECTOR_PENDING"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'BlaBlaDynamicSessionIntents.syncPayload' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
@@ -96,12 +109,18 @@ jobs:
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'trips_activity_resume' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
 
-      - name: Validate server-canonical trip sync-state
+      - name: Validate canonical booking, notification and sync-state contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --test trip-platform/functions/test/driver-trip-sync-state-0402.test.js
+          node --test trip-platform/functions/test/deterministic-trip-outbox-0387.test.js
+          node --test trip-platform/functions/test/public-booking-0296.test.js
+          node --test trip-platform/functions/test/public-booking-realtime-0304.test.js
+          node --test trip-platform/functions/test/bidirectional-notifications-0349.test.js
+          node --test trip-platform/functions/test/reservation-approval-0356.test.js
+          node --test trip-platform/functions/test/stage47-unified-capacity-r4-step2.test.js
 
       - name: Configure Firebase Android app
         shell: bash
@@ -150,7 +169,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -179,7 +198,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.402-headless-central-sync-${{ github.sha }}
+          name: rota-certa-0.1.403-canonical-central-sync-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
