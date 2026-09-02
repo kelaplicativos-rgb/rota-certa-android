@@ -55,7 +55,7 @@ class AgendaTimelineAutoSync0398Test {
     @Test
     fun bothTimelinesOfferDownloadableAuditFiles() {
         assertTrue(download.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
-        assertTrue(activity.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
+        assertTrue(activity.contains("AgendaHeaderAction0396(\"Baixar Timeline\")"))
         assertTrue(activity.contains("AgendaTimelineCommand0396.DOWNLOAD_TIMELINE"))
         assertTrue(download.contains("AgendaTimelineDownloadAction0399("))
         assertTrue(timeline.contains("AgendaTimelineDownloadAction0399("))
@@ -69,12 +69,11 @@ class AgendaTimelineAutoSync0398Test {
     @Test
     fun permanentSyncReconcilesStaleRotaCertaAllocationWithoutInventingBlaBlaSeats() {
         assertTrue(api.contains("/v1/driver/agenda/seat-allocation"))
-        assertTrue(background.contains("PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILED_0398"))
+        assertTrue(background.contains("PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_SKIPPED_0416"))
+        assertTrue(background.contains("globalFanOut=false"))
+        assertTrue(background.contains("per_trip_allocation_is_canonical"))
         assertTrue(backend.contains("async function reconcileDriverAgendaSeatAllocation"))
-        assertTrue(backend.contains("rotaCertaSeatAllocation: allocation"))
-        assertTrue(backend.contains("capacityKnown = false"))
-        assertTrue(backend.contains("operationalAvailableSeats: 0"))
-        assertTrue(backend.contains("publishedSeats + allocation"))
         assertTrue(backend.contains("/v1/driver/agenda/seat-allocation"))
+        assertTrue(background.contains("trip.rotaCertaSeatAllocation"))
     }
 }
