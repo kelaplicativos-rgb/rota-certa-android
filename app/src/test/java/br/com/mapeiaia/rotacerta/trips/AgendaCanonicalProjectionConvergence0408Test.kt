@@ -120,6 +120,26 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
+    fun staleBindingCannotBlockRecreationAfterRemote404() {
+        val publisher = source("PublicAgendaAutoSync0300.kt")
+        assertTrue(publisher.contains("isRemoteTripNotFound(firstError) ->"))
+        assertFalse(publisher.contains("existingBinding == null && isRemoteTripNotFound(firstError)"))
+        assertTrue(publisher.contains("PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410"))
+        assertTrue(publisher.contains("val created = api.publish(publicTrip.copy(capacityReliable = false))"))
+        assertTrue(publisher.contains("remoteTripId = created.tripId"))
+    }
+
+    @Test
+    fun projectionRepairInvalidatesDeliveredProofButKeepsSingleOutbox() {
+        val background = source("AgendaBackgroundSync0392.kt")
+        val outbox = source("TripPublicationOutbox0387.kt")
+        assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
+        assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
+        assertTrue(outbox.contains("remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED"))
+        assertFalse(outbox.contains("class ProjectionPublicationOutbox0410"))
+    }
+
+    @Test
     fun publisherRetryAndStaleRebaseRemainOnSingleExistingOutbox() {
         val source = source("TripPublicationOutbox0387.kt")
         assertTrue(source.contains("FAILED_RETRYABLE"))
