@@ -29,7 +29,7 @@ class AgendaHeadlessCollector0401Test {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_open"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_mutation"))
-        assertEquals(AgendaBackgroundSyncMode0392.FULL_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
+        assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
         assertTrue(background.contains("runPendingHeadless"))
     }
 
