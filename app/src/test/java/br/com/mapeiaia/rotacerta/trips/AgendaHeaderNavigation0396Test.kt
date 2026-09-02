@@ -15,7 +15,7 @@ class AgendaHeaderNavigation0396Test {
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
         assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
-        assertTrue(header.contains("ASSISTANT(\"Assistente Rota Certa\")"))
+        assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
         assertTrue(header.contains("NavigationDrawerItem("))
@@ -32,7 +32,8 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(header.contains("\"Agenda de Viagens\""))
         assertTrue(header.contains("sectionLabel"))
         assertTrue(header.contains("contentDescription = navigationDescription"))
-        assertTrue(header.contains("contentDescription = \"Abrir Central de Notificações\""))
+        assertTrue(header.contains("\"Notificações, $unread não lidas\""))
+        assertTrue(header.contains("Icons.Filled.Notifications"))
         assertTrue(header.contains("contentDescription = \"Mais ações desta tela\""))
         assertTrue(header.contains("maxLines = 1"))
         assertTrue(header.contains("TextOverflow.Ellipsis"))
@@ -61,7 +62,11 @@ class AgendaHeaderNavigation0396Test {
 
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Nova viagem\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Adicionar passageiro\")"))
-        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Alternar próximas / arquivadas\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Vagas extra\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Próximas / arquivadas\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Baixar Timeline\")"))
+        assertFalse(overflow.contains("Contas e navegadores"))
+        assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronização automática\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
