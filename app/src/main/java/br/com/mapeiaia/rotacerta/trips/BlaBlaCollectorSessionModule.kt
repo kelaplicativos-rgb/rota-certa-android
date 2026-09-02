@@ -102,17 +102,27 @@ class BlaBlaDynamicSessionStore(context: Context) {
         skippedTrips: Int,
         identityVerified: Boolean,
         dateScope: Collection<LocalDate>? = null,
+        targetedTripId: String? = null,
     ) {
         withAccountLock(account.id) {
             val previous = readUnlocked(account)
+            val exactTargetId = targetedTripId?.trim()?.takeIf(String::isNotEmpty)
             val dateScopeKeys = dateScope
                 ?.map(LocalDate::toString)
                 ?.distinct()
                 ?.toSet()
                 ?.takeIf { it.isNotEmpty() }
-            val scopedTrips = dateScopeKeys?.let { keys -> trips.filter { it.date in keys } } ?: trips
+            val dateScopedTrips = dateScopeKeys?.let { keys -> trips.filter { it.date in keys } } ?: trips
+            val scopedTrips = exactTargetId?.let { wanted ->
+                dateScopedTrips.filter { trip ->
+                    trip.trip_id?.trim() == wanted &&
+                        BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) == wanted
+                }.takeIf { it.size == 1 }.orEmpty()
+            } ?: dateScopedTrips
             val droppedOutOfScope = trips.size - scopedTrips.size
-            val authoritativeComplete = identityVerified && skippedTrips == 0
+            // A targeted trip read is never authoritative for the account universe.
+            // It may replace that exact strong identity, but missing sibling cards are preserved.
+            val authoritativeComplete = identityVerified && skippedTrips == 0 && exactTargetId == null
             val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
                 previous = previous?.trips.orEmpty(),
                 current = scopedTrips,
@@ -124,10 +134,11 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     previous?.identityVerified == true &&
                     previous.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
-            val effectiveSkippedTrips = if (dateScopeKeys == null) {
-                skippedTrips
-            } else {
-                maxOf(skippedTrips, previous?.skippedTrips ?: 0)
+            val effectiveSkippedTrips = when {
+                exactTargetId != null && previous == null -> maxOf(skippedTrips, 1)
+                exactTargetId != null -> previous.skippedTrips
+                dateScopeKeys == null -> skippedTrips
+                else -> maxOf(skippedTrips, previous?.skippedTrips ?: 0)
             }
             writeUnlocked(
                 account,
@@ -145,7 +156,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
             UnifiedDebugEventStore.record(
                 "SNAPSHOT_SAVED",
                 appContext.packageName,
-                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
+                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete targeted=${exactTargetId != null} targetTripIdPresent=${exactTargetId != null} dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
             )
         }
     }
