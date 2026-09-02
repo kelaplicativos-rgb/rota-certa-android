@@ -8,7 +8,8 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { buildProfileUpdate } = require("./public-profile-policy");
-const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");\nconst { createAgendaAdmin0417 } = require("./agenda-admin-0417");
+const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
+const { createAgendaAdmin0417 } = require("./agenda-admin-0417");
 const {
   initialTesterCredits,
   normalizeTesterCredits,
