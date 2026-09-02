@@ -1,9 +1,9 @@
-name: Rota Certa Timeline clean surface 0.1.415 APK
+name: Rota Certa Assistant 0.1.414 vehicle read APK
 
 on:
   push:
     branches:
-      - agent/timeline-clean-surface-0.1.415
+      - agent/assistant-read-vehicle-0.1.414
     paths:
       - 'app/**'
       - 'trip-platform/functions/**'
@@ -28,8 +28,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: assistant_ci_dummy_key
       BASE_AUTHORITY_SHA: 09bb5779404f0e789af2d6d76f85e84a932e9a64
-      EXPECTED_VERSION_CODE: '5708'
-      EXPECTED_VERSION_NAME: '0.1.415'
+      EXPECTED_VERSION_CODE: '5707'
+      EXPECTED_VERSION_NAME: '0.1.414'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -46,8 +46,8 @@ jobs:
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaCommand0410.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaAssistantUi0410.kt
           test -s trip-platform/functions/assistant-command-interpreter-0410.js
-          grep -Fq 'versionCode = 5708' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.415"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5707' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.414"' app/build.gradle.kts
           git diff --exit-code "$BASE_AUTHORITY_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           printf '%s
 ' "$SOURCE_HEAD" | tee source_head.txt
@@ -79,12 +79,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run focused assistant, timeline-surface and canonical tests
+      - name: Run focused assistant and canonical tests
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.RotaCertaCommand0410Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.RotaCertaCommand0410Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Assemble exact-head debug APK
         shell: bash
@@ -116,7 +116,7 @@ jobs:
       - name: Upload exact-head APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.415-timeline-clean-${{ github.sha }}
+          name: rota-certa-assistant-0.1.414-vehicle-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
