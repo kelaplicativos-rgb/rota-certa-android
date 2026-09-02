@@ -163,6 +163,7 @@ data class DriverPassengerAccess(
     val displayName: String = "",
     val status: String = "PENDING",
     val accountActivated: Boolean = false,
+    val agendaAdmin: Boolean = false,
     val referredByContact: String = "",
     val referralRewardGrantedAtMillis: Long = 0L,
     val creditBalanceCents: Long = 0L,
@@ -222,6 +223,13 @@ data class DriverPassengerWhatsappUpdateRequest(
     val currentPassengerContact: String = "",
     val newPassengerContact: String,
     val displayName: String = "",
+)
+
+@Serializable
+data class DriverPassengerAgendaAdminRequest0418(
+    val passengerId: String = "",
+    val passengerContact: String = "",
+    val agendaAdmin: Boolean,
 )
 
 @Serializable
@@ -895,6 +903,23 @@ class TripRemoteApi(
         passengerContact = passengerContact,
         status = if (blocked) "BLOCKED" else "AUTHORIZED",
         passengerId = passengerId,
+    )
+
+    suspend fun setPassengerAgendaAdmin0418(
+        passengerContact: String,
+        passengerId: String,
+        agendaAdmin: Boolean,
+    ): DriverPassengerBlockResponse = request(
+        method = "PUT",
+        path = "/v1/driver/passengers/admin",
+        body = json.encodeToString(
+            DriverPassengerAgendaAdminRequest0418(
+                passengerContact = passengerContact.trim(),
+                passengerId = passengerId.trim(),
+                agendaAdmin = agendaAdmin,
+            ),
+        ),
+        requireDriverToken = true,
     )
 
     suspend fun resetPassengerPassword(
