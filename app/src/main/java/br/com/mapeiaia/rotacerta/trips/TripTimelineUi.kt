@@ -133,13 +133,13 @@ fun TripTimelineScreen(
         val canonicalExternal = trips.filter {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.externalSnapshot != null
         }
-        val snapshots = canonicalExternal.mapNotNull(Trip::externalSnapshot)
-        snapshots.takeIf(List<BlaBlaCollectorTrip>::isNotEmpty)?.let {
+        val snapshots = canonicalExternal.mapNotNull { it.externalSnapshot }
+        snapshots.takeIf { it.isNotEmpty() }?.let {
             BlaBlaCollectorMonthResponse(
                 status = "canonical",
                 trips = it,
                 coverage = BlaBlaCollectorCoverage(
-                    complete_for_scope = canonicalExternal.all(Trip::externalSnapshotComplete),
+                    complete_for_scope = canonicalExternal.all { it.externalSnapshotComplete },
                     reason = "trip_store_canonical_projection",
                     unresolved_target_cards = canonicalExternal.count { trip -> !trip.externalSnapshotComplete },
                 ),
