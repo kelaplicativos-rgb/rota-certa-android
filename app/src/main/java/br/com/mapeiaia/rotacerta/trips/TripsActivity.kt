@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.MainActivity
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
