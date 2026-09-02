@@ -94,7 +94,7 @@ class AgendaOperationalTimeline0400Test {
         assertTrue(dynamic.contains("saveProgressSnapshot(\"card_complete\")"))
         assertTrue(dynamic.contains("BlaBlaTripIdentity.externalTripIdFromHref"))
         assertTrue(dynamic.contains("publishCurrentSessions("))
-        assertTrue(collector.contains("BlaBlaTripIdentity.resolveDistinct"))
+        assertTrue(collector.contains("fun resolveDistinct(trips: List<BlaBlaCollectorTrip>)"))
         assertTrue(collector.contains("mergeSnapshotTrips("))
     }
 
