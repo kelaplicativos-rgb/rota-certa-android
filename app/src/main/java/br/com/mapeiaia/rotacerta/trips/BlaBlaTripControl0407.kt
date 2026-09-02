@@ -275,7 +275,7 @@ internal class BlaBlaTripCommandStatusStore0407(context: Context) {
 
     companion object {
         private const val PREFS = "rota_certa_blablacar_trip_control_0407"
-        private const val PENDING_LEASE_MILLIS = 10L * 60L * 1000L
+        private const val PENDING_LEASE_MILLIS = 30L * 60L * 1000L
     }
 }
 
