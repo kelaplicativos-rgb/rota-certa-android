@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 
 internal enum class AgendaRootSection0396(val label: String) {
     ALL_TRIPS("Todas as viagens"),
+    ASSISTANT("Assistente Rota Certa"),
     AUTOMATIC_SYNC("Sincronização automática"),
     PUBLIC_SEARCH("Consulta pública"),
     PASSENGERS("Passageiros"),
@@ -45,6 +46,7 @@ internal enum class AgendaRootSection0396(val label: String) {
 enum class AgendaTimelineCommand0396 {
     ADD_PASSENGER,
     TOGGLE_ARCHIVED,
+    TOGGLE_SYNC_PENDING,
     DOWNLOAD_TIMELINE,
 }
 
@@ -102,6 +104,7 @@ internal fun AgendaModuleDrawer0396(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 listOf(
+                    AgendaRootSection0396.ASSISTANT,
                     AgendaRootSection0396.AUTOMATIC_SYNC,
                     AgendaRootSection0396.PUBLIC_SEARCH,
                     AgendaRootSection0396.PASSENGERS,
@@ -131,6 +134,8 @@ internal fun AgendaModuleHeader0396(
     root: Boolean,
     onNavigationClick: () -> Unit,
     overflowActions: List<AgendaHeaderAction0396>,
+    notificationUnreadCount: Int = 0,
+    onNotificationsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var overflowExpanded by remember { mutableStateOf(false) }
@@ -187,6 +192,21 @@ internal fun AgendaModuleHeader0396(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+            }
+            IconButton(
+                onClick = { onNotificationsClick?.invoke() },
+                enabled = onNotificationsClick != null,
+                modifier = Modifier.semantics { contentDescription = "Abrir Central de Notificações" },
+            ) {
+                val badge = if (notificationUnreadCount > 0) {
+                    if (notificationUnreadCount > 99) "99+" else notificationUnreadCount.toString()
+                } else {
+                    ""
+                }
+                Text(
+                    text = if (badge.isBlank()) "🔔" else "🔔$badge",
+                    style = MaterialTheme.typography.bodyLarge,
+                )
             }
             IconButton(
                 onClick = { overflowExpanded = true },
