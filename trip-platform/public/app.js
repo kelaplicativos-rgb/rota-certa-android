@@ -3442,7 +3442,17 @@ async function loadPassengerBookings(options = {}) {
   }
 }
 
-function logoutPassengerPortal() {
+async function logoutPassengerPortal() {
+  const token = passengerSessionToken;
+  if (token) {
+    try {
+      await fetch("/v1/passenger/logout", {
+        method: "POST",
+        headers: authenticatedHeaders({ "Content-Type": "application/json", Accept: "application/json" }),
+        body: JSON.stringify({ driverUsername }),
+      });
+    } catch (_) {}
+  }
   savePassengerSession("");
   passengerViewAccountActivated = true;
   passengerAgendaAdmin0418 = false;
