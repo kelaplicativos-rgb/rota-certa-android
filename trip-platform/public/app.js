@@ -82,6 +82,7 @@ let seatPickerLimit = 0;
 let passengerCreditBalanceCents = 0;
 let passengerMustChangePassword = false;
 let passengerViewAccountActivated = false;
+let passengerAgendaAdmin0418 = false;
 let pendingPrivateAction = "";
 let bookingRequestInFlight = false;
 let directReserveConsumed = false;
@@ -431,6 +432,7 @@ function updateAuthenticatedChrome() {
   show("openPassengerPortal", Boolean(isTesterMode() || passengerAgendaViewToken || passengerSessionToken));
   show("passengerNotificationsBell", Boolean(isTesterMode() || passengerSessionToken));
   show("portalLogout", Boolean(!isTesterMode()));
+  show("portalAgendaAdminCard0418", Boolean(!isTesterMode() && passengerSessionToken && passengerAgendaAdmin0418));
   if (!hasPrivatePortalSession()) {
     passengerUnreadNotificationCount = 0;
     show("passengerNotificationBadge", false);
@@ -504,7 +506,10 @@ async function requestPublicAgendaAccess(contactInput = "") {
 async function validatePassengerSession() {
   if (!passengerSessionToken) return false;
   try {
-    const response = await fetch("/v1/passenger/me", { headers: authenticatedHeaders({ Accept: "application/json" }) });
+    const response = await fetch(
+      "/v1/passenger/me?driverUsername=" + encodeURIComponent(driverUsername || ""),
+      { headers: authenticatedHeaders({ Accept: "application/json" }) },
+    );
     const body = await response.json();
     if (!response.ok) {
       savePassengerSession("");
@@ -513,6 +518,8 @@ async function validatePassengerSession() {
     savePassengerContact(body.passengerContact || passengerSessionContact);
     passengerMustChangePassword = body.mustChangePassword === true;
     passengerViewAccountActivated = true;
+    passengerAgendaAdmin0418 = body.agendaAdmin === true;
+    updateAuthenticatedChrome();
     return true;
   } catch (_) {
     return false;
@@ -634,6 +641,8 @@ async function submitPrivateAuthentication() {
     savePassengerContact(body.passengerContact || passengerContact);
     passengerMustChangePassword = body.mustChangePassword === true;
     passengerViewAccountActivated = true;
+    passengerAgendaAdmin0418 = body.agendaAdmin === true;
+    updateAuthenticatedChrome();
     tracePublicAction("PUBLIC_PRIVATE_AUTH_SUCCESS", {
       statusCode: response.status,
       reason: activating ? "activated" : "authenticated",
@@ -2992,6 +3001,8 @@ async function loginPassengerPortal() {
     savePassengerSession(body.sessionToken);
     savePassengerContact(body.passengerContact || passengerContact);
     passengerMustChangePassword = body.mustChangePassword === true;
+    passengerAgendaAdmin0418 = body.agendaAdmin === true;
+    updateAuthenticatedChrome();
     $("portalPassword").value = "";
     $("portalMessage").textContent = "";
     await loadPassengerBookings();
@@ -3431,6 +3442,7 @@ async function loadPassengerBookings(options = {}) {
 function logoutPassengerPortal() {
   savePassengerSession("");
   passengerViewAccountActivated = true;
+  passengerAgendaAdmin0418 = false;
   $("portalPassword").value = "";
   $("portalBookings").innerHTML = "";
   $("portalNotifications").innerHTML = '<p class="muted">Nenhuma notificação.</p>';
