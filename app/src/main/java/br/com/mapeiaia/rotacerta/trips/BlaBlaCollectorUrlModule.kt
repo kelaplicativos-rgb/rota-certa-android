@@ -6,7 +6,12 @@ import java.nio.charset.StandardCharsets
 
 /** Single URL and navigation-identity authority for every collector flow. */
 internal object BlaBlaCollectorUrlModule {
-    /**\n     * Fallback origin only for legacy relative URLs captured by the Brazilian browser flow.\n     * Absolute URLs keep their own verified official BlaBlaCar market host.\n     */\n    const val ORIGIN = "https://www.blablacar.com.br"\n
+    /**
+     * Fallback origin only for legacy relative URLs captured by the Brazilian browser flow.
+     * Absolute URLs keep their own verified official BlaBlaCar market host.
+     */
+    const val ORIGIN = "https://www.blablacar.com.br"
+
     fun absolute(raw: String?): String {
         val value = raw?.trim().orEmpty()
         return when {
