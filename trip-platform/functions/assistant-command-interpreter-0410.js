@@ -45,6 +45,25 @@ const SERVER_ACTIONS_0410 = Object.freeze([
   "READ_VEHICLE",
 ]);
 
+const INTERPRETER_ACTIONS_0410 = Object.freeze([
+  "CREATE_TRIPS",
+  "LIST_TRIPS",
+  "READ_TRIP",
+  "REVERIFY_TRIP",
+  "CHECK_SYNC",
+  "LIST_UNRESOLVED_TRIPS",
+  "LIST_FULL_TRIPS",
+  "OPEN_TRIP",
+  "SHARE_TRIP",
+  "GET_TRIP_PRICE",
+  "SET_TRIP_SEATS",
+  "READ_BOOKINGS",
+  "READ_PASSENGERS",
+  "READ_PASSENGER",
+  "READ_PROFILE",
+  "READ_VEHICLE",
+]);
+
 class AssistantInterpreterError0410 extends Error {
   constructor(code, message, httpStatus = 400) {
     super(message);
@@ -58,10 +77,11 @@ function clean(value, max = 1200) {
 }
 
 function normalizeAllowedActions0410(values) {
-  const allowed = new Set(SERVER_ACTIONS_0410);
+  const discovered = new Set(SERVER_ACTIONS_0410);
+  const executable = new Set(INTERPRETER_ACTIONS_0410);
   return [...new Set((Array.isArray(values) ? values : [])
     .map((value) => clean(value, 80).toUpperCase())
-    .filter((value) => allowed.has(value)))];
+    .filter((value) => discovered.has(value) && executable.has(value)))];
 }
 
 function validateRawTemporalText0410(text) {
@@ -210,6 +230,7 @@ async function interpretAssistantCommand0410({
 
 module.exports = {
   SERVER_ACTIONS_0410,
+  INTERPRETER_ACTIONS_0410,
   AssistantInterpreterError0410,
   normalizeAllowedActions0410,
   validateRawTemporalText0410,
