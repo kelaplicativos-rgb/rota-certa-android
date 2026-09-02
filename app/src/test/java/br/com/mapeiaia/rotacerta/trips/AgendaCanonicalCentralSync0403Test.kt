@@ -186,6 +186,8 @@ class AgendaCanonicalCentralSync0403Test {
         assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
         assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("blablacar_collection_result"))
         assertTrue(background.contains("val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE"))
+        assertTrue(background.contains("canonicalTrip.externalSnapshotFingerprint == incomingFingerprint"))
+        assertTrue(background.contains("EXTERNAL_CANONICAL_WRITE_DEFERRED_0403"))
         assertTrue(background.contains("binding?.externalFingerprint != incomingFingerprint"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403"))
         assertTrue(background.contains("store.bookingsFor(previousBookingTripId)"))
