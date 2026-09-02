@@ -25,7 +25,7 @@ class AgendaBackgroundSync0392Test {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("reservation_approved"))
         assertEquals(AgendaBackgroundSyncMode0392.BOOKING_EVENT, agendaBackgroundSyncMode0392("booking_push:reservation_created"))
         assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("blablacar_collection_result"))
-        assertEquals(AgendaBackgroundSyncMode0392.FULL_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
+        assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_open"))
     }
@@ -129,7 +129,7 @@ class AgendaBackgroundSync0392Test {
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
         assertTrue(background.contains("AgendaBackgroundSyncMode0392.DELTA_ONLY"))
-        assertTrue(background.contains("val reconcileAllCanonicalTrips = mode in setOf("))
+        assertTrue(background.contains("val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE"))
         assertFalse(timeline.contains("recordExternalManualMutation("))
         assertFalse(timeline.contains("manual_card_shortcut"))
         assertFalse(background.contains("BlaBlaReliableSeatSyncActivity"))
