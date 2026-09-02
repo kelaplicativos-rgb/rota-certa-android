@@ -170,6 +170,8 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(domain.contains("val externalSnapshot: BlaBlaCollectorTrip?"))
         assertTrue(domain.contains("val externalSnapshotFingerprint: String"))
         assertTrue(background.contains("reconcileCollectedExternalTrips0403("))
+        assertTrue(background.contains("EXTERNAL_CANONICAL_CACHE_MATERIALIZED_0404"))
+        assertTrue(background.contains("val freshCanonical = reconcileCollectedExternalTrips0403"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_MISSING_PRESERVED_0403"))
         assertTrue(background.contains("recordExternalCollectionMutation("))
         assertTrue(outbox.contains("eventSource = \"EXTERNAL_COLLECTION\""))

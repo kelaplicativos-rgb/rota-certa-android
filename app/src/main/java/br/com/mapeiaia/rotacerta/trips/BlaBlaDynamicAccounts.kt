@@ -435,6 +435,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var automaticCollectionGeneration = 0L
     private var automaticCollectionClaimed = false
     private var automaticCollectionReported = false
+    private var headlessPageFinishedNavigationGeneration0404 = -1L
 
     fun start() {
         registry = BlaBlaDynamicAccountRegistry(this)
@@ -592,6 +593,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                if (isAutomaticHeadless0404()) {
+                    headlessPageFinishedNavigationGeneration0404 = navigationGeneration
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_HEADLESS_PAGE_FINISHED_0404",
+                        packageName,
+                        "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$navigationGeneration phase=${phase.name} allowed=${BlaBlaCollectorUrlModule.isAllowed(url)} browserOpened=false",
+                    )
+                }
                 if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
                     statusView.text = "${account.displayLabel} • ${url.take(110)}"
                 }
@@ -694,6 +703,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         syncGeneration++
         networkDiagnosticRecorder?.startSync(syncGeneration)
         navigationGeneration = 0L
+        headlessPageFinishedNavigationGeneration0404 = -1L
         detailCaptureInFlight = false
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
@@ -747,7 +757,49 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
     private fun loadTrackedUrl(url: String) {
         navigationGeneration++
+        val expectedNavigation = navigationGeneration
         webView.loadUrl(url)
+        scheduleHeadlessPageFallback0404(expectedNavigation)
+    }
+
+    private fun isAutomaticHeadless0404(): Boolean =
+        automaticCollectionClaimed &&
+            visualHost == null &&
+            mode == BlaBlaDynamicSessionIntents.MODE_SYNC
+
+    private fun scheduleHeadlessPageFallback0404(expectedNavigation: Long) {
+        if (!isAutomaticHeadless0404()) return
+        val expectedSync = syncGeneration
+        val expectedPhase = phase
+        webView.postDelayed({
+            if (
+                destroyed ||
+                !isAutomaticHeadless0404() ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedPhase != phase ||
+                headlessPageFinishedNavigationGeneration0404 == expectedNavigation
+            ) {
+                return@postDelayed
+            }
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_HEADLESS_PAGE_FALLBACK_0404",
+                packageName,
+                "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$expectedNavigation phase=${expectedPhase.name} progress=${webView.progress} urlAllowed=${BlaBlaCollectorUrlModule.isAllowed(webView.url.orEmpty())} action=phase_probe browserOpened=false",
+            )
+            when (expectedPhase) {
+                Phase.IDENTITY -> captureIdentityForSync()
+                Phase.RIDES -> captureRideList()
+                Phase.DETAIL -> scheduleTripDetailCapture(webView)
+                Phase.PUBLIC_SHARE -> capturePublicTripShare(expectedSync, expectedNavigation, candidateIndex)
+                Phase.PUBLIC_SEARCH_LINK -> capturePublicTripFromExactSearch(expectedSync, expectedNavigation, candidateIndex)
+                Phase.PASSENGER_CARD -> schedulePassengerCardOpen(webView)
+                Phase.PASSENGER_CONTACT -> schedulePassengerContactCapture(webView)
+                Phase.EDIT -> scheduleEditCapture(webView)
+                Phase.OPTIONS -> scheduleOptionsCapture(webView)
+                else -> Unit
+            }
+        }, HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404)
     }
 
     private fun scheduleTripDetailCapture(view: WebView) {
@@ -2761,6 +2813,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_RIDES_EMPTY_READ_ATTEMPTS = 3
         private const val MAX_IDENTITY_READ_ATTEMPTS = 3
         private const val IDENTITY_RETRY_MS = 700L
+        private const val HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404 = 20_000L
         private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24
         private const val PROFILE_REVIEW_SCROLL_SETTLE_MS = 700L
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2

@@ -1,4 +1,4 @@
-name: Agenda canonical central sync 0.1.403
+name: Agenda canonical central sync 0.1.404
 
 on:
   push:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5696' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.403"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5697' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.404"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -198,7 +198,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.403-canonical-central-sync-${{ github.sha }}
+          name: rota-certa-0.1.404-headless-canonical-sync-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |

@@ -959,6 +959,28 @@ internal object AgendaBackgroundSync0392 {
             "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} silentUi=true singleFlight=true",
         )
 
+        val reconcileCollectorSnapshot = mode in setOf(
+            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
+            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
+        )
+        if (reconcileCollectorSnapshot) {
+            collectorCanonical = reconcileCollectedExternalTrips0403(
+                context = appContext,
+                store = store,
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            )
+            if (collectorCanonical.changedTrips > 0) {
+                BookingRealtimeEvents0356.notifyChanged()
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_CACHE_MATERIALIZED_0404",
+                    appContext.packageName,
+                    "changed=${collectorCanonical.changedTrips} skipped=${collectorCanonical.skippedTrips} queued=${collectorCanonical.publicationQueued} source=last_known_snapshot beforeHeadlessCollection=true",
+                )
+            }
+        }
+
         var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
         val collectorRequested = reason == "periodic" || mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         if (collectorRequested) {
@@ -978,17 +1000,20 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
-        // External collection is normalized into the existing canonical TripStore before
-        // booking pull/fan-out. This also migrates legacy external bookingTripId bindings
-        // so every later mutation in this cycle uses the same internal trip identity.
-        if (mode in setOf(AgendaBackgroundSyncMode0392.FULL_RECONCILE, AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE)) {
-            collectorCanonical = reconcileCollectedExternalTrips0403(
+        // Reconcile again after collection so the same canonical TripStore receives only
+        // the fresh per-card deltas. Timeline and public Agenda keep one shared identity.
+        if (reconcileCollectorSnapshot) {
+            val freshCanonical = reconcileCollectedExternalTrips0403(
                 context = appContext,
                 store = store,
                 response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
             )
+            collectorCanonical = freshCanonical
+            if (freshCanonical.changedTrips > 0) {
+                BookingRealtimeEvents0356.notifyChanged()
+            }
         }
 
         val pullBookings = reason == "periodic" || mode in setOf(
