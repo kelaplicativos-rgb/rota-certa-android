@@ -21,7 +21,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,8 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import br.com.mapeiaia.rotacerta.AppSettings
-import br.com.mapeiaia.rotacerta.SettingsRepository
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -94,12 +91,6 @@ internal fun OnlineSettingsEditor(
     onCancel: () -> Unit,
 ) {
     val context = LocalContext.current
-    val vehicleSettingsRepository = remember(context) { SettingsRepository(context) }
-    val vehicleAppSettingsState by vehicleSettingsRepository.settings.collectAsState(initial = null)
-    val vehicleAppSettings = vehicleAppSettingsState
-    val vehicleReferenceStore = remember(context) { TripReferenceOriginStore(context) }
-    var vehicleReferenceOrigin by remember { mutableStateOf(vehicleReferenceStore.read()) }
-    var vehicleSettingsMessage by remember { mutableStateOf<String?>(null) }
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val profileStore = remember(context) { BlaBlaPublicProfileStore(context) }
     val initialResolvedProfile = remember(context, initial) { PublicDriverProfileResolver(context).resolve(initial) }
@@ -138,7 +129,6 @@ internal fun OnlineSettingsEditor(
     var confirmRegenerateLink by remember { mutableStateOf(false) }
     var linkRotationInFlight by remember { mutableStateOf(false) }
     var usernameChangeInFlight by remember { mutableStateOf(false) }
-    var vehicleExpanded by remember { mutableStateOf(false) }
     val registrationScope = rememberCoroutineScope()
 
     val selectedProfile = linkedProfiles.firstOrNull { it.id == selectedPublicProfileAccountId }
