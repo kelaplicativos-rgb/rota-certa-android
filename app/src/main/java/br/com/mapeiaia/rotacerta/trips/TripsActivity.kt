@@ -487,6 +487,10 @@ private fun TripApp(
             AgendaHeaderAction0396("⬇️ Baixar Timeline") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.DOWNLOAD_TIMELINE)
             },
+            AgendaHeaderAction0396("Reconstruir Agenda de Viagens") {
+                AgendaBackgroundSync0392.enqueueImmediate(activity, "manual")
+                message = "Reconstrução da projeção pública enfileirada. O estado canônico, reservas, histórico e link permanente serão preservados."
+            },
             AgendaHeaderAction0396("Fixar atalho") {
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
                 message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
