@@ -88,3 +88,21 @@ test("admin browser reuses Minhas Viagens bearer session without another passwor
   assert.match(app, /passengerAgendaAdmin0418/);
   assert.match(app, /body\.agendaAdmin === true/);
 });
+
+
+test("driver grants admin only to authorized activated passenger and blocking revokes role", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(source, /async function setDriverPassengerAgendaAdmin0418/);
+  assert.match(source, /passengerAccessIsAuthorized\(access\)/);
+  assert.match(source, /passengerAccountIsActivated\(accountSnap\.data\(\)\)/);
+  assert.match(source, /PASSENGER_AGENDA_ADMIN_CHANGED/);
+  assert.match(source, /agendaAdmin: blocking \? false/);
+  assert.match(source, /\/v1\/passenger\/logout/);
+});
+
+test("admin role is tenant scoped on passenger access rather than global account", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(source, /passengerAccessForIdentity\(driver\.username, passengerId, passengerContact\)/);
+  assert.match(source, /driverPassengerAccess/);
+  assert.doesNotMatch(source, /passengerAccounts[\s\S]{0,180}agendaAdmin/);
+});
