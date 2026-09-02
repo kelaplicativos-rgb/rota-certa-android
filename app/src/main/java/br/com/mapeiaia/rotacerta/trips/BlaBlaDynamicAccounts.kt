@@ -142,6 +142,7 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
+    const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_PROFILE = "profile"
@@ -514,7 +515,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     packageName,
                     "accountKey=${seatSyncDiagnosticKey(account.id)} targeted=${targetTripId.isNotBlank()} action=fail_closed browserOpened=false",
                 )
-                setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+                setResult(
+                    Activity.RESULT_CANCELED,
+                    Intent()
+                        .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                        .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "BROKEN_FOR_VERSION"),
+                )
                 finish()
                 return
             }
@@ -2712,7 +2718,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             automaticCollectionReported = true
             BlaBlaAutomaticCollectionCoordinator0400.onAccountPendingAuth(this, automaticCollectionGeneration, account.id, reason)
         }
-        setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "AUTH_REQUIRED"),
+        )
         finish()
     }
 
