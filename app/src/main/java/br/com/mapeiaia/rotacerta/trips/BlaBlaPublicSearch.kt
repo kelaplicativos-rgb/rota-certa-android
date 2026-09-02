@@ -286,12 +286,16 @@ object BlaBlaPublicPlaceDirectory {
     fun supported(address: String): Boolean =
         BlaBlaPublicSearchPlanner.normalizePlace(address).isNotBlank()
 
-    fun searchUrl(task: BlaBlaPublicSearchTask): String? {
+    fun searchUrl(task: BlaBlaPublicSearchTask): String? =
+        searchUrl(task, BlaBlaCollectorUrlModule.ORIGIN)
+
+    fun searchUrl(task: BlaBlaPublicSearchTask, providerOrigin: String?): String? {
         if (!supported(task.from) || !supported(task.to)) return null
+        val origin = BlaBlaCollectorUrlModule.origin(providerOrigin) ?: return null
         fun encoded(value: String): String =
             java.net.URLEncoder.encode(value.trim(), Charsets.UTF_8.name())
         return buildString {
-            append("https://www.blablacar.com.br/search")
+            append(origin).append("/search")
             append("?fn=").append(encoded(task.from))
             append("&tn=").append(encoded(task.to))
             append("&db=").append(task.date)
@@ -346,16 +350,20 @@ class BlaBlaPublicSearchStore(context: Context) {
 internal fun exactPublicTripHrefForTrip(
     expectedTripId: String?,
     hrefs: List<String?>,
+    providerOrigin: String? = null,
 ): String? {
     val expected = expectedTripId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val origin = BlaBlaCollectorUrlModule.origin(providerOrigin)
     return hrefs.firstNotNullOfOrNull { raw ->
-        BlaBlaCollectorUrlModule.publicTrip(raw, expected)
+        val value = raw?.trim().orEmpty()
+        val resolved = if (value.startsWith('/') && origin != null) "$origin$value" else value
+        BlaBlaCollectorUrlModule.publicTrip(resolved, expected)
     }
 }
 
 internal fun publicSearchTripIdFromHref(raw: String?): String? {
     val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-    val uri = runCatching { URI(if (value.startsWith('/')) "https://www.blablacar.com.br$value" else value) }.getOrNull() ?: return null
+    val uri = runCatching { URI(if (value.startsWith('/')) "https://placeholder.invalid$value" else value) }.getOrNull() ?: return null
     uri.rawQuery.orEmpty().split('&').firstOrNull { it.substringBefore('=') == "id" }
         ?.substringAfter('=', "")?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
     return Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
