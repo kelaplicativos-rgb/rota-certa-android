@@ -58,6 +58,7 @@ internal data class AgendaBackgroundSyncRun0392(
     val projectionRevisionRegression: Int = 0,
     val projectionOrphans: Int = 0,
     val projectionFailures: Int = 0,
+    val projectionExpected0411: Int = 0,
     val projectionValidated0411: Int = 0,
     val projectionPending0411: Int = 0,
     val projectionDivergent0411: Int = 0,
@@ -2097,7 +2098,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_END_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} projectionMissing=${projectionIntegrity.missingAgenda} projectionDuplicates=${projectionIntegrity.duplicates} capacityMismatch=${projectionIntegrity.capacityMismatch} statusMismatch=${projectionIntegrity.statusMismatch} revisionMismatch=${projectionIntegrity.revisionMismatch} revisionRegression=${projectionIntegrity.revisionRegression} projectionOrphans=${projectionIntegrity.orphans} projectionFailures=${projectionIntegrity.failures} projectionVerified=${projectionIntegrity.verified} silentUi=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} projectionMissing=${projectionIntegrity.missingAgenda} projectionDuplicates=${projectionIntegrity.duplicates} capacityMismatch=${projectionIntegrity.capacityMismatch} statusMismatch=${projectionIntegrity.statusMismatch} revisionMismatch=${projectionIntegrity.revisionMismatch} revisionRegression=${projectionIntegrity.revisionRegression} projectionOrphans=${projectionIntegrity.orphans} projectionFailures=${projectionIntegrity.failures} projectionExpected0411=${projectionIntegrity.canonicalActive} projectionValidated0411=${projectionIntegrity.attestationValidated0411} projectionPending0411=${projectionIntegrity.attestationPending0411} projectionDivergent0411=${projectionIntegrity.attestationDivergent0411} invalidIdentity0411=${projectionIntegrity.attestationInvalidIdentity0411} invalidLink0411=${projectionIntegrity.attestationInvalidLink0411} staleRevision0411=${projectionIntegrity.attestationStaleRevision0411} readbackFailures0411=${projectionIntegrity.attestationReadbackFailures0411} readbackLatencyMs0411=${projectionIntegrity.attestationReadbackLatencyMillis0411} projectionVerified=${projectionIntegrity.verified} silentUi=true",
         )
 
         return AgendaBackgroundSyncRun0392(
@@ -2125,6 +2126,15 @@ internal object AgendaBackgroundSync0392 {
             projectionRevisionRegression = projectionIntegrity.revisionRegression,
             projectionOrphans = projectionIntegrity.orphans,
             projectionFailures = projectionIntegrity.failures,
+            projectionExpected0411 = projectionIntegrity.canonicalActive,
+            projectionValidated0411 = projectionIntegrity.attestationValidated0411,
+            projectionPending0411 = projectionIntegrity.attestationPending0411,
+            projectionDivergent0411 = projectionIntegrity.attestationDivergent0411,
+            projectionInvalidIdentity0411 = projectionIntegrity.attestationInvalidIdentity0411,
+            projectionInvalidLink0411 = projectionIntegrity.attestationInvalidLink0411,
+            projectionStaleRevision0411 = projectionIntegrity.attestationStaleRevision0411,
+            projectionReadbackFailures0411 = projectionIntegrity.attestationReadbackFailures0411,
+            projectionReadbackLatencyMillis0411 = projectionIntegrity.attestationReadbackLatencyMillis0411,
         )
     }
 
@@ -2283,7 +2293,14 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionStatusMismatch == 0 &&
                     cycle.projectionRevisionRegression == 0 &&
                     cycle.projectionOrphans == 0 &&
-                    cycle.projectionFailures == 0 -> "VERIFIED"
+                    cycle.projectionFailures == 0 &&
+                    cycle.projectionPending0411 == 0 &&
+                    cycle.projectionDivergent0411 == 0 &&
+                    cycle.projectionInvalidIdentity0411 == 0 &&
+                    cycle.projectionInvalidLink0411 == 0 &&
+                    cycle.projectionStaleRevision0411 == 0 &&
+                    cycle.projectionReadbackFailures0411 == 0 &&
+                    cycle.projectionValidated0411 == cycle.projectionExpected0411 -> "VERIFIED"
                 else -> "SUCCESS"
             }
             if (targetedResult != null && !retryPending) {
