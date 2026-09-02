@@ -55,7 +55,7 @@ class AgendaNavigationNotificationsProfiles0416Test {
         assertTrue(header.contains("Icons.Filled.Notifications"))
         assertTrue(header.contains("if (unread > 0)"))
         assertTrue(header.contains("Badge {"))
-        assertTrue(header.contains("\"Notificações, $unread não lidas\""))
+        assertTrue(header.contains("\"Notificações, \$unread não lidas\""))
         assertTrue(header.contains("else {\n                \"Notificações\""))
         assertFalse(header.contains("🔔"))
 
