@@ -1893,6 +1893,7 @@ internal object AgendaBackgroundSync0392 {
             rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
             seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
             repair = true,
+            completeCoverage = collectorResponseForThisCycle0407(),
         )
         if (projectionIntegrity.repairQueued > 0) {
             try {
@@ -1918,6 +1919,7 @@ internal object AgendaBackgroundSync0392 {
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 repair = false,
+                completeCoverage = collectorResponseForThisCycle0407(),
             )
         }
         failures += projectionIntegrity.failures
@@ -1952,8 +1954,12 @@ internal object AgendaBackgroundSync0392 {
             collectorOrphanProjectionTombstones = collectorCanonical.orphanProjectionTombstones,
             collectorStaleResultsRejected = collectorCanonical.staleResultsRejected,
             projectionMissingAgenda = projectionIntegrity.missingAgenda,
+            projectionDuplicates = projectionIntegrity.duplicates,
             projectionRevisionMismatch = projectionIntegrity.revisionMismatch,
             projectionHashMismatch = projectionIntegrity.hashMismatch,
+            projectionCapacityMismatch = projectionIntegrity.capacityMismatch,
+            projectionStatusMismatch = projectionIntegrity.statusMismatch,
+            projectionRevisionRegression = projectionIntegrity.revisionRegression,
             projectionOrphans = projectionIntegrity.orphans,
             projectionFailures = projectionIntegrity.failures,
         )
@@ -2107,8 +2113,12 @@ class AgendaBackgroundSyncWorker0392(
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
                 (fullReconcileComplete || targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) &&
                     cycle.projectionMissingAgenda == 0 &&
+                    cycle.projectionDuplicates == 0 &&
                     cycle.projectionRevisionMismatch == 0 &&
                     cycle.projectionHashMismatch == 0 &&
+                    cycle.projectionCapacityMismatch == 0 &&
+                    cycle.projectionStatusMismatch == 0 &&
+                    cycle.projectionRevisionRegression == 0 &&
                     cycle.projectionOrphans == 0 &&
                     cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
