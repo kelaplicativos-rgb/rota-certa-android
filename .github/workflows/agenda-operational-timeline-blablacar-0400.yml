@@ -361,6 +361,7 @@ jobs:
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
           CODE="$(curl --retry 8 --retry-delay 3 --silent --show-error             -o /tmp/assistant-smoke.json             -w "%{http_code}"             -X POST "$BASE/v1/assistant/interpret"             -H 'Content-Type: application/json'             --data '{"text":"liste minhas viagens","timezone":"America/Sao_Paulo","locale":"pt-BR","allowedActions":["LIST_TRIPS"]}')"
+          echo "LIVE_ASSISTANT_HTTP_CODE=$CODE"
           test "$CODE" = "401"
-          grep -Fq 'unauthorized' /tmp/assistant-smoke.json
-          echo "LIVE_ASSISTANT_ROUTE=PASS"
+          grep -Fq '"error":"driver_auth_required"' /tmp/assistant-smoke.json
+          echo "LIVE_ASSISTANT_AUTH_BOUNDARY=PASS"
