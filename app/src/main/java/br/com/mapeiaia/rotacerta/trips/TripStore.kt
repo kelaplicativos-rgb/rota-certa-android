@@ -343,7 +343,9 @@ class TripStore(context: Context) {
         val reconciledTrips = currentTrips.map { trip ->
             val shouldApply = trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
-            if (!shouldApply || trip.seatAllocationVersionUsed > seatAllocationVersion) {
+            // 0.1.416: this tenant value is migration-only. Explicit per-trip allocation is canonical
+            // and must never be overwritten by a later settings save or background cycle.
+            if (!shouldApply || trip.rotaCertaSeatAllocation != null) {
                 trip
             } else {
                 val withAllocation = trip.copy(
@@ -351,29 +353,24 @@ class TripStore(context: Context) {
                     seatAllocationVersionUsed = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
                 )
                 val derivedCapacity = operationalInventoryCapacity(withAllocation, bookingsByTrip[trip.id].orEmpty())
-                val changed = trip.capacity != derivedCapacity ||
-                    trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation ||
-                    trip.seatAllocationVersionUsed < seatAllocationVersion
-                if (changed) {
-                    changedTripIds += trip.id
-                    val updated = withAllocation.copy(
-                        capacity = derivedCapacity,
-                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
-                        canonicalStateHash = "",
-                        updatedAtMillis = nowMillis,
-                    )
-                    updated.copy(
-                        canonicalStateHash = canonicalTripStateHash0406(
-                            updated,
-                            bookingsByTrip[trip.id].orEmpty(),
-                        ),
-                    )
-                } else trip
+                changedTripIds += trip.id
+                val updated = withAllocation.copy(
+                    capacity = derivedCapacity,
+                    canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                    canonicalStateHash = "",
+                    updatedAtMillis = nowMillis,
+                )
+                updated.copy(
+                    canonicalStateHash = canonicalTripStateHash0406(
+                        updated,
+                        bookingsByTrip[trip.id].orEmpty(),
+                    ),
+                )
             }
         }
         if (changedTripIds.isNotEmpty()) {
             require(prefs.edit().putString(tripsKey, json.encodeToString(reconciledTrips)).commit()) {
-                "Falha ao persistir fan-out canônico de vagas."
+                "Falha ao persistir migração canônica de vagas por viagem."
             }
         }
         changedTripIds
