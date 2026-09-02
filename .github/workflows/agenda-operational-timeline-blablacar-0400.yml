@@ -287,6 +287,17 @@ jobs:
           else
             exit 3
           fi
+      - name: Prove Firebase deploy principal
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${FIREBASE_AUTH_MODE:-}" = "service-account" ]; then
+            DEPLOY_PRINCIPAL="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,"utf8")); process.stdout.write(String(j.client_email||""));')"
+            test -n "$DEPLOY_PRINCIPAL"
+            echo "FIREBASE_DEPLOY_PRINCIPAL=$DEPLOY_PRINCIPAL"
+          else
+            echo "FIREBASE_DEPLOY_PRINCIPAL=token-auth"
+          fi
       - name: Install Functions dependencies
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
       - name: Ensure OpenAI secret exists only in Firebase Secret Manager
