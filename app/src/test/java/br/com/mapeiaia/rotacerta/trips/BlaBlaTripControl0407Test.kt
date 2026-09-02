@@ -252,6 +252,8 @@ class BlaBlaTripControl0407Test {
         )
 
         assertEquals(setOf(target.tripId, siblingB.trip_id), merged.trips.map { it.trip_id }.toSet())
+        assertEquals(1, merged.trips.single { it.trip_id == target.tripId }.published_seats)
+        assertEquals(2, merged.trips.single { it.trip_id == siblingB.trip_id }.published_seats)
         assertEquals(1, merged.preservedMissingTrips)
         assertEquals(2, merged.trips.size)
     }
