@@ -3,6 +3,10 @@ package br.com.mapeiaia.rotacerta.trips
 import android.content.Context
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Typed trip-operation contract layered on the existing BlaBlaBrowserOrchestrator.
@@ -177,6 +181,120 @@ internal data class BlaBlaCommandResult0407(
     val startedAtMillis: Long = System.currentTimeMillis(),
     val finishedAtMillis: Long = System.currentTimeMillis(),
 )
+
+
+internal data class BlaBlaCommandAuditSnapshot0407(
+    val commandId: String,
+    val status: BlaBlaCommandStatus0407,
+    val requestedAtMillis: Long,
+    val finishedAtMillis: Long,
+    val errorCode: String = "",
+) {
+    val pending: Boolean
+        get() = status == BlaBlaCommandStatus0407.QUEUED
+}
+
+/**
+ * Process-local invalidation only. Durable command status lives in SharedPreferences;
+ * canonical trip state continues to live exclusively in TripStore.
+ */
+internal object BlaBlaTripControlEvents0407 {
+    private val counter = AtomicLong(0L)
+    private val mutableRevision = MutableStateFlow(0L)
+    val revision: StateFlow<Long> = mutableRevision.asStateFlow()
+
+    fun notifyChanged() {
+        mutableRevision.value = counter.incrementAndGet()
+    }
+}
+
+/**
+ * Durable control/audit status for the last command targeting one strong external trip.
+ * This is not a trip-state store and never supplies Timeline/Agenda business data.
+ */
+internal class BlaBlaTripCommandStatusStore0407(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    fun get(target: BlaBlaTripTarget0407): BlaBlaCommandAuditSnapshot0407? {
+        val prefix = prefix(target)
+        val rawStatus = prefs.getString(prefix + "_status", null) ?: return null
+        val status = runCatching { BlaBlaCommandStatus0407.valueOf(rawStatus) }.getOrNull() ?: return null
+        return BlaBlaCommandAuditSnapshot0407(
+            commandId = prefs.getString(prefix + "_command", "").orEmpty(),
+            status = status,
+            requestedAtMillis = prefs.getLong(prefix + "_requested", 0L),
+            finishedAtMillis = prefs.getLong(prefix + "_finished", 0L),
+            errorCode = prefs.getString(prefix + "_error", "").orEmpty(),
+        )
+    }
+
+    /**
+     * Returns false when a still-live command already owns this exact target/capability.
+     * A stale marker is recoverable so process death cannot permanently block the card.
+     */
+    fun tryMarkQueued(
+        target: BlaBlaTripTarget0407,
+        commandId: String,
+        requestedAtMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val current = get(target)
+        val livePending = current?.pending == true &&
+            current.requestedAtMillis > 0L &&
+            nowMillis >= current.requestedAtMillis &&
+            nowMillis - current.requestedAtMillis < PENDING_LEASE_MILLIS
+        if (livePending) return false
+
+        val prefix = prefix(target)
+        val saved = prefs.edit()
+            .putString(prefix + "_command", commandId.take(160))
+            .putString(prefix + "_status", BlaBlaCommandStatus0407.QUEUED.name)
+            .putLong(prefix + "_requested", requestedAtMillis.coerceAtLeast(1L))
+            .putLong(prefix + "_finished", 0L)
+            .putString(prefix + "_error", "")
+            .commit()
+        if (saved) BlaBlaTripControlEvents0407.notifyChanged()
+        return saved
+    }
+
+    fun recordResult(result: BlaBlaCommandResult0407) {
+        val target = result.target ?: return
+        val prefix = prefix(target)
+        val saved = prefs.edit()
+            .putString(prefix + "_command", result.commandId.take(160))
+            .putString(prefix + "_status", result.status.name)
+            .putLong(prefix + "_requested", result.startedAtMillis.coerceAtLeast(1L))
+            .putLong(prefix + "_finished", result.finishedAtMillis.coerceAtLeast(result.startedAtMillis))
+            .putString(prefix + "_error", result.errorCode.take(120))
+            .commit()
+        if (saved) BlaBlaTripControlEvents0407.notifyChanged()
+    }
+
+    private fun prefix(target: BlaBlaTripTarget0407): String =
+        "trip_" + sha256TripPublication0387(target.strongIdentityKey).take(32)
+
+    companion object {
+        private const val PREFS = "rota_certa_blablacar_trip_control_0407"
+        private const val PENDING_LEASE_MILLIS = 10L * 60L * 1000L
+    }
+}
+
+internal fun blaBlaVerificationLabel0407(
+    audit: BlaBlaCommandAuditSnapshot0407?,
+    lastObservedAtMillis: Long,
+    strongTargetAvailable: Boolean,
+): String = when {
+    audit?.status == BlaBlaCommandStatus0407.QUEUED -> "⟳ Atualizando"
+    audit?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED -> "⚠ Sessão necessária"
+    audit?.status == BlaBlaCommandStatus0407.ACCOUNT_NOT_AVAILABLE -> "⚠ Conta indisponível"
+    audit?.status == BlaBlaCommandStatus0407.UNVERIFIED_TARGET -> "⚠ Identidade externa não confirmada"
+    audit?.errorCode == "BROKEN_FOR_VERSION" -> "⚠ Recurso incompatível"
+    audit?.status in setOf(BlaBlaCommandStatus0407.FAILED, BlaBlaCommandStatus0407.UNVERIFIED) -> "⚠ Falha na verificação"
+    audit?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS -> "✓ Verificado agora"
+    lastObservedAtMillis > 0L -> "✓ Verificado"
+    strongTargetAvailable -> "Dados desatualizados"
+    else -> "⚠ Identidade externa incompleta"
+}
 
 internal enum class BlaBlaTripAction0407 {
     REVERIFY,
