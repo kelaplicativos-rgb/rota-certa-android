@@ -185,11 +185,14 @@ class TripUnifiedInventory0372Test {
     fun test12ExplicitZeroPersistenceDoesNotFallBackToLegacyVehicleCapacity() {
         val repository = File("src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt").readText()
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
         assertTrue(repository.contains("prefs[rotaCertaSeatAllocation] ?: 0"))
         assertFalse(repository.contains("prefs[rotaCertaSeatAllocation] ?: prefs[vehicleCapacity]"))
         assertFalse(ui.contains("Capacidade de passageiros"))
         assertFalse(ui.contains("Capacidade do veículo"))
-        assertTrue(ui.contains("Vagas disponibilizadas no Rota Certa"))
+        assertTrue(activity.contains("AgendaHeaderAction0396(\"Vagas extra\")"))
+        assertTrue(activity.contains("trip.rotaCertaSeatAllocation"))
+        assertFalse(ui.contains("Vagas disponibilizadas no Rota Certa"))
     }
 
     @Test
