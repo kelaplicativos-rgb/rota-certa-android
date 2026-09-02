@@ -70,6 +70,8 @@ internal fun RotaCertaAssistantPanel0410(
     var busy by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<AssistantPreparedExecution0410?>(null) }
     var activeIdempotencyKey by remember { mutableStateOf("") }
+    var contactBookings by remember { mutableStateOf<List<Booking>>(emptyList()) }
+    var publicSearchCards by remember { mutableStateOf<List<BlaBlaPublicSearchCard>>(emptyList()) }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -109,6 +111,16 @@ internal fun RotaCertaAssistantPanel0410(
         onChanged(result)
     }
 
+    val publicSearchLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        busy = false
+        val response = BlaBlaPublicSearchStore(context).lastResponse()
+        publicSearchCards = assistantPublicSearchPrimaryCards0411(response)
+        result = assistantPublicSearchResult0411(response)
+        onChanged(result)
+    }
+
     fun execute(prepared: AssistantPreparedExecution0410) {
         val command = prepared.command
         val plan = prepared.plan
@@ -125,6 +137,9 @@ internal fun RotaCertaAssistantPanel0410(
             pending = null
             return
         }
+
+        if (plan.action != RotaCertaAction0410.READ_PASSENGERS) contactBookings = emptyList()
+        if (plan.action != RotaCertaAction0410.PUBLIC_SEARCH) publicSearchCards = emptyList()
 
         when (plan.action) {
             RotaCertaAction0410.CREATE_TRIPS -> {
@@ -328,6 +343,36 @@ internal fun RotaCertaAssistantPanel0410(
                 pending = null
             }
 
+            RotaCertaAction0410.PUBLIC_SEARCH -> {
+                val targets = (command.publicTargetNames + listOf(command.passengerReference, command.freeTextValue))
+                    .map(String::trim).filter(String::isNotBlank).distinct()
+                val request = BlaBlaPublicSearchRequest(
+                    targetNames = targets,
+                    from = command.origin.trim(),
+                    to = command.destination.trim(),
+                    period = "",
+                    includeReverse = true,
+                    selectedDates = plan.dates.map { it.toString() },
+                    captureDemand = true,
+                    collectionId = UUID.randomUUID().toString(),
+                )
+                val tasks = BlaBlaPublicSearchPlanner.tasks(request)
+                if (request.from.isBlank() || request.to.isBlank()) {
+                    result = "Não executei. Informe origem e destino para a busca pública."
+                    pending = null
+                } else if (tasks.isEmpty()) {
+                    result = "Não executei. Não há data futura válida para essa busca pública."
+                    pending = null
+                } else {
+                    pending = null
+                    busy = true
+                    publicSearchCards = emptyList()
+                    BlaBlaPublicSearchStore(context).saveRequest(request)
+                    result = "Busca pública iniciada. Vou considerar apenas resultados com cobertura comprovada."
+                    publicSearchLauncher.launch(BlaBlaPublicSearchIntents.search(context, request))
+                }
+            }
+
             RotaCertaAction0410.OPEN_TRIP -> {
                 val trip = plan.trip
                 val href = trip?.blablaManageUrl?.takeIf(String::isNotBlank)
@@ -372,7 +417,10 @@ internal fun RotaCertaAssistantPanel0410(
             }
 
             else -> {
-                result = assistantReadResult0410(plan, trips, bookings)
+                contactBookings = if (plan.action == RotaCertaAction0410.READ_PASSENGERS && plan.trip != null) {
+                    assistantActivePassengerBookings0411(plan.trip, bookings)
+                } else emptyList()
+                result = assistantReadResult0410(command, plan, trips, bookings)
                 pending = null
             }
         }
@@ -392,7 +440,7 @@ internal fun RotaCertaAssistantPanel0410(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "Fale naturalmente. O texto vira comando tipado; nenhuma ação pula validação, identidade forte ou política de execução.",
+                "Pergunte naturalmente sobre suas viagens, horários, lotação, passageiros, perfis ou faça consultas públicas. Alterações continuam protegidas por validação, identidade forte e política de execução.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
@@ -442,6 +490,8 @@ internal fun RotaCertaAssistantPanel0410(
                         busy = true
                         result = ""
                         pending = null
+                        contactBookings = emptyList()
+                        publicSearchCards = emptyList()
 
                         scope.launch {
                             runCatching {
@@ -558,6 +608,31 @@ internal fun RotaCertaAssistantPanel0410(
                     )
                 }
             }
+
+            contactBookings
+                .distinctBy { it.passengerId.ifBlank { it.passengerName + "|" + it.passengerContact } }
+                .filter { it.passengerContact.isNotBlank() }
+                .take(12)
+                .forEach { booking ->
+                    TextButton(
+                        onClick = { openPassengerWhatsApp(context, booking.passengerContact) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("WhatsApp • " + booking.passengerName) }
+                }
+
+            publicSearchCards.filter { !it.tripHref.isNullOrBlank() }.take(12).forEach { card ->
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(card.tripHref)))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Abrir no BlaBlaCar • " + card.driverName + " • " + card.date +
+                        card.departureTime?.let { " $it" }.orEmpty())
+                }
+            }
         }
     }
 }
@@ -625,185 +700,165 @@ private fun assistantPlanSummary0410(
 }
 
 private fun assistantReadResult0410(
+    command: RotaCertaStructuredCommand0410,
     plan: RotaCertaResolvedExecutionPlan0410,
     trips: List<Trip>,
     bookings: List<Booking>,
 ): String = when (plan.action) {
     RotaCertaAction0410.LIST_TRIPS -> {
-        val active = trips.filter {
-            !it.deleted && it.status != TripStatus.CANCELLED
-        }
-        if (active.isEmpty()) {
-            "Nenhuma viagem ativa no estado canônico."
-        } else {
-            active.sortedBy(Trip::departureAtMillis)
-                .take(20)
-                .joinToString(
-                    prefix = active.size.toString() + " viagem(ns): ",
-                    separator = " • ",
-                ) { trip ->
-                    trip.title +
-                        trip.blablaTripId?.let { id ->
-                            " [" + id + "]"
-                        }.orEmpty()
-                }
-        }
-    }
-
-    RotaCertaAction0410.READ_TRIP -> {
-        val trip = plan.trip
-        if (trip == null) {
-            "Viagem não encontrada."
-        } else {
-            val date = Instant.ofEpochMilli(
-                trip.departureAtMillis,
-            ).atZone(ZoneId.systemDefault())
-            val stops = trip.stops.sortedBy(TripStop::order)
-            stops.firstOrNull()?.name.orEmpty() +
-                " → " +
-                stops.lastOrNull()?.name.orEmpty() +
-                " • " +
-                date.format(
-                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"),
-                ) +
-                " • status " +
-                trip.status.name +
-                " • tripId " +
-                (trip.blablaTripId ?: "pendente")
-        }
-    }
-
-    RotaCertaAction0410.CHECK_SYNC -> {
-        val active = trips.filter {
-            !it.deleted && it.status != TripStatus.CANCELLED
-        }
-        val unresolved = active.count {
-            it.blablaTripId.isNullOrBlank() ||
-                it.blablaProfileUuid.isNullOrBlank()
-        }
-        val partial = active.count {
-            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !it.externalSnapshotComplete
-        }
-        "Estado canônico: " +
-            active.size +
-            " ativa(s), " +
-            unresolved +
-            " sem identidade externa completa e " +
-            partial +
-            " snapshot(s) externo(s) parcial(is)."
-    }
-
-    RotaCertaAction0410.LIST_UNRESOLVED_TRIPS -> {
-        val items = trips.filter {
-            !it.deleted &&
-                it.status != TripStatus.CANCELLED &&
-                it.blablaTripId.isNullOrBlank()
-        }
+        val items = assistantMatchingTrips0411(command, plan, trips)
+        val constrained = assistantQueryIsConstrained0411(command, plan)
         if (items.isEmpty()) {
-            "Nenhuma viagem ativa sem tripId confirmado."
+            if (constrained) "Não. Não encontrei viagem ativa que corresponda à data, horário ou rota informados no estado canônico."
+            else "Nenhuma viagem ativa no estado canônico."
         } else {
-            items.joinToString(
-                prefix = items.size.toString() + " sem tripId: ",
+            items.take(20).joinToString(
+                prefix = if (constrained) "Sim. Encontrei " + items.size + " viagem(ns): " else items.size.toString() + " viagem(ns): ",
                 separator = " • ",
-            ) { it.title }
+                transform = ::assistantTripLabel0411,
+            )
         }
     }
-
+    RotaCertaAction0410.READ_TRIP -> plan.trip?.let {
+        assistantTripLabel0411(it) + " • status " + it.status.name + " • tripId " + (it.blablaTripId ?: "pendente")
+    } ?: "Viagem não encontrada."
+    RotaCertaAction0410.CHECK_SYNC -> {
+        val active = trips.filter { !it.deleted && it.status != TripStatus.CANCELLED }
+        val unresolved = active.count { it.blablaTripId.isNullOrBlank() || it.blablaProfileUuid.isNullOrBlank() }
+        val partial = active.count { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && !it.externalSnapshotComplete }
+        "Estado canônico: " + active.size + " ativa(s), " + unresolved + " sem identidade externa completa e " + partial + " snapshot(s) externo(s) parcial(is)."
+    }
+    RotaCertaAction0410.LIST_UNRESOLVED_TRIPS -> {
+        val items = trips.filter { !it.deleted && it.status != TripStatus.CANCELLED && it.blablaTripId.isNullOrBlank() }
+        if (items.isEmpty()) "Nenhuma viagem ativa sem tripId confirmado."
+        else items.joinToString(prefix = items.size.toString() + " sem tripId: ", separator = " • ") { assistantTripLabel0411(it) }
+    }
     RotaCertaAction0410.LIST_FULL_TRIPS -> {
-        val full = trips.filter {
-            !it.deleted && it.status == TripStatus.FULL
-        }
-        if (full.isEmpty()) {
-            "Nenhuma viagem está marcada como lotada no estado canônico."
-        } else {
-            full.joinToString(
-                prefix = full.size.toString() + " lotada(s): ",
-                separator = " • ",
-            ) { it.title }
-        }
-    }
-
-    RotaCertaAction0410.GET_TRIP_PRICE -> {
-        val trip = plan.trip
-        if (trip == null) {
-            "Viagem não encontrada."
-        } else {
-            "Preço observado para " +
-                trip.title +
-                ": " +
-                (trip.externalSnapshot?.price ?: "não confirmado no snapshot atual") +
-                "."
+        val candidates = assistantMatchingTrips0411(command, plan, trips)
+        if (candidates.isEmpty()) "Não encontrei viagem ativa que corresponda à data, horário ou rota informados."
+        else candidates.take(20).joinToString(separator = " • ") { trip ->
+            val summary = operationalSeatSummary(trip, bookings)
+            val state = when {
+                !summary.operationalLimitConfigured -> "lotação ainda não confirmada"
+                summary.availableSeats == 0 -> "LOTADA • 0 vagas"
+                else -> "não está lotada • " + summary.availableSeats + " vaga(s)"
+            }
+            assistantTripLabel0411(trip) + ": " + state
         }
     }
-
+    RotaCertaAction0410.GET_TRIP_PRICE -> plan.trip?.let {
+        "Preço observado para " + assistantTripLabel0411(it) + ": " +
+            (it.externalSnapshot?.price ?: "não confirmado no snapshot atual") + "."
+    } ?: "Viagem não encontrada."
     RotaCertaAction0410.READ_BOOKINGS -> {
         val trip = plan.trip
-        if (trip == null) {
-            "Viagem não encontrada."
-        } else {
-            val items = bookings.filter { booking ->
-                booking.tripId == trip.id &&
-                    booking.status !in setOf(
-                        BookingStatus.CANCELLED,
-                        BookingStatus.REJECTED,
-                        BookingStatus.EXPIRED,
-                    )
-            }
-            if (items.isEmpty()) {
-                "Nenhuma reserva ativa nessa viagem."
-            } else {
-                items.joinToString(
-                    prefix = items.size.toString() + " reserva(s): ",
-                    separator = " • ",
-                ) {
-                    it.passengerName + " (" + it.status.name + ")"
-                }
-            }
+        if (trip == null) "Viagem não encontrada." else {
+            val items = bookings.filter { it.tripId == trip.id && it.status !in setOf(BookingStatus.CANCELLED, BookingStatus.REJECTED, BookingStatus.EXPIRED) }
+            if (items.isEmpty()) "Nenhuma reserva ativa em " + assistantTripLabel0411(trip) + "."
+            else items.joinToString(prefix = assistantTripLabel0411(trip) + " • " + items.size + " reserva(s): ", separator = " • ") { it.passengerName + " (" + it.status.name + ")" }
         }
     }
-
     RotaCertaAction0410.READ_PASSENGERS -> {
         val trip = plan.trip
-        if (trip == null) {
-            "Viagem não encontrada."
-        } else {
-            val items = bookings.filter { booking ->
-                booking.tripId == trip.id &&
-                    booking.status in setOf(
-                        BookingStatus.REQUESTED,
-                        BookingStatus.HELD,
-                        BookingStatus.CONFIRMED,
-                    )
-            }
-            if (items.isEmpty()) {
-                "Nenhum passageiro ativo nessa viagem."
-            } else {
-                items.joinToString(
-                    prefix = items.size.toString() + " passageiro(s): ",
-                    separator = " • ",
-                ) {
-                    it.passengerName + " • " + it.operationalStatus.name
-                }
-            }
+        if (trip == null) "Viagem não encontrada." else {
+            val items = assistantActivePassengerBookings0411(trip, bookings)
+            if (items.isEmpty()) "Nenhum passageiro ativo em " + assistantTripLabel0411(trip) + "."
+            else items.joinToString(prefix = assistantTripLabel0411(trip) + " • " + items.size + " passageiro(s): ", separator = " • ") {
+                it.passengerName + " • " + it.operationalStatus.name
+            } + if (items.any { it.passengerContact.isNotBlank() }) " • atalhos de WhatsApp disponíveis abaixo." else ""
         }
     }
+    RotaCertaAction0410.READ_PASSENGER -> plan.booking?.let {
+        it.passengerName + " • reserva " + it.status.name + " • situação " + it.operationalStatus.name
+    } ?: "Passageiro não encontrado."
+    RotaCertaAction0410.READ_PROFILE -> "Perfil é lido da conta BlaBlaCar autenticada pelo coletor; a identidade real não é resolvida pela OpenAI."
+    RotaCertaAction0410.READ_VEHICLE -> "O veículo é lido do snapshot autenticado do perfil; detalhes desnecessários não são enviados à OpenAI."
+    RotaCertaAction0410.PUBLIC_SEARCH -> "A consulta pública é executada pelo coletor auditável e resumida após a cobertura ser verificada."
+    else -> "A ação foi interpretada, mas não possui resultado read-only nesta superfície."
+}
 
-    RotaCertaAction0410.READ_PASSENGER ->
-        plan.booking?.let {
-            it.passengerName +
-                " • reserva " +
-                it.status.name +
-                " • situação " +
-                it.operationalStatus.name
-        } ?: "Passageiro não encontrado."
+internal fun assistantMatchingTrips0411(
+    command: RotaCertaStructuredCommand0410,
+    plan: RotaCertaResolvedExecutionPlan0410,
+    trips: List<Trip>,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): List<Trip> {
+    val dates = plan.dates.toSet()
+    val time = plan.time
+    return trips.asSequence()
+        .filter { !it.deleted && it.status != TripStatus.CANCELLED }
+        .filter { dates.isEmpty() || Instant.ofEpochMilli(it.departureAtMillis).atZone(zoneId).toLocalDate() in dates }
+        .filter {
+            if (time == null) true else Instant.ofEpochMilli(it.departureAtMillis).atZone(zoneId).toLocalTime().let { local ->
+                local.hour == time.hour && local.minute == time.minute
+            }
+        }
+        .filter { assistantDayPartMatches0411(Instant.ofEpochMilli(it.departureAtMillis).atZone(zoneId).hour, command.temporal.raw) }
+        .filter { assistantTripRouteMatches0411(it, command.origin, command.destination) }
+        .sortedBy(Trip::departureAtMillis).toList()
+}
 
-    RotaCertaAction0410.READ_PROFILE ->
-        "Perfil é lido da conta BlaBlaCar autenticada pelo coletor; a identidade real não é resolvida pela OpenAI."
+private fun assistantQueryIsConstrained0411(command: RotaCertaStructuredCommand0410, plan: RotaCertaResolvedExecutionPlan0410): Boolean =
+    plan.dates.isNotEmpty() || plan.time != null || command.origin.isNotBlank() || command.destination.isNotBlank() || assistantHasDayPart0411(command.temporal.raw)
 
-    RotaCertaAction0410.READ_VEHICLE ->
-        "O veículo é lido do snapshot autenticado do perfil; detalhes desnecessários não são enviados à OpenAI."
+private fun assistantHasDayPart0411(raw: String): Boolean {
+    val value = raw.lowercase(Locale.ROOT)
+    return listOf("madrugada", "manhã", "manha", "tarde", "noite").any(value::contains)
+}
+private fun assistantDayPartMatches0411(hour: Int, raw: String): Boolean {
+    val value = raw.lowercase(Locale.ROOT)
+    return when {
+        "madrugada" in value -> hour in 0..4
+        "manhã" in value || "manha" in value -> hour in 5..11
+        "tarde" in value -> hour in 12..17
+        "noite" in value -> hour in 18..23
+        else -> true
+    }
+}
+private fun assistantTripRouteMatches0411(trip: Trip, origin: String, destination: String): Boolean {
+    if (origin.isBlank() && destination.isBlank()) return true
+    val stops = trip.stops.sortedBy(TripStop::order); if (stops.size < 2) return false
+    fun matches(stop: TripStop, ref: String): Boolean {
+        if (ref.isBlank()) return true
+        val needle = BlaBlaPublicSearchPlanner.normalizePlace(ref); if (needle.isBlank()) return true
+        return listOf(stop.name, stop.address).map(BlaBlaPublicSearchPlanner::normalizePlace).filter(String::isNotBlank).any {
+            it == needle || it.contains(needle) || (it.length >= 4 && needle.contains(it))
+        }
+    }
+    return matches(stops.first(), origin) && matches(stops.last(), destination)
+}
+private fun assistantTripLabel0411(trip: Trip, zoneId: ZoneId = ZoneId.systemDefault()): String {
+    val local = Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId)
+    val stops = trip.stops.sortedBy(TripStop::order)
+    val route = if (stops.size >= 2) stops.first().name + " → " + stops.last().name else trip.title
+    return local.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) + " • " + route
+}
+internal fun assistantActivePassengerBookings0411(trip: Trip, bookings: List<Booking>): List<Booking> =
+    bookings.filter { it.tripId == trip.id && it.status in setOf(BookingStatus.REQUESTED, BookingStatus.HELD, BookingStatus.CONFIRMED) }
+        .distinctBy(::bookingOccupancyIdentityKey)
 
-    else ->
-        "A ação foi interpretada, mas não possui resultado read-only nesta superfície."
+private fun assistantPublicSearchPrimaryCards0411(response: BlaBlaPublicSearchResponse?): List<BlaBlaPublicSearchCard> {
+    if (response == null) return emptyList()
+    return response.cards
+        .filter { BlaBlaPublicSearchPlanner.direction(it.searchFrom, it.searchTo, response.request) == BlaBlaPublicSearchDirection.PRIMARY }
+        .filter { BlaBlaPublicSearchPlanner.matchesTarget(it.driverName, response.request.targetNames) }
+        .sortedWith(compareBy<BlaBlaPublicSearchCard> { it.date }.thenBy { it.departureTime.orEmpty() })
+}
+private fun assistantPublicSearchResult0411(response: BlaBlaPublicSearchResponse?): String {
+    if (response == null) return "A busca pública não produziu resposta verificável."
+    val cards = assistantPublicSearchPrimaryCards0411(response)
+    val primaryQueries = response.queries.filter { BlaBlaPublicSearchPlanner.direction(it.from, it.to, response.request) == BlaBlaPublicSearchDirection.PRIMARY }
+    val complete = primaryQueries.isNotEmpty() && primaryQueries.all { it.coverageStatus == "COMPLETE" || (it.coverageStatus.isBlank() && it.status == "validated") }
+    val target = response.request.targetNames.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "qualquer motorista"
+    if (cards.isEmpty()) return if (complete) {
+        "Busca pública concluída. Não encontrei carona de " + target + " no sentido " + response.request.from + " → " + response.request.to + " nas datas verificadas."
+    } else {
+        "Busca pública parcial. Não encontrei resultado confirmado de " + target + ", mas não posso afirmar ausência porque nem todas as consultas tiveram cobertura COMPLETE."
+    }
+    return cards.take(20).joinToString(prefix = "Busca pública encontrou " + cards.size + " resultado(s) de " + target + ": ", separator = " • ") {
+        it.driverName + " • " + it.date + it.departureTime?.let { t -> " $t" }.orEmpty() + " • " +
+            (it.actualDeparture?.takeIf(String::isNotBlank) ?: it.searchFrom) + " → " +
+            (it.actualArrival?.takeIf(String::isNotBlank) ?: it.searchTo) +
+            it.availableSeats?.let { s -> " • $s vaga(s)" }.orEmpty() + it.price?.let { p -> " • $p" }.orEmpty()
+    }
 }

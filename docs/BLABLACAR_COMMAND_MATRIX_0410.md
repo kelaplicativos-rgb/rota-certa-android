@@ -1,4 +1,4 @@
-# BlaBlaCar capability and command matrix — Rota Certa 0.1.410
+# BlaBlaCar capability and command matrix — Rota Certa 0.1.411
 
 ## Evidence boundary
 
@@ -47,6 +47,7 @@ The OpenAI model never resolves or invents those identifiers.
 | READ_PASSENGER | Read one passenger occurrence | IMPLEMENTED | TripStore booking identity |
 | READ_PROFILE | Read authenticated driver profile | IMPLEMENTED | BlaBla collector profile snapshot |
 | READ_VEHICLE | Read vehicle information | IMPLEMENTED | Authenticated profile snapshot |
+| PUBLIC_SEARCH | Auditable public search by driver name, route and date/period | VERIFIED | Existing BlaBlaPublicSearchActivity + BlaBlaPublicSearchStore; only COMPLETE/validated coverage can prove absence |
 | SET_TRIP_DATE | Publication edit: date | BLOCKED | APK edit flow discovered; current write/readback not proven |
 | SET_TRIP_TIME | Publication edit: departure time | BLOCKED | APK itinerary/time flow discovered; current write/readback not proven |
 | SET_TRIP_ORIGIN | Publication edit: departure | BLOCKED | APK departure autocomplete/edit flow discovered |
@@ -71,6 +72,15 @@ The OpenAI model never resolves or invents those identifiers.
 | CONTACT_PASSENGER | Open/contact passenger | BLOCKED | Contact-passenger surface discovered; exact automated transport not verified |
 | READ_MESSAGES | Read message thread | BLOCKED | DOM/message collection exists, but complete authoritative thread coverage is not yet proven |
 | SEND_MESSAGE | Send message | BLOCKED | Messaging input surface discovered; verified write/readback not implemented |
+
+## Conversational read behavior in 0.1.411
+
+Natural questions are routed to the existing canonical/read-only surfaces before any answer is rendered:
+
+- trip existence, dates and departure times → LIST_TRIPS with deterministic date/time/route filtering;
+- passenger roster → READ_PASSENGERS with date/time/route trip resolution and direct WhatsApp shortcuts when canonical contact data exists;
+- occupancy/fullness → LIST_FULL_TRIPS using the canonical operational inventory and occupancy engine, not only the visual status label;
+- public driver/route discovery → PUBLIC_SEARCH through the existing auditable public collector. Partial coverage never proves absence.
 
 ## OpenAI boundary
 

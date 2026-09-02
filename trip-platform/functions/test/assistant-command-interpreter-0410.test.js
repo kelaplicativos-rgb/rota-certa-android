@@ -9,11 +9,13 @@ const {
   validateRawTemporalText0410,
   normalizeAllowedActions0410,
   interpretAssistantCommand0410,
+  systemInstruction0410,
 } = require("../assistant-command-interpreter-0410");
 
 test("server registry exposes a bounded allowlist", () => {
   assert.ok(SERVER_ACTIONS_0410.includes("CREATE_TRIPS"));
   assert.ok(SERVER_ACTIONS_0410.includes("SET_TRIP_SEATS"));
+  assert.ok(SERVER_ACTIONS_0410.includes("PUBLIC_SEARCH"));
   assert.equal(SERVER_ACTIONS_0410.includes("RUN_SHELL"), false);
   assert.deepEqual(
     normalizeAllowedActions0410(["create_trips", "RUN_SHELL", "SET_TRIP_BOOST", "CREATE_TRIPS"]),
@@ -83,6 +85,7 @@ test("prompt injection cannot expand action allowlist", async () => {
           roundTrip: false,
           origin: "",
           destination: "",
+          publicTargetNames: [],
           seats: null,
           priceText: "",
           freeTextValue: "",
@@ -107,6 +110,20 @@ test("prompt injection cannot expand action allowlist", async () => {
   assert.equal(captured.text.format.strict, true);
 });
 
+
+test("natural operational questions map to canonical read surfaces", () => {
+  const prompt = systemInstruction0410({
+    timezone: "America/Sao_Paulo",
+    locale: "pt-BR",
+    allowedActions: ["LIST_TRIPS","READ_PASSENGERS","LIST_FULL_TRIPS","PUBLIC_SEARCH"],
+  });
+  assert.match(prompt, /tenho viagem dia X/);
+  assert.match(prompt, /quem viaja comigo amanhã às 11/);
+  assert.match(prompt, /carro está cheio dia X/);
+  assert.match(prompt, /busca pública no nome de Alessandra/);
+  assert.match(prompt, /publicTargetNames/);
+  assert.match(prompt, /temporal\.raw/);
+});
 
 test("OpenAI secret is isolated from tripApi and Hosting routes assistant first", () => {
   const indexSource = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
