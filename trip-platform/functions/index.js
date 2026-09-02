@@ -9,6 +9,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
+const { createAgendaAdmin0417 } = require("./agenda-admin-0417");
 const {
   initialTesterCredits,
   normalizeTesterCredits,
@@ -197,6 +198,7 @@ async function sendDriverBookingPush({
   bookingId = "",
   seats = 0,
   tripTitle = "",
+  correlationId = "",
 }) {
   const username = normalizeUsername(driverUsername);
   if (!username) return;
@@ -234,6 +236,7 @@ async function sendDriverBookingPush({
         bookingId: cleanText(bookingId, 120),
         seats: String(Math.max(0, Number(seats || 0))),
         tripTitle: cleanText(tripTitle, 180),
+        correlationId: cleanText(correlationId, 100),
       },
       android: {
         priority: "high",
@@ -744,6 +747,10 @@ function normalizeDriverTrip(raw, previous = null) {
     : "";
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId) || previousManageUrl;
   const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId) || previousPublicUrl;
+  const publicTimezoneId0411 = cleanText(
+    raw.publicTimezoneId0411 == null ? (previous && previous.publicTimezoneId0411 || "") : raw.publicTimezoneId0411,
+    80,
+  );
   const previousPublicationRevision = Math.max(0, Number(previous && previous.publicationRevision || 0));
   const requestedPublicationRevision = raw.publicationRevision == null
     ? previousPublicationRevision
@@ -787,6 +794,15 @@ function normalizeDriverTrip(raw, previous = null) {
     publicationEventId,
     canonicalStateHash,
     tripKey,
+    publicTimezoneId0411,
+    publicAttestationState0417: publicationTombstone ? "UNPROVEN" : "PENDING",
+    publicAttestedPublicationRevision0417: 0,
+    publicAttestedCanonicalRevision0417: 0,
+    publicAttestedHash0417: "",
+    publicAttestedAtMillis0417: 0,
+    publicAttestationReason0417: publicationTombstone ? "PUBLICATION_TOMBSTONED" : "PUBLICATION_CHANGED",
+    publicAttestationMismatchFields0417: [],
+    publicAttestationCorrelationId0417: "",
     notes: cleanText(raw.notes, 1200),
   };
 }
@@ -920,6 +936,79 @@ function safePublicTrip(token, data) {
     driverDisplayName: data.driverDisplayName || "",
     updatedAtMillis: data.updatedAtMillis || null,
   };
+}
+
+function canonicalPublicStop0411(raw, index) {
+  const stop = raw || {};
+  return {
+    id: cleanText(stop.id, 80),
+    order: Number.isInteger(Number(stop.order)) ? Number(stop.order) : index,
+    name: cleanText(stop.name, 160),
+    address: cleanText(stop.address, 300),
+    plannedArrivalMillis: Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null,
+    plannedDepartureMillis: Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null,
+  };
+}
+
+function canonicalPublicTripPayload0411(token, data) {
+  const publicTrip = safePublicTrip(token, data);
+  const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
+  const blablaTripId = cleanText(data.blablaTripId, 160);
+  return {
+    schemaVersion: "public-trip-v1",
+    canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180),
+    blablaProfileUuid: profileUuid,
+    blablaTripId,
+    title: cleanText(publicTrip.title, 220),
+    departureAtMillis: Math.max(0, Number(publicTrip.departureAtMillis || 0)),
+    timezoneId: cleanText(data.publicTimezoneId0411, 80),
+    status: cleanText(publicTrip.status, 24),
+    capacity: Math.max(0, Number(publicTrip.capacity || 0)),
+    stops: (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
+      .map(canonicalPublicStop0411)
+      .sort((a, b) => a.order - b.order)
+      .map((stop, index) => ({ ...stop, order: index })),
+    segmentLoads: (Array.isArray(publicTrip.segmentLoads) ? publicTrip.segmentLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentPassengerLoads: (Array.isArray(publicTrip.segmentPassengerLoads) ? publicTrip.segmentPassengerLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentBlockedLoads: (Array.isArray(publicTrip.segmentBlockedLoads) ? publicTrip.segmentBlockedLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    availableSeatsMinimum: Math.max(0, Number(publicTrip.availableSeatsMinimum || 0)),
+    availableSeatsMaximum: Math.max(0, Number(publicTrip.availableSeatsMaximum || 0)),
+    operationalAvailableSeats: Math.max(0, Number(publicTrip.operationalAvailableSeats || 0)),
+    publishedSeats: publicTrip.publishedSeats == null ? null : Math.max(0, Number(publicTrip.publishedSeats || 0)),
+    rotaCertaSeatAllocation: Math.max(0, Number(publicTrip.rotaCertaSeatAllocation || 0)),
+    publicBookingEnabled: publicTrip.publicBookingEnabled === true,
+    capacityReliable: publicTrip.capacityReliable === true,
+    itineraryAuthoritative: publicTrip.itineraryAuthoritative === true,
+    publicUrl: cleanText(publicTrip.publicUrl, 1200),
+    blablaPublicUrl: normalizeBlaBlaPublicUrl(publicTrip.blablaPublicUrl, blablaTripId),
+    publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
+    canonicalStateHash: cleanText(data.canonicalStateHash, 160),
+  };
+}
+
+function canonicalPublicTripHash0411(payload) {
+  return "public-v1:" + sha256Hex(JSON.stringify(payload));
+}
+
+async function getDriverPublicTripReadback0411(req, res, token) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const snap = await db.collection("trips").doc(token).get();
+  if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
+  const data = snap.data();
+  if (normalizeUsername(data.driverUsername || "") !== driver.username) {
+    return fail(res, 403, "trip_owner_mismatch", "Viagem pertence a outro motorista.");
+  }
+  if (data.publicationTombstone === true) {
+    return fail(res, 409, "trip_projection_tombstoned", "A projeção pública desta viagem está removida.");
+  }
+  const payload = canonicalPublicTripPayload0411(token, data);
+  return json(res, 200, {
+    remoteTripId: token,
+    payload,
+    publicProjectionHash: canonicalPublicTripHash0411(payload),
+    persistedAtMillis: Math.max(0, Number(data.updatedAtMillis || 0)),
+  });
 }
 
 function clientIp(req) {
@@ -2467,28 +2556,55 @@ function safePublicDriverReviews(value) {
     .slice(0, 60);
 }
 
+function publicVisibilityPolicy0417(data) {
+  const raw = data && data.publicVisibility0417 && typeof data.publicVisibility0417 === "object"
+    ? data.publicVisibility0417
+    : {};
+  const visible = (field) => raw[field] !== false;
+  return {
+    name: visible("name"),
+    whatsapp: visible("whatsapp"),
+    photo: visible("photo"),
+    about: visible("about"),
+    rating: visible("rating"),
+    reviews: visible("reviews"),
+    badge: visible("badge"),
+    vehicle: visible("vehicle"),
+    amenities: visible("amenities"),
+    preferences: visible("preferences"),
+    paymentInstructions: visible("paymentInstructions"),
+  };
+}
+
 function safePublicDriverProfile(data, username = "") {
   const driver = data || {};
-  return {
-    displayName: cleanText(driver.displayName, 120),
+  const visibility = publicVisibilityPolicy0417(driver);
+  const profile = {
     username: normalizeUsername(username || driver.username || ""),
-    whatsapp: cleanText(driver.driverWhatsapp, 24),
-    photoUrl: cleanText(driver.driverPhotoUrl, 500).startsWith("https://")
-      ? cleanText(driver.driverPhotoUrl, 500)
-      : "",
-    about: cleanText(driver.driverPublicAbout, 320),
-    rating: cleanText(driver.driverPublicRating, 20),
-    reviewCount: Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0),
-    reviews: safePublicDriverReviews(driver.driverPublicReviews),
-    badge: cleanText(driver.driverPublicBadge, 80),
-    vehicle: {
+  };
+  if (visibility.name) profile.displayName = cleanText(driver.displayName, 120);
+  if (visibility.whatsapp) profile.whatsapp = cleanText(driver.driverWhatsapp, 24);
+  if (visibility.photo) {
+    const photo = cleanText(driver.driverPhotoUrl, 500);
+    profile.photoUrl = photo.startsWith("https://") ? photo : "";
+  }
+  if (visibility.about) profile.about = cleanText(driver.driverPublicAbout, 320);
+  if (visibility.rating) {
+    profile.rating = cleanText(driver.driverPublicRating, 20);
+    profile.reviewCount = Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0);
+  }
+  if (visibility.reviews) profile.reviews = safePublicDriverReviews(driver.driverPublicReviews);
+  if (visibility.badge) profile.badge = cleanText(driver.driverPublicBadge, 80);
+  if (visibility.vehicle) {
+    profile.vehicle = {
       makeModel: cleanText(driver.vehicleMakeModel, 120),
       color: cleanText(driver.vehicleColor, 60),
-    },
-    amenities: splitPublicList(driver.vehicleAmenities),
-    preferences: splitPublicList(driver.driverPreferences),
-    paymentInstructions: cleanText(driver.paymentInstructions, 240),
-  };
+    };
+  }
+  if (visibility.amenities) profile.amenities = splitPublicList(driver.vehicleAmenities);
+  if (visibility.preferences) profile.preferences = splitPublicList(driver.driverPreferences);
+  if (visibility.paymentInstructions) profile.paymentInstructions = cleanText(driver.paymentInstructions, 240);
+  return profile;
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
@@ -2521,8 +2637,18 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   }
   const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
+  const publicProfileScope0417 = new Set(
+    (Array.isArray(driver.publicTripProfileUuids0417) ? driver.publicTripProfileUuids0417 : [])
+      .map((value) => cleanText(value, 160).toLowerCase())
+      .filter(Boolean),
+  );
   const sourceDocs = snapshot.docs
     .filter((doc) => PUBLIC_STATUSES.has(doc.data().status) && Number(doc.data().departureAtMillis) > Date.now())
+    .filter((doc) => {
+      if (!publicProfileScope0417.size) return true;
+      const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
+      return !profileUuid || publicProfileScope0417.has(profileUuid);
+    })
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
   const trips = tester
@@ -6137,6 +6263,13 @@ async function interpretAssistant0410(req, res) {
   }
 }
 
+const agendaAdmin0417 = createAgendaAdmin0417({
+  db,
+  resolveDriverUsername,
+  requireDriver,
+  sendDriverBookingPush,
+});
+
 exports.assistantApi = onRequest(
   { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" },
   async (req, res) => {
@@ -6160,6 +6293,22 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   const parts = path.split("/").filter(Boolean);
   try {
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
+    if (req.method === "POST" && path === "/v1/public/admin/session") return await agendaAdmin0417.createAdminSession0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/logout") return await agendaAdmin0417.logoutAdmin0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/me") return await agendaAdmin0417.getAdminMe0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/overview") return await agendaAdmin0417.getAdminOverview0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/trips") return await agendaAdmin0417.listAdminTrips0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/settings") return await agendaAdmin0417.getAdminSettings0417(req, res);
+    if (req.method === "PUT" && path === "/v1/admin/settings/public") return await agendaAdmin0417.updateAdminPublicSettings0417(req, res);
+    if (req.method === "PUT" && path === "/v1/admin/settings/sync") return await agendaAdmin0417.updateAdminSyncSettings0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/sync/update-now") return await agendaAdmin0417.requestAdminUpdateNow0417(req, res);
+    if (req.method === "POST" && path === "/v1/admin/sync/reconcile") return await agendaAdmin0417.requestAdminFullReconcile0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/logs") return await agendaAdmin0417.listAdminLogs0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/export") return await agendaAdmin0417.exportAdminLogs0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/sessions") return await agendaAdmin0417.listAdminSessions0417(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/admin/password") return await agendaAdmin0417.setDriverAdminPassword0417(req, res);
+    if (req.method === "GET" && path === "/v1/driver/admin/sync-policy") return await agendaAdmin0417.getDriverAdminSyncPolicy0417(req, res);
+    if (req.method === "POST" && path === "/v1/driver/admin/sync-health") return await agendaAdmin0417.reportDriverAdminSyncHealth0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
@@ -6203,6 +6352,15 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
+      return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-attestation" && req.method === "POST") {
+      return await agendaAdmin0417.recordDriverPublicAttestation0417(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-readback" && req.method === "GET") {
+      return await getDriverPublicTripReadback0411(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "capacity-snapshot" && req.method === "PUT") {
       return await reconcileDriverCapacitySnapshot(req, res, parts[3]);

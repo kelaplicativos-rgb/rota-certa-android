@@ -129,6 +129,10 @@ internal fun OnlineSettingsEditor(
     var confirmRegenerateLink by remember { mutableStateOf(false) }
     var linkRotationInFlight by remember { mutableStateOf(false) }
     var usernameChangeInFlight by remember { mutableStateOf(false) }
+    var adminPassword0417 by remember { mutableStateOf("") }
+    var adminPasswordConfirmation0417 by remember { mutableStateOf("") }
+    var adminPasswordInFlight0417 by remember { mutableStateOf(false) }
+    var adminPasswordMessage0417 by remember { mutableStateOf<String?>(null) }
     val registrationScope = rememberCoroutineScope()
 
     val selectedProfile = linkedProfiles.firstOrNull { it.id == selectedPublicProfileAccountId }
@@ -317,6 +321,48 @@ internal fun OnlineSettingsEditor(
     Text("Credenciais e link público", style = MaterialTheme.typography.titleMedium)
     OutlinedTextField(token, { token = it }, label = { Text("Chave privada do motorista") },
         visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+    if (token.isNotBlank()) {
+        Text("Administração da Agenda", style = MaterialTheme.typography.titleMedium)
+        Text("Use o mesmo WhatsApp do proprietário acima. A senha é enviada somente para configuração segura e não fica salva no aparelho.")
+        OutlinedTextField(
+            adminPassword0417,
+            { adminPassword0417 = it.take(72) },
+            label = { Text("Senha da Administração") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            adminPasswordConfirmation0417,
+            { adminPasswordConfirmation0417 = it.take(72) },
+            label = { Text("Confirmar senha") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            enabled = !adminPasswordInFlight0417 &&
+                driverWhatsapp.isNotBlank() &&
+                adminPassword0417.length in 8..72 &&
+                adminPassword0417 == adminPasswordConfirmation0417,
+            onClick = {
+                registrationScope.launch {
+                    adminPasswordInFlight0417 = true
+                    adminPasswordMessage0417 = null
+                    runCatching {
+                        TripRemoteApi(buildSettings()).configureAdminPassword0417(adminPassword0417)
+                    }.onSuccess {
+                        adminPassword0417 = ""
+                        adminPasswordConfirmation0417 = ""
+                        adminPasswordMessage0417 = "Senha da Administração configurada. Sessões administrativas anteriores foram encerradas."
+                    }.onFailure { error ->
+                        adminPasswordMessage0417 = "Não foi possível configurar a senha: ${error.message ?: "erro de conexão"}"
+                    }
+                    adminPasswordInFlight0417 = false
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text(if (adminPasswordInFlight0417) "Configurando…" else "Definir/alterar senha da Administração") }
+        adminPasswordMessage0417?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
     OutlinedTextField(
         calendarToken,
         { calendarToken = it.filter { ch -> ch.isLetterOrDigit() || ch == '_' || ch == '-' } },

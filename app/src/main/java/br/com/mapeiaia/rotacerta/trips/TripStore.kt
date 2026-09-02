@@ -8,6 +8,7 @@ import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.TenantStorageScope
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.KeyStore
+import java.time.ZoneId
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -39,6 +40,86 @@ class TripStore(context: Context) {
     fun bookingsFor(tripId: String): List<Booking> = bookings().filter { it.tripId == tripId }
 
     fun getTrip(id: String): Trip? = trips().firstOrNull { it.id == id }
+
+    internal fun recordPublicationCommitted0411(
+        canonicalTripId: String,
+        publicationRevision: Long,
+        publicationEventId: String,
+        tombstone: Boolean,
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        if (canonicalTripId.isBlank() || publicationRevision <= 0L) return@synchronized getTrip(canonicalTripId)
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (publicationRevision < existing.publicationRevision) {
+            UnifiedDebugEventStore.record(
+                "PUBLICATION_METADATA_STALE_REJECTED_0411",
+                appContext.packageName,
+                "tenantId=${tenantScope.tenantId} internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} incomingRevision=$publicationRevision currentRevision=${existing.publicationRevision}",
+            )
+            return@synchronized existing
+        }
+        val nextState = if (tombstone) {
+            PublicMirrorAttestationState0411.UNPROVEN
+        } else if (
+            existing.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
+            existing.publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
+            existing.publicMirrorAttestedCanonicalRevision0411 == existing.canonicalRevision
+        ) {
+            existing.publicMirrorAttestationState0411
+        } else {
+            PublicMirrorAttestationState0411.PENDING
+        }
+        val updated = existing.copy(
+            publicationRevision = publicationRevision,
+            publicationTombstone = tombstone,
+            publicationEventId = publicationEventId.take(120),
+            publicMirrorAttestationState0411 = nextState,
+            publicMirrorAttestationReason0411 = if (tombstone) "PUBLICATION_TOMBSTONED" else "PUBLICATION_COMMITTED_AWAITING_READBACK",
+            updatedAtMillis = System.currentTimeMillis(),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
+
+    internal fun recordPublicMirrorAttestation0411(
+        canonicalTripId: String,
+        expectedCanonicalRevision: Long,
+        expectedPublicationRevision: Long,
+        state: PublicMirrorAttestationState0411,
+        expectedHash: String,
+        readbackHash: String,
+        mismatchFields: List<String>,
+        reason: String,
+        readbackLatencyMillis: Long,
+        publicUrlFromReadback: String? = null,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (
+            existing.canonicalRevision != expectedCanonicalRevision ||
+            existing.publicationRevision != expectedPublicationRevision
+        ) {
+            val invalidated = existing.invalidatePublicMirror0411("REVISION_CHANGED_DURING_READBACK")
+            if (invalidated != existing) persistCanonicalTrip0406(invalidated, current)
+            return@synchronized invalidated
+        }
+        val updated = existing.copy(
+            publicUrl = existing.publicUrl?.takeIf(String::isNotBlank)
+                ?: publicUrlFromReadback?.trim()?.takeIf(String::isNotBlank),
+            publicMirrorAttestationState0411 = state,
+            publicMirrorAttestedCanonicalRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedCanonicalRevision else 0L,
+            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedPublicationRevision else 0L,
+            publicMirrorExpectedHash0411 = expectedHash.take(96),
+            publicMirrorReadbackHash0411 = readbackHash.take(96),
+            publicMirrorAttestedAtMillis0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) nowMillis else 0L,
+            publicMirrorReadbackLatencyMillis0411 = readbackLatencyMillis.coerceAtLeast(0L),
+            publicMirrorAttestationReason0411 = reason.take(160),
+            publicMirrorMismatchFields0411 = mismatchFields.distinct().take(24),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
 
     fun publicExternalBindings(): List<PublicExternalTripBinding> =
         decode<List<PublicExternalTripBinding>>(prefs.getString(publicExternalBindingsKey, null)).orEmpty()
@@ -74,7 +155,9 @@ class TripStore(context: Context) {
     }
 
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
-        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin())
+        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin()).let { keyed ->
+            if (keyed.publicTimezoneId0411.isBlank()) keyed.copy(publicTimezoneId0411 = ZoneId.systemDefault().id) else keyed
+        }
         val allTrips = trips()
         val existingById = allTrips.firstOrNull { it.id == keyedIncoming.id }
         val existingByStrongKey = keyedIncoming.tripKey.takeIf(String::isNotBlank)?.let { key ->
@@ -107,6 +190,16 @@ class TripStore(context: Context) {
                 canonicalStateHash = existing.canonicalStateHash.ifBlank {
                     canonicalTripStateHash0406(existing.copy(tripKey = incoming.tripKey.ifBlank { existing.tripKey }), bookingsFor(existing.id))
                 },
+                publicTimezoneId0411 = incoming.publicTimezoneId0411.ifBlank { existing.publicTimezoneId0411 },
+                publicMirrorAttestationState0411 = existing.publicMirrorAttestationState0411,
+                publicMirrorAttestedCanonicalRevision0411 = existing.publicMirrorAttestedCanonicalRevision0411,
+                publicMirrorAttestedPublicationRevision0411 = existing.publicMirrorAttestedPublicationRevision0411,
+                publicMirrorExpectedHash0411 = existing.publicMirrorExpectedHash0411,
+                publicMirrorReadbackHash0411 = existing.publicMirrorReadbackHash0411,
+                publicMirrorAttestedAtMillis0411 = existing.publicMirrorAttestedAtMillis0411,
+                publicMirrorReadbackLatencyMillis0411 = existing.publicMirrorReadbackLatencyMillis0411,
+                publicMirrorAttestationReason0411 = existing.publicMirrorAttestationReason0411.take(160),
+                publicMirrorMismatchFields0411 = existing.publicMirrorMismatchFields0411.distinct().take(24),
                 lastCollectionGeneration = maxOf(existing.lastCollectionGeneration, incomingGeneration),
                 lastCollectionRunId = if (
                     incoming.lastCollectionRunId.isNotBlank() &&
@@ -122,9 +215,23 @@ class TripStore(context: Context) {
         } else {
             nextCanonicalTripRevision0395(existing.canonicalRevision, incoming.canonicalRevision, semanticChanged)
         }
+        val attestationState = when {
+            incoming.deleted || incoming.publicationTombstone -> PublicMirrorAttestationState0411.UNPROVEN
+            semanticChanged -> PublicMirrorAttestationState0411.PENDING
+            else -> incoming.publicMirrorAttestationState0411
+        }
         val normalizedWithoutHash = incoming.copy(
             canonicalRevision = nextRevision,
             canonicalStateHash = "",
+            publicMirrorAttestationState0411 = attestationState,
+            publicMirrorAttestedCanonicalRevision0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedCanonicalRevision0411,
+            publicMirrorAttestedPublicationRevision0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedPublicationRevision0411,
+            publicMirrorExpectedHash0411 = if (semanticChanged) "" else incoming.publicMirrorExpectedHash0411,
+            publicMirrorReadbackHash0411 = if (semanticChanged) "" else incoming.publicMirrorReadbackHash0411,
+            publicMirrorAttestedAtMillis0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedAtMillis0411,
+            publicMirrorReadbackLatencyMillis0411 = if (semanticChanged) 0L else incoming.publicMirrorReadbackLatencyMillis0411,
+            publicMirrorAttestationReason0411 = if (semanticChanged) "CANONICAL_REVISION_CHANGED" else incoming.publicMirrorAttestationReason0411,
+            publicMirrorMismatchFields0411 = if (semanticChanged) emptyList() else incoming.publicMirrorMismatchFields0411,
             updatedAtMillis = System.currentTimeMillis(),
         )
         val normalized = normalizedWithoutHash.copy(
@@ -174,6 +281,15 @@ class TripStore(context: Context) {
         canonicalRevision = 0L,
         canonicalStateHash = "",
         tripKey = "",
+        publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+        publicMirrorAttestedCanonicalRevision0411 = 0L,
+        publicMirrorAttestedPublicationRevision0411 = 0L,
+        publicMirrorExpectedHash0411 = "",
+        publicMirrorReadbackHash0411 = "",
+        publicMirrorAttestedAtMillis0411 = 0L,
+        publicMirrorReadbackLatencyMillis0411 = 0L,
+        publicMirrorAttestationReason0411 = "",
+        publicMirrorMismatchFields0411 = emptyList(),
         lastCollectionRunId = "",
         lastCollectionGeneration = 0L,
         lastObservedAtMillis = 0L,
@@ -209,9 +325,20 @@ class TripStore(context: Context) {
                     trip.id in winnerIds
             }
             val bookingsByTrip = remappedBookings.groupBy(Booking::tripId)
+            val activeTimezone = ZoneId.systemDefault().id
             val hashedTrips = retainedTrips.map { trip ->
-                val stateHash = canonicalTripStateHash0406(trip, bookingsByTrip[trip.id].orEmpty())
-                if (trip.canonicalStateHash == stateHash) trip else trip.copy(canonicalStateHash = stateHash)
+                val migrated = if (trip.publicTimezoneId0411.isBlank()) {
+                    trip.copy(
+                        publicTimezoneId0411 = activeTimezone,
+                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        canonicalStateHash = "",
+                        updatedAtMillis = nowMillis,
+                    ).invalidatePublicMirror0411("LEGACY_PUBLIC_TIMEZONE_MIGRATED")
+                } else {
+                    trip
+                }
+                val stateHash = canonicalTripStateHash0406(migrated, bookingsByTrip[migrated.id].orEmpty())
+                if (migrated.canonicalStateHash == stateHash) migrated else migrated.copy(canonicalStateHash = stateHash)
             }
             val canonicalByKey = hashedTrips.filter { it.tripKey.isNotBlank() }.associateBy(Trip::tripKey)
             val originalBindings = publicExternalBindings()
@@ -359,7 +486,7 @@ class TripStore(context: Context) {
                     canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                     canonicalStateHash = "",
                     updatedAtMillis = nowMillis,
-                )
+                ).invalidatePublicMirror0411("SEAT_ALLOCATION_CHANGED")
                 updated.copy(
                     canonicalStateHash = canonicalTripStateHash0406(
                         updated,
@@ -475,7 +602,7 @@ class TripStore(context: Context) {
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = now,
-                    )
+                    ).invalidatePublicMirror0411("BOOKING_DERIVED_INVENTORY_CHANGED")
                     updated.copy(
                         canonicalStateHash = canonicalTripStateHash0406(
                             updated,
@@ -566,7 +693,7 @@ class TripStore(context: Context) {
                     canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                     canonicalStateHash = "",
                     updatedAtMillis = nowMillis,
-                )
+                ).invalidatePublicMirror0411("BOOKING_STATE_CHANGED")
                 updated.copy(
                     canonicalStateHash = canonicalTripStateHash0406(updated, tripBookings),
                 )
