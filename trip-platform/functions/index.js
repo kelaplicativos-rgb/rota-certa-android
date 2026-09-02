@@ -3463,6 +3463,7 @@ function safePassengerAccess(doc) {
     status: passengerAccessStatus(data) || "PENDING",
     passengerId: cleanText(data.passengerId, 120),
     accountActivated: data.accountActivated === true,
+    agendaAdmin: data.agendaAdmin === true,
     referredByContact: cleanText(data.referredByContact, 40),
     referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
     createdAtMillis: Number(data.createdAtMillis || 0),
@@ -4232,6 +4233,9 @@ async function requirePassengerSession(req, res) {
     passengerContact: cleanText(data.passengerContact, 40),
     passengerId: cleanText(data.passengerId, 120),
     contactHash: cleanText(data.contactHash, 80),
+    sessionRefId: sessionRef.id,
+    createdAtMillis: Number(data.createdAtMillis || 0),
+    expiresAtMillis: Number(data.expiresAtMillis || 0),
   };
 }
 
@@ -4245,10 +4249,21 @@ async function getPassengerMe(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).get();
+  const resolvedDriver = await resolveDriverUsername(req.query && req.query.driverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
+  let access = null;
+  if (driverUsername) {
+    access = await passengerAccessForIdentity(driverUsername, session.passengerId, session.passengerContact);
+    if (!access || !passengerAccessIsAuthorized(access)) {
+      return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
+    }
+  }
   return json(res, 200, {
     passengerContact: session.passengerContact,
     passengerId: cleanText(session.passengerId || (accountSnap.exists && accountSnap.data().passengerId), 120),
     mustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
+    agendaAdmin: Boolean(access && access.agendaAdmin === true),
+    driverUsername,
   });
 }
 
@@ -4311,6 +4326,7 @@ async function activatePassengerAccount(req, res) {
     passengerContact,
     passengerId,
     mustChangePassword: false,
+    agendaAdmin: view.access.agendaAdmin === true,
   });
 }
 
@@ -4351,6 +4367,7 @@ async function loginPassengerAccount(req, res) {
     passengerContact,
     passengerId,
     mustChangePassword: account.mustChangePassword === true,
+    agendaAdmin: Boolean(access && access.agendaAdmin === true),
   });
 }
 
