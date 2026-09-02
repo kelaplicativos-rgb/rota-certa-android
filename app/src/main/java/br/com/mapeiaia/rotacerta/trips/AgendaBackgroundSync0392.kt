@@ -86,6 +86,11 @@ internal fun agendaBackgroundSyncIntervalMinutes0392(requestedMinutes: Long? = n
 
 internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
 
+internal fun agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason: String): Boolean =
+    reason == "periodic" ||
+        reason == "blablacar_collection_result" ||
+        agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+
 internal fun agendaBackgroundSyncForegroundInfo0402(context: Context, reason: String): ForegroundInfo {
     val appContext = context.applicationContext
     val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -500,10 +505,7 @@ internal object AgendaBackgroundSyncConfig0392 {
             fullReconcileComplete &&
             failures == 0 &&
             !retryPending &&
-            (
-                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE ||
-                    reason == "blablacar_collection_result"
-            )
+            agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason)
         ) {
             editor.putLong(scope.key(KEY_LAST_FULL_RECONCILE_FINISHED), nowMillis)
         }
@@ -842,6 +844,34 @@ internal object AgendaBackgroundSync0392 {
             }
 
             if (
+                canonicalTrip != null &&
+                binding != null &&
+                binding.bookingTripId.isNotBlank() &&
+                binding.bookingTripId != canonicalTripId
+            ) {
+                val previousBookingTripId = binding.bookingTripId
+                val migratedBookings = store.bookingsFor(previousBookingTripId)
+                    .map { booking -> booking.copy(tripId = canonicalTripId) }
+                if (migratedBookings.isNotEmpty()) {
+                    store.saveBookingsBatch(
+                        bookingsToSave = migratedBookings,
+                        preserveSourceUpdatedAt = true,
+                    )
+                }
+                store.savePublicExternalBinding(
+                    binding.copy(
+                        bookingTripId = canonicalTripId,
+                        canonicalRevision = maxOf(binding.canonicalRevision, canonicalTrip.canonicalRevision),
+                    ),
+                )
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403",
+                    context.packageName,
+                    "oldInternalTripId=${seatSyncDiagnosticKey(previousBookingTripId)} newInternalTripId=${seatSyncDiagnosticKey(canonicalTripId)} migratedBookings=${migratedBookings.size} profileUuidPresent=true tripIdPresent=true",
+                )
+            }
+
+            if (
                 incomingComplete &&
                 canonicalTrip != null &&
                 canonicalTrip.departureAtMillis > nowMillis &&
@@ -938,6 +968,19 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
+        // External collection is normalized into the existing canonical TripStore before
+        // booking pull/fan-out. This also migrates legacy external bookingTripId bindings
+        // so every later mutation in this cycle uses the same internal trip identity.
+        if (mode in setOf(AgendaBackgroundSyncMode0392.FULL_RECONCILE, AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE)) {
+            collectorCanonical = reconcileCollectedExternalTrips0403(
+                context = appContext,
+                store = store,
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            )
+        }
+
         val pullBookings = reason == "periodic" || mode in setOf(
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.BOOKING_EVENT,
@@ -982,16 +1025,6 @@ internal object AgendaBackgroundSync0392 {
                     component = "AgendaBackgroundSync0392",
                     method = "runTenantCycle",
                 ),
-            )
-        }
-
-        if (mode in setOf(AgendaBackgroundSyncMode0392.FULL_RECONCILE, AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE)) {
-            collectorCanonical = reconcileCollectedExternalTrips0403(
-                context = appContext,
-                store = store,
-                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
-                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
-                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
             )
         }
 
