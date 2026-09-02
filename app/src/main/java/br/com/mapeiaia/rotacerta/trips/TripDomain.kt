@@ -183,6 +183,7 @@ internal fun canonicalTripStateHash0406(
         append(trip.recordOrigin.name).append('|')
         append(trip.blablaProfileUuid.orEmpty().trim().lowercase()).append('|')
         append(trip.blablaTripId.orEmpty().trim()).append('|')
+        append(BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
         append(trip.departureAtMillis).append('|')
         append(trip.status.name).append('|')
         append(trip.capacity).append('|')
