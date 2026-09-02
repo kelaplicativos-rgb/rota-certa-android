@@ -209,3 +209,19 @@ internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
         publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
         publicMirrorExpectedHash0411.isNotBlank() &&
         publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
+
+internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
+    publicMirrorAttestationState0411 = if (deleted || publicationTombstone) {
+        PublicMirrorAttestationState0411.UNPROVEN
+    } else {
+        PublicMirrorAttestationState0411.PENDING
+    },
+    publicMirrorAttestedCanonicalRevision0411 = 0L,
+    publicMirrorAttestedPublicationRevision0411 = 0L,
+    publicMirrorExpectedHash0411 = "",
+    publicMirrorReadbackHash0411 = "",
+    publicMirrorAttestedAtMillis0411 = 0L,
+    publicMirrorReadbackLatencyMillis0411 = 0L,
+    publicMirrorAttestationReason0411 = reason.take(160),
+    publicMirrorMismatchFields0411 = emptyList(),
+)
