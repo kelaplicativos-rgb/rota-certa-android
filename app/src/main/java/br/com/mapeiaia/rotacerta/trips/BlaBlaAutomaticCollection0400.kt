@@ -134,6 +134,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             if (hostResult.first != android.app.Activity.RESULT_OK) {
                 val status = when (failure) {
                     "AUTH_REQUIRED" -> BlaBlaCommandStatus0407.AUTH_REQUIRED
+                    "BROKEN_FOR_VERSION" -> BlaBlaCommandStatus0407.BROKEN_FOR_VERSION
                     else -> BlaBlaCommandStatus0407.UNVERIFIED
                 }
                 return@withLock BlaBlaCommandResult0407(
