@@ -3,7 +3,7 @@
 (() => {
   const byId = (id) => document.getElementById(id);
   const section = byId("agendaAdmin0417");
-  const entry = byId("openAgendaAdmin0417");
+  const entry = byId("openAgendaAdmin0418");
   if (!section || !entry) return;
 
   function slug0417() {
@@ -21,9 +21,9 @@
     return;
   }
 
-  const sessionKey = "rotacerta-admin-session:" + driverUsername;
-  let sessionToken = "";
-  try { sessionToken = sessionStorage.getItem(sessionKey) || ""; } catch (_) {}
+  function passengerSessionToken0418() {
+    try { return sessionStorage.getItem("rotacerta-passenger-session") || ""; } catch (_) { return ""; }
+  }
   let currentTrips = [];
   let currentSettings = null;
 
@@ -39,12 +39,24 @@
 
   function leaveAdmin0417() {
     section.classList.add("hidden");
-    location.reload();
+    const portal = byId("openPassengerPortal");
+    if (portal) portal.click();
+    else location.reload();
   }
 
   async function api0417(path, options = {}) {
-    const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
-    if (sessionToken) headers["X-Rota-Certa-Admin-Session"] = sessionToken;
+    const token = passengerSessionToken0418();
+    if (!token) {
+      const error = new Error("Entre em Minhas Viagens para acessar a Administração.");
+      error.status = 401;
+      throw error;
+    }
+    const headers = {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token,
+      "X-Rota-Certa-Admin-Driver": driverUsername,
+      ...(options.headers || {}),
+    };
     const response = await fetch(path, { ...options, headers });
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json() : await response.text();
@@ -191,7 +203,6 @@
         api0417("/v1/admin/logs"),
         api0417("/v1/admin/sessions"),
       ]);
-      byId("adminLoginCard0417").classList.add("hidden");
       byId("adminPanel0417").classList.remove("hidden");
       renderOverview0417(overview);
       renderTrips0417(trips.trips);
@@ -200,15 +211,12 @@
       renderSessions0417(sessions.sessions);
       setMessage0417("");
     } catch (error) {
-      if (error.status === 401) {
-        sessionToken = "";
-        try { sessionStorage.removeItem(sessionKey); } catch (_) {}
+      if (error.status === 401 || error.status === 403) {
         byId("adminPanel0417").classList.add("hidden");
-        byId("adminLoginCard0417").classList.remove("hidden");
-        setMessage0417(error.message, true);
-      } else {
-        setMessage0417(error.message, true);
+        const roleCard = byId("portalAgendaAdminCard0418");
+        if (roleCard && error.status === 403) roleCard.classList.add("hidden");
       }
+      setMessage0417(error.message, true);
     }
   }
 
@@ -230,31 +238,11 @@
   }
 
   entry.addEventListener("click", () => {
+    if (!passengerSessionToken0418()) return;
     hidePublicSections0417();
-    if (sessionToken) loadDashboard0417();
-    else {
-      byId("adminPanel0417").classList.add("hidden");
-      byId("adminLoginCard0417").classList.remove("hidden");
-      byId("adminWhatsapp0417").focus();
-    }
+    loadDashboard0417();
   });
   byId("adminBack0417").addEventListener("click", leaveAdmin0417);
-
-  byId("adminLogin0417").addEventListener("click", async () => {
-    const contact = byId("adminWhatsapp0417").value.trim();
-    const password = byId("adminPassword0417").value;
-    setMessage0417("Autenticando…");
-    try {
-      const response = await api0417("/v1/public/admin/session", {
-        method: "POST",
-        body: JSON.stringify({ driverUsername, contact, password }),
-      });
-      sessionToken = response.sessionToken || "";
-      try { sessionStorage.setItem(sessionKey, sessionToken); } catch (_) {}
-      byId("adminPassword0417").value = "";
-      await loadDashboard0417();
-    } catch (error) { setMessage0417(error.message, true); }
-  });
 
   byId("adminRefresh0417").addEventListener("click", loadDashboard0417);
 
@@ -316,7 +304,13 @@
 
   byId("adminExport0417").addEventListener("click", async () => {
     try {
-      const response = await fetch("/v1/admin/export", { headers: { "X-Rota-Certa-Admin-Session": sessionToken } });
+      const token = passengerSessionToken0418();
+      const response = await fetch("/v1/admin/export", {
+        headers: {
+          "Authorization": "Bearer " + token,
+          "X-Rota-Certa-Admin-Driver": driverUsername,
+        },
+      });
       if (!response.ok) throw new Error("Não foi possível exportar os logs.");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -329,10 +323,5 @@
     } catch (error) { setMessage0417(error.message, true); }
   });
 
-  byId("adminLogout0417").addEventListener("click", async () => {
-    try { await api0417("/v1/admin/logout", { method: "POST", body: "{}" }); } catch (_) {}
-    sessionToken = "";
-    try { sessionStorage.removeItem(sessionKey); } catch (_) {}
-    leaveAdmin0417();
-  });
+  byId("adminBackToTrips0418").addEventListener("click", leaveAdmin0417);
 })();
