@@ -496,6 +496,9 @@ fun PassengerAdminScreen(
                     if (profile.blocked) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
                 }
                 Text(passengerAccessLabel(access), style = MaterialTheme.typography.bodySmall)
+                if (access?.agendaAdmin == true) {
+                    Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
+                }
                 if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
                 access?.referredByContact?.takeIf(String::isNotBlank)?.let {
                     Text("Indicado por: ${maskPassengerAdminContact(it)}", style = MaterialTheme.typography.bodySmall)
@@ -601,6 +604,54 @@ fun PassengerAdminScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+                    val accessAuthorized0418 = access?.status in setOf("AUTHORIZED", "ACTIVE")
+                    if (access != null) {
+                        OutlinedButton(
+                            enabled = settings.configured &&
+                                !loading &&
+                                accessAuthorized0418 &&
+                                (access.accountActivated || access.agendaAdmin),
+                            onClick = {
+                                val canonical = canonicalProfile(candidate)
+                                if (canonical == null) {
+                                    onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                } else {
+                                    loading = true
+                                    scope.launch {
+                                        runCatching {
+                                            TripRemoteApi(settings).setPassengerAgendaAdmin0418(
+                                                passengerContact = activeAccessWhatsapp,
+                                                passengerId = canonical.id,
+                                                agendaAdmin = !access.agendaAdmin,
+                                            )
+                                        }.onSuccess { response ->
+                                            revision++
+                                            onChanged(
+                                                if (response.passenger.agendaAdmin) {
+                                                    "${candidate.displayName} agora verá Administração da Agenda dentro de Minhas Viagens."
+                                                } else {
+                                                    "Permissão de administrador removida de ${candidate.displayName}."
+                                                },
+                                            )
+                                        }.onFailure { error ->
+                                            onChanged("Falha ao alterar administrador da Agenda: ${error.message ?: "erro de conexão"}")
+                                        }
+                                        loading = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(if (access.agendaAdmin) "Remover administrador" else "Definir como administrador")
+                        }
+                        if (!access.accountActivated && !access.agendaAdmin) {
+                            Text(
+                                "Para virar administrador, este passageiro precisa primeiro ativar Minhas Viagens.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+
                     if (access?.accountActivated == true) {
                         OutlinedButton(
                             enabled = settings.configured && !loading,
