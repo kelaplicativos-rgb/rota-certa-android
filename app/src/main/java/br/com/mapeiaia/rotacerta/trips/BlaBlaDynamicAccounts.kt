@@ -688,8 +688,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun isInteractiveNavigationMode0418(): Boolean =
-        mode == BlaBlaDynamicSessionIntents.MODE_LOGIN ||
-            mode == BlaBlaDynamicSessionIntents.MODE_MANAGE
+        phase == Phase.IDLE &&
+            (mode == BlaBlaDynamicSessionIntents.MODE_LOGIN ||
+                mode == BlaBlaDynamicSessionIntents.MODE_MANAGE)
 
     private fun cancelMainFrameRecovery0418() {
         val pending = mainFrameRecoveryRunnable0418
