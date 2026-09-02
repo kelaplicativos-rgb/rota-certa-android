@@ -1119,6 +1119,16 @@ async function openWhatsappFromSeatPicker() {
   }
 }
 
+function isOfficialBlaBlaHost(hostname) {
+  const labels = String(hostname || "").trim().toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function safeBlaBlaPublicUrl(item) {
   const raw = String(item?.blablaPublicUrl || "").trim();
   const expectedTripId = String(item?.blablaTripId || "").trim();
@@ -1126,7 +1136,7 @@ function safeBlaBlaPublicUrl(item) {
   try {
     const url = new URL(raw);
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
-    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost(url.hostname)) return "";
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
     const actualTripId = String(url.searchParams.get("id") || url.pathname.match(/\/trip\/([^/?#]+)/i)?.[1] || "").trim();
     if (!actualTripId || actualTripId !== expectedTripId) return "";
@@ -1775,9 +1785,12 @@ function renderTrip() {
   if (blablaUrl && canUseExternalActions) {
     blabla.href = blablaUrl;
     blabla.target = "_blank";
+    blabla.rel = "noopener noreferrer external";
     blabla.removeAttribute("aria-disabled");
   } else {
     blabla.removeAttribute("href");
+    blabla.removeAttribute("target");
+    blabla.removeAttribute("rel");
     blabla.setAttribute("aria-disabled", "true");
   }
   blabla.textContent = blablaUrl && canUseExternalActions
