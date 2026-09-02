@@ -6,8 +6,11 @@ import java.nio.charset.StandardCharsets
 
 /** Single URL and navigation-identity authority for every collector flow. */
 internal object BlaBlaCollectorUrlModule {
+    /**
+     * Fallback origin only for legacy relative URLs captured by the Brazilian browser flow.
+     * Absolute URLs keep their own verified official BlaBlaCar market host.
+     */
     const val ORIGIN = "https://www.blablacar.com.br"
-    private const val HOST = "www.blablacar.com.br"
 
     fun absolute(raw: String?): String {
         val value = raw?.trim().orEmpty()
@@ -28,7 +31,7 @@ internal object BlaBlaCollectorUrlModule {
             .filterNot { part -> part.substringBefore('=').equals("search_uuid", ignoreCase = true) }
             .joinToString("&")
         return buildString {
-            append(ORIGIN)
+            append("https://").append(uri.host.lowercase())
             append(uri.rawPath.orEmpty().ifBlank { "/" })
             if (query.isNotBlank()) append('?').append(query)
         }
@@ -43,7 +46,22 @@ internal object BlaBlaCollectorUrlModule {
     fun passengerPageKey(raw: String?): String {
         val uri = parseAllowed(raw) ?: return ""
         val path = uri.rawPath.orEmpty().trimEnd('/').ifBlank { "/" }
-        return "$ORIGIN$path"
+        return "https://${uri.host.lowercase()}$path"
+    }
+
+    fun origin(raw: String?): String? =
+        parseAllowed(raw)?.host?.lowercase()?.let { "https://$it" }
+
+    internal fun isOfficialBlaBlaHost(host: String?): Boolean {
+        val labels = host.orEmpty().trim().trim('.').lowercase().split('.').filter(String::isNotBlank)
+        val root = if (labels.firstOrNull() == "www") labels.drop(1) else labels
+        if (root.firstOrNull() != "blablacar") return false
+        val suffix = root.drop(1)
+        return when (suffix.size) {
+            1 -> suffix[0] == "com" || suffix[0].length == 2
+            2 -> suffix[0] in setOf("com", "co") && suffix[1].length == 2
+            else -> false
+        }
     }
 
     fun samePassengerPage(expected: String?, actual: String?): Boolean =
@@ -129,7 +147,7 @@ internal object BlaBlaCollectorUrlModule {
         return if (uri == null) {
             absolute(raw).substringBefore('?').substringBefore('#').take(240)
         } else {
-            "$ORIGIN${uri.rawPath.orEmpty().ifBlank { "/" }}".take(240)
+            "https://${uri.host.lowercase()}${uri.rawPath.orEmpty().ifBlank { "/" }}".take(240)
         }
     }
 
@@ -158,7 +176,7 @@ internal object BlaBlaCollectorUrlModule {
         URI(absolute(raw))
     }.getOrNull()?.takeIf { uri ->
         uri.scheme.equals("https", ignoreCase = true) &&
-            uri.host.equals(HOST, ignoreCase = true) &&
+            isOfficialBlaBlaHost(uri.host) &&
             uri.rawUserInfo == null &&
             uri.port in setOf(-1, 443)
     }
