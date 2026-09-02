@@ -74,10 +74,10 @@ test("BlaBla public link is fail-closed and never uses the admin rides offer URL
   assert.match(tripDetail, /id !== currentTripId/);
   assert.match(tripDetail, /path !== '\/trip'/);
   assert.match(backend, /function normalizeBlaBlaPublicUrl/);
-  assert.match(backend, /blablaPublicUrl: normalizeBlaBlaPublicUrl/);
+  assert.match(backend, /blablaTripId: cleanText\(data\.blablaTripId/);\n  assert.match(backend, /blablaPublicUrl: normalizeBlaBlaPublicUrl/);
   assert.match(backend, /actualTripId !== expected/);
   const safe = functionSource(publicApp, "safeBlaBlaPublicUrl", "stopMatchesSearch");
-  assert.match(safe, /hostname\.toLowerCase\(\) !== "www\.blablacar\.com\.br"/);
+  assert.match(publicApp, /function isOfficialBlaBlaHost/);\n  assert.match(safe, /!isOfficialBlaBlaHost\(url\.hostname\)/);
   assert.match(safe, /path !== "\/trip"/);
   assert.match(safe, /expectedTripId/);
   assert.match(safe, /actualTripId !== expectedTripId/);
