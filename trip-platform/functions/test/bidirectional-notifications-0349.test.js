@@ -93,7 +93,8 @@ test("Android driver exposes notification center and stable push replacement id"
   assert.match(androidUi, /driverUnreadCount/);
   assert.match(androidUi, /refreshDriverNotifications/);
   assert.match(androidUi, /Marcar todas como lidas/);
-  assert.match(androidUi, /notificationLabel0396/);
+  assert.match(androidUi, /TripScreen\.NOTIFICATIONS/);
+  assert.match(androidUi, /openNotifications0396/);
   assert.match(androidUi, /Notificações/);
   assert.match(messaging, /\(event \+ ":" \+ bookingId\)\.hashCode\(\)/);
   assert.doesNotMatch(messaging, /System\.currentTimeMillis\(\) \/ 60_000L/);
