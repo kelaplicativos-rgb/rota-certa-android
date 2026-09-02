@@ -2545,28 +2545,55 @@ function safePublicDriverReviews(value) {
     .slice(0, 60);
 }
 
+function publicVisibilityPolicy0417(data) {
+  const raw = data && data.publicVisibility0417 && typeof data.publicVisibility0417 === "object"
+    ? data.publicVisibility0417
+    : {};
+  const visible = (field) => raw[field] !== false;
+  return {
+    name: visible("name"),
+    whatsapp: visible("whatsapp"),
+    photo: visible("photo"),
+    about: visible("about"),
+    rating: visible("rating"),
+    reviews: visible("reviews"),
+    badge: visible("badge"),
+    vehicle: visible("vehicle"),
+    amenities: visible("amenities"),
+    preferences: visible("preferences"),
+    paymentInstructions: visible("paymentInstructions"),
+  };
+}
+
 function safePublicDriverProfile(data, username = "") {
   const driver = data || {};
-  return {
-    displayName: cleanText(driver.displayName, 120),
+  const visibility = publicVisibilityPolicy0417(driver);
+  const profile = {
     username: normalizeUsername(username || driver.username || ""),
-    whatsapp: cleanText(driver.driverWhatsapp, 24),
-    photoUrl: cleanText(driver.driverPhotoUrl, 500).startsWith("https://")
-      ? cleanText(driver.driverPhotoUrl, 500)
-      : "",
-    about: cleanText(driver.driverPublicAbout, 320),
-    rating: cleanText(driver.driverPublicRating, 20),
-    reviewCount: Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0),
-    reviews: safePublicDriverReviews(driver.driverPublicReviews),
-    badge: cleanText(driver.driverPublicBadge, 80),
-    vehicle: {
+  };
+  if (visibility.name) profile.displayName = cleanText(driver.displayName, 120);
+  if (visibility.whatsapp) profile.whatsapp = cleanText(driver.driverWhatsapp, 24);
+  if (visibility.photo) {
+    const photo = cleanText(driver.driverPhotoUrl, 500);
+    profile.photoUrl = photo.startsWith("https://") ? photo : "";
+  }
+  if (visibility.about) profile.about = cleanText(driver.driverPublicAbout, 320);
+  if (visibility.rating) {
+    profile.rating = cleanText(driver.driverPublicRating, 20);
+    profile.reviewCount = Math.max(0, Number(driver.driverPublicReviewCount || 0) || 0);
+  }
+  if (visibility.reviews) profile.reviews = safePublicDriverReviews(driver.driverPublicReviews);
+  if (visibility.badge) profile.badge = cleanText(driver.driverPublicBadge, 80);
+  if (visibility.vehicle) {
+    profile.vehicle = {
       makeModel: cleanText(driver.vehicleMakeModel, 120),
       color: cleanText(driver.vehicleColor, 60),
-    },
-    amenities: splitPublicList(driver.vehicleAmenities),
-    preferences: splitPublicList(driver.driverPreferences),
-    paymentInstructions: cleanText(driver.paymentInstructions, 240),
-  };
+    };
+  }
+  if (visibility.amenities) profile.amenities = splitPublicList(driver.vehicleAmenities);
+  if (visibility.preferences) profile.preferences = splitPublicList(driver.driverPreferences);
+  if (visibility.paymentInstructions) profile.paymentInstructions = cleanText(driver.paymentInstructions, 240);
+  return profile;
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
@@ -2599,8 +2626,18 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   }
   const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
+  const publicProfileScope0417 = new Set(
+    (Array.isArray(driver.publicTripProfileUuids0417) ? driver.publicTripProfileUuids0417 : [])
+      .map((value) => cleanText(value, 160).toLowerCase())
+      .filter(Boolean),
+  );
   const sourceDocs = snapshot.docs
     .filter((doc) => PUBLIC_STATUSES.has(doc.data().status) && Number(doc.data().departureAtMillis) > Date.now())
+    .filter((doc) => {
+      if (!publicProfileScope0417.size) return true;
+      const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
+      return !profileUuid || publicProfileScope0417.has(profileUuid);
+    })
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
   const trips = tester
