@@ -27,6 +27,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -1028,6 +1030,54 @@ private fun TimelineEntryCard(
     val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
+    val tripTarget0407 = remember(entry.blablaProfileUuid, entry.blablaTripId, entry.blablaTripHref) {
+        resolveBlaBlaTripTarget0407(context, entry)
+    }
+    val seatCapabilityState0407 = remember(entry.blablaProfileUuid, entry.blablaTripId) {
+        val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
+        val tripId = entry.blablaTripId?.trim().orEmpty()
+        if (profileUuid.isBlank() || tripId.isBlank()) null
+        else BlaBlaPublicationSeatSyncStateStore(context).get(profileUuid, tripId)
+    }
+    val capabilitySnapshot0407 = remember(tripTarget0407, seatCapabilityState0407, trip?.lastObservedAtMillis) {
+        BlaBlaCapabilityRegistry0407.snapshot(
+            target = tripTarget0407,
+            seatSyncState = seatCapabilityState0407,
+            lastVerifiedAtMillis = trip?.lastObservedAtMillis ?: 0L,
+        )
+    }
+    val actionPalette0407 = remember(capabilitySnapshot0407, entry.blablaPublicHref, entry.blablaTripHref) {
+        buildBlaBlaTripActionPalette0407(
+            snapshot = capabilitySnapshot0407,
+            hasPublicationHref = !entry.blablaPublicHref.isNullOrBlank() || !entry.blablaTripHref.isNullOrBlank(),
+        )
+    }
+    var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
+    var reverifyQueuedAt0407 by remember(entry.tripId) { mutableStateOf(0L) }
+    val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
+    LaunchedEffect(lastObservedAt0407) {
+        if (reverifyQueuedAt0407 > 0L && lastObservedAt0407 >= reverifyQueuedAt0407) {
+            reverifyQueuedAt0407 = 0L
+        }
+    }
+    val queueReverify0407: () -> Unit = {
+        val target = tripTarget0407
+        if (target == null) {
+            onChanged("Não foi possível resolver conta, perfil e tripId desta viagem com identidade forte.")
+        } else {
+            val command = BlaBlaCommand0407.forTarget(
+                target = target,
+                operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                origin = "CARD",
+            )
+            if (AgendaBackgroundSync0392.enqueueTripReverify0407(context, target, command.commandId)) {
+                reverifyQueuedAt0407 = command.requestedAtMillis
+                onChanged("Verificação desta viagem enfileirada em segundo plano.")
+            } else {
+                onChanged("Verificação bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
+            }
+        }
+    }
 
     Card(
         modifier = Modifier
@@ -1107,8 +1157,71 @@ private fun TimelineEntryCard(
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
             }
 
-            TextButton(onClick = { showSeatDetails = true }) {
-                Text(if (free != null) "💺 $free" else "💺 ⏳")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val verificationLabel0407 = when {
+                    reverifyQueuedAt0407 > 0L -> "⟳ Atualizando"
+                    lastObservedAt0407 > 0L -> "✓ Verificado"
+                    tripTarget0407 != null -> "Dados desatualizados"
+                    else -> "⚠ Identidade externa incompleta"
+                }
+                Text(verificationLabel0407, style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.primary) {
+                        TextButton(
+                            enabled = reverifyQueuedAt0407 == 0L,
+                            onClick = queueReverify0407,
+                        ) { Text("🔄 Verificar") }
+                    }
+                    Box {
+                        TextButton(onClick = { actionMenuExpanded0407 = true }) { Text("⋮") }
+                        DropdownMenu(
+                            expanded = actionMenuExpanded0407,
+                            onDismissRequest = { actionMenuExpanded0407 = false },
+                        ) {
+                            if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.overflow) {
+                                DropdownMenuItem(
+                                    text = { Text("🔄 Verificar agora") },
+                                    enabled = reverifyQueuedAt0407 == 0L,
+                                    onClick = {
+                                        actionMenuExpanded0407 = false
+                                        queueReverify0407()
+                                    },
+                                )
+                            }
+                            if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.overflow) {
+                                DropdownMenuItem(
+                                    text = { Text("🪑 Vagas por trecho") },
+                                    onClick = {
+                                        actionMenuExpanded0407 = false
+                                        showSeatDetails = true
+                                    },
+                                )
+                            }
+                            if (BlaBlaTripAction0407.OPEN_PUBLICATION in actionPalette0407.overflow) {
+                                DropdownMenuItem(
+                                    text = { Text("Ver publicação BlaBlaCar") },
+                                    onClick = {
+                                        actionMenuExpanded0407 = false
+                                        val href = entry.blablaPublicHref ?: entry.blablaTripHref.orEmpty()
+                                        if (!openBlaBlaHref(context, entry, href)) {
+                                            onChanged("Não foi possível abrir a publicação com a conta vinculada a este card.")
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.primary) {
+                TextButton(onClick = { showSeatDetails = true }) {
+                    Text(if (free != null) "💺 $free" else "💺 ⏳")
+                }
             }
 
             val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
