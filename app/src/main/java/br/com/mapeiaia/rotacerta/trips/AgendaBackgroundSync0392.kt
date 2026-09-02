@@ -162,6 +162,8 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
     reason == "blablacar_collection_result" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
+    reason.startsWith("admin_update_now:") -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
+    reason.startsWith("admin_full_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
 }
 
@@ -173,6 +175,8 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     reason.startsWith("booking_push:") -> "EVENT_DELTA"
     reason == "blablacar_collection_result" -> "AUTOMATIC_COLLECTOR"
     reason == "trip_reverify" -> "TRIP_REVERIFY"
+    reason.startsWith("admin_update_now:") -> "ADMIN_UPDATE_NOW"
+    reason.startsWith("admin_full_reconcile:") -> "ADMIN_FULL_RECONCILE"
     else -> "EVENT_DELTA"
 }
 
@@ -1862,7 +1866,10 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        val collectorRequested = reason == "periodic" || mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+        val collectorRequested =
+            reason == "periodic" ||
+                reason.startsWith("admin_update_now:") ||
+                mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         if (collectorRequested) {
             AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
             val accountIds = BlaBlaDynamicAccountRegistry(appContext).list().map { it.id }
