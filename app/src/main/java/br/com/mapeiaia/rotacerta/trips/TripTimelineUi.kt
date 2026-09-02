@@ -131,7 +131,8 @@ fun TripTimelineScreen(
 
     val canonicalCollectorResponse0403 = remember(trips) {
         val canonicalExternal = trips.filter {
-            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.externalSnapshot != null
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !it.deleted && it.status != TripStatus.CANCELLED && it.externalSnapshot != null
         }
         val snapshots = canonicalExternal.mapNotNull { it.externalSnapshot }
         snapshots.takeIf { it.isNotEmpty() }?.let {
@@ -203,11 +204,11 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val merged = remember(mergedRaw, appSettings.rotaCertaSeatAllocation) {
-        applyConfiguredVehicleCapacity(
+    val merged = remember(mergedRaw, trips, appSettings.rotaCertaSeatAllocation) {
+        applyCanonicalTripCapacity0406(
             entries = mergedRaw,
-            vehicleCapacity = 0, // legacy argument intentionally ignored
-            rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+            canonicalTrips = trips,
+            fallbackRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
         )
     }
     val directionGeo = remember(merged, trips, appSettings) {
@@ -875,6 +876,34 @@ internal fun applyPublicExternalBookingsToTimeline(
  * vehicleCapacity is intentionally ignored. The operational inventory is exactly:
  * synchronized BlaBlaCar quota + configured Rota Certa quota. Occupancy is subtracted later.
  */
+internal fun applyCanonicalTripCapacity0406(
+    entries: List<TripTimelineEntry>,
+    canonicalTrips: List<Trip>,
+    fallbackRotaCertaSeatAllocation: Int = 0,
+): List<TripTimelineEntry> {
+    val byStrongIdentity = canonicalTrips.asSequence()
+        .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && !it.deleted }
+        .filter { !it.blablaProfileUuid.isNullOrBlank() && !it.blablaTripId.isNullOrBlank() }
+        .associateBy { trip ->
+            trip.blablaProfileUuid.orEmpty().trim().lowercase() + "|" + trip.blablaTripId.orEmpty().trim()
+        }
+    return entries.map { entry ->
+        val key = entry.blablaProfileUuid.orEmpty().trim().lowercase() + "|" + entry.blablaTripId.orEmpty().trim()
+        val canonical = byStrongIdentity[key]
+        if (canonical != null) {
+            entry.copy(
+                capacity = canonical.capacity.coerceIn(0, 999),
+                rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation?.coerceIn(0, 999) ?: 0,
+                status = canonical.status,
+                localTripId = canonical.id,
+            )
+        } else {
+            val allocation = fallbackRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+            entry.copy(rotaCertaSeatAllocation = allocation)
+        }
+    }
+}
+
 internal fun applyConfiguredVehicleCapacity(
     entries: List<TripTimelineEntry>,
     @Suppress("UNUSED_PARAMETER") vehicleCapacity: Int,

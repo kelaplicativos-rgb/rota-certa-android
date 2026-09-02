@@ -573,6 +573,7 @@ internal class TripMutationCoordinator0387(
             mutationType = mutationType,
             source = eventSource,
             snapshot = TripPublicationSnapshot0387(
+                trip = canonicalExternalTrip,
                 externalTrip = sourceTrip,
                 externalAccountId = accountId,
                 configuredRotaCertaSeatAllocation = allocation,
@@ -717,6 +718,7 @@ internal class TripMutationCoordinator0387(
                             externalAccountId = event.snapshot.externalAccountId,
                             canonicalTripId = event.canonicalTripId,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
+                            canonicalTripSnapshot = event.snapshot.trip,
                         )
                     }
                     TripPublicationOperation0387.TOMBSTONE -> {
@@ -787,7 +789,7 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
+            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
         )
     }
 }

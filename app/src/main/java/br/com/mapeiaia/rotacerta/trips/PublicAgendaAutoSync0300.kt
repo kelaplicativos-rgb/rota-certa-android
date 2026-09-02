@@ -265,31 +265,38 @@ internal object PublicAgendaAutoSync0300 {
         @Suppress("UNUSED_VARIABLE")
         val legacyVehicleCapacityIgnored = configuredVehicleCapacity
         val configuredRotaCertaAllocation = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
-        val connectedAccountsOperation = AgendaTrace.operationStart(
-            context,
-            "CONNECTED_ACCOUNTS_READ",
-            "PublicAgendaAutoSync0300",
-            traceId,
-            syncOperation.operationId,
-        )
-        val connectedAccounts = BlaBlaDynamicAccountRegistry(context).list()
-        val allConnectedResponse = BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
-        AgendaTrace.operationEnd(
-            context,
-            connectedAccountsOperation,
-            result = "read",
-            processedCount = connectedAccounts.size,
-        )
         val internallyCancelledExternalReservationKeys =
             PassengerIdentityStore(context).internallyCancelledExternalReservationKeys()
-        val allConnectedResponseForInternalAgenda = applyInternalCancellationTombstones(
-            allConnectedResponse,
+        val canonicalExternalTrips = persistedTrips
+            .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
+            .filter { !it.deleted && it.status != TripStatus.CANCELLED && it.departureAtMillis > nowMillis }
+            .filter { it.externalSnapshot != null && it.tripKey.isNotBlank() }
+        val canonicalResponse = BlaBlaCollectorMonthResponse(
+            status = "canonical",
+            trips = canonicalExternalTrips.mapNotNull(Trip::externalSnapshot),
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = canonicalExternalTrips.all(Trip::externalSnapshotComplete),
+                reason = "trip_store_canonical_projection",
+            ),
+        )
+        val cancellationAdjusted = applyInternalCancellationTombstones(
+            canonicalResponse,
             internallyCancelledExternalReservationKeys,
         )
+        val canonicalByIdentity = canonicalExternalTrips.associateBy { trip ->
+            canonicalExternalTripIdentityKey(
+                trip.blablaProfileUuid,
+                trip.blablaTripId,
+                trip.blablaManageUrl,
+            ).orEmpty()
+        }
         UnifiedDebugEventStore.record(
-            "PUBLIC_AGENDA_ALL_CONNECTED_ACCOUNTS",
+            "PUBLIC_AGENDA_CANONICAL_SOURCE_0406",
             context.packageName,
-            "accounts=${connectedAccounts.size} trips=${allConnectedResponse?.trips?.size ?: 0} selectionFilter=false internalCancellationTombstones=${internallyCancelledExternalReservationKeys.size}",
+            "persisted=" + persistedTrips.size +
+                " canonicalExternal=" + canonicalExternalTrips.size +
+                " collectorDirectRead=false internalCancellationTombstones=" +
+                internallyCancelledExternalReservationKeys.size,
         )
         val externalDiscoveryOperation = AgendaTrace.operationStart(
             context,
@@ -298,34 +305,24 @@ internal object PublicAgendaAutoSync0300 {
             traceId,
             syncOperation.operationId,
         )
-        val externalTrips = allConnectedResponseForInternalAgenda
+        val externalTrips = cancellationAdjusted
             ?.trips
             .orEmpty()
             .asSequence()
             .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { source ->
-                val observedPassengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
-                val observedOccupiedSeats = source.booked_seats.coerceAtLeast(observedPassengerSeats)
-                val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
-                val rotaCertaQuota = configuredRotaCertaAllocation
-                val operationalInventory = (blablaQuota + rotaCertaQuota).coerceIn(0, 999)
-                val availableSeats = (operationalInventory - observedOccupiedSeats).coerceAtLeast(0)
-                UnifiedDebugEventStore.record(
-                    "CAPACITY_PUBLIC_SOURCE_RESOLVED",
-                    context.packageName,
-                    "tripKey=${sha256(source.profile_uuid + "|" + source.trip_id.orEmpty()).take(12)} profileUuidPresent=${source.profile_uuid.isNotBlank()} blablaTripIdPresent=${!source.trip_id.isNullOrBlank()} blablaQuota=$blablaQuota rotaCertaQuota=$rotaCertaQuota operationalInventory=$operationalInventory occupied=$observedOccupiedSeats available=$availableSeats capacitySource=blablacar_quota_plus_rota_certa_quota",
-                )
-                toPublicTrip(
+                val key = canonicalExternalTripIdentityKey(source.profile_uuid, source.trip_id, source.trip_href).orEmpty()
+                val canonical = canonicalByIdentity[key] ?: return@mapNotNull null
+                toCanonicalExternalProjection0406(
+                    canonical = canonical,
                     source = source,
-                    capacity = operationalInventory,
-                    rotaCertaSeatAllocation = rotaCertaQuota,
                     nowMillis = nowMillis,
                 )
             }
             .filterNot { synthesized ->
                 localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
             }
-            .distinctBy { it.trip.publicToken }
+            .distinctBy { it.trip.tripKey.ifBlank { it.trip.publicToken } }
             .take(100)
             .toList()
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
@@ -607,6 +604,7 @@ internal object PublicAgendaAutoSync0300 {
         externalAccountId: String = "",
         canonicalTripId: String = "",
         seatAllocationVersion: Long = 0L,
+        canonicalTripSnapshot: Trip? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         if (source.identity_conflict) return@withContext false
         val profileUuid = source.profile_uuid.trim()
@@ -642,14 +640,33 @@ internal object PublicAgendaAutoSync0300 {
         }
         val settings = store.onlineSettings()
         if (!settings.configured) return@withContext false
-        val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
-        val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
-        val synthesized = toPublicTrip(
-            source = source,
-            capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
-            rotaCertaSeatAllocation = rotaCertaQuota,
-            nowMillis = nowMillis,
-        ) ?: return@withContext false
+        val canonical = canonicalTripSnapshot?.takeIf { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !trip.deleted &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+        } ?: store.trips().firstOrNull { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !trip.deleted &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+        }
+        val synthesized = canonical?.let { canonicalTrip ->
+            toCanonicalExternalProjection0406(
+                canonical = canonicalTrip,
+                source = source,
+                nowMillis = nowMillis,
+            )
+        } ?: run {
+            val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+            val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+            toPublicTrip(
+                source = source,
+                capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
+                rotaCertaSeatAllocation = rotaCertaQuota,
+                nowMillis = nowMillis,
+            )
+        } ?: return@withContext false
         if (store.trips().filter(Trip::isCanonicalLocalPublishSource).any { samePhysicalTrip(it, synthesized.trip) }) {
             return@withContext false
         }
@@ -941,6 +958,7 @@ internal object PublicAgendaAutoSync0300 {
                 canonicalRevision = maxOf(existing?.canonicalRevision ?: 0L, entityRevision),
                 seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
                 externalFingerprint = synthesized.snapshotRevision,
+                stateHash = effectiveTrip.canonicalStateHash,
             ),
         )
     }
@@ -1089,6 +1107,59 @@ internal object PublicAgendaAutoSync0300 {
             synced++
         }
         return synced
+    }
+
+    internal fun toCanonicalExternalProjection0406(
+        canonical: Trip,
+        source: BlaBlaCollectorTrip,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): PublicAgendaExternalTrip? {
+        if (canonical.deleted || canonical.status == TripStatus.CANCELLED) return null
+        val synthesized = toPublicTrip(
+            source = source,
+            capacity = canonical.capacity.coerceIn(0, 999),
+            nowMillis = nowMillis,
+            rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation?.coerceIn(0, 999) ?: 0,
+        ) ?: return null
+        val projectedTrip = synthesized.trip.copy(
+            id = canonical.id,
+            title = canonical.title,
+            departureAtMillis = canonical.departureAtMillis,
+            capacity = canonical.capacity,
+            status = canonical.status,
+            stops = canonical.stops,
+            remoteId = canonical.remoteId ?: synthesized.trip.remoteId,
+            publicToken = canonical.publicToken,
+            publicUrl = canonical.publicUrl,
+            blablaProfileUuid = canonical.blablaProfileUuid,
+            blablaTripId = canonical.blablaTripId,
+            blablaManageUrl = canonical.blablaManageUrl,
+            blablaPublicUrl = canonical.blablaPublicUrl,
+            publicBookingEnabled = canonical.publicBookingEnabled,
+            itineraryAuthoritative = canonical.itineraryAuthoritative,
+            publishedSeats = canonical.publishedSeats,
+            capacityReliable = canonical.capacityReliable,
+            rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = canonical.canonicalRevision,
+            seatAllocationVersionUsed = canonical.seatAllocationVersionUsed,
+            publicationRevision = canonical.publicationRevision,
+            publicationTombstone = canonical.publicationTombstone,
+            publicationEventId = canonical.publicationEventId,
+            tripKey = canonical.tripKey,
+            canonicalStateHash = canonical.canonicalStateHash,
+            lastCollectionRunId = canonical.lastCollectionRunId,
+            lastCollectionGeneration = canonical.lastCollectionGeneration,
+            lastObservedAtMillis = canonical.lastObservedAtMillis,
+            deleted = false,
+            deletedAtMillis = 0L,
+        )
+        return synthesized.copy(
+            trip = projectedTrip,
+            capacityClaims = synthesized.capacityClaims.map { it.copy(tripId = canonical.id) },
+            snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank { synthesized.snapshotRevision },
+            realAvailableSeats = (canonical.capacity - synthesized.bookedSeats).coerceAtLeast(0),
+        )
     }
 
     internal fun toPublicTrip(
