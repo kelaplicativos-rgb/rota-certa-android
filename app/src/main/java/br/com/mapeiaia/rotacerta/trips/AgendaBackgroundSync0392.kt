@@ -724,10 +724,13 @@ internal fun chooseProjectionWinner0408(
     preferredRemoteId: String?,
     candidates: List<DriverTripSyncState0402>,
 ): DriverTripSyncState0402? = candidates.maxWithOrNull(
-    compareBy<DriverTripSyncState0402> { it.remoteTripId == preferredRemoteId }
-        .thenBy { it.canonicalTripId == canonical.id }
+    compareBy<DriverTripSyncState0402> {
+        canonical.canonicalStateHash.isNotBlank() && it.canonicalStateHash == canonical.canonicalStateHash
+    }
         .thenBy { it.publicationRevision }
         .thenBy { it.occupancyRevision }
+        .thenBy { it.canonicalTripId == canonical.id }
+        .thenBy { it.remoteTripId == preferredRemoteId }
         .thenBy { it.remoteTripId },
 )
 
