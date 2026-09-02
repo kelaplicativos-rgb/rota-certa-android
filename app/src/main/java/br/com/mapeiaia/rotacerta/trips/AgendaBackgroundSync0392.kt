@@ -1824,12 +1824,18 @@ class AgendaBackgroundSyncWorker0392(
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
             val collectorAuthRequired = collectorState.status == "PENDING_AUTH"
-            val retryPending = cycle.failures > 0 && runAttemptCount < 5
+            val targetedRetryable = targetedResult?.status in setOf(
+                BlaBlaCommandStatus0407.UNVERIFIED,
+                BlaBlaCommandStatus0407.FAILED,
+            )
+            val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
+            val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
+            val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < 3)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
             } else {
                 0
-            }
+            } + if (targetedFailure) 1 else 0
             val fullReconcileComplete = when {
                 cycle.collectorPending -> false
                 reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
@@ -1838,12 +1844,13 @@ class AgendaBackgroundSyncWorker0392(
                 else -> false
             }
             val resultLabel = when {
+                targetedAuthRequired -> "PENDING_AUTH"
                 retryPending -> "RETRY"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
-                fullReconcileComplete &&
+                (fullReconcileComplete || targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) &&
                     cycle.projectionMissingAgenda == 0 &&
                     cycle.projectionRevisionMismatch == 0 &&
                     cycle.projectionHashMismatch == 0 &&
@@ -1863,7 +1870,7 @@ class AgendaBackgroundSyncWorker0392(
             UnifiedDebugEventStore.record(
                 "AGENDA_BACKGROUND_SYNC_WORK_0397",
                 applicationContext.packageName,
-                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending}",
+                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"}",
             )
             if (retryPending) Result.retry() else Result.success()
         } catch (cancelled: CancellationException) {
