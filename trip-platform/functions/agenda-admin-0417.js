@@ -89,6 +89,9 @@ function createAgendaAdmin0417({
   db,
   resolveDriverUsername,
   requireDriver,
+  requirePassengerSession,
+  passengerAccessForIdentity,
+  passengerAccessIsAuthorized,
   sendDriverBookingPush,
 }) {
   async function enforceAdminRateLimit0417(req, identity = "") {
@@ -228,54 +231,50 @@ function createAgendaAdmin0417({
   }
 
   async function requireAdminSession0417(req, res) {
-    const token = clean0417(req.get("X-Rota-Certa-Admin-Session"), 400);
-    if (!/^[A-Za-z0-9_-]{32,200}$/.test(token)) {
-      fail0417(res, 401, "admin_auth_required", "Entre como administrador.");
+    const requestedDriver = clean0417(
+      req.get("X-Rota-Certa-Admin-Driver") ||
+      (req.query && req.query.driverUsername) ||
+      (req.body && req.body.driverUsername),
+      80,
+    );
+    const resolved = await resolveDriverUsername(requestedDriver);
+    if (!resolved || !resolved.canonicalUsername) {
+      fail0417(res, 400, "admin_driver_required", "Agenda não identificada.");
       return null;
     }
-    const ref = db.collection("tripAdminSessions").doc(sha256Hex0417(token));
-    const snap = await ref.get();
-    if (!snap.exists) {
-      fail0417(res, 401, "admin_session_invalid", "Sessão administrativa inválida.");
+    const passengerSession = await requirePassengerSession(req, res);
+    if (!passengerSession) return null;
+    const access = await passengerAccessForIdentity(
+      resolved.canonicalUsername,
+      passengerSession.passengerId,
+      passengerSession.passengerContact,
+    );
+    if (!access || !passengerAccessIsAuthorized(access)) {
+      fail0417(res, 403, "admin_access_unavailable", "Seu acesso a esta Agenda não está disponível.");
       return null;
     }
-    const data = snap.data();
-    const now = Date.now();
-    if (Number(data.revokedAtMillis || 0) > 0 || Number(data.expiresAtMillis || 0) <= now) {
-      await ref.delete().catch(() => {});
-      if (Number(data.expiresAtMillis || 0) <= now) {
-        await appendAdminAudit0417({
-          driverUsername: clean0417(data.driverUsername, 40),
-          eventType: "ADMIN_SESSION_EXPIRED",
-          actorId: clean0417(data.actorId, 80),
-          result: "EXPIRED",
-        }).catch(() => {});
-      }
-      fail0417(res, 401, "admin_session_expired", "Sessão administrativa expirada.");
+    if (access.agendaAdmin !== true) {
+      fail0417(res, 403, "agenda_admin_role_required", "Este usuário não é administrador desta Agenda.");
       return null;
-    }
-    if (now - Number(data.lastActivityAtMillis || 0) > 60 * 1000) {
-      await ref.set({ lastActivityAtMillis: now }, { merge: true }).catch(() => {});
     }
     return {
-      ref,
-      driverUsername: clean0417(data.driverUsername, 40),
-      actorId: clean0417(data.actorId, 80),
-      createdAtMillis: Number(data.createdAtMillis || 0),
-      expiresAtMillis: Number(data.expiresAtMillis || 0),
+      driverUsername: resolved.canonicalUsername,
+      actorId: clean0417(passengerSession.passengerId, 120) ||
+        sha256Hex0417(passengerSession.passengerContact).slice(0, 24),
+      passengerId: clean0417(passengerSession.passengerId || access.passengerId, 120),
+      passengerContact: clean0417(passengerSession.passengerContact, 40),
+      contactHash: clean0417(passengerSession.contactHash, 80),
+      sessionRefId: clean0417(passengerSession.sessionRefId, 100),
+      createdAtMillis: Number(passengerSession.createdAtMillis || 0),
+      lastActivityAtMillis: Number(passengerSession.lastActivityAtMillis || passengerSession.createdAtMillis || 0),
+      expiresAtMillis: Number(passengerSession.expiresAtMillis || 0),
     };
   }
 
   async function logoutAdmin0417(req, res) {
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
-    await session.ref.delete();
-    await appendAdminAudit0417({
-      driverUsername: session.driverUsername,
-      eventType: "ADMIN_LOGOUT",
-      actorId: session.actorId,
-    }).catch(() => {});
-    return json0417(res, 200, { loggedOut: true });
+    return json0417(res, 200, { loggedOut: false, reusePassengerSession: true });
   }
 
   async function getAdminMe0417(req, res) {
@@ -666,17 +665,20 @@ function createAgendaAdmin0417({
   async function listAdminSessions0417(req, res) {
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
-    const snap = await db.collection("tripAdminSessions").where("driverUsername", "==", session.driverUsername).limit(100).get();
+    const query = session.passengerId
+      ? db.collection("passengerSessions").where("passengerId", "==", session.passengerId).limit(100)
+      : db.collection("passengerSessions").where("contactHash", "==", session.contactHash).limit(100);
+    const snap = await query.get();
     return json0417(res, 200, {
       sessions: snap.docs.map((doc) => {
         const data = doc.data();
         return {
           id: sha256Hex0417(doc.id).slice(0, 16),
-          actorId: clean0417(data.actorId, 80),
+          actorId: session.actorId,
           createdAtMillis: Number(data.createdAtMillis || 0),
-          lastActivityAtMillis: Number(data.lastActivityAtMillis || 0),
+          lastActivityAtMillis: Number(data.lastActivityAtMillis || data.createdAtMillis || 0),
           expiresAtMillis: Number(data.expiresAtMillis || 0),
-          current: doc.id === session.ref.id,
+          current: doc.id === session.sessionRefId,
         };
       }).sort((a, b) => b.lastActivityAtMillis - a.lastActivityAtMillis),
     });
