@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -13,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -48,6 +51,176 @@ internal fun automaticCollectorTerminalStatus0400(
 
 /** Central automatic-sync coordinator. Automatic collection never launches an Activity. */
 internal object BlaBlaAutomaticCollectionCoordinator0400 {
+    private val targetedTripMutexes0407 = ConcurrentHashMap<String, Mutex>()
+
+    suspend fun reverifyTripHeadless0407(
+        context: Context,
+        target: BlaBlaTripTarget0407,
+        commandId: String,
+        origin: String,
+    ): BlaBlaCommandResult0407 {
+        val appContext = context.applicationContext
+        val startedAt = System.currentTimeMillis()
+        val registry = BlaBlaDynamicAccountRegistry(appContext)
+        val account = registry.get(target.accountId)
+        if (account == null) {
+            return BlaBlaCommandResult0407(
+                commandId = commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.ACCOUNT_NOT_AVAILABLE,
+                errorCode = "ACCOUNT_NOT_AVAILABLE",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+        val profileMatches = account.profileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true
+        val hrefMatches = BlaBlaCollectorUrlModule.tripId(target.tripHref) == target.tripId
+        if (!profileMatches || !hrefMatches) {
+            UnifiedDebugEventStore.record(
+                "TARGET_RESOLVED",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} accountKey=${seatSyncDiagnosticKey(target.accountId)} profileMatch=$profileMatches tripHrefMatch=$hrefMatches result=UNVERIFIED_TARGET",
+            )
+            return BlaBlaCommandResult0407(
+                commandId = commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                errorCode = "UNVERIFIED_TARGET",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+
+        val singleFlightKey = target.strongIdentityKey + "|REVERIFY_TRIP"
+        val mutex = targetedTripMutexes0407.computeIfAbsent(singleFlightKey) { Mutex() }
+        return mutex.withLock {
+            UnifiedDebugEventStore.record(
+                "COMMAND_REQUESTED",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP origin=${origin.take(80)} mode=EXECUTE singleFlight=true",
+            )
+            val before = exactCollectorTrip0407(appContext, target)
+            UnifiedDebugEventStore.record(
+                "CURRENT_STATE_READ",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} found=${before != null} transport=HYBRID",
+            )
+            val hostResult = try {
+                withTimeout(HEADLESS_TARGET_TIMEOUT_MS_0407) {
+                    runTargetTripHeadless0407(appContext, account, target, origin)
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                UnifiedDebugEventStore.record(
+                    "FAILED",
+                    appContext.packageName,
+                    "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP error=TIMEOUT timeoutMs=$HEADLESS_TARGET_TIMEOUT_MS_0407",
+                )
+                return@withLock BlaBlaCommandResult0407(
+                    commandId = commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.HYBRID,
+                    before = if (before != null) "PRESENT" else "UNKNOWN",
+                    status = BlaBlaCommandStatus0407.UNVERIFIED,
+                    errorCode = "TIMEOUT",
+                    verification = "readback_not_completed",
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            }
+            val failure = hostResult.second.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407).orEmpty()
+            if (hostResult.first != android.app.Activity.RESULT_OK) {
+                val status = when (failure) {
+                    "AUTH_REQUIRED" -> BlaBlaCommandStatus0407.AUTH_REQUIRED
+                    else -> BlaBlaCommandStatus0407.UNVERIFIED
+                }
+                return@withLock BlaBlaCommandResult0407(
+                    commandId = commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.HYBRID,
+                    before = if (before != null) "PRESENT" else "UNKNOWN",
+                    status = status,
+                    errorCode = failure.ifBlank { "UNVERIFIED" },
+                    verification = "headless_target_not_verified",
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            }
+            val after = exactCollectorTrip0407(appContext, target)
+            val verified = after != null &&
+                after.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                after.trip_id?.trim() == target.tripId
+            UnifiedDebugEventStore.record(
+                if (verified) "VERIFIED" else "UNVERIFIED",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP readback=$verified transport=HYBRID networkFirst=true exactTrip=true",
+            )
+            BlaBlaCommandResult0407(
+                commandId = commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                transportUsed = BlaBlaTransport0407.HYBRID,
+                before = if (before != null) "PRESENT" else "UNKNOWN",
+                after = if (after != null) "PRESENT" else "UNKNOWN",
+                writeAttempted = false,
+                verification = if (verified) "exact_trip_readback" else "readback_missing",
+                status = if (verified) BlaBlaCommandStatus0407.VERIFIED_SUCCESS else BlaBlaCommandStatus0407.UNVERIFIED,
+                errorCode = if (verified) "" else "TRIP_NOT_FOUND_AFTER_REVERIFY",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+    }
+
+    private fun exactCollectorTrip0407(context: Context, target: BlaBlaTripTarget0407): BlaBlaCollectorTrip? {
+        val response = BlaBlaCollectorStateStore(context.applicationContext).lastResponseRecoveringDynamicSessions()
+        val matches = response?.trips.orEmpty().filter { trip ->
+            trip.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                trip.trip_id?.trim() == target.tripId
+        }
+        return matches.singleOrNull()
+    }
+
+    private suspend fun runTargetTripHeadless0407(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        target: BlaBlaTripTarget0407,
+        origin: String,
+    ): Pair<Int, android.content.Intent> = withContext(Dispatchers.Main.immediate) {
+        suspendCancellableCoroutine { continuation ->
+            var controller: BlaBlaDynamicAccountSessionController0401? = null
+            val payload = BlaBlaDynamicSessionIntents.syncPayload(account)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID, target.tripId)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL, target.tripHref)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_AUTOMATIC_COLLECTION_ORIGIN, origin.take(80))
+            controller = BlaBlaDynamicAccountSessionController0401(
+                baseContext = context,
+                launchIntent = payload,
+                visualHost = null,
+                finishHost = { resultCode, data ->
+                    controller?.destroy("targeted_headless_terminal_0407")
+                    if (continuation.isActive) continuation.resume(resultCode to data)
+                },
+            )
+            continuation.invokeOnCancellation {
+                Handler(Looper.getMainLooper()).post { controller?.destroy("targeted_headless_cancelled_0407") }
+            }
+            try {
+                UnifiedDebugEventStore.record(
+                    "VERIFY_STARTED",
+                    context.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} transport=HYBRID networkFirst=true browserOpened=false activityLaunch=false",
+                )
+                controller?.start()
+            } catch (error: Throwable) {
+                controller?.destroy("targeted_headless_start_failed_0407")
+                if (continuation.isActive) continuation.resumeWithException(error)
+            }
+        }
+    }
     suspend fun runPendingHeadless(context: Context, origin: String): AgendaAutomaticCollectorState0400 {
         val appContext = context.applicationContext
         var state = AgendaBackgroundSyncConfig0392.recoverStaleCollectorHost0401(appContext)
@@ -188,6 +361,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
     }
 
     private const val HEADLESS_ACCOUNT_TIMEOUT_MS_0404 = 10L * 60L * 1000L
+    private const val HEADLESS_TARGET_TIMEOUT_MS_0407 = 5L * 60L * 1000L
 
     private fun rootCause0400(error: Throwable): String {
         var current: Throwable = error
