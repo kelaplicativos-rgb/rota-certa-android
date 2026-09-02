@@ -2,10 +2,7 @@
 
 const crypto = require("crypto");
 
-const ADMIN_SESSION_MILLIS_0417 = 12 * 60 * 60 * 1000;
 const ADMIN_AUDIT_RETENTION_MILLIS_0417 = 30 * 24 * 60 * 60 * 1000;
-const ADMIN_RATE_WINDOW_MILLIS_0417 = 60 * 1000;
-const ADMIN_RATE_LIMIT_0417 = 6;
 
 function sha256Hex0417(value) {
   return crypto.createHash("sha256").update(String(value || "")).digest("hex");
@@ -13,21 +10,6 @@ function sha256Hex0417(value) {
 
 function clean0417(value, max = 240) {
   return String(value == null ? "" : value).trim().slice(0, max);
-}
-
-function normalizedContactDigits0417(value) {
-  return String(value || "").replace(/\D/g, "").slice(0, 18);
-}
-
-function safeEqual0417(a, b) {
-  if (!a || !b) return false;
-  const left = Buffer.from(String(a));
-  const right = Buffer.from(String(b));
-  return left.length === right.length && crypto.timingSafeEqual(left, right);
-}
-
-function passwordDigest0417(password, salt) {
-  return crypto.scryptSync(String(password || ""), String(salt || ""), 64).toString("hex");
 }
 
 function json0417(res, status, body) {
@@ -94,28 +76,6 @@ function createAgendaAdmin0417({
   passengerAccessIsAuthorized,
   sendDriverBookingPush,
 }) {
-  async function enforceAdminRateLimit0417(req, identity = "") {
-    const ip = clean0417((req.get("x-forwarded-for") || "").split(",")[0] || req.ip || "unknown", 96);
-    const minute = Math.floor(Date.now() / ADMIN_RATE_WINDOW_MILLIS_0417);
-    const ref = db.collection("tripAdminRateLimits").doc(
-      sha256Hex0417(`${ip}|${clean0417(identity, 80)}|${minute}`),
-    );
-    await db.runTransaction(async (tx) => {
-      const snap = await tx.get(ref);
-      const count = snap.exists ? Number(snap.data().count || 0) : 0;
-      if (count >= ADMIN_RATE_LIMIT_0417) {
-        const error = new Error("Muitas tentativas. Aguarde um minuto.");
-        error.httpStatus = 429;
-        error.code = "admin_rate_limited";
-        throw error;
-      }
-      tx.set(ref, {
-        count: count + 1,
-        expiresAtMillis: Date.now() + 5 * ADMIN_RATE_WINDOW_MILLIS_0417,
-      }, { merge: true });
-    });
-  }
-
   async function appendAdminAudit0417({
     driverUsername,
     eventType,
@@ -154,79 +114,6 @@ function createAgendaAdmin0417({
       expiresAtMillis: now + ADMIN_AUDIT_RETENTION_MILLIS_0417,
       changes: safeChanges,
       affectedPassengerIds: [],
-    });
-  }
-
-  async function createAdminSession0417(req, res) {
-    const driverRaw = clean0417(req.body && req.body.driverUsername, 80);
-    try {
-      await enforceAdminRateLimit0417(req, driverRaw);
-    } catch (error) {
-      return fail0417(res, error.httpStatus || 429, error.code || "admin_rate_limited", error.message);
-    }
-    const resolved = await resolveDriverUsername(driverRaw);
-    if (!resolved || !resolved.driverSnap || !resolved.driverSnap.exists) {
-      return fail0417(res, 401, "admin_invalid_credentials", "WhatsApp ou senha inválidos.");
-    }
-    const driver = resolved.driverSnap.data();
-    const storedContact = clean0417(driver.driverWhatsapp, 40);
-    const suppliedContact = clean0417(req.body && req.body.contact, 40);
-    const password = String(req.body && req.body.password || "");
-    if (
-      !storedContact ||
-      !normalizedContactDigits0417(suppliedContact) ||
-      normalizedContactDigits0417(storedContact) !== normalizedContactDigits0417(suppliedContact) ||
-      password.length < 8 || password.length > 72
-    ) {
-      await appendAdminAudit0417({
-        driverUsername: resolved.canonicalUsername,
-        eventType: "ADMIN_LOGIN_REJECTED",
-        actorId: sha256Hex0417(normalizedContactDigits0417(suppliedContact)).slice(0, 24),
-        result: "DENIED",
-      }).catch(() => {});
-      return fail0417(res, 401, "admin_invalid_credentials", "WhatsApp ou senha inválidos.");
-    }
-    const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex0417(storedContact)).get();
-    if (!accountSnap.exists) {
-      return fail0417(res, 401, "admin_password_not_configured", "Defina primeiro a senha da Administração no aplicativo Rota Certa.");
-    }
-    const account = accountSnap.data();
-    const salt = clean0417(account.passwordSalt, 80);
-    const expected = clean0417(account.passwordHash, 256);
-    const supplied = salt ? passwordDigest0417(password, salt) : "";
-    if (!safeEqual0417(supplied, expected)) {
-      await appendAdminAudit0417({
-        driverUsername: resolved.canonicalUsername,
-        eventType: "ADMIN_LOGIN_REJECTED",
-        actorId: sha256Hex0417(storedContact).slice(0, 24),
-        result: "DENIED",
-      }).catch(() => {});
-      return fail0417(res, 401, "admin_invalid_credentials", "WhatsApp ou senha inválidos.");
-    }
-    const token = crypto.randomBytes(32).toString("base64url");
-    const tokenHash = sha256Hex0417(token);
-    const now = Date.now();
-    const expiresAtMillis = now + ADMIN_SESSION_MILLIS_0417;
-    const actorId = sha256Hex0417(storedContact).slice(0, 24);
-    await db.collection("tripAdminSessions").doc(tokenHash).set({
-      driverUsername: resolved.canonicalUsername,
-      actorId,
-      contactHash: sha256Hex0417(storedContact),
-      createdAtMillis: now,
-      lastActivityAtMillis: now,
-      expiresAtMillis,
-      revokedAtMillis: 0,
-    });
-    await appendAdminAudit0417({
-      driverUsername: resolved.canonicalUsername,
-      eventType: "ADMIN_LOGIN",
-      actorId,
-      result: "SUCCESS",
-    }).catch(() => {});
-    return json0417(res, 200, {
-      sessionToken: token,
-      expiresAtMillis,
-      driverUsername: resolved.publicUsername || resolved.canonicalUsername,
     });
   }
 
@@ -271,12 +158,6 @@ function createAgendaAdmin0417({
     };
   }
 
-  async function logoutAdmin0417(req, res) {
-    const session = await requireAdminSession0417(req, res);
-    if (!session) return;
-    return json0417(res, 200, { loggedOut: false, reusePassengerSession: true });
-  }
-
   async function getAdminMe0417(req, res) {
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
@@ -289,42 +170,6 @@ function createAgendaAdmin0417({
       sessionStartedAtMillis: session.createdAtMillis,
       expiresAtMillis: session.expiresAtMillis,
     });
-  }
-
-  async function setDriverAdminPassword0417(req, res) {
-    const driver = await requireDriver(req, res);
-    if (!driver || !driver.username) return;
-    const password = String(req.body && req.body.password || "");
-    if (password.length < 8 || password.length > 72) {
-      return fail0417(res, 400, "invalid_admin_password", "A senha precisa ter entre 8 e 72 caracteres.");
-    }
-    const driverSnap = await db.collection("tripDrivers").doc(driver.username).get();
-    const storedContact = driverSnap.exists ? clean0417(driverSnap.data().driverWhatsapp, 40) : "";
-    if (!storedContact) {
-      return fail0417(res, 409, "admin_contact_required", "Configure primeiro o WhatsApp do proprietário da Agenda.");
-    }
-    const accountRef = db.collection("passengerAccounts").doc(sha256Hex0417(storedContact));
-    const accountSnap = await accountRef.get();
-    const now = Date.now();
-    const salt = crypto.randomBytes(16).toString("hex");
-    await accountRef.set({
-      passengerContact: storedContact,
-      passwordSalt: salt,
-      passwordHash: passwordDigest0417(password, salt),
-      adminCredentialOwner0417: true,
-      mustChangePassword: false,
-      createdAtMillis: Number(accountSnap.exists && accountSnap.data().createdAtMillis || now),
-      updatedAtMillis: now,
-    }, { merge: true });
-    const sessions = await db.collection("tripAdminSessions").where("driverUsername", "==", driver.username).limit(100).get();
-    await Promise.allSettled(sessions.docs.map((doc) => doc.ref.delete()));
-    await appendAdminAudit0417({
-      driverUsername: driver.username,
-      eventType: "ADMIN_PASSWORD_CHANGED",
-      actorId: "driver-app",
-      source: "ROTA_CERTA_ANDROID",
-    }).catch(() => {});
-    return json0417(res, 200, { configured: true });
   }
 
   async function readDriverAndTrips0417(driverUsername) {
@@ -685,10 +530,7 @@ function createAgendaAdmin0417({
   }
 
   return {
-    createAdminSession0417,
-    logoutAdmin0417,
     getAdminMe0417,
-    setDriverAdminPassword0417,
     getAdminOverview0417,
     listAdminTrips0417,
     getAdminSettings0417,
