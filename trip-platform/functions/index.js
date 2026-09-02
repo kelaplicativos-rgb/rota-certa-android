@@ -2536,10 +2536,52 @@ async function createDriverTrip(req, res) {
   const ref = db.collection("trips").doc(token);
   const now = Date.now();
   const publicUrl = publicUrlFor(req, token, driver.publicUsername || driver.username);
+  const strongProfile = cleanText(normalized.blablaProfileUuid, 160).toLowerCase();
+  const strongTripId = cleanText(normalized.blablaTripId, 160);
+  const requestedTripKey = cleanText(normalized.tripKey, 180);
   try {
-    await db.runTransaction(async (tx) => {
-      const existing = await tx.get(ref);
-      if (existing.exists) throw Object.assign(new Error("Token público já existe."), { httpStatus: 409, code: "token_collision" });
+    const result = await db.runTransaction(async (tx) => {
+      const existingByToken = await tx.get(ref);
+      const driverTrips = (strongProfile && strongTripId) || requestedTripKey
+        ? await tx.get(db.collection("trips").where("driverUsername", "==", driver.username).limit(300))
+        : null;
+      const identityMatches = driverTrips
+        ? driverTrips.docs.filter((doc) => {
+            const data = doc.data();
+            const sameStrongIdentity =
+              strongProfile && strongTripId &&
+              cleanText(data.blablaProfileUuid, 160).toLowerCase() === strongProfile &&
+              cleanText(data.blablaTripId, 160) === strongTripId;
+            const sameTripKey =
+              requestedTripKey &&
+              cleanText(data.tripKey, 180) === requestedTripKey;
+            return sameStrongIdentity || sameTripKey;
+          })
+        : [];
+      if (identityMatches.length) {
+        const winner = identityMatches.slice().sort((left, right) => {
+          const leftData = left.data();
+          const rightData = right.data();
+          const revisionDelta = Math.max(0, Number(rightData.publicationRevision || 0)) -
+            Math.max(0, Number(leftData.publicationRevision || 0));
+          if (revisionDelta) return revisionDelta;
+          const updatedDelta = Math.max(0, Number(rightData.updatedAtMillis || 0)) -
+            Math.max(0, Number(leftData.updatedAtMillis || 0));
+          if (updatedDelta) return updatedDelta;
+          return left.id.localeCompare(right.id);
+        })[0];
+        const winnerData = winner.data();
+        return {
+          created: false,
+          adopted: true,
+          tripId: winner.id,
+          publicToken: cleanText(winnerData.publicToken, 120) || winner.id,
+          publicUrl: winnerData.publicUrl || publicUrlFor(req, winner.id, winnerData.driverUsername || driver.username),
+        };
+      }
+      if (existingByToken.exists) {
+        throw Object.assign(new Error("Token público já existe."), { httpStatus: 409, code: "token_collision" });
+      }
       tx.create(ref, {
         ...normalized,
         publicToken: token,
@@ -2554,8 +2596,14 @@ async function createDriverTrip(req, res) {
         createdAtMillis: now,
         updatedAtMillis: now,
       });
+      return { created: true, adopted: false, tripId: token, publicToken: token, publicUrl };
     });
-    return json(res, 201, { tripId: token, publicToken: token, publicUrl });
+    return json(res, result.created ? 201 : 200, {
+      tripId: result.tripId,
+      publicToken: result.publicToken,
+      publicUrl: result.publicUrl,
+      adoptedCanonicalIdentity: result.adopted === true,
+    });
   } catch (error) {
     return fail(res, error.httpStatus || 500, error.code || "publish_failed", error.message || "Falha ao publicar viagem.");
   }
@@ -5822,6 +5870,11 @@ async function listDriverTripSyncState0402(req, res) {
     const trips = snapshot.docs
       .map((doc) => {
         const data = doc.data();
+        const segmentLoads = Array.isArray(data.segmentLoads) ? data.segmentLoads : [];
+        const availability = capacityAvailabilityRange(data, segmentLoads);
+        const operationalAvailableSeats = Number.isInteger(Number(data.operationalAvailableSeats))
+          ? Math.max(0, Number(data.operationalAvailableSeats))
+          : Math.max(0, Number(availability.minimum || 0));
         return {
           remoteTripId: doc.id,
           status: cleanText(data.status, 24),
@@ -5837,6 +5890,12 @@ async function listDriverTripSyncState0402(req, res) {
           blablaTripId: cleanText(data.blablaTripId, 160),
           title: cleanText(data.title, 220),
           capacity: Math.max(0, Number(data.capacity || 0)),
+          publishedSeats: data.publishedSeats == null ? null : Math.max(0, Number(data.publishedSeats || 0)),
+          rotaCertaSeatAllocation: Math.max(0, Number(data.rotaCertaSeatAllocation || 0)),
+          operationalAvailableSeats,
+          availableSeatsMinimum: Math.max(0, Number(availability.minimum || 0)),
+          availableSeatsMaximum: Math.max(0, Number(availability.maximum || 0)),
+          occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
         };
       })
       .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.departureAtMillis > now)
