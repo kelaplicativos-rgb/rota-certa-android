@@ -1,4 +1,4 @@
-# BlaBlaCar capability and command matrix — Rota Certa 0.1.411
+# BlaBlaCar capability and command matrix — Rota Certa 0.1.412
 
 ## Evidence boundary
 
@@ -73,9 +73,9 @@ The OpenAI model never resolves or invents those identifiers.
 | READ_MESSAGES | Read message thread | BLOCKED | DOM/message collection exists, but complete authoritative thread coverage is not yet proven |
 | SEND_MESSAGE | Send message | BLOCKED | Messaging input surface discovered; verified write/readback not implemented |
 
-## Conversational read behavior in 0.1.411
+## Conversational read behavior in 0.1.412
 
-Natural questions are routed to the existing canonical/read-only surfaces before any answer is rendered:
+Natural questions are routed to the existing canonical/read-only surfaces before any answer is rendered. Common read-only questions are interpreted locally first, so they do not depend on OpenAI availability or quota:
 
 - trip existence, dates and departure times → LIST_TRIPS with deterministic date/time/route filtering;
 - passenger roster → READ_PASSENGERS with date/time/route trip resolution and direct WhatsApp shortcuts when canonical contact data exists;
@@ -84,7 +84,7 @@ Natural questions are routed to the existing canonical/read-only surfaces before
 
 ## OpenAI boundary
 
-The backend endpoint `POST /v1/assistant/interpret` uses the OpenAI Responses API with strict JSON Schema Structured Outputs.
+The backend endpoint `POST /v1/assistant/interpret` uses a deterministic read-only fast path for common operational questions and the OpenAI Responses API with strict JSON Schema Structured Outputs for requests that need model interpretation. HTTP 429 from OpenAI is retried once with bounded backoff; if it persists, it is mapped to `openai_rate_limited` without exposing the upstream body.
 
 The request contains:
 
@@ -120,7 +120,7 @@ A model output cannot create a new action name because the schema action enum is
 
 Read-only and low-risk verified commands may execute after deterministic validation.
 
-High-impact and destructive commands require explicit confirmation before execution. In 0.1.410, CREATE_TRIPS and SET_TRIP_SEATS are treated as high-impact. Static-only APK capabilities remain blocked regardless of what the model requests.
+High-impact and destructive commands require explicit confirmation before execution. In 0.1.412, CREATE_TRIPS and SET_TRIP_SEATS are treated as high-impact. Static-only APK capabilities remain blocked regardless of what the model requests.
 
 ## Invalid and ambiguous requests
 
