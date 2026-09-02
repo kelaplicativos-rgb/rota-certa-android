@@ -127,8 +127,20 @@ data class Trip(
     val externalSnapshotComplete: Boolean = false,
     /** Stable tenant-scoped identity. External trips are tenant + provider + profile UUID + provider trip id. */
     val tripKey: String = "",
-    /** Deterministic hash of the canonical state used to verify Timeline/Agenda projections. */
+    /** Deterministic hash of the canonical operational state. */
     val canonicalStateHash: String = "",
+    /** Explicit public timezone when known. Empty legacy values are normalized at projection time. */
+    val publicTimezoneId0411: String = "",
+    /** Evidence about the current canonical/public projection revision. Never a source of truth. */
+    val publicMirrorAttestationState0411: PublicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+    val publicMirrorAttestedCanonicalRevision0411: Long = 0L,
+    val publicMirrorAttestedPublicationRevision0411: Long = 0L,
+    val publicMirrorExpectedHash0411: String = "",
+    val publicMirrorReadbackHash0411: String = "",
+    val publicMirrorAttestedAtMillis0411: Long = 0L,
+    val publicMirrorReadbackLatencyMillis0411: Long = 0L,
+    val publicMirrorAttestationReason0411: String = "",
+    val publicMirrorMismatchFields0411: List<String> = emptyList(),
     /** Collector execution that last observed this trip. Metadata only; it never defines identity. */
     val lastCollectionRunId: String = "",
     /** Monotonic collector generation used to reject delayed results from older executions. */
