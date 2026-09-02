@@ -34,12 +34,47 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private data class AssistantPreparedExecution0410(
     val command: RotaCertaStructuredCommand0410,
     val plan: RotaCertaResolvedExecutionPlan0410,
 )
+
+private fun readAssistantJsonFile0413(
+    context: Context,
+    uri: Uri,
+): String {
+    val stream = context.contentResolver.openInputStream(uri)
+        ?: throw RotaCertaAssistantJsonException0413(
+            "Não foi possível abrir o arquivo JSON.",
+        )
+    return stream.bufferedReader(Charsets.UTF_8).use { reader ->
+        val output = StringBuilder()
+        val buffer = CharArray(4_096)
+        while (true) {
+            val count = reader.read(buffer)
+            if (count < 0) break
+            if (output.length + count >
+                ROTA_CERTA_ASSISTANT_INPUT_MAX_CHARS_0413
+            ) {
+                throw RotaCertaAssistantJsonException0413(
+                    "O arquivo JSON excede o limite de 64 KB.",
+                )
+            }
+            output.append(buffer, 0, count)
+        }
+        output.toString().also { text ->
+            if (!RotaCertaAssistantJson0413.looksLikeJson(text)) {
+                throw RotaCertaAssistantJsonException0413(
+                    "O arquivo selecionado não contém JSON reconhecível.",
+                )
+            }
+        }
+    }
+}
 
 private class RotaCertaAssistantIdempotencyStore0410(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(
@@ -93,6 +128,28 @@ internal fun RotaCertaAssistantPanel0410(
         }
     }
 
+    val jsonFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            result = "Seleção de JSON cancelada. Nenhuma ação foi executada."
+        } else {
+            scope.launch {
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        readAssistantJsonFile0413(context, uri)
+                    }
+                }.onSuccess { jsonText ->
+                    input = jsonText
+                    result = "Arquivo JSON carregado. Revise e toque em Enviar."
+                }.onFailure { error ->
+                    result = "Não carreguei o JSON. " +
+                        (error.message ?: "Arquivo inválido.")
+                }
+            }
+        }
+    }
+
     val activityLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { activityResult ->
@@ -141,6 +198,35 @@ internal fun RotaCertaAssistantPanel0410(
         if (plan.action != RotaCertaAction0410.READ_PASSENGERS) contactBookings = emptyList()
         if (plan.action != RotaCertaAction0410.PUBLIC_SEARCH) publicSearchCards = emptyList()
 
+        if (plan.action == RotaCertaAction0410.CREATE_TRIPS &&
+            command.profileSelectionStrategy == "AUTO_RECONCILE"
+        ) {
+            result = "Não executei. O JSON pediu AUTO_RECONCILE de perfis, mas a seleção automática entre perfis ainda não possui executor + verificação comprovados. Selecione um perfil em Publicar agenda ou gere o JSON com CURRENT_SELECTION."
+            pending = null
+            return
+        }
+        if (plan.action == RotaCertaAction0410.CREATE_TRIPS &&
+            command.checkAllDriverProfiles
+        ) {
+            result = "Não executei. O JSON exige checkAllDriverProfiles, mas esta garantia ainda não está comprovada no executor atual."
+            pending = null
+            return
+        }
+        if (plan.action == RotaCertaAction0410.CREATE_TRIPS &&
+            command.requirePublicCollectorPreExecution
+        ) {
+            result = "Não executei. O JSON exige runPublicCollector antes da publicação; esta precondição ainda não está ligada ao executor CREATE_TRIPS."
+            pending = null
+            return
+        }
+        if (plan.action == RotaCertaAction0410.CREATE_TRIPS &&
+            command.requireScheduleConflictCheck
+        ) {
+            result = "Não executei. O JSON exige checkScheduleConflicts; essa verificação ainda não possui prova suficiente para liberar a publicação."
+            pending = null
+            return
+        }
+
         when (plan.action) {
             RotaCertaAction0410.CREATE_TRIPS -> {
                 val accounts = BlaBlaDynamicAccountRegistry(context).list()
@@ -188,6 +274,11 @@ internal fun RotaCertaAssistantPanel0410(
                 }
                 if (!time.isNullOrBlank()) {
                     outbound = outbound.copy(departureTime = time)
+                }
+                if (command.returnDepartureTime.isNotBlank()) {
+                    inbound = inbound.copy(
+                        departureTime = command.returnDepartureTime.trim(),
+                    )
                 }
 
                 val selectedAccountId = selected.single().accountId
@@ -440,22 +531,47 @@ internal fun RotaCertaAssistantPanel0410(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                "Pergunte naturalmente sobre suas viagens, horários, lotação, passageiros, perfis ou faça consultas públicas. Alterações continuam protegidas por validação, identidade forte e política de execução.",
+                "Pergunte naturalmente, cole um script JSON ou carregue um arquivo .json. JSON é interpretado no aparelho e continua sujeito ao mesmo Command Registry, validações e confirmações.",
                 style = MaterialTheme.typography.bodySmall,
             )
             OutlinedTextField(
                 value = input,
-                onValueChange = { input = it.take(1200) },
-                label = { Text("Fale ou escreva o que deseja fazer") },
+                onValueChange = { value ->
+                    if (value.length <=
+                        ROTA_CERTA_ASSISTANT_INPUT_MAX_CHARS_0413
+                    ) {
+                        input = value
+                    } else {
+                        result = "O campo aceita até 64 KB. O conteúdo maior não foi truncado nem executado."
+                    }
+                },
+                label = {
+                    Text("Pergunte, cole JSON ou carregue um arquivo .json")
+                },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !busy,
                 minLines = 2,
-                maxLines = 5,
+                maxLines = 10,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        jsonFileLauncher.launch(
+                            arrayOf(
+                                "application/json",
+                                "text/json",
+                                "text/plain",
+                                "application/octet-stream",
+                            ),
+                        )
+                    },
+                ) {
+                    Text("📎 JSON")
+                }
                 TextButton(
                     enabled = !busy,
                     onClick = {
@@ -506,21 +622,37 @@ internal fun RotaCertaAssistantPanel0410(
                                         state.lastObservedPublishedSeats != null
                                 }
 
-                                val allowed = RotaCertaCommandRegistry0410.interpreterActions(
-                                    hasPublisherAccount = accounts.any {
-                                        !it.profileUuid.isNullOrBlank()
-                                    },
-                                    hasVerifiedSeatTarget = verifiedSeatTarget,
-                                ).map { it.name }.sorted()
+                                val allowedActions =
+                                    RotaCertaCommandRegistry0410.interpreterActions(
+                                        hasPublisherAccount = accounts.any {
+                                            !it.profileUuid.isNullOrBlank()
+                                        },
+                                        hasVerifiedSeatTarget = verifiedSeatTarget,
+                                    )
+                                val allowed = allowedActions
+                                    .map { it.name }
+                                    .sorted()
 
-                                TripRemoteApi(store.onlineSettings()).interpretAssistant0410(
-                                    RotaCertaAssistantInterpretRequest0410(
-                                        text = text,
-                                        timezone = ZoneId.systemDefault().id,
-                                        locale = Locale.getDefault().toLanguageTag(),
-                                        allowedActions = allowed,
-                                    ),
-                                )
+                                if (RotaCertaAssistantJson0413.looksLikeJson(text)) {
+                                    RotaCertaAssistantInterpretResponse0410(
+                                        command = RotaCertaAssistantJson0413.parse(
+                                            raw = text,
+                                            allowedActions = allowedActions,
+                                        ),
+                                        interpreter = "local-json-0413",
+                                    )
+                                } else {
+                                    TripRemoteApi(store.onlineSettings())
+                                        .interpretAssistant0410(
+                                            RotaCertaAssistantInterpretRequest0410(
+                                                text = text,
+                                                timezone = ZoneId.systemDefault().id,
+                                                locale = Locale.getDefault()
+                                                    .toLanguageTag(),
+                                                allowedActions = allowed,
+                                            ),
+                                        )
+                                }
                             }.onSuccess { interpreted ->
                                 val command = interpreted.command
                                 val planned = RotaCertaCommandPlanner0410.plan(
@@ -544,7 +676,12 @@ internal fun RotaCertaAssistantPanel0410(
                                         command,
                                         planned.plan,
                                     )
-                                    if (planned.plan.policy ==
+                                    if (command.executionMode == "SIMULATION") {
+                                        pending = null
+                                        result = assistantPlanSummary0410(prepared) +
+                                            " Modo SIMULATION: nenhuma alteração foi executada."
+                                        busy = false
+                                    } else if (planned.plan.policy ==
                                         RotaCertaExecutionPolicy0410.CONFIRM_BEFORE_EXECUTION
                                     ) {
                                         pending = prepared
@@ -557,6 +694,9 @@ internal fun RotaCertaAssistantPanel0410(
                                 }
                             }.onFailure { error ->
                                 result = when (error) {
+                                    is RotaCertaAssistantJsonException0413 ->
+                                        "Não executei o JSON. " +
+                                            error.message.orEmpty()
                                     is TripRemoteApiException -> when (error.backendErrorCode) {
                                         "openai_not_configured" ->
                                             "Assistente ainda não está habilitado no backend. Nenhuma ação foi executada."

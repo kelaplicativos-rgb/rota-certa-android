@@ -1,4 +1,4 @@
-# BlaBlaCar capability and command matrix — Rota Certa 0.1.412
+# BlaBlaCar capability and command matrix — Rota Certa 0.1.413
 
 ## Evidence boundary
 
@@ -29,7 +29,7 @@ The OpenAI model never resolves or invents those identifiers.
 
 ## Command matrix
 
-| Action | Discovered operation | Coverage in 0.1.410 | Rota Certa authority / evidence |
+| Action | Discovered operation | Coverage in 0.1.413 | Rota Certa authority / evidence |
 |---|---|---:|---|
 | CREATE_TRIPS | Publish one or multiple rides | IMPLEMENTED | AgendaBatchPublisherPlanner → Store → Activity; duplicate validation before enqueue; central sync verifies resulting publications |
 | LIST_TRIPS | List canonical trips | VERIFIED | TripStore |
@@ -73,7 +73,7 @@ The OpenAI model never resolves or invents those identifiers.
 | READ_MESSAGES | Read message thread | BLOCKED | DOM/message collection exists, but complete authoritative thread coverage is not yet proven |
 | SEND_MESSAGE | Send message | BLOCKED | Messaging input surface discovered; verified write/readback not implemented |
 
-## Conversational read behavior in 0.1.412
+## Conversational read behavior in 0.1.413
 
 Natural questions are routed to the existing canonical/read-only surfaces before any answer is rendered. Common read-only questions are interpreted locally first, so they do not depend on OpenAI availability or quota:
 
@@ -81,6 +81,14 @@ Natural questions are routed to the existing canonical/read-only surfaces before
 - passenger roster → READ_PASSENGERS with date/time/route trip resolution and direct WhatsApp shortcuts when canonical contact data exists;
 - occupancy/fullness → LIST_FULL_TRIPS using the canonical operational inventory and occupancy engine, not only the visual status label;
 - public driver/route discovery → PUBLIC_SEARCH through the existing auditable public collector. Partial coverage never proves absence.
+
+## JSON input in 0.1.413
+
+The existing Assistant field accepts natural language, pasted JSON, fenced ```json blocks, and local .json files up to 64 KB.
+
+JSON is parsed on-device and is not sent to OpenAI. The compatibility adapter accepts the current typed command shape plus the previous CREATE_TRIPS script shape (`dates`, `roundTrip`, `route.outbound/return`) and `CREATE_ROUND_TRIP` with root `date`, `outbound` and `return`. The latter maps to the existing verified CREATE_TRIPS executor rather than creating a parallel action.
+
+Separate outbound/return departure times are preserved. Imported JSON cannot expand the Command Registry, enable a BLOCKED action, disable calendar validation/fail-closed policy, or bypass high-impact confirmation. `mode: "SIMULATION"` validates and prepares the plan without executing it. Requirements such as AUTO_RECONCILE, checkAllDriverProfiles, runPublicCollector or unproven schedule-conflict checks fail closed rather than being silently ignored.
 
 ## OpenAI boundary
 
@@ -120,7 +128,7 @@ A model output cannot create a new action name because the schema action enum is
 
 Read-only and low-risk verified commands may execute after deterministic validation.
 
-High-impact and destructive commands require explicit confirmation before execution. In 0.1.412, CREATE_TRIPS and SET_TRIP_SEATS are treated as high-impact. Static-only APK capabilities remain blocked regardless of what the model requests.
+High-impact and destructive commands require explicit confirmation before execution. In 0.1.413, CREATE_TRIPS and SET_TRIP_SEATS are treated as high-impact. Static-only APK capabilities remain blocked regardless of what the model requests.
 
 ## Invalid and ambiguous requests
 
