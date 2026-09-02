@@ -562,6 +562,8 @@ internal fun RotaCertaAssistantPanel0410(
                                             "Assistente ainda não está habilitado no backend. Nenhuma ação foi executada."
                                         "assistant_action_not_allowed" ->
                                             "A solicitação não corresponde a uma ação permitida no Command Registry."
+                                        "openai_rate_limited" ->
+                                            "A OpenAI está temporariamente limitada. Consultas operacionais diretas continuam no modo local; nenhuma alteração foi executada."
                                         else ->
                                             "Não executei. " +
                                                 (error.message ?: "Falha ao interpretar o comando.")

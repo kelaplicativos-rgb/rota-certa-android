@@ -1,9 +1,9 @@
-name: Rota Certa Assistant conversational BlaBlaCar queries 0.1.411
+name: Rota Certa Assistant resilient conversational queries 0.1.412
 
 on:
   push:
     branches:
-      - agent/assistant-date-query-0.1.411
+      - agent/assistant-openai-429-fallback-0.1.412
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5704' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.411"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5705' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.412"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -205,7 +205,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --tests 'br.com.mapeiaia.rotacerta.trips.RotaCertaCommand0410Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -234,7 +234,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.411-assistant-${{ github.sha }}
+          name: rota-certa-0.1.412-assistant-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -251,7 +251,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/assistant-date-query-0.1.411'
+    if: github.ref_name == 'agent/assistant-openai-429-fallback-0.1.412'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35

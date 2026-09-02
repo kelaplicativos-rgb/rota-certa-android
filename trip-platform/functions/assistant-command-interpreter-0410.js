@@ -122,6 +122,221 @@ function validateRawTemporalText0410(text) {
   }
 }
 
+
+function normalizeAssistantText0412(value) {
+  return clean(value, 1200)
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "")
+    .toLowerCase()
+    .replace(/[?!.,;:]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const MONTHS_0412 = Object.freeze({
+  janeiro: 1, fevereiro: 2, marco: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+});
+
+const WEEKDAYS_0412 = Object.freeze({
+  domingo: "domingo", sunday: "domingo",
+  segunda: "segunda", monday: "segunda",
+  terca: "terça", tuesday: "terça",
+  quarta: "quarta", wednesday: "quarta",
+  quinta: "quinta", thursday: "quinta",
+  sexta: "sexta", friday: "sexta",
+  sabado: "sábado", saturday: "sábado",
+});
+
+function fallbackTemporal0412(text) {
+  const original = clean(text, 1200);
+  const normalized = normalizeAssistantText0412(original);
+  let explicitDate = null;
+  let relative = "NONE";
+  let weekday = null;
+  let dayOfMonth = null;
+  let month = null;
+  let year = null;
+  let time = null;
+
+  const iso = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/.exec(normalized);
+  const slash = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/.exec(normalized);
+  const named = new RegExp(
+    "\\b(?:dia\\s+)?(\\d{1,2})\\s+de\\s+(" +
+      Object.keys(MONTHS_0412).join("|") +
+      ")(?:\\s+de\\s+(\\d{4}))?\\b",
+  ).exec(normalized);
+
+  if (iso) {
+    explicitDate = [
+      iso[1],
+      String(Number(iso[2])).padStart(2, "0"),
+      String(Number(iso[3])).padStart(2, "0"),
+    ].join("-");
+  } else if (slash) {
+    dayOfMonth = Number(slash[1]);
+    month = Number(slash[2]);
+    year = Number(slash[3]);
+  } else if (named) {
+    dayOfMonth = Number(named[1]);
+    month = MONTHS_0412[named[2]] || null;
+    year = named[3] ? Number(named[3]) : null;
+  }
+
+  if (!explicitDate && dayOfMonth == null) {
+    if (/\bdepois de amanha\b/.test(normalized)) relative = "DAY_AFTER_TOMORROW";
+    else if (/\bamanha\b/.test(normalized)) relative = "TOMORROW";
+    else if (/\bhoje\b/.test(normalized)) relative = "TODAY";
+    else if (/\bfim de semana\b|\bweekend\b/.test(normalized)) relative = "WEEKEND";
+    else {
+      const nextWeekday = /\b(?:proxima|proximo|next)\s+(segunda|terca|quarta|quinta|sexta|sabado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:-feira)?\b/.exec(normalized);
+      const plainWeekday = /\b(segunda|terca|quarta|quinta|sexta|sabado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:-feira)?\b/.exec(normalized);
+      const matched = nextWeekday || plainWeekday;
+      if (matched) {
+        weekday = WEEKDAYS_0412[matched[1]] || null;
+        relative = nextWeekday ? "NEXT_WEEKDAY" : "WEEKDAY";
+      }
+    }
+  }
+
+  const clock = /\b(?:as\s+)?(\d{1,2})(?::(\d{2})|h(?:\s*(\d{2}))?|\s+horas?)\b/.exec(normalized);
+  if (clock) {
+    const hour = Number(clock[1]);
+    const minute = Number(clock[2] || clock[3] || 0);
+    time = String(hour).padStart(2, "0") + ":" + String(minute).padStart(2, "0");
+  }
+
+  return {
+    raw: original,
+    explicitDate,
+    relative,
+    weekday,
+    dayOfMonth,
+    month,
+    year,
+    time,
+  };
+}
+
+function cleanRoutePart0412(value) {
+  return clean(value, 160)
+    .replace(/^[\s,:;-]+|[\s,:;?-]+$/g, "")
+    .replace(/\s+(?:hoje|amanhã|amanha|dia\s+\d+|na\s+próxima|na\s+proxima|noite|tarde|manhã|manha|às\s+\d+|as\s+\d+).*$/i, "")
+    .trim();
+}
+
+function fallbackRoute0412(text) {
+  const original = clean(text, 1200);
+  const patterns = [
+    /\bsentido\s+(.+?)\s+(?:para|até|ate|→)\s+(.+?)(?=,|$)/i,
+    /\bde\s+(.+?)\s+(?:para|até|ate|→)\s+(.+?)(?=,|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(original);
+    if (!match) continue;
+    const origin = cleanRoutePart0412(match[1]);
+    const destination = cleanRoutePart0412(match[2]);
+    if (origin && destination) return { origin, destination };
+  }
+  return { origin: "", destination: "" };
+}
+
+function fallbackPublicTargets0412(text) {
+  const original = clean(text, 1200);
+  const match = /\bnome\s+de\s+(.+?)(?=,|\s+sentido\b|$)/i.exec(original);
+  if (!match) return [];
+  const name = clean(match[1], 120).replace(/[?!.,;:]+$/g, "").trim();
+  return name ? [name] : [];
+}
+
+function deterministicReadCommand0412({ text, allowedActions }) {
+  const original = clean(text, 1200);
+  const normalized = normalizeAssistantText0412(original);
+  const allowed = new Set(normalizeAllowedActions0410(allowedActions));
+  if (!original || !allowed.size) return null;
+
+  // Local interpretation is deliberately read-only. Mutating language always
+  // falls through to the OpenAI typed interpreter and the existing risk policy.
+  if (/\b(crie|criar|publique|publicar|altere|alterar|mude|mudar|cancele|cancelar|aceite|aceitar|recuse|recusar|envie|enviar|mande|coloque|aumente|diminua)\b/.test(normalized)) {
+    return null;
+  }
+
+  let action = null;
+  if (
+    /\bbusca publica\b|\bbuscar publicamente\b|\bconsulta publica\b/.test(normalized) ||
+    (/\bblablacar\b/.test(normalized) && /\bnome de\b/.test(normalized))
+  ) {
+    action = "PUBLIC_SEARCH";
+  } else if (
+    /\bquem\b.*\b(viaja|vai|passageir|carona)\b/.test(normalized) ||
+    /\bpassageir(?:o|a|os|as)\b/.test(normalized)
+  ) {
+    action = "READ_PASSENGERS";
+  } else if (/\b(lotad[oa]s?|chei[oa]s?|vagas?|assentos?)\b/.test(normalized)) {
+    action = "LIST_FULL_TRIPS";
+  } else if (
+    /\bpedidos? de reserva\b/.test(normalized) ||
+    /\b(quais|quantas|listar|liste|mostre|mostrar|ver|tenho)\b.*\breservas?\b/.test(normalized)
+  ) {
+    action = "READ_BOOKINGS";
+  } else if (/\b(preco|valor|quanto custa|quanto e)\b/.test(normalized)) {
+    action = "GET_TRIP_PRICE";
+  } else if (/\b(viagem|viagens|viajo|viajar|viaja|horario|horarios|que horas)\b/.test(normalized)) {
+    action = "LIST_TRIPS";
+  }
+
+  if (!action || !allowed.has(action)) return null;
+
+  const route = fallbackRoute0412(original);
+  const targets = action === "PUBLIC_SEARCH" ? fallbackPublicTargets0412(original) : [];
+  if (action === "PUBLIC_SEARCH" && (!route.origin || !route.destination)) return null;
+
+  return {
+    action,
+    tripReference: "",
+    passengerReference: "",
+    bookingReference: "",
+    temporal: fallbackTemporal0412(original),
+    dateTokens: [],
+    roundTrip: false,
+    origin: route.origin,
+    destination: route.destination,
+    publicTargetNames: targets,
+    seats: null,
+    priceText: "",
+    freeTextValue: "",
+    requestedPolicy: "",
+    interpretationConfidence: 0.98,
+    interpretationNotes: "deterministic_read_only_0412",
+    multipleActions: false,
+  };
+}
+
+function retryDelayMillis0412(response) {
+  const raw = response?.headers?.get?.("retry-after");
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(1500, Math.max(250, Math.round(seconds * 1000)));
+  }
+  return 350;
+}
+
+async function fetchOpenAiWithRetry0412({ fetchImpl, body, key, sleepImpl }) {
+  let response = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    response = await fetchImpl("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (response.status !== 429 || attempt === 1) return response;
+    await sleepImpl(retryDelayMillis0412(response));
+  }
+  return response;
+}
+
 function outputSchema0410(allowedActions) {
   return {
     type: "object",
@@ -196,13 +411,35 @@ function extractOutputText0410(response) {
 }
 
 async function interpretAssistantCommand0410({
-  text, timezone, locale, allowedActions, apiKey, model = "gpt-5.6-luna", fetchImpl = global.fetch,
+  text,
+  timezone,
+  locale,
+  allowedActions,
+  apiKey,
+  model = "gpt-5.6-luna",
+  fetchImpl = global.fetch,
+  sleepImpl = (millis) => new Promise((resolve) => setTimeout(resolve, millis)),
 }) {
   const cleanText = clean(text, 1200);
   if (!cleanText) throw new AssistantInterpreterError0410("assistant_text_required", "Digite ou fale um comando.", 400);
   validateRawTemporalText0410(cleanText);
   const allowed = normalizeAllowedActions0410(allowedActions);
   if (!allowed.length) throw new AssistantInterpreterError0410("assistant_action_not_allowed", "Nenhuma action está habilitada neste dispositivo.", 409);
+
+  const local = deterministicReadCommand0412({
+    text: cleanText,
+    allowedActions: allowed,
+  });
+  if (local) {
+    local.schemaVersion = "1.0";
+    local.commandId = crypto.randomUUID();
+    return {
+      command: local,
+      interpreter: "deterministic-read-only-0412",
+      model: "",
+    };
+  }
+
   const key = clean(apiKey, 512);
   if (!key) throw new AssistantInterpreterError0410("openai_not_configured", "OpenAI não configurada no backend.", 503);
   if (typeof fetchImpl !== "function") throw new AssistantInterpreterError0410("openai_transport_unavailable", "Transporte OpenAI indisponível.", 503);
@@ -215,15 +452,29 @@ async function interpretAssistantCommand0410({
     ],
     text: { format: { type: "json_schema", name: "rota_certa_structured_command_0410", strict: true, schema: outputSchema0410(allowed) } },
   };
-  const response = await fetchImpl("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const response = await fetchOpenAiWithRetry0412({
+    fetchImpl,
+    body,
+    key,
+    sleepImpl,
   });
   const raw = await response.text();
   let decoded = null;
   try { decoded = JSON.parse(raw); } catch (_) {}
-  if (!response.ok) throw new AssistantInterpreterError0410("openai_request_failed", "Falha ao interpretar o comando.", response.status >= 400 && response.status < 600 ? response.status : 502);
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new AssistantInterpreterError0410(
+        "openai_rate_limited",
+        "OpenAI temporariamente limitada. Nenhuma ação foi executada.",
+        503,
+      );
+    }
+    throw new AssistantInterpreterError0410(
+      "openai_request_failed",
+      "Falha ao interpretar o comando.",
+      response.status >= 400 && response.status < 600 ? response.status : 502,
+    );
+  }
   const outputText = extractOutputText0410(decoded);
   if (!outputText) throw new AssistantInterpreterError0410("openai_empty_output", "A interpretação não retornou comando estruturado.", 502);
   let command;
@@ -245,5 +496,7 @@ module.exports = {
   validateRawTemporalText0410,
   outputSchema0410,
   systemInstruction0410,
+  deterministicReadCommand0412,
+  fallbackTemporal0412,
   interpretAssistantCommand0410,
 };
