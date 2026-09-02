@@ -116,6 +116,8 @@ class AgendaCanonicalIntegrity0406Test {
         assertTrue(publicSync.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
         assertTrue(background.contains("PROJECTION_RECONCILER_0406"))
         assertTrue(background.contains("BLABLACAR_COMPLETE_SCOPE_DELETE"))
+        assertTrue(background.contains("MIGRATION_DUPLICATE_PROJECTION"))
+        assertTrue(background.contains("MIGRATION_ORPHAN_PROJECTION"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_STALE_RESULT_REJECTED_0406"))
         assertTrue(store.contains("reconcileCanonicalIntegrity0406"))
         assertTrue(store.contains("tombstoneExternalTrip0406"))
