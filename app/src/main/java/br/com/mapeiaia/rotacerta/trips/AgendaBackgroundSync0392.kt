@@ -148,6 +148,7 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason == "timeline_pull_refresh" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
     reason == "blablacar_collection_result" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
+    reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
 }
 
@@ -158,6 +159,7 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     reason == "recovery" || reason == "timeline_open" -> "RECOVERY"
     reason.startsWith("booking_push:") -> "EVENT_DELTA"
     reason == "blablacar_collection_result" -> "AUTOMATIC_COLLECTOR"
+    reason == "trip_reverify" -> "TRIP_REVERIFY"
     else -> "EVENT_DELTA"
 }
 
@@ -675,6 +677,11 @@ internal object AgendaBackgroundSync0392 {
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
     private const val INPUT_REASON = "reason"
     private const val INPUT_TENANT_ID = "tenant_id_0397"
+    private const val INPUT_COMMAND_ID_0407 = "command_id_0407"
+    private const val INPUT_ACCOUNT_ID_0407 = "account_id_0407"
+    private const val INPUT_PROFILE_UUID_0407 = "profile_uuid_0407"
+    private const val INPUT_TRIP_ID_0407 = "trip_id_0407"
+    private const val INPUT_TRIP_HREF_0407 = "trip_href_0407"
     private const val WORK_BACKOFF_SECONDS = 30L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
 
