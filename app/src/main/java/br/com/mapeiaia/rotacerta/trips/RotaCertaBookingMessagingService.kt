@@ -23,8 +23,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -35,6 +39,64 @@ internal object BookingRealtimeEvents0356 {
 
     fun notifyChanged() {
         _changes.tryEmit(Unit)
+    }
+}
+
+
+internal data class DriverNotificationProjectionState0416(
+    val tenantId: String = "",
+    val notifications: List<DriverNotificationItem> = emptyList(),
+    val unreadCount: Int = 0,
+    val loaded: Boolean = false,
+)
+
+internal object DriverNotificationProjection0416 {
+    private val refreshMutex = Mutex()
+    private val _state = MutableStateFlow(DriverNotificationProjectionState0416())
+    val state = _state.asStateFlow()
+
+    suspend fun refresh(context: Context): DriverNotificationProjectionState0416 = refreshMutex.withLock {
+        val appContext = context.applicationContext
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val store = TripStore(appContext)
+        val online = withContext(Dispatchers.IO) { store.onlineSettings() }
+        if (!online.configured) {
+            return@withLock DriverNotificationProjectionState0416(
+                tenantId = tenantId,
+                loaded = true,
+            ).also { _state.value = it }
+        }
+
+        val previous = _state.value
+        val next = runCatching {
+            withContext(Dispatchers.IO) {
+                TripRemoteApi(online).listDriverNotifications()
+            }
+        }.fold(
+            onSuccess = { response ->
+                DriverNotificationProjectionState0416(
+                    tenantId = tenantId,
+                    notifications = response.notifications,
+                    unreadCount = response.unreadCount.coerceAtLeast(0),
+                    loaded = true,
+                )
+            },
+            onFailure = { error ->
+                UnifiedDebugEventStore.record(
+                    "DRIVER_NOTIFICATION_PROJECTION_REFRESH_FAILED_0416",
+                    appContext.packageName,
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "DRIVER_NOTIFICATION_PROJECTION_REFRESH",
+                        component = "DriverNotificationProjection0416",
+                        method = "refresh",
+                    ),
+                )
+                if (previous.tenantId == tenantId) previous else DriverNotificationProjectionState0416(tenantId = tenantId)
+            },
+        )
+        _state.value = next
+        next
     }
 }
 
@@ -113,6 +175,9 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
         )
 
         BookingRealtimeEvents0356.notifyChanged()
+        serviceScope.launch {
+            DriverNotificationProjection0416.refresh(this@RotaCertaBookingMessagingService)
+        }
         AgendaBackgroundSync0392.enqueueImmediate(
             context = this,
             reason = "booking_push:${event.take(40)}",
