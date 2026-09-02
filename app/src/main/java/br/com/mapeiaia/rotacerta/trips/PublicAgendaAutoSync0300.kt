@@ -430,7 +430,7 @@ internal object PublicAgendaAutoSync0300 {
         AgendaTrace.event(
             context,
             "PUBLIC_AGENDA_SYNC_RESULT",
-            "accounts=${connectedAccounts.size} totalTrips=${localTrips.size + externalTrips.size} processed=${localPublished + externalPublished} localPublished=$localPublished externalPublished=$externalPublished claims=$seatClaimsSynced failures=$failures cancelled=0 retries=$externalRetries preservedShape=$preservedShapes",
+            "canonicalExternal=${canonicalExternalTrips.size} totalTrips=${localTrips.size + externalTrips.size} processed=${localPublished + externalPublished} localPublished=$localPublished externalPublished=$externalPublished claims=$seatClaimsSynced failures=$failures cancelled=0 retries=$externalRetries preservedShape=$preservedShapes",
             traceId,
             syncOperation.operationId,
         )
