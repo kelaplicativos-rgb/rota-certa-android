@@ -6,9 +6,7 @@ import java.nio.charset.StandardCharsets
 
 /** Single URL and navigation-identity authority for every collector flow. */
 internal object BlaBlaCollectorUrlModule {
-    const val ORIGIN = "https://www.blablacar.com.br"
-    private const val HOST = "www.blablacar.com.br"
-
+    /**\n     * Fallback origin only for legacy relative URLs captured by the Brazilian browser flow.\n     * Absolute URLs keep their own verified official BlaBlaCar market host.\n     */\n    const val ORIGIN = "https://www.blablacar.com.br"\n
     fun absolute(raw: String?): String {
         val value = raw?.trim().orEmpty()
         return when {
@@ -129,7 +127,7 @@ internal object BlaBlaCollectorUrlModule {
         return if (uri == null) {
             absolute(raw).substringBefore('?').substringBefore('#').take(240)
         } else {
-            "$ORIGIN${uri.rawPath.orEmpty().ifBlank { "/" }}".take(240)
+            "https://${uri.host.lowercase()}${uri.rawPath.orEmpty().ifBlank { "/" }}".take(240)
         }
     }
 
