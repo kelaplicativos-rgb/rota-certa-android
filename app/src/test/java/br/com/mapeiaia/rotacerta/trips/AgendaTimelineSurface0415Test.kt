@@ -45,10 +45,13 @@ class AgendaTimelineSurface0415Test {
 
     @Test
     fun notificationsUseHeaderBellAndDedicatedCenterInsteadOfTimelineCard() {
-        assertTrue(header.contains("Abrir Central de Notificações"))
+        assertTrue(header.contains("Icons.Filled.Notifications"))
+        assertTrue(header.contains("notificationUnreadCount"))
         assertTrue(header.contains("notificationUnreadCount"))
         assertTrue(activity.contains("TripScreen.NOTIFICATIONS -> {"))
-        assertTrue(activity.contains("TripRemoteApi(online).listDriverNotifications()"))
+        assertTrue(activity.contains("DriverNotificationProjection0416.state.collectAsState()"))
+        val messaging = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt").readText()
+        assertTrue(messaging.contains("TripRemoteApi(online).listDriverNotifications()"))
         assertTrue(activity.contains("markAllDriverNotificationsRead()"))
         assertTrue(activity.contains("markDriverNotificationRead(item.id)"))
         assertFalse(activity.contains("notificationsExpanded"))
@@ -67,9 +70,9 @@ class AgendaTimelineSurface0415Test {
     }
 
     @Test
-    fun tripSpecificPendingFilterRemainsAvailableWithoutTopDashboardCard() {
+    fun pendingFilterEngineRemainsInternalButIsNotMisclassifiedAsHeaderAction() {
         assertTrue(header.contains("TOGGLE_SYNC_PENDING"))
-        assertTrue(activity.contains("Filtrar pendências das viagens"))
+        assertFalse(activity.contains("AgendaHeaderAction0396(\"Filtrar pendências das viagens\")"))
         assertTrue(timeline.contains("AgendaTimelineCommand0396.TOGGLE_SYNC_PENDING"))
         assertTrue(timeline.contains("externalSyncStateIsPending"))
         assertFalse(timeline.contains("Sincronização externa pendente ⚠️"))

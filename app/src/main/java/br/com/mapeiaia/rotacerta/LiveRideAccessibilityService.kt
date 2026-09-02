@@ -40,6 +40,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import br.com.mapeiaia.rotacerta.trips.BookingRealtimeEvents0356
+import br.com.mapeiaia.rotacerta.trips.DriverNotificationProjection0416
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -179,6 +181,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastOcrAttemptAtMillis0189: Long = 0L
     private var lastAccessibilityAcceptedAtMillis127: Long = 0L // accessibility_first_timestamp_0_1_127
     private var overlayView: TextView? = null
+    @Volatile private var agendaUnreadCount0416: Int = 0
     private var savedPlacePopupView: LinearLayout? = null
     private var shortcutModulePopupView0181: LinearLayout? = null
     private var overlayParams: WindowManager.LayoutParams? = null
@@ -385,6 +388,22 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         scope.launch { repository.savedPlaces.collect { currentSavedPlaces = it } }
         scope.launch { repository.importedRadars.collect { currentImportedRadars = it } }
+        scope.launch {
+            DriverNotificationProjection0416.state.collect { projection ->
+                val activeTenant = RotaCertaTenantRegistry(applicationContext).activeScope().tenantId
+                val unread = if (projection.tenantId == activeTenant) projection.unreadCount.coerceAtLeast(0) else 0
+                if (agendaUnreadCount0416 != unread) {
+                    agendaUnreadCount0416 = unread
+                    overlayView?.let { applyAgendaNotificationDecoration0416(it, currentRadarColor) }
+                }
+            }
+        }
+        scope.launch {
+            DriverNotificationProjection0416.refresh(applicationContext)
+            BookingRealtimeEvents0356.changes.collect {
+                DriverNotificationProjection0416.refresh(applicationContext)
+            }
+        }
         scope.launch {
             currentSettings = repository.settings.first()
             val manualSelectionPrefs127 = getSharedPreferences("rota_certa_runtime_migrations", Context.MODE_PRIVATE)
@@ -6129,7 +6148,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         currentDistanceKm = distanceKm
         val view = existingViewChecklist15 ?: TextView(this).also { newView ->
             val params = overlayLayoutParams()
-            newView.contentDescription = "Rota Certa"
             newView.gravity = Gravity.CENTER
             newView.includeFontPadding = false
             newView.setTextColor(Color.BLACK)
@@ -6142,11 +6160,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         view.text = nextTextChecklist15
         view.textSize = bubbleTextSizeSp(nextTextChecklist15)
-        view.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(color.argb(currentSettings))
-            setStroke(dp(3), Color.argb((currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt(), 255, 255, 255))
-        }
+        applyAgendaNotificationDecoration0416(view, color)
         FarolFlightRecorder0163.record(
             stage = "OVERLAY_RENDER_APPLIED",
             packageName = universalResolvedForegroundPackage(),
@@ -6164,6 +6178,27 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // no_duplicate_overlay_render_checklist_15
  // no_duplicate_overlay_render_checklist_15
 
+
+    private fun applyAgendaNotificationDecoration0416(view: TextView, color: RadarColor) {
+        val unread = agendaUnreadCount0416.coerceAtLeast(0)
+        view.contentDescription = if (unread > 0) {
+            "Rota Certa, Agenda com $unread notificações não lidas"
+        } else {
+            "Rota Certa"
+        }
+        val alpha = (currentSettings.bubbleOpacity.coerceIn(0.25, 1.0) * 255).roundToInt()
+        val strokeColor = if (unread > 0) {
+            Color.argb(alpha, 255, 152, 0)
+        } else {
+            Color.argb(alpha, 255, 255, 255)
+        }
+        view.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            // Preserve FAROL fill semantics; Agenda attention is only an independent orange ring.
+            setColor(color.argb(currentSettings))
+            setStroke(dp(if (unread > 0) 4 else 3), strokeColor)
+        }
+    }
 
     private fun formatBubbleDistanceKm(distanceKm: Double?): String = when {
         distanceKm == null -> ""

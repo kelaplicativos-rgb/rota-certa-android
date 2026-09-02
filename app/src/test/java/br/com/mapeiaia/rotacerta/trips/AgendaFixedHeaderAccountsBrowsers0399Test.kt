@@ -25,74 +25,66 @@ class AgendaFixedHeaderAccountsBrowsers0399Test {
     }
 
     @Test
-    fun allTripsOverflowExposesConfigurationAndCentralAutomaticSyncOnly() {
+    fun allTripsOverflowContainsOnlyContextActions() {
         val activity = source("TripsActivity.kt")
         val actions = activity
             .substringAfter("TripScreen.TIMELINE -> listOf(")
-            .substringBefore("TripScreen.PUBLIC_SEARCH ->")
+            .substringBefore("else -> emptyList()")
 
-        assertTrue(actions.contains("AgendaHeaderAction0396(\"Contas e navegadores\")"))
-        assertTrue(actions.contains("AgendaHeaderAction0396(\"Sincronização automática\")"))
-        assertTrue(actions.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
-        assertTrue(activity.contains("TripScreen.ACCOUNTS_BROWSERS -> BlaBlaAccountsAndBrowsersScreen0399()"))
-        listOf("Sincronizar agora", "Sincronizar BlaBlaCar", "Publicar agenda", "Limpar Timeline", "Limpar Agenda").forEach { label ->
-            assertFalse(actions.contains("AgendaHeaderAction0396(\"$label\""), "Legacy action returned: $label")
+        listOf(
+            "Nova viagem",
+            "Adicionar passageiro",
+            "Vagas extra",
+            "Próximas / arquivadas",
+            "Baixar Timeline",
+            "Fixar atalho",
+        ).forEach { label ->
+            assertTrue(actions.contains("AgendaHeaderAction0396(\"$label\")"), "Context action missing: $label")
+        }
+        listOf(
+            "Contas e navegadores",
+            "Sincronização automática",
+            "Notificações",
+            "Veículo",
+            "⬇️ Baixar Timeline",
+        ).forEach { label ->
+            assertFalse(actions.contains("AgendaHeaderAction0396(\"$label\")"), "Misclassified action returned: $label")
         }
     }
 
     @Test
-    fun timelineDownloadLivesInOverflowAndNotAtLazyListEnd() {
+    fun timelineDownloadLivesInOverflowAndKeepsExistingMechanism() {
         val activity = source("TripsActivity.kt")
         val timeline = source("TripTimelineUi.kt")
         val download = source("AgendaTimelineDownload0398.kt")
         val header = source("AgendaHeaderNavigation0396.kt")
         val actions = activity
             .substringAfter("TripScreen.TIMELINE -> listOf(")
-            .substringBefore("TripScreen.PUBLIC_SEARCH ->")
+            .substringBefore("else -> emptyList()")
 
-        assertTrue(actions.contains("AgendaHeaderAction0396(\"⬇️ Baixar Timeline\")"))
+        assertTrue(actions.contains("AgendaHeaderAction0396(\"Baixar Timeline\")"))
         assertTrue(header.contains("DOWNLOAD_TIMELINE"))
         assertTrue(activity.contains("AgendaTimelineCommand0396.DOWNLOAD_TIMELINE"))
         assertTrue(timeline.contains("AgendaTimelineDownloadAction0399("))
         assertTrue(timeline.contains("triggerToken = downloadRequestToken0399"))
         assertTrue(download.contains("ActivityResultContracts.CreateDocument(\"application/json\")"))
-        assertFalse(timeline.contains("timeline-download-0398"))
-        assertFalse(timeline.contains("AgendaTimelineDownloadButton0398("))
         assertFalse(download.contains("Button("))
     }
 
     @Test
-    fun restoredScreenReusesCanonicalAccountsBrowserProfilesAndSessionsWithoutSyncTrigger() {
+    fun accountsAndBrowsersAreEmbeddedInAutomaticSyncAndReuseCanonicalAuthorities() {
+        val automatic = source("AgendaAutomaticSyncUi0397.kt")
         val screen = source("BlaBlaAccountsBrowsersUi0399.kt")
         val accountAuthority = source("BlaBlaDynamicAccounts.kt")
         val sessionAuthority = source("BlaBlaCollectorSessionModule.kt")
-        val legacyUi = source("TripBlaBlaCollectorUi.kt")
-        val timeline = source("TripTimelineUi.kt")
 
+        assertTrue(automatic.contains("BlaBlaAccountsAndBrowsersScreen0399()"))
         assertTrue(screen.contains("BlaBlaDynamicAccountRegistry(context)"))
         assertTrue(screen.contains("BlaBlaDynamicSessionStore(context)"))
         assertTrue(screen.contains("BlaBlaDynamicSessionIntents.login(context, account)"))
-        assertTrue(screen.contains("DynamicAccountRow("))
-        assertTrue(legacyUi.contains("Perfil do navegador: \${account.webProfileName}"))
-        assertTrue(accountAuthority.contains("profileUuid: String?"))
-        assertTrue(accountAuthority.contains("webProfileName: String"))
-        assertTrue(sessionAuthority.contains("BlaBlaDynamicSessionSnapshot"))
-        assertFalse(screen.contains("BlaBlaDynamicSessionIntents.sync"))
-        assertFalse(screen.contains("AgendaBackgroundSync0392"))
-        assertFalse(screen.contains("Sincronizar todas as contas"))
-        assertFalse(screen.contains("Sincronizar por data/período"))
-        assertFalse(screen.contains("Tentar vagas pendentes"))
-        assertFalse(timeline.contains("BlaBlaCollectorPanel("))
-    }
-
-    @Test
-    fun accountAndSessionAuthoritiesUseExistingTenantStoragePolicyAndPreserveLegacyKeys() {
-        val accountAuthority = source("BlaBlaDynamicAccounts.kt")
-        val sessionAuthority = source("BlaBlaCollectorSessionModule.kt")
         assertTrue(accountAuthority.contains("RotaCertaTenantRegistry(appContext).activeScope()"))
         assertTrue(accountAuthority.contains("tenantScope.key(KEY_ACCOUNTS)"))
         assertTrue(sessionAuthority.contains("RotaCertaTenantRegistry(appContext).activeScope()"))
-        assertTrue(sessionAuthority.contains("tenantScope.keyAlias(\"blablacar-dynamic-session-\$id\")"))
-        assertTrue(sessionAuthority.contains("tenantScope.keyAlias(id)"))
+        assertFalse(screen.contains("AgendaBackgroundSync0392"))
     }
 }

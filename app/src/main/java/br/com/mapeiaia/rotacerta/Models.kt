@@ -30,9 +30,9 @@ data class AppSettings(
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
-    /** Only manual seat input: seats explicitly allocated to the Rota Certa channel for each trip. Zero is valid. */
+    /** Legacy tenant fallback kept only to migrate trips that predate per-trip Vagas extra. */
     val rotaCertaSeatAllocation: Int = 0,
-    /** Monotonic tenant configuration version owned by SettingsRepository. */
+    /** Monotonic legacy migration version owned by SettingsRepository. */
     val rotaCertaSeatAllocationVersion: Long = 0L,
 )
 

@@ -17,10 +17,10 @@ class AgendaCapacityLoadedState0346Test {
         assertTrue(timeline.contains("val settingsLoaded = appSettingsState != null"))
         assertFalse(timeline.contains("settingsRepository.settings.collectAsState(initial = AppSettings())"))
 
-        assertTrue(online.contains("vehicleSettingsRepository.settings.collectAsState(initial = null)"))
-        assertTrue(online.contains("if (vehicleAppSettings != null) {"))
-        assertTrue(online.contains("Carregando configurações do veículo…"))
-        assertFalse(online.contains("vehicleSettingsRepository.settings.collectAsState(initial = AppSettings())"))
+        assertFalse(online.contains("vehicleSettingsRepository.settings.collectAsState"))
+        assertFalse(online.contains("Carregando configurações do veículo…"))
+        assertTrue(online.contains("internal fun AgendaAppSettingsScreen0416("))
+        assertTrue(online.contains("var vehicleMakeModel by remember(initial.vehicleMakeModel)"))
     }
 
     @Test

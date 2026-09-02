@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.MainActivity
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection
@@ -125,7 +126,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC, ACCOUNTS_BROWSERS }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -133,6 +134,7 @@ private fun TripScreen.isAgendaRoot0396(): Boolean =
         this == TripScreen.PUBLIC_SEARCH ||
         this == TripScreen.PASSENGERS ||
         this == TripScreen.SETTINGS ||
+        this == TripScreen.APP_SETTINGS ||
         this == TripScreen.AUTO_SYNC
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
@@ -141,6 +143,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
     TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
+    TripScreen.APP_SETTINGS -> AgendaRootSection0396.APP_SETTINGS
     else -> AgendaRootSection0396.ALL_TRIPS
 }
 
@@ -149,7 +152,8 @@ private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "Sincronização automática"
-    TripScreen.ACCOUNTS_BROWSERS -> "Contas e navegadores"
+    TripScreen.APP_SETTINGS -> "Configurações"
+    TripScreen.EXTRA_SEATS -> "Vagas extra"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
     TripScreen.PASSENGERS -> "Passageiros"
     TripScreen.CREATE -> "Nova viagem"
@@ -259,36 +263,23 @@ private fun TripApp(
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
     var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
     var message by remember { mutableStateOf<String?>(null) }
-    var driverNotifications by remember { mutableStateOf<List<DriverNotificationItem>>(emptyList()) }
-    var driverUnreadCount by remember { mutableStateOf(0) }
+    val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
+    val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
+    val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.notifications
+    } else {
+        emptyList()
+    }
+    val driverUnreadCount = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
+        notificationProjection0416.unreadCount.coerceAtLeast(0)
+    } else {
+        0
+    }
     val shareScope = rememberCoroutineScope()
 
     val refreshDriverNotifications: suspend () -> Unit = {
-        val online = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            store.onlineSettings()
-        }
-        if (!online.configured) {
-            driverNotifications = emptyList()
-            driverUnreadCount = 0
-        } else {
-            runCatching { TripRemoteApi(online).listDriverNotifications() }
-                .onSuccess { response ->
-                    driverNotifications = response.notifications
-                    driverUnreadCount = response.unreadCount.coerceAtLeast(0)
-                }
-                .onFailure { error ->
-                    UnifiedDebugEventStore.record(
-                        "DRIVER_NOTIFICATION_CENTER_REFRESH_FAILED",
-                        activity.packageName,
-                        AgendaFailureEvidence.describe(
-                            error = error,
-                            operation = "DRIVER_NOTIFICATION_CENTER_REFRESH",
-                            component = "TripsActivity",
-                            method = "refreshDriverNotifications",
-                        ),
-                    )
-                }
-        }
+        DriverNotificationProjection0416.refresh(activity)
+        Unit
     }
 
     androidx.compose.runtime.SideEffect {
@@ -374,6 +365,7 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
+                shareScope.launch { refreshDriverNotifications() }
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -390,12 +382,8 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        while (true) {
-            refreshDriverNotifications()
-            kotlinx.coroutines.delay(15_000L)
-        }
+        refreshDriverNotifications()
     }
-
 
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
         if (!settingsLoaded) return@LaunchedEffect
@@ -405,7 +393,7 @@ private fun TripApp(
                 trip.id to PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
                     trip = trip,
                     bookings = bookings.filter { it.tripId == trip.id },
-                    rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                 )
             }
         val previous = localCapacityIncrementalBaseline
@@ -419,7 +407,7 @@ private fun TripApp(
                 val failureBookings = bookings.filter { it.tripId == tripId }
                 val failureContext = failureTrip?.let { trip ->
                     val withAllocation = trip.copy(
-                        rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                     )
                     AgendaFailureEvidence.tripContext(
                         trip = withAllocation.copy(
@@ -437,7 +425,7 @@ private fun TripApp(
                         canonicalTripId = tripId,
                         mutationType = "LOCAL_TRIP_SEMANTIC_CHANGE",
                         source = "TIMELINE_STORE_OBSERVER",
-                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        configuredRotaCertaSeatAllocation = failureTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                     )
                     AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                 }.onFailure { error ->
@@ -475,14 +463,6 @@ private fun TripApp(
     }
     val headerActions0396 = when (screen) {
         TripScreen.TIMELINE -> listOf(
-            AgendaHeaderAction0396("Contas e navegadores") {
-                parentRootScreen0396 = TripScreen.TIMELINE
-                screen = TripScreen.ACCOUNTS_BROWSERS
-            },
-            AgendaHeaderAction0396("Sincronização automática") {
-                parentRootScreen0396 = TripScreen.TIMELINE
-                screen = TripScreen.AUTO_SYNC
-            },
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
                 parentRootScreen0396 = TripScreen.TIMELINE
@@ -491,13 +471,14 @@ private fun TripApp(
             AgendaHeaderAction0396("Adicionar passageiro") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
             },
-            AgendaHeaderAction0396("Alternar próximas / arquivadas") {
+            AgendaHeaderAction0396("Vagas extra") {
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.EXTRA_SEATS
+            },
+            AgendaHeaderAction0396("Próximas / arquivadas") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
             },
-            AgendaHeaderAction0396("Filtrar pendências das viagens") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_SYNC_PENDING)
-            },
-            AgendaHeaderAction0396("⬇️ Baixar Timeline") {
+            AgendaHeaderAction0396("Baixar Timeline") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.DOWNLOAD_TIMELINE)
             },
             AgendaHeaderAction0396("Fixar atalho") {
@@ -551,7 +532,9 @@ private fun TripApp(
                     screen = TripScreen.SETTINGS
                 }
                 AgendaRootSection0396.APP_SETTINGS -> {
-                    activity.startActivity(Intent(activity, MainActivity::class.java))
+                    parentRootScreen0396 = TripScreen.APP_SETTINGS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.APP_SETTINGS
                 }
             }
         },
@@ -602,7 +585,7 @@ private fun TripApp(
             when (screen) {
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
-                    defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    defaultRotaCertaSeatAllocation = 0,
                     onCancel = {
                         pendingCreateForPassengerId = ""
                         screen = parentRootScreen0396
@@ -787,7 +770,22 @@ private fun TripApp(
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
                 TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()
-                TripScreen.ACCOUNTS_BROWSERS -> BlaBlaAccountsAndBrowsersScreen0399()
+                TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
+                    initial = store.onlineSettings(),
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
+                        message = "Configurações salvas."
+                    },
+                )
+                TripScreen.EXTRA_SEATS -> TripExtraSeatsScreen0416(
+                    activity = activity,
+                    store = store,
+                    trips = trips,
+                    onChanged = { text ->
+                        refresh()
+                        message = text
+                    },
+                )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
@@ -874,6 +872,100 @@ private fun TripApp(
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+private fun TripExtraSeatsScreen0416(
+    activity: ComponentActivity,
+    store: TripStore,
+    trips: List<Trip>,
+    onChanged: (String) -> Unit,
+) {
+    val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
+    val scope = rememberCoroutineScope()
+    val candidates = trips
+        .filterNot { it.deleted || it.status == TripStatus.CANCELLED || it.status == TripStatus.COMPLETED }
+        .sortedBy { it.departureAtMillis }
+
+    Text("Vagas extra", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Cota manual por viagem. Alterar uma viagem não modifica as demais.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (candidates.isEmpty()) {
+        Text("Nenhuma viagem ativa disponível.", style = MaterialTheme.typography.bodySmall)
+    }
+    candidates.forEach { trip ->
+        var value by remember(trip.id, trip.rotaCertaSeatAllocation) {
+            mutableStateOf((trip.rotaCertaSeatAllocation ?: 0).coerceIn(0, 999).toString())
+        }
+        var localError by remember(trip.id) { mutableStateOf<String?>(null) }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(trip.title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                        .format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault())),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { value = it.filter(Char::isDigit).take(3) },
+                    label = { Text("Vagas extra") },
+                    supportingText = { Text("Única cota manual desta viagem. O valor 0 é válido.") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Button(
+                    onClick = {
+                        val parsed = value.toIntOrNull()
+                        if (parsed == null || parsed !in 0..999) {
+                            localError = "Informe um valor entre 0 e 999."
+                            return@Button
+                        }
+                        localError = null
+                        scope.launch {
+                            val bookingsForTrip = store.bookingsFor(trip.id)
+                            val allocated = trip.copy(
+                                rotaCertaSeatAllocation = parsed,
+                                updatedAtMillis = System.currentTimeMillis(),
+                            )
+                            val saved = store.saveTrip(
+                                allocated.copy(
+                                    capacity = operationalInventoryCapacity(allocated, bookingsForTrip),
+                                ),
+                            )
+                            if (resolvedTripRecordOrigin(saved) == TripRecordOrigin.EXTERNAL_BACKING) {
+                                saved.externalSnapshot?.let { external ->
+                                    mutationCoordinator.recordExternalManualMutation(
+                                        sourceTrip = external,
+                                        configuredRotaCertaSeatAllocation = parsed,
+                                        mutationType = "ROTA_CERTA_EXTRA_SEATS_CHANGED",
+                                    )
+                                }
+                            } else {
+                                mutationCoordinator.recordLocalMutation(
+                                    canonicalTripId = saved.id,
+                                    mutationType = "ROTA_CERTA_EXTRA_SEATS_CHANGED",
+                                    source = "EXTRA_SEATS_SCREEN",
+                                    configuredRotaCertaSeatAllocation = parsed,
+                                )
+                            }
+                            AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
+                            onChanged("Vagas extra atualizadas para esta viagem.")
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Salvar nesta viagem")
+                }
+                localError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
         }
     }
 }

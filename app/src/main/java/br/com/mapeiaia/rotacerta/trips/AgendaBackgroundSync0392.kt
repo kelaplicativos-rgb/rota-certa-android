@@ -1036,76 +1036,56 @@ internal object AgendaBackgroundSync0392 {
         val appContext = context.applicationContext
         val store = TripStore(appContext)
         val nowMillis = System.currentTimeMillis()
-        val changedLocalIds = store.reconcileOperationalInventoryTripIds(
+        // Legacy tenant allocation is migration-only from 0.1.416 onward. The canonical
+        // authority is Trip.rotaCertaSeatAllocation and explicit per-trip values are never fanned out.
+        val migratedTripIds = store.reconcileOperationalInventoryTripIds(
             rotaCertaSeatAllocation = rotaCertaSeatAllocation,
             seatAllocationVersion = seatAllocationVersion,
             nowMillis = nowMillis,
         )
         val coordinator = TripMutationCoordinator0387(appContext, store)
+        val migratedTrips = store.trips().filter { it.id in migratedTripIds }
         var localQueued = 0
-        val recoverableLocalTrips = store.trips().filter { trip ->
-            trip.isCanonicalLocalPublishSource() &&
-                trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) &&
-                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE)) &&
-                trip.seatAllocationVersionUsed == seatAllocationVersion
-        }
-        if (seatAllocationVersion > 0L || changedLocalIds.isNotEmpty()) {
-            recoverableLocalTrips.forEach { trip ->
+        migratedTrips
+            .filter(Trip::isCanonicalLocalPublishSource)
+            .filter { it.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) }
+            .forEach { trip ->
                 if (coordinator.recordLocalMutation(
                         canonicalTripId = trip.id,
-                        mutationType = "TENANT_SEAT_ALLOCATION_CHANGED",
-                        source = "TENANT_CONFIG_CANONICAL_FANOUT",
-                        configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                        mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
+                        source = "PER_TRIP_ALLOCATION_MIGRATION",
+                        configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
                         reconcileBookingInventory = false,
                     ) != null
                 ) {
                     localQueued++
                 }
             }
-        }
 
         var externalQueued = 0
         var externalRetryPending = 0
-        if (seatAllocationVersion > 0L) {
-            val cachedExternalTrips = BlaBlaCollectorStateStore(appContext)
-                .lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
-                .filterNot(BlaBlaCollectorTrip::identity_conflict)
-            val pendingBindings = store.publicExternalBindings().filter { binding ->
-                binding.departureAtMillis >= nowMillis &&
-                    binding.seatAllocationVersionUsed < seatAllocationVersion &&
-                    binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
-            }
-            pendingBindings.forEach { binding ->
-                val exactMatches = cachedExternalTrips.filter { source ->
-                    source.profile_uuid.trim().equals(binding.profileUuid.trim(), ignoreCase = true) &&
-                        source.trip_id?.trim() == binding.blablaTripId.trim()
-                }
-                if (exactMatches.size == 1) {
-                    if (coordinator.recordExternalTenantMutation(
-                            sourceTrip = exactMatches.single(),
-                            configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
-                            seatAllocationVersion = seatAllocationVersion,
-                        ) != null
-                    ) {
-                        externalQueued++
-                    }
-                } else {
+        migratedTrips
+            .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
+            .forEach { trip ->
+                val source = trip.externalSnapshot
+                val allocation = trip.rotaCertaSeatAllocation ?: 0
+                if (source == null || source.identity_conflict) {
                     externalRetryPending++
-                    UnifiedDebugEventStore.record(
-                        "TENANT_SEAT_ALLOCATION_FANOUT_0395",
-                        appContext.packageName,
-                        "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
-                            " internalTripId=" + seatSyncDiagnosticKey(binding.bookingTripId) +
-                            " configVersion=" + seatAllocationVersion +
-                            " result=RETRY_PENDING reason=external_snapshot_unavailable exactMatches=" + exactMatches.size,
-                    )
+                } else if (coordinator.recordExternalTenantMutation(
+                        sourceTrip = source,
+                        configuredRotaCertaSeatAllocation = allocation,
+                        seatAllocationVersion = trip.seatAllocationVersionUsed,
+                        mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
+                    ) != null
+                ) {
+                    externalQueued++
                 }
             }
-        }
-        BookingRealtimeEvents0356.notifyChanged()
+
+        if (migratedTripIds.isNotEmpty()) BookingRealtimeEvents0356.notifyChanged()
         val result = TenantSeatAllocationFanOut0395(
             configVersion = seatAllocationVersion,
-            localCanonicalUpdated = changedLocalIds.size,
+            localCanonicalUpdated = migratedTripIds.size,
             localPublicationQueued = localQueued,
             externalPublicationQueued = externalQueued,
             externalRetryPending = externalRetryPending,
@@ -1116,15 +1096,12 @@ internal object AgendaBackgroundSync0392 {
             "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
                 " configVersion=" + seatAllocationVersion +
                 " allocation=" + rotaCertaSeatAllocation +
+                " migratedOnly=true explicitPerTripPreserved=true" +
                 " localCanonicalUpdated=" + result.localCanonicalUpdated +
                 " localPublicationQueued=" + result.localPublicationQueued +
                 " externalPublicationQueued=" + result.externalPublicationQueued +
                 " externalRetryPending=" + result.externalRetryPending +
-                " result=" + when {
-                    result.externalRetryPending > 0 -> "RETRY_PENDING"
-                    result.localCanonicalUpdated > 0 || result.localPublicationQueued > 0 || result.externalPublicationQueued > 0 -> "UPDATE"
-                    else -> "SKIP_ALREADY_CURRENT"
-                } +
+                " result=" + if (migratedTripIds.isEmpty()) "SKIP_NO_LEGACY_TRIPS" else "MIGRATED" +
                 " fullSyncRequested=false",
         )
         result
@@ -1134,7 +1111,7 @@ internal object AgendaBackgroundSync0392 {
         context: Context,
         store: TripStore,
         response: BlaBlaCollectorMonthResponse?,
-        rotaCertaSeatAllocation: Int,
+        @Suppress("UNUSED_PARAMETER") rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         nowMillis: Long = System.currentTimeMillis(),
         collectionRunId: String = response?.collected_at.orEmpty(),
@@ -1142,7 +1119,6 @@ internal object AgendaBackgroundSync0392 {
         completeProfileUuids: Set<String> = emptySet(),
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
-        val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
         val coordinator = TripMutationCoordinator0387(context, store)
         var changedTrips = 0
         var skippedTrips = 0
@@ -1173,6 +1149,7 @@ internal object AgendaBackgroundSync0392 {
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
+            val perTripAllocation = existing?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
             if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
                 staleResultsRejected++
                 UnifiedDebugEventStore.record(
@@ -1191,7 +1168,7 @@ internal object AgendaBackgroundSync0392 {
                     blockedTrips++
                     return@forEach
                 }
-            val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, allocation)
+            val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, perTripAllocation)
             val incomingComplete = source.published_seats != null && source.passenger_roster_complete
             val decision = externalCollectorDeltaDecision0403(
                 existingFingerprint = existing?.externalSnapshotFingerprint.orEmpty(),
@@ -1236,9 +1213,9 @@ internal object AgendaBackgroundSync0392 {
                     val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
                     val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
                         source = source,
-                        capacity = (blablaQuota + allocation).coerceIn(0, 999),
+                        capacity = (blablaQuota + perTripAllocation).coerceIn(0, 999),
                         nowMillis = Long.MIN_VALUE,
-                        rotaCertaSeatAllocation = allocation,
+                        rotaCertaSeatAllocation = perTripAllocation,
                     )
                     if (synthesized == null) {
                         blockedTrips++
@@ -1335,7 +1312,7 @@ internal object AgendaBackgroundSync0392 {
                 if (
                     coordinator.recordExternalCollectionMutation(
                         sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = allocation,
+                        configuredRotaCertaSeatAllocation = perTripAllocation,
                         seatAllocationVersion = seatAllocationVersion,
                     ) != null
                 ) {
@@ -1883,40 +1860,11 @@ internal object AgendaBackgroundSync0392 {
         }
 
         if (mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
-            val online = store.onlineSettings()
-            if (online.configured) {
-                try {
-                    val remoteSeatReconcile = TripRemoteApi(online).reconcileAgendaSeatAllocation(
-                        rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
-                        configVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-                    )
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILED_0398",
-                        appContext.packageName,
-                        "tenantKey=${seatSyncDiagnosticKey(tenantId)} allocation=${tenantSettings.rotaCertaSeatAllocation} configVersion=${tenantSettings.rotaCertaSeatAllocationVersion} processed=${remoteSeatReconcile.processed} updated=${remoteSeatReconcile.updated} failClosed=${remoteSeatReconcile.failClosed}",
-                    )
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: Throwable) {
-                    val backendUpgradePending = error is TripRemoteApiException && error.httpStatus == 404
-                    if (!backendUpgradePending) failures++
-                    UnifiedDebugEventStore.record(
-                        if (backendUpgradePending) {
-                            "PUBLIC_AGENDA_SEAT_ALLOCATION_BACKEND_PENDING_0398"
-                        } else {
-                            "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_FAILED_0398"
-                        },
-                        appContext.packageName,
-                        "backendUpgradePending=$backendUpgradePending " +
-                            AgendaFailureEvidence.describe(
-                                error = error,
-                                operation = "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE",
-                                component = "AgendaBackgroundSync0392",
-                                method = "runTenantCycle",
-                            ),
-                    )
-                }
-            }
+            UnifiedDebugEventStore.record(
+                "PUBLIC_AGENDA_SEAT_ALLOCATION_RECONCILE_SKIPPED_0416",
+                appContext.packageName,
+                "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=per_trip_allocation_is_canonical globalFanOut=false",
+            )
         }
 
         AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "PROJECTING")

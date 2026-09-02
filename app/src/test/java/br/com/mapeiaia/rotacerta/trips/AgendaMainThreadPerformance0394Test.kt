@@ -47,14 +47,16 @@ class AgendaMainThreadPerformance0394Test {
     }
 
     @Test
-    fun notificationCredentialReadIsOffMainAndFarolIsNotPartOfFix() {
+    fun notificationCredentialReadIsOffMainAndAgendaDoesNotReachIntoFarolImplementation() {
         val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
-        val block = activity
-            .substringAfter("val refreshDriverNotifications: suspend () -> Unit = {")
-            .substringBefore("    androidx.compose.runtime.SideEffect")
+        val messaging = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt").readText()
+        val projection = messaging
+            .substringAfter("internal object DriverNotificationProjection0416")
+            .substringBefore("internal object BookingPushRegistration0304")
 
-        assertTrue(block.contains("withContext(kotlinx.coroutines.Dispatchers.IO)"))
-        assertTrue(block.contains("store.onlineSettings()"))
+        assertTrue(projection.contains("withContext(Dispatchers.IO) { store.onlineSettings() }"))
+        assertTrue(projection.contains("withContext(Dispatchers.IO)"))
+        assertTrue(projection.contains("TripRemoteApi(online).listDriverNotifications()"))
         assertFalse(activity.contains("LiveRideAccessibilityService"))
     }
 }
