@@ -1016,6 +1016,12 @@ private fun TimelineEntryCard(
     val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
+    var showMirrorDiagnostic0417 by remember(
+        entry.tripId,
+        trip?.canonicalRevision,
+        trip?.publicationRevision,
+        trip?.publicMirrorAttestationState0411,
+    ) { mutableStateOf(false) }
     val tripTarget0407 = remember(entry.blablaProfileUuid, entry.blablaTripId, entry.blablaTripHref) {
         resolveBlaBlaTripTarget0407(context, entry)
     }
