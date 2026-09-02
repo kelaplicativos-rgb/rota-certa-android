@@ -234,7 +234,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.409-blablacar-public-link-${{ github.sha }}
+          name: rota-certa-0.1.410-assistant-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -251,7 +251,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/blablacar-public-link-canonical-0.1.409'
+    if: github.ref_name == 'agent/blablacar-assistant-command-registry-0.1.410'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -260,6 +260,7 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      OPENAI_API_KEY_FROM_GITHUB: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -288,7 +289,30 @@ jobs:
           fi
       - name: Install Functions dependencies
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
-      - name: Deploy exact SHA trip API
+      - name: Ensure OpenAI secret exists only in Firebase Secret Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          auth_args=()
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            auth_args+=(--token "$FIREBASE_TOKEN")
+          fi
+          if npx --yes firebase-tools@latest functions:secrets:get OPENAI_API_KEY --project "$PROJECT" "${auth_args[@]}" >/tmp/openai-secret-metadata.txt 2>/dev/null; then
+            echo "OPENAI_SECRET_PRESENT=true"
+          else
+            if [ -z "${OPENAI_API_KEY_FROM_GITHUB:-}" ]; then
+              echo "::error::OPENAI_API_KEY is absent from Firebase Secret Manager and no GitHub Actions secret OPENAI_API_KEY is configured."
+              exit 9
+            fi
+            printf '%s' "$OPENAI_API_KEY_FROM_GITHUB" > /tmp/openai-api-key
+            chmod 600 /tmp/openai-api-key
+            npx --yes firebase-tools@latest functions:secrets:set OPENAI_API_KEY --project "$PROJECT" --data-file /tmp/openai-api-key "${auth_args[@]}"
+            rm -f /tmp/openai-api-key
+            echo "OPENAI_SECRET_CREATED=true"
+          fi
+      - name: Deploy exact SHA trip API and assistant API
         shell: bash
         run: |
           set -euo pipefail
@@ -320,3 +344,12 @@ jobs:
           CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/sync-state.json -w "%{http_code}" "$BASE/v1/driver/trips/sync-state")"
           test "$CODE" = "401"
           echo "DEPLOYED_SOURCE_SHA=${{ github.sha }}"
+      - name: Smoke live assistant route without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          CODE="$(curl --retry 8 --retry-delay 3 --silent --show-error             -o /tmp/assistant-smoke.json             -w "%{http_code}"             -X POST "$BASE/v1/assistant/interpret"             -H 'Content-Type: application/json'             --data '{"text":"liste minhas viagens","timezone":"America/Sao_Paulo","locale":"pt-BR","allowedActions":["LIST_TRIPS"]}')"
+          test "$CODE" = "401"
+          grep -Fq 'unauthorized' /tmp/assistant-smoke.json
+          echo "LIVE_ASSISTANT_ROUTE=PASS"
