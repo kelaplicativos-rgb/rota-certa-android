@@ -2473,6 +2473,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             skippedTrips = maxOf(skipped, 1),
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
+            targetedTripId = targetTripId.takeIf(String::isNotBlank),
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
