@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +70,26 @@ internal fun RotaCertaAssistantPanel0410(
     var busy by remember { mutableStateOf(false) }
     var pending by remember { mutableStateOf<AssistantPreparedExecution0410?>(null) }
     var activeIdempotencyKey by remember { mutableStateOf("") }
+
+    val voiceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { activityResult ->
+        if (activityResult.resultCode == Activity.RESULT_OK) {
+            val spoken = activityResult.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+                .orEmpty()
+            if (spoken.isNotBlank()) {
+                input = spoken.take(1200)
+                result = "Comando de voz reconhecido. Revise e toque em Enviar."
+            } else {
+                result = "Não consegui reconhecer o comando de voz. Você pode tentar novamente ou digitar."
+            }
+        } else {
+            result = "Entrada de voz cancelada. Nenhuma ação foi executada."
+        }
+    }
 
     val activityLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -387,6 +408,33 @@ internal fun RotaCertaAssistantPanel0410(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        val speechIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM,
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_LANGUAGE,
+                                Locale.getDefault().toLanguageTag(),
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_PROMPT,
+                                "Fale o que deseja fazer no Rota Certa",
+                            )
+                            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+                        }
+                        runCatching {
+                            voiceLauncher.launch(speechIntent)
+                        }.onFailure {
+                            result = "Reconhecimento de voz não está disponível neste aparelho. Digite o comando."
+                        }
+                    },
+                ) {
+                    Text("🎤 Falar")
+                }
                 Button(
                     enabled = input.isNotBlank() && !busy,
                     onClick = {
