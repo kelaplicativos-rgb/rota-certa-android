@@ -672,6 +672,28 @@ internal fun externalCollectorDeltaDecision0403(
     else -> ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL
 }
 
+internal fun targetedCollectorResponse0407(
+    response: BlaBlaCollectorMonthResponse?,
+    target: BlaBlaTripTarget0407?,
+): BlaBlaCollectorMonthResponse? {
+    if (response == null || target == null) return response
+    val exact = response.trips.filter { source ->
+        source.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+            source.trip_id?.trim() == target.tripId &&
+            BlaBlaCollectorUrlModule.tripId(source.trip_href.orEmpty()) == target.tripId
+    }
+    return response.copy(
+        status = if (exact.size == 1) "validated" else "partial",
+        trips = exact.takeIf { it.size == 1 }.orEmpty(),
+        coverage = response.coverage.copy(
+            complete_for_scope = false,
+            global_profile_month_complete = false,
+            reason = if (exact.size == 1) "targeted_trip_reverify" else "targeted_trip_missing_or_ambiguous",
+            unresolved_target_cards = if (exact.size == 1) 0 else 1,
+        ),
+    )
+}
+
 internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
@@ -1479,25 +1501,11 @@ internal object AgendaBackgroundSync0392 {
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
         )
-        fun collectorResponseForThisCycle0407(): BlaBlaCollectorMonthResponse? {
-            val response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions() ?: return null
-            val target = collectorTarget0407 ?: return response
-            val exact = response.trips.filter { source ->
-                source.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
-                    source.trip_id?.trim() == target.tripId &&
-                    BlaBlaCollectorUrlModule.tripId(source.trip_href.orEmpty()) == target.tripId
-            }
-            return response.copy(
-                status = if (exact.size == 1) "validated" else "partial",
-                trips = exact.takeIf { it.size == 1 }.orEmpty(),
-                coverage = response.coverage.copy(
-                    complete_for_scope = false,
-                    global_profile_month_complete = false,
-                    reason = if (exact.size == 1) "targeted_trip_reverify" else "targeted_trip_missing_or_ambiguous",
-                    unresolved_target_cards = if (exact.size == 1) 0 else 1,
-                ),
+        fun collectorResponseForThisCycle0407(): BlaBlaCollectorMonthResponse? =
+            targetedCollectorResponse0407(
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                target = collectorTarget0407,
             )
-        }
         if (reconcileCollectorSnapshot && collectorTarget0407 == null) {
             collectorCanonical = reconcileCollectedExternalTrips0403(
                 context = appContext,
