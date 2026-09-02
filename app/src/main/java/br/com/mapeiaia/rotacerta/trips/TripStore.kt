@@ -74,8 +74,18 @@ class TripStore(context: Context) {
     }
 
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
-        val incoming = trip.normalizedRecordOrigin()
-        val existing = trips().firstOrNull { it.id == incoming.id }
+        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin())
+        val allTrips = trips()
+        val existingById = allTrips.firstOrNull { it.id == keyedIncoming.id }
+        val existingByStrongKey = keyedIncoming.tripKey.takeIf(String::isNotBlank)?.let { key ->
+            allTrips.firstOrNull { it.tripKey == key }
+        }
+        val existing = existingById ?: existingByStrongKey
+        val incoming = if (existing != null && existing.id != keyedIncoming.id) {
+            keyedIncoming.copy(id = existing.id, createdAtMillis = existing.createdAtMillis)
+        } else {
+            keyedIncoming
+        }
         if (existing != null && existing.canonicalRevision > 0L && incoming.canonicalRevision < existing.canonicalRevision) {
             UnifiedDebugEventStore.record(
                 "TRIP_CANONICAL_WRITE",
@@ -91,26 +101,46 @@ class TripStore(context: Context) {
         }
         val semanticChanged = existing == null || canonicalTripComparable0395(existing) != canonicalTripComparable0395(incoming)
         if (existing != null && !semanticChanged && incoming.canonicalRevision <= existing.canonicalRevision) {
-            return@synchronized existing
+            val incomingGeneration = incoming.lastCollectionGeneration
+            val metadata = existing.copy(
+                tripKey = incoming.tripKey.ifBlank { existing.tripKey },
+                canonicalStateHash = existing.canonicalStateHash.ifBlank {
+                    canonicalTripStateHash0406(existing.copy(tripKey = incoming.tripKey.ifBlank { existing.tripKey }), bookingsFor(existing.id))
+                },
+                lastCollectionGeneration = maxOf(existing.lastCollectionGeneration, incomingGeneration),
+                lastCollectionRunId = if (
+                    incoming.lastCollectionRunId.isNotBlank() &&
+                    incomingGeneration >= existing.lastCollectionGeneration
+                ) incoming.lastCollectionRunId else existing.lastCollectionRunId,
+                lastObservedAtMillis = maxOf(existing.lastObservedAtMillis, incoming.lastObservedAtMillis),
+            )
+            if (metadata != existing) persistCanonicalTrip0406(metadata, allTrips)
+            return@synchronized metadata
         }
         val nextRevision = if (existing == null) {
             maxOf(1L, incoming.canonicalRevision)
         } else {
             nextCanonicalTripRevision0395(existing.canonicalRevision, incoming.canonicalRevision, semanticChanged)
         }
-        val normalized = incoming.copy(
+        val normalizedWithoutHash = incoming.copy(
             canonicalRevision = nextRevision,
+            canonicalStateHash = "",
             updatedAtMillis = System.currentTimeMillis(),
         )
-        val current = trips().filterNot { it.id == normalized.id }
-        require(prefs.edit().putString(tripsKey, json.encodeToString(listOf(normalized) + current)).commit()) {
-            "Falha ao persistir estado canônico da viagem."
-        }
+        val normalized = normalizedWithoutHash.copy(
+            canonicalStateHash = canonicalTripStateHash0406(
+                normalizedWithoutHash,
+                bookingsFor(normalizedWithoutHash.id),
+            ),
+        )
+        persistCanonicalTrip0406(normalized, allTrips)
         UnifiedDebugEventStore.record(
             "TRIP_CANONICAL_WRITE",
             appContext.packageName,
             "tenantId=" + tenantScope.tenantId +
                 " internalTripId=" + normalized.id +
+                " tripKeyPresent=" + normalized.tripKey.isNotBlank() +
+                " stateHash=" + normalized.canonicalStateHash.takeLast(12) +
                 " source=TripStore oldRevision=" + (existing?.canonicalRevision ?: 0L) +
                 " newRevision=" + normalized.canonicalRevision +
                 " changedFields=trip publicationTarget=LOCAL result=UPDATE" +
@@ -119,10 +149,165 @@ class TripStore(context: Context) {
         normalized
     }
 
+    private fun canonicalizeTripIdentity0406(trip: Trip): Trip {
+        val key = when (resolvedTripRecordOrigin(trip)) {
+            TripRecordOrigin.EXTERNAL_BACKING -> canonicalBlaBlaTripKey0406(
+                tenantId = tenantScope.tenantId,
+                profileUuid = trip.blablaProfileUuid,
+                providerTripId = trip.blablaTripId,
+            )
+            TripRecordOrigin.LOCAL -> canonicalLocalTripKey0406(tenantScope.tenantId, trip.id)
+        }
+        return if (key.isNullOrBlank() || trip.tripKey == key) trip else trip.copy(tripKey = key)
+    }
+
+    private fun persistCanonicalTrip0406(trip: Trip, current: List<Trip>) {
+        val next = current.filterNot { existing ->
+            existing.id == trip.id || (trip.tripKey.isNotBlank() && existing.tripKey == trip.tripKey)
+        }
+        require(prefs.edit().putString(tripsKey, json.encodeToString(listOf(trip) + next)).commit()) {
+            "Falha ao persistir estado canônico da viagem."
+        }
+    }
+
     private fun canonicalTripComparable0395(trip: Trip): Trip = trip.copy(
         canonicalRevision = 0L,
+        canonicalStateHash = "",
+        tripKey = "",
+        lastCollectionRunId = "",
+        lastCollectionGeneration = 0L,
+        lastObservedAtMillis = 0L,
+        deletedAtMillis = 0L,
         updatedAtMillis = 0L,
     )
+
+    internal fun reconcileCanonicalIntegrity0406(nowMillis: Long = System.currentTimeMillis()): CanonicalIntegrityReport0406 =
+        synchronized(CANONICAL_LOCK) {
+            val originalTrips = trips()
+            val keyedTrips = originalTrips.map(::canonicalizeTripIdentity0406)
+            val externalGroups = keyedTrips
+                .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isNotBlank() }
+                .groupBy(Trip::tripKey)
+            val winnersByKey = externalGroups.mapValues { (_, candidates) ->
+                candidates.maxWithOrNull(
+                    compareBy<Trip> { it.canonicalRevision }.thenBy { it.updatedAtMillis },
+                ) ?: candidates.first()
+            }
+            val loserToWinner = mutableMapOf<String, String>()
+            externalGroups.values.forEach { group ->
+                val winner = winnersByKey[group.first().tripKey] ?: return@forEach
+                group.filterNot { it.id == winner.id }.forEach { loser -> loserToWinner[loser.id] = winner.id }
+            }
+            val originalBookings = bookings()
+            val remappedBookings = originalBookings.map { booking ->
+                loserToWinner[booking.tripId]?.let { winnerId -> booking.copy(tripId = winnerId) } ?: booking
+            }
+            val winnerIds = winnersByKey.values.map(Trip::id).toSet()
+            val retainedTrips = keyedTrips.filter { trip ->
+                resolvedTripRecordOrigin(trip) != TripRecordOrigin.EXTERNAL_BACKING ||
+                    trip.tripKey.isBlank() ||
+                    trip.id in winnerIds
+            }
+            val bookingsByTrip = remappedBookings.groupBy(Booking::tripId)
+            val hashedTrips = retainedTrips.map { trip ->
+                val stateHash = canonicalTripStateHash0406(trip, bookingsByTrip[trip.id].orEmpty())
+                if (trip.canonicalStateHash == stateHash) trip else trip.copy(canonicalStateHash = stateHash)
+            }
+            val canonicalByKey = hashedTrips.filter { it.tripKey.isNotBlank() }.associateBy(Trip::tripKey)
+            val originalBindings = publicExternalBindings()
+            val normalizedBindings = originalBindings.map { binding ->
+                val key = canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = binding.profileUuid,
+                    providerTripId = binding.blablaTripId,
+                )
+                val canonical = key?.let(canonicalByKey::get)
+                if (canonical != null && binding.bookingTripId != canonical.id) {
+                    binding.copy(
+                        bookingTripId = canonical.id,
+                        canonicalRevision = maxOf(binding.canonicalRevision, canonical.publicationRevision),
+                        stateHash = canonical.canonicalStateHash,
+                        updatedAtMillis = nowMillis,
+                    )
+                } else if (canonical != null && binding.stateHash != canonical.canonicalStateHash) {
+                    binding.copy(stateHash = canonical.canonicalStateHash, updatedAtMillis = nowMillis)
+                } else binding
+            }
+            val groupedBindings = normalizedBindings.groupBy { binding ->
+                canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = binding.profileUuid,
+                    providerTripId = binding.blablaTripId,
+                ) ?: "remote:" + binding.remoteTripId
+            }
+            val orderedBindingGroups = groupedBindings.values.map { candidates ->
+                candidates.sortedWith(
+                    compareByDescending<PublicExternalTripBinding> { it.canonicalRevision }
+                        .thenByDescending { it.updatedAtMillis },
+                )
+            }
+            val dedupedBindings = orderedBindingGroups.map { it.first() }
+            val duplicateBindingsForCleanup = orderedBindingGroups.flatMap { ordered ->
+                val keeperRemoteId = ordered.first().remoteTripId
+                ordered.drop(1)
+                    .filter { it.remoteTripId.isNotBlank() && it.remoteTripId != keeperRemoteId }
+            }.distinctBy(PublicExternalTripBinding::remoteTripId)
+            val orphanBindingsForCleanup = dedupedBindings.filter { binding ->
+                val key = canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = binding.profileUuid,
+                    providerTripId = binding.blablaTripId,
+                )
+                key != null && key !in canonicalByKey
+            }
+            val changed = hashedTrips != originalTrips ||
+                remappedBookings != originalBookings ||
+                dedupedBindings != originalBindings
+            if (changed) {
+                require(
+                    prefs.edit()
+                        .putString(tripsKey, json.encodeToString(hashedTrips))
+                        .putString(bookingsKey, json.encodeToString(remappedBookings))
+                        .putString(publicExternalBindingsKey, json.encodeToString(dedupedBindings))
+                        .commit(),
+                ) { "Falha ao migrar integridade canônica." }
+            }
+            CanonicalIntegrityReport0406(
+                canonicalTrips = hashedTrips.size,
+                duplicateCanonicalTrips = loserToWinner.size,
+                migratedBookings = originalBookings.indices.count { index -> originalBookings[index].tripId != remappedBookings[index].tripId },
+                duplicateAgendaBindings = (originalBindings.size - dedupedBindings.size).coerceAtLeast(0),
+                orphanAgendaBindings = orphanBindingsForCleanup.size,
+                unresolvedExternalIdentity = hashedTrips.count {
+                    resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isBlank()
+                },
+                duplicateAgendaBindingsForCleanup = duplicateBindingsForCleanup,
+                orphanAgendaBindingsForCleanup = orphanBindingsForCleanup,
+            )
+        }
+
+    fun tombstoneExternalTrip0406(
+        canonicalTripId: String,
+        collectionRunId: String,
+        collectionGeneration: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val current = getTrip(canonicalTripId) ?: return@synchronized null
+        if (resolvedTripRecordOrigin(current) != TripRecordOrigin.EXTERNAL_BACKING) return@synchronized null
+        if (collectionGeneration > 0L && current.lastCollectionGeneration > collectionGeneration) return@synchronized current
+        if (current.deleted) return@synchronized current
+        saveTrip(
+            current.copy(
+                status = TripStatus.CANCELLED,
+                publicBookingEnabled = false,
+                deleted = true,
+                deletedAtMillis = nowMillis,
+                lastCollectionRunId = collectionRunId.take(160),
+                lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
+                lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
+            ),
+        )
+    }
 
     /**
      * Reconciles active/future trips to the channel-derived inventory. The old
@@ -171,10 +356,17 @@ class TripStore(context: Context) {
                     trip.seatAllocationVersionUsed < seatAllocationVersion
                 if (changed) {
                     changedTripIds += trip.id
-                    withAllocation.copy(
+                    val updated = withAllocation.copy(
                         capacity = derivedCapacity,
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        canonicalStateHash = "",
                         updatedAtMillis = nowMillis,
+                    )
+                    updated.copy(
+                        canonicalStateHash = canonicalTripStateHash0406(
+                            updated,
+                            bookingsByTrip[trip.id].orEmpty(),
+                        ),
                     )
                 } else trip
             }
@@ -281,10 +473,17 @@ class TripStore(context: Context) {
                     trip
                 } else {
                     changed++
-                    trip.copy(
+                    val updated = trip.copy(
                         capacity = derived,
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        canonicalStateHash = "",
                         updatedAtMillis = now,
+                    )
+                    updated.copy(
+                        canonicalStateHash = canonicalTripStateHash0406(
+                            updated,
+                            bookingsByTrip[trip.id].orEmpty(),
+                        ),
                     )
                 }
             }
@@ -364,11 +563,15 @@ class TripStore(context: Context) {
                 val status = SeatAvailabilityEngine.suggestedStatus(trip, tripBookings)
                 val capacity = operationalInventoryCapacity(trip, tripBookings)
                 changed = true
-                trip.copy(
+                val updated = trip.copy(
                     status = status,
                     capacity = capacity,
                     canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                    canonicalStateHash = "",
                     updatedAtMillis = nowMillis,
+                )
+                updated.copy(
+                    canonicalStateHash = canonicalTripStateHash0406(updated, tripBookings),
                 )
             }
         }
@@ -443,6 +646,17 @@ class TripStore(context: Context) {
     }
 }
 
+internal data class CanonicalIntegrityReport0406(
+    val canonicalTrips: Int = 0,
+    val duplicateCanonicalTrips: Int = 0,
+    val migratedBookings: Int = 0,
+    val duplicateAgendaBindings: Int = 0,
+    val orphanAgendaBindings: Int = 0,
+    val unresolvedExternalIdentity: Int = 0,
+    val duplicateAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
+    val orphanAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
+)
+
 @kotlinx.serialization.Serializable
 data class PublicExternalTripBinding(
     val remoteTripId: String,
@@ -460,6 +674,7 @@ data class PublicExternalTripBinding(
     val canonicalRevision: Long = 0L,
     val seatAllocationVersionUsed: Long = 0L,
     val externalFingerprint: String = "",
+    val stateHash: String = "",
     val updatedAtMillis: Long = System.currentTimeMillis(),
 ) {
     fun matches(entry: TripTimelineEntry): Boolean {
@@ -496,6 +711,7 @@ data class PublicExternalTripBinding(
         publicBookingEnabled = true,
         canonicalRevision = canonicalRevision,
         seatAllocationVersionUsed = seatAllocationVersionUsed,
+        canonicalStateHash = stateHash,
     )
 }
 

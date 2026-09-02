@@ -19,7 +19,8 @@ test("0.1.356 approves or rejects transactionally and idempotently", () => {
   assert.match(source, /previous\.status !== "REQUESTED"/);
   assert.match(source, /invalid_pending_capacity_claim/);
   assert.match(source, /missing_pending_occupancy_group/);
-  assert.match(source, /reconciledSegmentLoads\(trip, candidates, now\)/);
+  assert.match(source, /reconciledSegmentCapacity\(trip, candidates, now\)/);
+  assert.match(source, /assertNoOperationalOverbooking\(trip, candidates, now\)/);
   assert.match(source, /RESERVATION_APPROVED/);
   assert.match(source, /RESERVATION_REJECTED/);
 });
@@ -44,7 +45,7 @@ test("last-seat contention is serialized by the same Firestore trip transaction"
   assert.match(create, /const tripSnap = await tx\.get\(tripRef\)/);
   assert.match(create, /tx\.get\(tripRef\.collection\("bookings"\)\)/);
   assert.match(create, /const currentLoads = reconciledSegmentLoads\(trip, existing\)/);
-  assert.match(create, /const available = availableForSegmentRange\(trip, currentLoads, fromIndex, toIndex\)/);
+  assert.match(create, /const available = availableForBooking\(trip, existing, currentLoads, fromIndex, toIndex\)/);
   assert.match(create, /if \(seats > available\)/);
   assert.match(create, /code: "insufficient_seats", availableSeats: available/);
   assert.match(create, /assertNoOverbooking\(trip, reconciled\)/);
@@ -63,7 +64,7 @@ test("booking edit releases its own old claim only for revalidation and remains 
   assert.match(update, /capacityIsReliable\(token, trip\)/);
   assert.match(update, /otherRecords = records\.filter\(\(record\) => record\.id !== bookingId\)/);
   assert.match(update, /currentLoads = reconciledSegmentLoads\(trip, otherRecords, capacityCheckAtMillis\)/);
-  assert.match(update, /available = availableForSegmentRange\(trip, currentLoads, fromIndex, toIndex\)/);
+  assert.match(update, /available = availableForBooking\(trip, otherRecords, currentLoads, fromIndex, toIndex, capacityCheckAtMillis\)/);
   assert.match(update, /if \(seats > available\)/);
   assert.match(update, /currentSeatCapacityMessage\(available\)/);
   assert.match(update, /candidateRecords = records\.map\(\(record\) => record\.id === bookingId \? updated : record\)/);
@@ -84,7 +85,7 @@ test("manipulated seat quantities cannot bypass final authoritative availability
   const end = source.indexOf("\nasync function cancelPublicBooking", start);
   const create = source.slice(start, end);
   assert.match(create, /!Number\.isInteger\(seats\) \|\| seats < 1 \|\| seats > 999/);
-  assert.match(create, /availableForSegmentRange\(trip, currentLoads, fromIndex, toIndex\)/);
+  assert.match(create, /availableForBooking\(trip, existing, currentLoads, fromIndex, toIndex\)/);
   assert.match(create, /if \(seats > available\)/);
   assert.match(create, /return fail\([\s\S]*capacityDetails/);
 });

@@ -20,7 +20,9 @@ test("public booking is idempotent and transactionally reconciles segment capaci
   assert.match(api, /publicBookingId\(token, idempotencyKey\)/);
   assert.match(api, /idempotencyFingerprint/);
   assert.match(api, /existingAttempt\.exists/);
-  assert.match(api, /reconciledSegmentLoads\(trip, \[\.\.\.existing, candidate\]/);
+  assert.match(api, /const candidateRecords = \[\.\.\.existing, candidate\]/);
+  assert.match(api, /reconciledSegmentCapacity\(trip, candidateRecords, now\)/);
+  assert.match(api, /assertNoOperationalOverbooking\(trip, candidateRecords, now\)/);
   assert.match(api, /assertNoOverbooking/);
   assert.match(api, /db\.runTransaction/);
   assert.doesNotMatch(api, /loads\[index\]\s*=\s*\(loads\[index\].*\+\s*seats/);
@@ -38,8 +40,8 @@ test("mobile portal reserves directly while keeping dynamic seat limits and idem
   assert.match(web, /requestIdentity/);
   assert.match(web, /bookingRequestInFlight/);
   assert.match(web, /body\.replayed/);
-  assert.match(html, /id="startBooking"[^>]*>RESERVAR</);
-  assert.match(html, /Precisa de mais lugares ou outro trecho\?/);
+  assert.match(html, /id="startBooking"[^>]*>Reservar pelo WhatsApp</);
+  assert.match(html, /mudar o trecho, pedir mais lugares ou usar créditos/);
   assert.match(html, /id="name" type="hidden"/);
   assert.match(html, /id="contact" type="hidden"/);
   assert.doesNotMatch(html, /<label>Seu nome\s*<input id="name"/);

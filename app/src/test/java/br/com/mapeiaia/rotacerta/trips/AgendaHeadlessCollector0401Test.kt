@@ -22,6 +22,20 @@ class AgendaHeadlessCollector0401Test {
         assertFalse(coordinator.contains("BlaBlaDynamicAccountSessionActivity::class.java"))
         assertTrue(dynamic.contains("internal class BlaBlaDynamicAccountSessionController0401"))
         assertTrue(dynamic.contains("visualHost?.invoke(view)"))
+        assertTrue(dynamic.contains("BLABLACAR_HEADLESS_PAGE_FALLBACK_0404"))
+        assertTrue(dynamic.contains("headlessPageFinishedNavigationGeneration0404 == expectedNavigation"))
+        assertTrue(coordinator.contains("withTimeout(HEADLESS_ACCOUNT_TIMEOUT_MS_0404)"))
+        assertTrue(coordinator.contains("headless_account_timeout_0404"))
+    }
+
+    @Test
+    fun headlessStateMachineDelaysDoNotDependOnViewAttachment() {
+        assertTrue(dynamic.contains("private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())"))
+        assertTrue(dynamic.contains("headlessDelayedHandler0405.postDelayed(guarded, delayMs)"))
+        assertTrue(dynamic.contains("private fun postSessionDelayed0405"))
+        assertFalse(dynamic.contains("view.postDelayed("))
+        assertEquals(1, dynamic.split("webView.postDelayed(").size - 1)
+        assertTrue(dynamic.contains("headlessDelayedHandler0405.removeCallbacksAndMessages(null)"))
     }
 
     @Test
@@ -29,7 +43,7 @@ class AgendaHeadlessCollector0401Test {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_open"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_mutation"))
-        assertEquals(AgendaBackgroundSyncMode0392.FULL_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
+        assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
         assertTrue(background.contains("runPendingHeadless"))
     }
 
@@ -51,8 +65,9 @@ class AgendaHeadlessCollector0401Test {
     }
 
     @Test
-    fun publicAgendaUsesPersistedCollectorSnapshotAndCanonicalStopIdsFirst() {
-        assertTrue(publicAgenda.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
+    fun publicAgendaUsesCanonicalTripStoreProjectionAndCanonicalStopIdsFirst() {
+        assertFalse(publicAgenda.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
+        assertTrue(publicAgenda.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_REUSED_0401"))
         assertTrue(publicAgenda.contains("firstRequestUsesCanonical=true"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402"))
@@ -60,6 +75,17 @@ class AgendaHeadlessCollector0401Test {
         val preserve = publicAgenda.indexOf("val authoritativeStops0402")
         val request = publicAgenda.indexOf("suspend fun reconcile(): DriverCapacitySnapshotResponse", startIndex = preserve.coerceAtLeast(0))
         assertTrue(preserve >= 0 && request > preserve)
+    }
+
+    @Test
+    fun cachedCanonicalTripsAreMaterializedBeforeHeadlessCollectionAndRefreshedAfterward() {
+        val cacheMaterialization = background.indexOf("EXTERNAL_CANONICAL_CACHE_MATERIALIZED_0404")
+        val headlessCollection = background.indexOf("runPendingHeadless")
+        val freshReconcile = background.indexOf("val freshCanonical = reconcileCollectedExternalTrips0403")
+        assertTrue(cacheMaterialization >= 0)
+        assertTrue(headlessCollection > cacheMaterialization)
+        assertTrue(freshReconcile > headlessCollection)
+        assertTrue(background.contains("BookingRealtimeEvents0356.notifyChanged()"))
     }
 
     @Test

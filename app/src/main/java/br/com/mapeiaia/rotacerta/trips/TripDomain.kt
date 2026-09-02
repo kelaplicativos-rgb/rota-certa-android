@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -115,6 +116,27 @@ data class Trip(
     val publicationTombstone: Boolean = false,
     /** Durable outbox event id used only for publication idempotency/audit. */
     val publicationEventId: String = "",
+    /**
+     * Last normalized BlaBlaCar observation accepted into the canonical TripStore.
+     * The collector is only an input; Timeline/Agenda projections must not read its volatile cache directly.
+     */
+    val externalSnapshot: BlaBlaCollectorTrip? = null,
+    /** Semantic fingerprint of [externalSnapshot], excluding volatile browser/UI attributes. */
+    val externalSnapshotFingerprint: String = "",
+    /** False means the observation was partial and must not replace a previously complete canonical snapshot. */
+    val externalSnapshotComplete: Boolean = false,
+    /** Stable tenant-scoped identity. External trips are tenant + provider + profile UUID + provider trip id. */
+    val tripKey: String = "",
+    /** Deterministic hash of the canonical state used to verify Timeline/Agenda projections. */
+    val canonicalStateHash: String = "",
+    /** Collector execution that last observed this trip. Metadata only; it never defines identity. */
+    val lastCollectionRunId: String = "",
+    /** Monotonic collector generation used to reject delayed results from older executions. */
+    val lastCollectionGeneration: Long = 0L,
+    val lastObservedAtMillis: Long = 0L,
+    /** Canonical tombstone. Deleted trips remain durable so projections can be repaired after crashes. */
+    val deleted: Boolean = false,
+    val deletedAtMillis: Long = 0L,
 )
 
 internal enum class CanonicalTripRevisionDecision0395 {
@@ -141,6 +163,59 @@ internal fun nextCanonicalTripRevision0395(
     maxOf(currentRevision, incomingRevision) + 1L
 } else {
     maxOf(currentRevision, incomingRevision)
+}
+
+internal fun canonicalTripStateHash0406(
+    trip: Trip,
+    bookings: List<Booking>,
+): String {
+    val relevantBookings = bookings.asSequence()
+        .filter { it.tripId == trip.id }
+        .sortedWith(
+            compareBy<Booking>(
+                { bookingOccupancyIdentityKey(it) },
+                { it.id },
+            ),
+        )
+        .toList()
+    val semantic = buildString {
+        append(trip.tripKey).append('|')
+        append(trip.recordOrigin.name).append('|')
+        append(trip.blablaProfileUuid.orEmpty().trim().lowercase()).append('|')
+        append(trip.blablaTripId.orEmpty().trim()).append('|')
+        append(trip.departureAtMillis).append('|')
+        append(trip.status.name).append('|')
+        append(trip.capacity).append('|')
+        append(trip.publishedSeats ?: -1).append('|')
+        append(trip.rotaCertaSeatAllocation ?: -1).append('|')
+        append(trip.capacityReliable).append('|')
+        append(trip.publicBookingEnabled).append('|')
+        append(trip.itineraryAuthoritative).append('|')
+        append(trip.deleted).append('|')
+        trip.stops.sortedBy(TripStop::order).forEach { stop ->
+            append(stop.order).append('~')
+            append(stop.id).append('~')
+            append(stop.name.trim()).append('~')
+            append(stop.address.trim()).append('~')
+            append(stop.plannedArrivalMillis ?: -1L).append('~')
+            append(stop.plannedDepartureMillis ?: -1L).append(',')
+        }
+        append('|')
+        relevantBookings.forEach { booking ->
+            append(bookingOccupancyIdentityKey(booking)).append('~')
+            append(booking.boardingStopId).append('~')
+            append(booking.dropoffStopId).append('~')
+            append(booking.seats).append('~')
+            append(booking.status.name).append('~')
+            append(booking.operationalStatus.name).append('~')
+            append(booking.paymentStatus.name).append('~')
+            append(booking.source.name).append('~')
+            append(booking.capacityClaimType.name).append(',')
+        }
+    }
+    return "tripstate-v1:" + MessageDigest.getInstance("SHA-256")
+        .digest(semantic.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
 @Serializable

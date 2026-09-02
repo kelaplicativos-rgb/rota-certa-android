@@ -25,8 +25,11 @@ test("driver can sync private and BlaBlaCar claims but cannot overwrite public b
 
 test("public booking and cancellation recompute authoritative segment loads inside transactions", () => {
   assert.match(api, /tx\.get\(tripRef\.collection\("bookings"\)\)/);
-  assert.match(api, /reconciledSegmentLoads\(trip, \[\.\.\.existing, candidate\]/);
+  assert.match(api, /const candidateRecords = \[\.\.\.existing, candidate\]/);
+  assert.match(api, /reconciledSegmentCapacity\(trip, candidateRecords, now\)/);
   assert.match(api, /reconciledRecords/);
+  assert.match(api, /reconciledSegmentCapacity\(trip, reconciledRecords, now\)/);
   assert.match(api, /assertNoOverbooking/);
+  assert.match(api, /assertNoOperationalOverbooking/);
   assert.doesNotMatch(api, /loads\[index\]\s*=\s*\(loads\[index\].*\+\s*seats/);
 });

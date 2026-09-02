@@ -39,7 +39,7 @@ test("authenticated My Trips edit and cancel both notify the driver through exis
   assert.match(cancel, /sendDriverBookingPush/);
   assert.match(cancel, /event: "reservation_cancelled"/);
   assert.match(edit, /assertNoOverbooking/);
-  assert.match(cancel, /reconciledSegmentLoads/);
+  assert.match(cancel, /reconciledSegmentCapacity/);
 });
 
 test("driver protected booking mutation uses driver auth and not an undefined passenger session", () => {
@@ -93,7 +93,8 @@ test("Android driver exposes notification center and stable push replacement id"
   assert.match(androidUi, /driverUnreadCount/);
   assert.match(androidUi, /refreshDriverNotifications/);
   assert.match(androidUi, /Marcar todas como lidas/);
-  assert.match(androidUi, /🔔/);
+  assert.match(androidUi, /notificationLabel0396/);
+  assert.match(androidUi, /Notificações/);
   assert.match(messaging, /\(event \+ ":" \+ bookingId\)\.hashCode\(\)/);
   assert.doesNotMatch(messaging, /System\.currentTimeMillis\(\) \/ 60_000L/);
 });

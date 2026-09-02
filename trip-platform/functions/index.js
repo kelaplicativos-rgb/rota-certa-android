@@ -737,6 +737,14 @@ function normalizeDriverTrip(raw, previous = null) {
     raw.publicationEventId == null ? (previous && previous.publicationEventId || "") : raw.publicationEventId,
     120,
   );
+  const canonicalStateHash = cleanText(
+    raw.canonicalStateHash == null ? (previous && previous.canonicalStateHash || "") : raw.canonicalStateHash,
+    160,
+  );
+  const tripKey = cleanText(
+    raw.tripKey == null ? (previous && previous.tripKey || "") : raw.tripKey,
+    180,
+  );
   return {
     localTripId: cleanText(raw.id, 100),
     title: cleanText(raw.title, 220),
@@ -756,6 +764,8 @@ function normalizeDriverTrip(raw, previous = null) {
     publicationRevision,
     publicationTombstone,
     publicationEventId,
+    canonicalStateHash,
+    tripKey,
     notes: cleanText(raw.notes, 1200),
   };
 }
@@ -5821,6 +5831,12 @@ async function listDriverTripSyncState0402(req, res) {
           capacitySnapshotRevision: cleanText(data.capacitySnapshotRevision, 128),
           publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
           canonicalTripId: cleanText(data.canonicalTripId, 180),
+          canonicalStateHash: cleanText(data.canonicalStateHash, 160),
+          tripKey: cleanText(data.tripKey, 180),
+          blablaProfileUuid: cleanText(data.blablaProfileUuid, 160),
+          blablaTripId: cleanText(data.blablaTripId, 160),
+          title: cleanText(data.title, 220),
+          capacity: Math.max(0, Number(data.capacity || 0)),
         };
       })
       .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.departureAtMillis > now)

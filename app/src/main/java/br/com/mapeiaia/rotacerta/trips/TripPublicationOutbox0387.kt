@@ -401,7 +401,8 @@ internal class TripMutationCoordinator0387(
             ?: original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
         val allocated = original.copy(rotaCertaSeatAllocation = allocation)
         val publicTrip = allocated.copy(capacity = operationalInventoryCapacity(allocated, bookings))
-        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation)
+        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation) +
+            "|state:" + publicTrip.canonicalStateHash
         outbox.ensureRevisionAtLeast(canonicalTripId, (publicTrip.canonicalRevision - 1L).coerceAtLeast(0L))
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
@@ -489,6 +490,18 @@ internal class TripMutationCoordinator0387(
         eventSource = "BLABLACAR_MANUAL_CARD",
     )
 
+    fun recordExternalCollectionMutation(
+        sourceTrip: BlaBlaCollectorTrip,
+        configuredRotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long = 0L,
+    ): TripPublicationOutboxEvent0387? = recordExternalMutation(
+        sourceTrip = sourceTrip,
+        configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
+        seatAllocationVersion = seatAllocationVersion,
+        mutationType = "BLABLACAR_EXTERNAL_COLLECTION_DELTA",
+        eventSource = "EXTERNAL_COLLECTION",
+    )
+
     fun recordExternalTenantMutation(
         sourceTrip: BlaBlaCollectorTrip,
         configuredRotaCertaSeatAllocation: Int,
@@ -543,20 +556,26 @@ internal class TripMutationCoordinator0387(
             )
             return null
         }
+        val canonicalExternalTrip = store.trips().firstOrNull { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+        }
         val canonicalTripId = existingBinding?.bookingTripId?.takeIf(String::isNotBlank)
+            ?: canonicalExternalTrip?.id?.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(outbox.tenantId, accountId, profileUuid, tripId)
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
-            ?: store.trips()
-                .firstOrNull { it.blablaProfileUuid.equals(profileUuid, true) && it.blablaTripId == tripId }
-                ?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+            ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
-        val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation)
+        val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation) +
+            "|state:" + canonicalExternalTrip?.canonicalStateHash.orEmpty()
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
             operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
             mutationType = mutationType,
             source = eventSource,
             snapshot = TripPublicationSnapshot0387(
+                trip = canonicalExternalTrip,
                 externalTrip = sourceTrip,
                 externalAccountId = accountId,
                 configuredRotaCertaSeatAllocation = allocation,
@@ -604,6 +623,7 @@ internal class TripMutationCoordinator0387(
         binding: PublicExternalTripBinding,
         mutationType: String = "TIMELINE_OPERATIONAL_CLEAR",
         source: String = "TIMELINE",
+        outboxCanonicalTripId: String? = null,
     ): TripPublicationOutboxEvent0387? {
         if (!store.onlineSettings().configured) return null
         val profileUuid = binding.profileUuid.trim()
@@ -613,7 +633,8 @@ internal class TripMutationCoordinator0387(
             it.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
         }
         if (accounts.size != 1) return null
-        val canonicalTripId = binding.bookingTripId.takeIf(String::isNotBlank)
+        val canonicalTripId = outboxCanonicalTripId?.takeIf(String::isNotBlank)
+            ?: binding.bookingTripId.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(
                 outbox.tenantId,
                 accounts.single().id,
@@ -701,6 +722,7 @@ internal class TripMutationCoordinator0387(
                             externalAccountId = event.snapshot.externalAccountId,
                             canonicalTripId = event.canonicalTripId,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
+                            canonicalTripSnapshot = event.snapshot.trip,
                         )
                     }
                     TripPublicationOperation0387.TOMBSTONE -> {
@@ -771,7 +793,7 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
+            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
         )
     }
 }

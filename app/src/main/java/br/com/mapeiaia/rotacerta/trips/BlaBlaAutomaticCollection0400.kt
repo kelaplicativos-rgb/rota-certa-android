@@ -13,7 +13,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 internal object BlaBlaCollectorTimelineEvents0400 {
     private val counter = AtomicLong(0L)
@@ -65,7 +67,14 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} origin=${origin.take(80)} collector=existing_dynamic_session executionHost=worker_headless_webview activityLaunch=false windowAttached=false browserOpened=false",
             )
             try {
-                runAccountHeadless(appContext, state.generation, account, origin)
+                withTimeout(HEADLESS_ACCOUNT_TIMEOUT_MS_0404) {
+                    runAccountHeadless(appContext, state.generation, account, origin)
+                }
+            } catch (timeout: TimeoutCancellationException) {
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_AUTOMATIC_COLLECTION_HEADLESS_TIMEOUT_0404", appContext.packageName,
+                    "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} timeoutMs=$HEADLESS_ACCOUNT_TIMEOUT_MS_0404 origin=${origin.take(80)} previousSnapshotPreserved=true browserOpened=false",
+                )
             } catch (cancelled: CancellationException) {
                 onAccountInterrupted(appContext, state.generation, accountId, "worker_cancelled")
                 throw cancelled
@@ -103,8 +112,13 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                         if (continuation.isActive) continuation.resume(Unit)
                     },
                 )
-                continuation.invokeOnCancellation {
-                    Handler(Looper.getMainLooper()).post { controller?.destroy("worker_cancelled") }
+                continuation.invokeOnCancellation { cause ->
+                    val reason = if (cause is TimeoutCancellationException) {
+                        "headless_account_timeout_0404"
+                    } else {
+                        "worker_cancelled"
+                    }
+                    Handler(Looper.getMainLooper()).post { controller?.destroy(reason) }
                 }
                 try {
                     controller?.start()
@@ -172,6 +186,8 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         )
         return finalState
     }
+
+    private const val HEADLESS_ACCOUNT_TIMEOUT_MS_0404 = 10L * 60L * 1000L
 
     private fun rootCause0400(error: Throwable): String {
         var current: Throwable = error

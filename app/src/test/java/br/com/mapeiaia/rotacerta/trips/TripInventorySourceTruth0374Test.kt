@@ -218,7 +218,9 @@ class TripInventorySourceTruth0374Test {
         val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertFalse(domain.contains("externalConfirmedPeakSeats"))
         assertFalse(publisher.contains("blablacar_remaining_plus_external_peak_plus_rota_certa"))
-        assertTrue(publisher.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
+        assertFalse(publisher.contains("capacitySource=blablacar_quota_plus_rota_certa_quota"))
+        assertTrue(publisher.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
+        assertTrue(publisher.contains("capacity = canonical.capacity"))
         assertTrue(ui.contains("Vagas disponíveis: ${'$'}{free ?: 0} ${'$'}availabilityLabel"))
         assertTrue(ui.contains("LOTADO"))
     }

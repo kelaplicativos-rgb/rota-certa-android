@@ -22,6 +22,8 @@ import androidx.work.workDataOf
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.time.Instant
+import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -40,6 +42,18 @@ internal data class AgendaBackgroundSyncRun0392(
     val collectorGeneration: Long = 0L,
     val collectorStatus: String = "NOT_REQUESTED",
     val collectorPending: Boolean = false,
+    val collectorChangedTrips: Int = 0,
+    val collectorSkippedTrips: Int = 0,
+    val collectorPublicationQueued: Int = 0,
+    val collectorMissingPreserved: Int = 0,
+    val collectorTombstonedTrips: Int = 0,
+    val collectorOrphanProjectionTombstones: Int = 0,
+    val collectorStaleResultsRejected: Int = 0,
+    val projectionMissingAgenda: Int = 0,
+    val projectionRevisionMismatch: Int = 0,
+    val projectionHashMismatch: Int = 0,
+    val projectionOrphans: Int = 0,
+    val projectionFailures: Int = 0,
 )
 
 internal data class AgendaAutomaticCollectorState0400(
@@ -82,6 +96,11 @@ internal fun agendaBackgroundSyncIntervalMinutes0392(requestedMinutes: Long? = n
 
 internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
 
+internal fun agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason: String): Boolean =
+    reason == "periodic" ||
+        reason == "blablacar_collection_result" ||
+        agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+
 internal fun agendaBackgroundSyncForegroundInfo0402(context: Context, reason: String): ForegroundInfo {
     val appContext = context.applicationContext
     val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -122,7 +141,7 @@ internal fun agendaBackgroundSyncForegroundInfo0402(context: Context, reason: St
 }
 
 internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncMode0392 = when {
-    reason == "periodic" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
+    reason == "periodic" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason == "manual" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "recovery" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "timeline_open" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
@@ -155,6 +174,9 @@ internal data class AgendaBackgroundSyncStatus0397(
     val retryPending: Boolean,
     val retryAttempt: Int,
     val lastFailures: Int,
+    val runId: String = "",
+    val runState: String = "IDLE",
+    val heartbeatAtMillis: Long = 0L,
 ) {
     fun nextExecutionEstimateMillis(nowMillis: Long = System.currentTimeMillis()): Long {
         if (!enabled || scheduledAtMillis <= 0L) return 0L
@@ -184,6 +206,10 @@ internal object AgendaBackgroundSyncConfig0392 {
     private const val KEY_RETRY_PENDING = "retry_pending_0397"
     private const val KEY_RETRY_ATTEMPT = "retry_attempt_0397"
     private const val KEY_LAST_FAILURES = "last_failures_0397"
+    private const val KEY_RUN_ID = "run_id_0406"
+    private const val KEY_RUN_STATE = "run_state_0406"
+    private const val KEY_HEARTBEAT = "heartbeat_at_0406"
+    internal const val RUN_LEASE_MILLIS_0406 = 45L * 60L * 1000L
     private const val KEY_COLLECTOR_GENERATION = "collector_generation_0400"
     private const val KEY_COLLECTOR_COMPLETED_GENERATION = "collector_completed_generation_0400"
     private const val KEY_COLLECTOR_REQUESTED_AT = "collector_requested_at_0400"
@@ -215,6 +241,7 @@ internal object AgendaBackgroundSyncConfig0392 {
     }
 
     fun status(context: Context): AgendaBackgroundSyncStatus0397 {
+        recoverStalledRun0406(context)
         val prefs = prefs(context)
         val scope = scope(context)
         val interval = agendaBackgroundSyncIntervalMinutes0392(
@@ -233,7 +260,55 @@ internal object AgendaBackgroundSyncConfig0392 {
             retryPending = prefs.getBoolean(scope.key(KEY_RETRY_PENDING), false),
             retryAttempt = prefs.getInt(scope.key(KEY_RETRY_ATTEMPT), 0),
             lastFailures = prefs.getInt(scope.key(KEY_LAST_FAILURES), 0),
+            runId = prefs.getString(scope.key(KEY_RUN_ID), "").orEmpty(),
+            runState = prefs.getString(scope.key(KEY_RUN_STATE), "IDLE").orEmpty(),
+            heartbeatAtMillis = prefs.getLong(scope.key(KEY_HEARTBEAT), 0L),
         )
+    }
+
+    internal fun recoverStalledRun0406(
+        context: Context,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean = synchronized(this) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        val result = prefs.getString(scope.key(KEY_LAST_RESULT), "").orEmpty()
+        val state = prefs.getString(scope.key(KEY_RUN_STATE), "").orEmpty()
+        val heartbeat = prefs.getLong(scope.key(KEY_HEARTBEAT), 0L)
+        val started = prefs.getLong(scope.key(KEY_LAST_STARTED), 0L)
+        if (!syncRunIsStalled0406(result, state, heartbeat, started, nowMillis, RUN_LEASE_MILLIS_0406)) {
+            return@synchronized false
+        }
+        require(
+            prefs.edit()
+                .putString(scope.key(KEY_LAST_RESULT), "STALLED")
+                .putString(scope.key(KEY_RUN_STATE), "RECOVERING")
+                .putBoolean(scope.key(KEY_RETRY_PENDING), true)
+                .putInt(scope.key(KEY_LAST_FAILURES), maxOf(1, prefs.getInt(scope.key(KEY_LAST_FAILURES), 0)))
+                .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
+                .commit(),
+        ) { "Falha ao recuperar sincronização abandonada." }
+        UnifiedDebugEventStore.record(
+            "AGENDA_BACKGROUND_SYNC_WATCHDOG_0406",
+            context.applicationContext.packageName,
+            "runId=" + prefs.getString(scope.key(KEY_RUN_ID), "").orEmpty().take(80) +
+                " previousState=" + state + " previousResult=" + result +
+                " action=MARK_STALLED_RECOVERING leaseMs=" + RUN_LEASE_MILLIS_0406,
+        )
+        true
+    }
+
+    internal fun recordRunHeartbeat0406(
+        context: Context,
+        state: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        prefs.edit()
+            .putString(scope.key(KEY_RUN_STATE), state.take(40))
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
+            .apply()
     }
 
     fun updateEnabled(context: Context, enabled: Boolean): Boolean {
@@ -459,12 +534,17 @@ internal object AgendaBackgroundSyncConfig0392 {
         ids.map(String::trim).filter(String::isNotBlank).distinct().joinToString(",")
 
     internal fun recordRunStarted(context: Context, reason: String, attempt: Int, nowMillis: Long = System.currentTimeMillis()) {
+        recoverStalledRun0406(context, nowMillis)
         val prefs = prefs(context)
         val scope = scope(context)
+        val runId = "sync-" + nowMillis + "-" + attempt
         prefs.edit()
             .putLong(scope.key(KEY_LAST_STARTED), nowMillis)
             .putString(scope.key(KEY_LAST_TRIGGER), agendaBackgroundSyncTrigger0397(reason))
             .putString(scope.key(KEY_LAST_RESULT), "RUNNING")
+            .putString(scope.key(KEY_RUN_ID), runId)
+            .putString(scope.key(KEY_RUN_STATE), "COLLECTING")
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
             .putBoolean(scope.key(KEY_RETRY_PENDING), false)
             .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
             .apply()
@@ -489,6 +569,13 @@ internal object AgendaBackgroundSyncConfig0392 {
             .putBoolean(scope.key(KEY_RETRY_PENDING), retryPending)
             .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
             .putInt(scope.key(KEY_LAST_FAILURES), failures)
+            .putString(scope.key(KEY_RUN_STATE), when {
+                result == "VERIFIED" -> "COMPLETE"
+                result.startsWith("FAILED") || result == "STALLED" -> "FAILED"
+                result.startsWith("RETRY") || retryPending -> "RECOVERING"
+                else -> "COMPLETE"
+            })
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
         if (reason == "periodic") {
             editor.putLong(scope.key(KEY_LAST_PERIODIC_FINISHED), nowMillis)
         }
@@ -496,15 +583,91 @@ internal object AgendaBackgroundSyncConfig0392 {
             fullReconcileComplete &&
             failures == 0 &&
             !retryPending &&
-            (
-                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE ||
-                    reason == "blablacar_collection_result"
-            )
+            agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason)
         ) {
             editor.putLong(scope.key(KEY_LAST_FULL_RECONCILE_FINISHED), nowMillis)
         }
         editor.apply()
     }
+}
+
+internal enum class ExternalCollectorDeltaDecision0403 {
+    UPDATE_CANONICAL,
+    SKIP_UNCHANGED,
+    PRESERVE_PARTIAL,
+}
+
+internal data class ExternalCollectorCanonicalBatch0403(
+    val changedTrips: Int = 0,
+    val skippedTrips: Int = 0,
+    val publicationQueued: Int = 0,
+    val blockedTrips: Int = 0,
+    val missingPreserved: Int = 0,
+    val tombstonedTrips: Int = 0,
+    val orphanProjectionTombstones: Int = 0,
+    val staleResultsRejected: Int = 0,
+)
+
+internal fun syncRunIsStalled0406(
+    lastResult: String,
+    runState: String,
+    heartbeatAtMillis: Long,
+    startedAtMillis: Long,
+    nowMillis: Long,
+    leaseMillis: Long,
+): Boolean {
+    if (lastResult != "RUNNING" && runState !in setOf("COLLECTING", "NORMALIZING", "RECONCILING", "COMMITTING", "PROJECTING", "VERIFYING")) {
+        return false
+    }
+    val anchor = maxOf(heartbeatAtMillis, startedAtMillis)
+    return anchor > 0L && nowMillis - anchor > leaseMillis.coerceAtLeast(1L)
+}
+
+internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMonthResponse?): Boolean {
+    if (response == null) return false
+    val status = response.status.trim().lowercase()
+    return response.coverage.complete_for_scope &&
+        response.coverage.global_profile_month_complete &&
+        status in setOf("success", "validated", "complete")
+}
+
+internal fun externalCanonicalTripWithinCompleteScope0406(
+    trip: Trip,
+    response: BlaBlaCollectorMonthResponse,
+): Boolean {
+    val month = response.month.orEmpty().trim()
+    val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
+    val tripProfile = trip.blablaProfileUuid.orEmpty().trim().lowercase()
+    val date = trip.externalSnapshot?.date.orEmpty()
+    return month.isNotBlank() && profileScope.isNotEmpty() &&
+        tripProfile in profileScope && date.startsWith(month)
+}
+
+internal data class ProjectionIntegrity0406(
+    val canonicalActive: Int = 0,
+    val agendaProjections: Int = 0,
+    val missingAgenda: Int = 0,
+    val revisionMismatch: Int = 0,
+    val hashMismatch: Int = 0,
+    val orphans: Int = 0,
+    val repairQueued: Int = 0,
+    val failures: Int = 0,
+) {
+    val verified: Boolean
+        get() = failures == 0 && missingAgenda == 0 && revisionMismatch == 0 && hashMismatch == 0 && orphans == 0
+}
+
+internal fun externalCollectorDeltaDecision0403(
+    existingFingerprint: String,
+    incomingFingerprint: String,
+    existingComplete: Boolean,
+    incomingComplete: Boolean,
+): ExternalCollectorDeltaDecision0403 = when {
+    incomingFingerprint.isNotBlank() && incomingFingerprint == existingFingerprint ->
+        ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED
+    existingComplete && !incomingComplete ->
+        ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL
+    else -> ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL
 }
 
 internal object AgendaBackgroundSync0392 {
@@ -697,6 +860,455 @@ internal object AgendaBackgroundSync0392 {
         result
     }
 
+    internal fun reconcileCollectedExternalTrips0403(
+        context: Context,
+        store: TripStore,
+        response: BlaBlaCollectorMonthResponse?,
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+        collectionRunId: String = response?.collected_at.orEmpty(),
+        collectionGeneration: Long = 0L,
+    ): ExternalCollectorCanonicalBatch0403 {
+        if (response == null) return ExternalCollectorCanonicalBatch0403()
+        val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
+        val coordinator = TripMutationCoordinator0387(context, store)
+        var changedTrips = 0
+        var skippedTrips = 0
+        var publicationQueued = 0
+        var blockedTrips = 0
+        var staleResultsRejected = 0
+        var tombstonedTrips = 0
+        var orphanProjectionTombstones = 0
+
+        val observedStrongKeys = linkedSetOf<String>()
+        response.trips.forEach { source ->
+            val profileUuid = source.profile_uuid.trim()
+            val blablaTripId = source.trip_id?.trim().orEmpty()
+            val strongKey = canonicalExternalTripIdentityKey(profileUuid, blablaTripId, source.trip_href)
+            if (source.identity_conflict || profileUuid.isBlank() || blablaTripId.isBlank() || strongKey == null) {
+                blockedTrips++
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_INGEST_BLOCKED_0403",
+                    context.packageName,
+                    "profileUuidPresent=${profileUuid.isNotBlank()} tripIdPresent=${blablaTripId.isNotBlank()} identityConflict=${source.identity_conflict} reason=strong_identity_required",
+                )
+                return@forEach
+            }
+            observedStrongKeys += strongKey
+
+            val existing = store.trips().firstOrNull { trip ->
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                    trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                    trip.blablaTripId?.trim() == blablaTripId
+            }
+            if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
+                staleResultsRejected++
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_STALE_RESULT_REJECTED_0406",
+                    context.packageName,
+                    "internalTripId=" + seatSyncDiagnosticKey(existing.id) +
+                        " incomingGeneration=" + collectionGeneration +
+                        " currentGeneration=" + existing.lastCollectionGeneration +
+                        " result=SKIP_STALE_RESULT",
+                )
+                return@forEach
+            }
+            val canonicalTripId = existing?.id
+                ?: externalBackingTripIdFor(profileUuid, blablaTripId, source.trip_href)
+                ?: run {
+                    blockedTrips++
+                    return@forEach
+                }
+            val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, allocation)
+            val incomingComplete = source.published_seats != null && source.passenger_roster_complete
+            val decision = externalCollectorDeltaDecision0403(
+                existingFingerprint = existing?.externalSnapshotFingerprint.orEmpty(),
+                incomingFingerprint = incomingFingerprint,
+                existingComplete = existing?.externalSnapshotComplete == true,
+                incomingComplete = incomingComplete,
+            )
+            val binding = store.publicExternalBindingForStrongIdentity(profileUuid, blablaTripId)
+
+            val canonicalTrip = when (decision) {
+                ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED -> {
+                    skippedTrips++
+                    existing?.let { current ->
+                        store.saveTrip(
+                            current.copy(
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
+                                lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
+                            ),
+                        )
+                    }
+                }
+                ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL -> {
+                    skippedTrips++
+                    existing?.let { current ->
+                        store.saveTrip(
+                            current.copy(
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
+                                lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
+                            ),
+                        )
+                    }
+                    UnifiedDebugEventStore.record(
+                        "EXTERNAL_CANONICAL_PARTIAL_PRESERVED_0403",
+                        context.packageName,
+                        "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} fingerprint=${incomingFingerprint.takeLast(12)} coverage=${response.status} completeForScope=${response.coverage.complete_for_scope} action=preserve_last_complete",
+                    )
+                    existing
+                }
+                ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL -> {
+                    val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                    val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
+                        source = source,
+                        capacity = (blablaQuota + allocation).coerceIn(0, 999),
+                        nowMillis = Long.MIN_VALUE,
+                        rotaCertaSeatAllocation = allocation,
+                    )
+                    if (synthesized == null) {
+                        blockedTrips++
+                        null
+                    } else {
+                        val observed = synthesized.trip
+                        val saved = store.saveTrip(
+                            observed.copy(
+                                id = canonicalTripId,
+                                status = if (source.availability.equals("full", ignoreCase = true)) TripStatus.FULL else TripStatus.PUBLISHED,
+                                recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+                                remoteId = existing?.remoteId ?: binding?.remoteTripId,
+                                publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
+                                publicUrl = existing?.publicUrl,
+                                publicBookingEnabled = existing?.publicBookingEnabled ?: true,
+                                capacityReliable = incomingComplete,
+                                createdAtMillis = existing?.createdAtMillis ?: nowMillis,
+                                canonicalRevision = existing?.canonicalRevision ?: 0L,
+                                seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
+                                publicationRevision = existing?.publicationRevision ?: 0L,
+                                publicationTombstone = existing?.publicationTombstone ?: false,
+                                publicationEventId = existing?.publicationEventId.orEmpty(),
+                                notes = existing?.notes.orEmpty(),
+                                externalSnapshot = source,
+                                externalSnapshotFingerprint = incomingFingerprint,
+                                externalSnapshotComplete = incomingComplete,
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(existing?.lastCollectionGeneration ?: 0L, collectionGeneration),
+                                lastObservedAtMillis = nowMillis,
+                                deleted = false,
+                                deletedAtMillis = 0L,
+                            ),
+                        )
+                        if (saved.externalSnapshotFingerprint == incomingFingerprint) {
+                            changedTrips++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_CANONICAL_INGEST_0403",
+                                context.packageName,
+                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} profileUuidPresent=true tripIdPresent=true oldFingerprint=${existing?.externalSnapshotFingerprint.orEmpty().takeLast(12)} newFingerprint=${incomingFingerprint.takeLast(12)} sourceComplete=$incomingComplete canonicalRevision=${saved.canonicalRevision} result=UPDATE",
+                            )
+                        } else {
+                            skippedTrips++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_CANONICAL_WRITE_DEFERRED_0403",
+                                context.packageName,
+                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} committedFingerprint=${saved.externalSnapshotFingerprint.takeLast(12)} incomingFingerprint=${incomingFingerprint.takeLast(12)} result=DEFERRED reason=canonical_revision_race retry=next_cycle",
+                            )
+                        }
+                        saved
+                    }
+                }
+            }
+
+            if (
+                canonicalTrip != null &&
+                binding != null &&
+                binding.bookingTripId.isNotBlank() &&
+                binding.bookingTripId != canonicalTripId
+            ) {
+                val previousBookingTripId = binding.bookingTripId
+                val migratedBookings = store.bookingsFor(previousBookingTripId)
+                    .map { booking -> booking.copy(tripId = canonicalTripId) }
+                if (migratedBookings.isNotEmpty()) {
+                    store.saveBookingsBatch(
+                        bookingsToSave = migratedBookings,
+                        preserveSourceUpdatedAt = true,
+                    )
+                }
+                store.savePublicExternalBinding(
+                    binding.copy(
+                        bookingTripId = canonicalTripId,
+                        canonicalRevision = maxOf(binding.canonicalRevision, canonicalTrip.canonicalRevision),
+                    ),
+                )
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403",
+                    context.packageName,
+                    "oldInternalTripId=${seatSyncDiagnosticKey(previousBookingTripId)} newInternalTripId=${seatSyncDiagnosticKey(canonicalTripId)} migratedBookings=${migratedBookings.size} profileUuidPresent=true tripIdPresent=true",
+                )
+            }
+
+            if (
+                incomingComplete &&
+                canonicalTrip != null &&
+                canonicalTrip.externalSnapshotFingerprint == incomingFingerprint &&
+                canonicalTrip.departureAtMillis > nowMillis &&
+                binding?.externalFingerprint != incomingFingerprint
+            ) {
+                if (
+                    coordinator.recordExternalCollectionMutation(
+                        sourceTrip = source,
+                        configuredRotaCertaSeatAllocation = allocation,
+                        seatAllocationVersion = seatAllocationVersion,
+                    ) != null
+                ) {
+                    publicationQueued++
+                }
+            } else if (decision == ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED) {
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_SKIP_0403",
+                    context.packageName,
+                    "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} fingerprint=${incomingFingerprint.takeLast(12)} result=UNCHANGED_SKIP publicationAlreadyCurrent=${binding?.externalFingerprint == incomingFingerprint}",
+                )
+            }
+        }
+
+        val canonicalExternal = store.trips().filter {
+            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !it.blablaProfileUuid.isNullOrBlank() && !it.blablaTripId.isNullOrBlank()
+        }
+        val missingActive = canonicalExternal.filter { trip ->
+            !trip.deleted && trip.status != TripStatus.CANCELLED &&
+                canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
+                    ?.let { it !in observedStrongKeys } == true
+        }
+        val deletionAllowed = externalCollectorAllowsTombstones0406(response)
+        val scopedMissing = if (deletionAllowed) {
+            missingActive.filter { externalCanonicalTripWithinCompleteScope0406(it, response) }
+        } else {
+            emptyList()
+        }
+        scopedMissing.forEach { missing ->
+            val tombstoned = store.tombstoneExternalTrip0406(
+                canonicalTripId = missing.id,
+                collectionRunId = collectionRunId,
+                collectionGeneration = collectionGeneration,
+                nowMillis = nowMillis,
+            )
+            if (tombstoned?.deleted == true) {
+                tombstonedTrips++
+                coordinator.recordTombstone(
+                    canonicalTripId = tombstoned.id,
+                    mutationType = "BLABLACAR_COMPLETE_SCOPE_DELETE",
+                    source = "EXTERNAL_COLLECTION",
+                )?.let { publicationQueued++ }
+            }
+        }
+        if (deletionAllowed) {
+            val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
+            val month = response.month.orEmpty().trim()
+            val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
+            val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+            store.publicExternalBindings().forEach { binding ->
+                val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
+                    ?: return@forEach
+                val observedKey = canonicalExternalTripIdentityKey(
+                    binding.profileUuid,
+                    binding.blablaTripId,
+                    binding.blablaTripHref,
+                ) ?: return@forEach
+                val bindingMonth = runCatching {
+                    Instant.ofEpochMilli(binding.departureAtMillis)
+                        .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
+                }.getOrDefault("")
+                if (
+                    key !in canonicalKeys &&
+                    observedKey !in observedStrongKeys &&
+                    binding.profileUuid.trim().lowercase() in profileScope &&
+                    month.isNotBlank() && bindingMonth == month
+                ) {
+                    if (
+                        coordinator.recordExternalTombstone(
+                            binding = binding,
+                            mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
+                            source = "PROJECTION_RECONCILER",
+                            outboxCanonicalTripId = "projection-cleanup:" +
+                                sha256TripPublication0387(binding.remoteTripId).take(24),
+                        ) != null
+                    ) {
+                        orphanProjectionTombstones++
+                        publicationQueued++
+                    }
+                }
+            }
+        }
+        val missingPreserved = (missingActive.size - scopedMissing.size).coerceAtLeast(0)
+        if (missingPreserved > 0) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_CANONICAL_MISSING_PRESERVED_0403",
+                context.packageName,
+                "missing=" + missingPreserved +
+                    " observed=" + observedStrongKeys.size +
+                    " canonical=" + canonicalExternal.size +
+                    " collectionStatus=" + response.status +
+                    " completeForScope=" + response.coverage.complete_for_scope +
+                    " globalProfileMonthComplete=" + response.coverage.global_profile_month_complete +
+                    " action=preserve_unproven_absence",
+            )
+        }
+        if (tombstonedTrips > 0 || orphanProjectionTombstones > 0) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_CANONICAL_TOMBSTONES_0406",
+                context.packageName,
+                "canonical=" + tombstonedTrips +
+                    " orphanProjection=" + orphanProjectionTombstones +
+                    " collectionRunId=" + collectionRunId.take(80) +
+                    " generation=" + collectionGeneration +
+                    " coverage=COMPLETE",
+            )
+        }
+        return ExternalCollectorCanonicalBatch0403(
+            changedTrips = changedTrips,
+            skippedTrips = skippedTrips,
+            publicationQueued = publicationQueued,
+            blockedTrips = blockedTrips,
+            missingPreserved = missingPreserved,
+            tombstonedTrips = tombstonedTrips,
+            orphanProjectionTombstones = orphanProjectionTombstones,
+            staleResultsRejected = staleResultsRejected,
+        )
+    }
+
+    internal suspend fun reconcileProjectionIntegrity0406(
+        context: Context,
+        store: TripStore,
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+        repair: Boolean,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
+        val settings = store.onlineSettings()
+        if (!settings.configured) return@withContext ProjectionIntegrity0406()
+        val remoteStates = try {
+            TripRemoteApi(settings).listDriverTripSyncStates0402().trips
+        } catch (error: Throwable) {
+            if (error is CancellationException) throw error
+            UnifiedDebugEventStore.record(
+                "PROJECTION_RECONCILER_REMOTE_READ_FAILED_0406",
+                context.applicationContext.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "PROJECTION_VERIFY",
+                    component = "AgendaBackgroundSync0392",
+                    method = "reconcileProjectionIntegrity0406",
+                ),
+            )
+            return@withContext ProjectionIntegrity0406(failures = 1)
+        }
+        val publicStatuses = setOf(
+            TripStatus.PUBLISHED,
+            TripStatus.FULL,
+            TripStatus.STARTING,
+            TripStatus.ACTIVE,
+        )
+        val canonical = store.trips().filter {
+            !it.deleted && it.departureAtMillis > nowMillis && it.status in publicStatuses
+        }
+        val canonicalById = canonical.associateBy(Trip::id)
+        val bindings = store.publicExternalBindings()
+        val remoteById = remoteStates.associateBy(DriverTripSyncState0402::remoteTripId)
+        val remoteByCanonicalId = remoteStates
+            .filter { it.canonicalTripId.isNotBlank() }
+            .associateBy(DriverTripSyncState0402::canonicalTripId)
+        val coordinator = TripMutationCoordinator0387(context, store)
+        var missing = 0
+        var revisionMismatch = 0
+        var hashMismatch = 0
+        var repairQueued = 0
+
+        fun queueRepair(trip: Trip): Boolean {
+            return if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
+                val source = trip.externalSnapshot ?: return false
+                if (!trip.externalSnapshotComplete) return false
+                coordinator.recordExternalCollectionMutation(
+                    sourceTrip = source,
+                    configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
+                        ?: rotaCertaSeatAllocation,
+                    seatAllocationVersion = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                ) != null
+            } else {
+                coordinator.recordLocalMutation(
+                    canonicalTripId = trip.id,
+                    mutationType = "PROJECTION_RECONCILER",
+                    source = "CANONICAL_VERIFY",
+                    configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
+                        ?: rotaCertaSeatAllocation,
+                ) != null
+            }
+        }
+
+        canonical.forEach { trip ->
+            val binding = if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
+                val profile = trip.blablaProfileUuid.orEmpty()
+                val externalId = trip.blablaTripId.orEmpty()
+                store.publicExternalBindingForStrongIdentity(profile, externalId)
+            } else null
+            val remoteId = binding?.remoteTripId
+                ?: trip.remoteId?.takeIf(String::isNotBlank)
+                ?: trip.publicToken.takeIf(String::isNotBlank)
+            val remote = remoteId?.let(remoteById::get) ?: remoteByCanonicalId[trip.id]
+            var needsRepair = false
+            if (remote == null) {
+                missing++
+                needsRepair = true
+            } else {
+                if (trip.canonicalStateHash.isNotBlank() && remote.canonicalStateHash != trip.canonicalStateHash) {
+                    hashMismatch++
+                    needsRepair = true
+                }
+                val expectedRevision = binding?.canonicalRevision?.takeIf { it > 0L }
+                    ?: trip.publicationRevision.takeIf { it > 0L }
+                if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
+                    revisionMismatch++
+                    needsRepair = true
+                }
+            }
+            if (repair && needsRepair && queueRepair(trip)) repairQueued++
+        }
+        val knownRemoteIds = bindings.map(PublicExternalTripBinding::remoteTripId).filter(String::isNotBlank).toSet() +
+            canonical.mapNotNull(Trip::remoteId).toSet() +
+            canonical.map(Trip::publicToken).filter(String::isNotBlank).toSet()
+        val orphans = remoteStates.count { remote ->
+            val canonicalId = remote.canonicalTripId
+            remote.remoteTripId in knownRemoteIds &&
+                canonicalId.isNotBlank() &&
+                canonicalId !in canonicalById
+        }
+        val report = ProjectionIntegrity0406(
+            canonicalActive = canonical.size,
+            agendaProjections = remoteStates.size,
+            missingAgenda = missing,
+            revisionMismatch = revisionMismatch,
+            hashMismatch = hashMismatch,
+            orphans = orphans,
+            repairQueued = repairQueued,
+        )
+        UnifiedDebugEventStore.record(
+            "PROJECTION_RECONCILER_0406",
+            context.applicationContext.packageName,
+            "canonical=" + report.canonicalActive +
+                " agenda=" + report.agendaProjections +
+                " missingAgenda=" + report.missingAgenda +
+                " revisionMismatch=" + report.revisionMismatch +
+                " hashMismatch=" + report.hashMismatch +
+                " orphans=" + report.orphans +
+                " repairQueued=" + report.repairQueued +
+                " repair=" + repair,
+        )
+        report
+    }
+
     internal suspend fun runCycle(context: Context, reason: String): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
@@ -713,11 +1325,62 @@ internal object AgendaBackgroundSync0392 {
     ): AgendaBackgroundSyncRun0392 {
         val mode = agendaBackgroundSyncMode0392(reason)
         val store = TripStore(appContext)
+        val integrityMigration = store.reconcileCanonicalIntegrity0406()
+        UnifiedDebugEventStore.record(
+            "CANONICAL_INTEGRITY_MIGRATION_0406",
+            appContext.packageName,
+            "canonical=" + integrityMigration.canonicalTrips +
+                " duplicates=" + integrityMigration.duplicateCanonicalTrips +
+                " migratedBookings=" + integrityMigration.migratedBookings +
+                " duplicateAgendaBindings=" + integrityMigration.duplicateAgendaBindings +
+                " orphanAgendaBindings=" + integrityMigration.orphanAgendaBindings +
+                " unresolvedIdentity=" + integrityMigration.unresolvedExternalIdentity,
+        )
+        val migrationCoordinator = TripMutationCoordinator0387(appContext, store)
+        var migrationProjectionCleanupQueued = 0
+        integrityMigration.duplicateAgendaBindingsForCleanup.forEach { duplicate ->
+            if (
+                migrationCoordinator.recordExternalTombstone(
+                    binding = duplicate,
+                    mutationType = "MIGRATION_DUPLICATE_PROJECTION",
+                    source = "CANONICAL_MIGRATION",
+                    outboxCanonicalTripId = "projection-cleanup:" +
+                        sha256TripPublication0387(duplicate.remoteTripId).take(24),
+                ) != null
+            ) {
+                migrationProjectionCleanupQueued++
+            }
+        }
+        integrityMigration.orphanAgendaBindingsForCleanup.forEach { orphan ->
+            if (
+                migrationCoordinator.recordExternalTombstone(
+                    binding = orphan,
+                    mutationType = "MIGRATION_ORPHAN_PROJECTION",
+                    source = "CANONICAL_MIGRATION",
+                    outboxCanonicalTripId = "projection-cleanup:" +
+                        sha256TripPublication0387(orphan.remoteTripId).take(24),
+                ) != null
+            ) {
+                migrationProjectionCleanupQueued++
+            }
+        }
+        if (migrationProjectionCleanupQueued > 0) {
+            UnifiedDebugEventStore.record(
+                "CANONICAL_DUPLICATE_PROJECTION_CLEANUP_0406",
+                appContext.packageName,
+                "queued=" + migrationProjectionCleanupQueued +
+                    " duplicateBindings=" + integrityMigration.duplicateAgendaBindings +
+                    " orphanBindings=" + integrityMigration.orphanAgendaBindings,
+            )
+        }
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "NORMALIZING")
         var failures = 0
         var bookingImports = 0
         var outboxDelivered = 0
         var publicLocalPublished = 0
         var publicExternalPublished = 0
+        var collectorCanonical = ExternalCollectorCanonicalBatch0403()
+        var projectionIntegrity = ProjectionIntegrity0406()
         val tenantSettings = SettingsRepository(appContext).settings.first()
 
         UnifiedDebugEventStore.record(
@@ -727,7 +1390,33 @@ internal object AgendaBackgroundSync0392 {
         )
 
         var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
-        if (mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
+        val reconcileCollectorSnapshot = mode in setOf(
+            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
+            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
+        )
+        if (reconcileCollectorSnapshot) {
+            collectorCanonical = reconcileCollectedExternalTrips0403(
+                context = appContext,
+                store = store,
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                collectionRunId = "collector:" + collectorState.completedGeneration,
+                collectionGeneration = collectorState.completedGeneration,
+            )
+            if (collectorCanonical.changedTrips > 0) {
+                BookingRealtimeEvents0356.notifyChanged()
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_CACHE_MATERIALIZED_0404",
+                    appContext.packageName,
+                    "changed=${collectorCanonical.changedTrips} skipped=${collectorCanonical.skippedTrips} queued=${collectorCanonical.publicationQueued} source=last_known_snapshot beforeHeadlessCollection=true",
+                )
+            }
+        }
+
+        val collectorRequested = reason == "periodic" || mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+        if (collectorRequested) {
+            AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
             val accountIds = BlaBlaDynamicAccountRegistry(appContext).list().map { it.id }
             collectorState = AgendaBackgroundSyncConfig0392.requestAutomaticCollector0400(
                 context = appContext,
@@ -744,7 +1433,26 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
-        val pullBookings = mode in setOf(
+        // Reconcile again after collection so the same canonical TripStore receives only
+        // the fresh per-card deltas. Timeline and public Agenda keep one shared identity.
+        if (reconcileCollectorSnapshot) {
+            val freshCanonical = reconcileCollectedExternalTrips0403(
+                context = appContext,
+                store = store,
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                collectionRunId = "collector:" + collectorState.generation,
+                collectionGeneration = collectorState.generation,
+            )
+            collectorCanonical = freshCanonical
+            if (freshCanonical.changedTrips > 0) {
+                BookingRealtimeEvents0356.notifyChanged()
+            }
+        }
+
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "RECONCILING")
+        val pullBookings = reason == "periodic" || mode in setOf(
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.BOOKING_EVENT,
         )
@@ -791,7 +1499,7 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
-        if (mode in setOf(AgendaBackgroundSyncMode0392.FULL_RECONCILE, AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE)) {
+        if (mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
             val online = store.onlineSettings()
             if (online.configured) {
                 try {
@@ -828,6 +1536,7 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "PROJECTING")
         try {
             outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending()
         } catch (cancelled: CancellationException) {
@@ -846,10 +1555,7 @@ internal object AgendaBackgroundSync0392 {
             )
         }
 
-        val reconcileAllCanonicalTrips = mode in setOf(
-            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
-            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
-        )
+        val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         if (reconcileAllCanonicalTrips) {
             try {
                 val allocation = tenantSettings.rotaCertaSeatAllocation
@@ -879,6 +1585,41 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "VERIFYING")
+        projectionIntegrity = reconcileProjectionIntegrity0406(
+            context = appContext,
+            store = store,
+            rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            repair = true,
+        )
+        if (projectionIntegrity.repairQueued > 0) {
+            try {
+                outboxDelivered += TripMutationCoordinator0387(appContext, store).drainPending(limit = 128)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                failures++
+                UnifiedDebugEventStore.record(
+                    "PROJECTION_REPAIR_OUTBOX_FAILED_0406",
+                    appContext.packageName,
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "PROJECTION_REPAIR_OUTBOX",
+                        component = "AgendaBackgroundSync0392",
+                        method = "runTenantCycle",
+                    ),
+                )
+            }
+            projectionIntegrity = reconcileProjectionIntegrity0406(
+                context = appContext,
+                store = store,
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                repair = false,
+            )
+        }
+        failures += projectionIntegrity.failures
         runCatching {
             BookingPushRegistration0304.ensureRegistered(appContext, store)
         }
@@ -890,7 +1631,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_END_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} silentUi=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} silentUi=true",
         )
 
         return AgendaBackgroundSyncRun0392(
@@ -902,6 +1643,18 @@ internal object AgendaBackgroundSync0392 {
             collectorGeneration = collectorState.generation,
             collectorStatus = collectorState.status,
             collectorPending = collectorState.pending,
+            collectorChangedTrips = collectorCanonical.changedTrips,
+            collectorSkippedTrips = collectorCanonical.skippedTrips,
+            collectorPublicationQueued = collectorCanonical.publicationQueued,
+            collectorMissingPreserved = collectorCanonical.missingPreserved,
+            collectorTombstonedTrips = collectorCanonical.tombstonedTrips,
+            collectorOrphanProjectionTombstones = collectorCanonical.orphanProjectionTombstones,
+            collectorStaleResultsRejected = collectorCanonical.staleResultsRejected,
+            projectionMissingAgenda = projectionIntegrity.missingAgenda,
+            projectionRevisionMismatch = projectionIntegrity.revisionMismatch,
+            projectionHashMismatch = projectionIntegrity.hashMismatch,
+            projectionOrphans = projectionIntegrity.orphans,
+            projectionFailures = projectionIntegrity.failures,
         )
     }
 
@@ -959,7 +1712,7 @@ class AgendaBackgroundSyncWorker0392(
             return Result.success()
         }
 
-        if (agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
+        if (reason == "periodic" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
             setForeground(agendaBackgroundSyncForegroundInfo0402(applicationContext, reason))
         }
 
@@ -981,8 +1734,10 @@ class AgendaBackgroundSyncWorker0392(
                 reason = reason,
             )
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
+            val collectorWasRequested =
+                reason == "periodic" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
             val collectorTerminalProblem =
-                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE &&
+                collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
             val collectorAuthRequired = collectorState.status == "PENDING_AUTH"
             val retryPending = cycle.failures > 0 && runAttemptCount < 5
@@ -991,20 +1746,26 @@ class AgendaBackgroundSyncWorker0392(
             } else {
                 0
             }
+            val fullReconcileComplete = when {
+                cycle.collectorPending -> false
+                reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
+                collectorWasRequested ->
+                    collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
+                else -> false
+            }
             val resultLabel = when {
                 retryPending -> "RETRY"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+                fullReconcileComplete &&
+                    cycle.projectionMissingAgenda == 0 &&
+                    cycle.projectionRevisionMismatch == 0 &&
+                    cycle.projectionHashMismatch == 0 &&
+                    cycle.projectionOrphans == 0 &&
+                    cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
-            }
-            val fullReconcileComplete = when {
-                cycle.collectorPending -> false
-                reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
-                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE ->
-                    collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
-                else -> false
             }
             AgendaBackgroundSyncConfig0392.recordRunFinished(
                 context = applicationContext,

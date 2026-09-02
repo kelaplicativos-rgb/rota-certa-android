@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.ContextThemeWrapper
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
@@ -435,6 +437,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var automaticCollectionGeneration = 0L
     private var automaticCollectionClaimed = false
     private var automaticCollectionReported = false
+    private var headlessPageFinishedNavigationGeneration0404 = -1L
+    private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())
 
     fun start() {
         registry = BlaBlaDynamicAccountRegistry(this)
@@ -592,32 +596,40 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                if (isAutomaticHeadless0404()) {
+                    headlessPageFinishedNavigationGeneration0404 = navigationGeneration
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_HEADLESS_PAGE_FINISHED_0404",
+                        packageName,
+                        "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$navigationGeneration phase=${phase.name} allowed=${BlaBlaCollectorUrlModule.isAllowed(url)} browserOpened=false",
+                    )
+                }
                 if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
                     statusView.text = "${account.displayLabel} • ${url.take(110)}"
                 }
                 when (phase) {
-                    Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureIdentityForSync() }, 650)
-                    Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ capturePublicProfilePage() }, 850)
-                    Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureProfileReviewsPage() }, 850)
-                    Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ captureRideList() }, 900)
+                    Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureIdentityForSync() }, 650)
+                    Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ capturePublicProfilePage() }, 850)
+                    Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureProfileReviewsPage() }, 850)
+                    Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureRideList() }, 900)
                     Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
                     Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
                         val expectedSync = syncGeneration
                         val expectedNavigation = navigationGeneration
                         val expectedCandidate = candidateIndex
-                        view.postDelayed({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
+                        postSessionDelayed0405({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
                     }
                     Phase.PUBLIC_SEARCH_LINK -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
                         val expectedSync = syncGeneration
                         val expectedNavigation = navigationGeneration
                         val expectedCandidate = candidateIndex
-                        view.postDelayed({ capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate) }, PUBLIC_TRIP_SEARCH_SETTLE_MS)
+                        postSessionDelayed0405({ capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate) }, PUBLIC_TRIP_SEARCH_SETTLE_MS)
                     }
                     Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
                     Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
                     Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
                     Phase.OPTIONS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleOptionsCapture(view)
-                    Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) view.postDelayed({ probeIdentity() }, 500)
+                    Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ probeIdentity() }, 500)
                 }
             }
         }
@@ -694,6 +706,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         syncGeneration++
         networkDiagnosticRecorder?.startSync(syncGeneration)
         navigationGeneration = 0L
+        headlessPageFinishedNavigationGeneration0404 = -1L
         detailCaptureInFlight = false
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
@@ -747,14 +760,68 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
     private fun loadTrackedUrl(url: String) {
         navigationGeneration++
+        val expectedNavigation = navigationGeneration
         webView.loadUrl(url)
+        scheduleHeadlessPageFallback0404(expectedNavigation)
+    }
+
+    private fun isAutomaticHeadless0404(): Boolean =
+        automaticCollectionClaimed &&
+            visualHost == null &&
+            mode == BlaBlaDynamicSessionIntents.MODE_SYNC
+
+    private fun postSessionDelayed0405(action: () -> Unit, delayMs: Long) {
+        if (destroyed) return
+        val guarded = Runnable {
+            if (!destroyed) action()
+        }
+        if (isAutomaticHeadless0404()) {
+            headlessDelayedHandler0405.postDelayed(guarded, delayMs)
+        } else {
+            webView.postDelayed(guarded, delayMs)
+        }
+    }
+
+    private fun scheduleHeadlessPageFallback0404(expectedNavigation: Long) {
+        if (!isAutomaticHeadless0404()) return
+        val expectedSync = syncGeneration
+        val expectedPhase = phase
+        postSessionDelayed0405({
+            if (
+                destroyed ||
+                !isAutomaticHeadless0404() ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration ||
+                expectedPhase != phase ||
+                headlessPageFinishedNavigationGeneration0404 == expectedNavigation
+            ) {
+                return@postSessionDelayed0405
+            }
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_HEADLESS_PAGE_FALLBACK_0404",
+                packageName,
+                "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$expectedNavigation phase=${expectedPhase.name} progress=${webView.progress} urlAllowed=${BlaBlaCollectorUrlModule.isAllowed(webView.url.orEmpty())} action=phase_probe browserOpened=false",
+            )
+            when (expectedPhase) {
+                Phase.IDENTITY -> captureIdentityForSync()
+                Phase.RIDES -> captureRideList()
+                Phase.DETAIL -> scheduleTripDetailCapture(webView)
+                Phase.PUBLIC_SHARE -> capturePublicTripShare(expectedSync, expectedNavigation, candidateIndex)
+                Phase.PUBLIC_SEARCH_LINK -> capturePublicTripFromExactSearch(expectedSync, expectedNavigation, candidateIndex)
+                Phase.PASSENGER_CARD -> schedulePassengerCardOpen(webView)
+                Phase.PASSENGER_CONTACT -> schedulePassengerContactCapture(webView)
+                Phase.EDIT -> scheduleEditCapture(webView)
+                Phase.OPTIONS -> scheduleOptionsCapture(webView)
+                else -> Unit
+            }
+        }, HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404)
     }
 
     private fun scheduleTripDetailCapture(view: WebView) {
         val expectedSync = syncGeneration
         val expectedNavigation = navigationGeneration
         val expectedCandidate = candidateIndex
-        view.postDelayed({ captureTripDetail(expectedSync, expectedNavigation, expectedCandidate) }, 750)
+        postSessionDelayed0405({ captureTripDetail(expectedSync, expectedNavigation, expectedCandidate) }, 750)
     }
 
     private fun schedulePassengerCardOpen(view: WebView) {
@@ -762,7 +829,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val expectedNavigation = navigationGeneration
         val expectedCandidate = candidateIndex
         val expectedPassenger = passengerContactIndex
-        view.postDelayed({ openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 600)
+        postSessionDelayed0405({ openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 600)
     }
 
     private fun schedulePassengerContactCapture(view: WebView) {
@@ -770,21 +837,21 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val expectedNavigation = navigationGeneration
         val expectedCandidate = candidateIndex
         val expectedPassenger = passengerContactIndex
-        view.postDelayed({ capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 850)
+        postSessionDelayed0405({ capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, 850)
     }
 
     private fun scheduleEditCapture(view: WebView) {
         val expectedSync = syncGeneration
         val expectedNavigation = navigationGeneration
         val expectedCandidate = candidateIndex
-        view.postDelayed({ captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
+        postSessionDelayed0405({ captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
     }
 
     private fun scheduleOptionsCapture(view: WebView) {
         val expectedSync = syncGeneration
         val expectedNavigation = navigationGeneration
         val expectedCandidate = candidateIndex
-        view.postDelayed({ captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
+        postSessionDelayed0405({ captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate) }, 850)
     }
 
     private fun captureIdentityForSync() {
@@ -813,7 +880,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         "BLABLACAR_AUTOMATIC_AUTH_RETRY_0401", packageName,
                         "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration attempt=$identityReadAttempts/$MAX_IDENTITY_READ_ATTEMPTS visibleUi=false",
                     )
-                    webView.postDelayed({ captureIdentityForSync() }, IDENTITY_RETRY_MS)
+                    postSessionDelayed0405({ captureIdentityForSync() }, IDENTITY_RETRY_MS)
                     return@evaluateRequest
                 }
                 completeAutomaticAuthenticationRequired("authenticated_profile_identity_not_verified")
@@ -968,7 +1035,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             } else {
                 val nextY = (page.scrollY + (page.viewportHeight * 0.8)).toInt().coerceAtLeast(page.scrollY + 1)
                 webView.evaluateJavascript("window.scrollTo(0, $nextY); 'ok';") {
-                    webView.postDelayed({ captureProfileReviewsPage() }, PROFILE_REVIEW_SCROLL_SETTLE_MS)
+                    postSessionDelayed0405({ captureProfileReviewsPage() }, PROFILE_REVIEW_SCROLL_SETTLE_MS)
                 }
             }
         }
@@ -1009,7 +1076,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (ridesRestorePending && ridesResumeScrollY > 0) {
             ridesRestorePending = false
             webView.evaluateJavascript("window.scrollTo(0, ${ridesResumeScrollY.coerceAtLeast(0)}); 'ok';") {
-                webView.postDelayed({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
+                postSessionDelayed0405({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
             }
             return
         }
@@ -1036,7 +1103,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             )
             if (visibleAll.isEmpty() && rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS && !looksLoggedOut(result.bodyText)) {
                 rideReadAttempts++
-                webView.postDelayed({ captureRideList() }, 1200)
+                postSessionDelayed0405({ captureRideList() }, 1200)
                 return@evaluateRequest
             }
             if (visibleAll.isEmpty() && looksLoggedOut(result.bodyText)) {
@@ -1099,13 +1166,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} from=${result.scrollY} to=$target resolved=${resolvedCardTraversalKeys.size} completed=${completedCardTraversalKeys.size} quarantined=${quarantinedCardTraversalKeys.size}",
                 )
                 webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
-                    webView.postDelayed({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
+                    postSessionDelayed0405({ captureRideList() }, RIDES_SCROLL_SETTLE_MS)
                 }
                 return@evaluateRequest
             }
             if (ridesBottomStablePasses < REQUIRED_STABLE_BOTTOM_PASSES) {
                 ridesBottomStablePasses++
-                webView.postDelayed({ captureRideList() }, RIDES_BOTTOM_SETTLE_MS)
+                postSessionDelayed0405({ captureRideList() }, RIDES_BOTTOM_SETTLE_MS)
                 return@evaluateRequest
             }
             val verified = identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()
@@ -1281,7 +1348,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     tripRosterReadAttempts++
                     statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
                     val retryRoster = {
-                        webView.postDelayed({
+                        postSessionDelayed0405({
                             captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
                         }, ROSTER_RETRY_MS)
                     }
@@ -1309,7 +1376,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
                     tripRosterReadAttempts++
                     statusView.text = "${account.displayLabel} • vinculando edição ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
-                    webView.postDelayed({
+                    postSessionDelayed0405({
                         captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
                     }, ROSTER_RETRY_MS)
                     return@evaluateRequest
@@ -1487,7 +1554,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 publicTripShareReadAttempts++
                 statusView.text =
                     "${account.displayLabel} • capturando link público ${publicTripShareReadAttempts + 1}/$MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS…"
-                webView.postDelayed({
+                postSessionDelayed0405({
                     capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate)
                 }, PUBLIC_TRIP_SHARE_RETRY_MS)
                 return@evaluateRequest
@@ -1623,7 +1690,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 publicTripSearchReadAttempts++
                 statusView.text =
                     "${account.displayLabel} • confirmando link público ${publicTripSearchReadAttempts + 1}/$MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS…"
-                webView.postDelayed({
+                postSessionDelayed0405({
                     capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate)
                 }, PUBLIC_TRIP_SEARCH_RETRY_MS)
                 return@evaluateRequest
@@ -1703,7 +1770,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     statusView.text = "${account.displayLabel} • abrindo passageiro ${passengerContactIndex + 1}/${pendingTripPassengers.size}…"
                     if (currentTripMatchesCandidate(expectedCandidate)) {
                         val expectedNavigation = navigationGeneration
-                        webView.postDelayed({
+                        postSessionDelayed0405({
                             openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, passengerContactIndex)
                         }, 350)
                     } else {
@@ -1777,7 +1844,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 val passengerNavigation = navigationGeneration
                 enterBrowserPhase(Phase.PASSENGER_CONTACT, BlaBlaBrowserRequest.PASSENGER_OPEN, "passenger_clicked_wait_navigation")
                 statusView.text = "${account.displayLabel} • reserva ${expectedPassenger + 1}/${pendingTripPassengers.size}…"
-                webView.postDelayed({
+                postSessionDelayed0405({
                     capturePassengerContactAfterNavigation(
                         expectedSync,
                         passengerNavigation,
@@ -1789,7 +1856,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             }
             if (passengerCardReadAttempts < MAX_PASSENGER_CARD_READ_ATTEMPTS) {
                 passengerCardReadAttempts++
-                webView.postDelayed({
+                postSessionDelayed0405({
                     openPendingPassengerCard(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
                 }, ROSTER_RETRY_MS)
                 return@evaluateRequest
@@ -1839,7 +1906,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (!bindPendingPassengerTarget(expectedCandidate, expectedPassenger)) {
             if (passengerContactReadAttempts < MAX_PASSENGER_BIND_READ_ATTEMPTS) {
                 passengerContactReadAttempts++
-                webView.postDelayed({
+                postSessionDelayed0405({
                     capturePassengerContactAfterNavigation(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger)
                 }, ROSTER_RETRY_MS)
                 return
@@ -1914,7 +1981,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             if (evidence == null) {
                 if (passengerContactReadAttempts < MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS) {
                     passengerContactReadAttempts++
-                    webView.postDelayed({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
+                    postSessionDelayed0405({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
                     return@evaluateRequest
                 }
                 skipped++
@@ -1950,7 +2017,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val requiredComplete = BlaBlaCollectorValueModule.complete(valueEvidence)
             if (!requiredComplete && passengerContactReadAttempts < MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS) {
                 passengerContactReadAttempts++
-                webView.postDelayed({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
+                postSessionDelayed0405({ capturePassengerContact(expectedSync, expectedNavigation, expectedCandidate, expectedPassenger) }, ROSTER_RETRY_MS)
                 return@evaluateRequest
             }
             if (!requiredComplete) {
@@ -2068,7 +2135,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val optionsMatch = optionsHref.isNotBlank() && BlaBlaHarvestAssociation.optionsPageMatches(tripId, optionsHref)
             if ((!pageMatches || !optionsMatch) && editReadAttempts < MAX_EDIT_LINK_READ_ATTEMPTS) {
                 editReadAttempts++
-                webView.postDelayed({
+                postSessionDelayed0405({
                     captureEditEvidence(expectedSync, expectedNavigation, expectedCandidate)
                 }, ROSTER_RETRY_MS)
                 return@evaluateRequest
@@ -2130,7 +2197,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val identityMatch = evidence != null && BlaBlaHarvestAssociation.optionsPageMatches(tripId, evidence.pageUrl)
             if ((evidence == null || evidence.seats < 0 || !identityMatch) && optionsReadAttempts < MAX_OPTIONS_READ_ATTEMPTS) {
                 optionsReadAttempts++
-                webView.postDelayed({
+                postSessionDelayed0405({
                     captureOptionsEvidence(expectedSync, expectedNavigation, expectedCandidate)
                 }, ROSTER_RETRY_MS)
                 return@evaluateRequest
@@ -2345,7 +2412,6 @@ internal class BlaBlaDynamicAccountSessionController0401(
         statusView.text = "${account.displayLabel} • card não publicado: ${quarantineReasonLabel(reason)} • continuando…"
         loadTrackedUrl(RIDES_URL)
     }
-
     private fun quarantineReasonLabel(reason: String): String = when {
         "roster" in reason -> "passageiros não confirmados"
         "passenger" in reason -> "passageiro não confirmado"
@@ -2716,6 +2782,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         }
         networkDiagnosticRecorder?.finishFirstCard("host_closed")
         networkDiagnosticRecorder?.close()
+        headlessDelayedHandler0405.removeCallbacksAndMessages(null)
         if (::webView.isInitialized) webView.destroy()
         syncCrashGuard?.close()
     }
@@ -2761,6 +2828,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_RIDES_EMPTY_READ_ATTEMPTS = 3
         private const val MAX_IDENTITY_READ_ATTEMPTS = 3
         private const val IDENTITY_RETRY_MS = 700L
+        private const val HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404 = 20_000L
         private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24
         private const val PROFILE_REVIEW_SCROLL_SETTLE_MS = 700L
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2
