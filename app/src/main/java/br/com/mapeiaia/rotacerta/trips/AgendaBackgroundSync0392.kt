@@ -1771,7 +1771,7 @@ class AgendaBackgroundSyncWorker0392(
             return Result.success()
         }
 
-        if (reason == "periodic" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
+        if (reason == "periodic" || reason == "trip_reverify" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
             setForeground(agendaBackgroundSyncForegroundInfo0402(applicationContext, reason))
         }
 
@@ -1788,8 +1788,33 @@ class AgendaBackgroundSyncWorker0392(
         )
 
         return try {
-            val cycle = AgendaBackgroundSync0392.runCycle(
-                context = applicationContext,
+            val targetedWork = AgendaBackgroundSync0392.targetedTripWork0407(parameters)
+            if (reason == "trip_reverify" && targetedWork == null) {
+                UnifiedDebugEventStore.record(
+                    "FAILED",
+                    applicationContext.packageName,
+                    "workId=$id capability=REVERIFY_TRIP result=UNVERIFIED_TARGET failClosed=true fullSyncFallback=false",
+                )
+                AgendaBackgroundSyncConfig0392.recordRunFinished(
+                    context = applicationContext,
+                    reason = reason,
+                    result = "UNVERIFIED_TARGET",
+                    failures = 1,
+                    retryPending = false,
+                    attempt = runAttemptCount,
+                    fullReconcileComplete = false,
+                )
+                return Result.success()
+            }
+            val targetedResult = targetedWork?.let { work ->
+                BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                    context = applicationContext,
+                    target = work.target,
+                    commandId = work.commandId,
+                    origin = "timeline_card_worker",
+                )
+            }
+            val cycle = AgendaBackgroundSync0392.runCycle(                context = applicationContext,
                 reason = reason,
             )
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
