@@ -1,4 +1,4 @@
-name: Agenda canonical central sync 0.1.404
+name: Agenda canonical central sync 0.1.405
 
 on:
   push:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5697' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.404"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5698' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.405"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -91,6 +91,9 @@ jobs:
           ! grep -Fq 'FLAG_ACTIVITY_NEW_TASK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
           ! grep -Fq 'WebView(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
           grep -Fq 'BlaBlaDynamicAccountSessionController0401' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'headlessDelayedHandler0405.postDelayed(guarded, delayMs)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          ! grep -Fq 'view.postDelayed(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PUBLIC_CAPACITY_REMOTE_REVISION_NO_OP_0402' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'listDriverTripSyncStates0402' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
@@ -198,7 +201,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.404-headless-canonical-sync-${{ github.sha }}
+          name: rota-certa-0.1.405-headless-detached-callbacks-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
