@@ -106,4 +106,122 @@ class BlaBlaTripControl0407Test {
         assertEquals("TRIP_REVERIFY", agendaBackgroundSyncTrigger0397("trip_reverify"))
         assertFalse(agendaBackgroundSyncRefreshesCoverageCheckpoint0403("trip_reverify"))
     }
+
+    @Test
+    fun targetedCollectorResponseUpdatesOnlyRequestedStrongTripAndNeverClaimsFullCoverage() {
+        val tripA = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2026-09-02",
+            trip_href = target.tripHref,
+            trip_id = target.tripId,
+            published_seats = 2,
+            passenger_roster_complete = true,
+        )
+        val tripB = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2026-09-03",
+            trip_href = "https://www.blablacar.com.br/trip/trip_other_654321",
+            trip_id = "trip_other_654321",
+            published_seats = 3,
+            passenger_roster_complete = true,
+        )
+        val full = BlaBlaCollectorMonthResponse(
+            status = "validated",
+            trips = listOf(tripA, tripB),
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = true,
+                global_profile_month_complete = true,
+                reason = "full_before_targeted_reverify",
+            ),
+        )
+
+        val targeted = targetedCollectorResponse0407(full, target)!!
+
+        assertEquals(listOf(target.tripId), targeted.trips.map { it.trip_id })
+        assertFalse(targeted.coverage.complete_for_scope)
+        assertFalse(targeted.coverage.global_profile_month_complete)
+        assertEquals("targeted_trip_reverify", targeted.coverage.reason)
+    }
+
+    @Test
+    fun targetedCollectorResponseFailsClosedWhenStrongTargetIsMissing() {
+        val unrelated = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2026-09-03",
+            trip_href = "https://www.blablacar.com.br/trip/trip_other_654321",
+            trip_id = "trip_other_654321",
+        )
+        val response = BlaBlaCollectorMonthResponse(
+            status = "validated",
+            trips = listOf(unrelated),
+            coverage = BlaBlaCollectorCoverage(complete_for_scope = true),
+        )
+
+        val targeted = targetedCollectorResponse0407(response, target)!!
+
+        assertTrue(targeted.trips.isEmpty())
+        assertFalse(targeted.coverage.complete_for_scope)
+        assertEquals(1, targeted.coverage.unresolved_target_cards)
+        assertEquals("targeted_trip_missing_or_ambiguous", targeted.coverage.reason)
+    }
+
+    @Test
+    fun verificationLabelUsesTerminalCommandResultInsteadOfStaleObservedTimestamp() {
+        val previouslyObserved = 1_700_000_000_000L
+        assertEquals(
+            "⟳ Atualizando",
+            blaBlaVerificationLabel0407(
+                audit = BlaBlaCommandAuditSnapshot0407(
+                    commandId = "queued",
+                    status = BlaBlaCommandStatus0407.QUEUED,
+                    requestedAtMillis = previouslyObserved + 1,
+                    finishedAtMillis = 0L,
+                ),
+                lastObservedAtMillis = previouslyObserved,
+                strongTargetAvailable = true,
+            ),
+        )
+        assertEquals(
+            "⚠ Falha na verificação",
+            blaBlaVerificationLabel0407(
+                audit = BlaBlaCommandAuditSnapshot0407(
+                    commandId = "failed",
+                    status = BlaBlaCommandStatus0407.UNVERIFIED,
+                    requestedAtMillis = previouslyObserved + 1,
+                    finishedAtMillis = previouslyObserved + 2,
+                    errorCode = "TIMEOUT",
+                ),
+                lastObservedAtMillis = previouslyObserved,
+                strongTargetAvailable = true,
+            ),
+        )
+        assertEquals(
+            "⚠ Sessão necessária",
+            blaBlaVerificationLabel0407(
+                audit = BlaBlaCommandAuditSnapshot0407(
+                    commandId = "auth",
+                    status = BlaBlaCommandStatus0407.AUTH_REQUIRED,
+                    requestedAtMillis = previouslyObserved + 1,
+                    finishedAtMillis = previouslyObserved + 2,
+                    errorCode = "AUTH_REQUIRED",
+                ),
+                lastObservedAtMillis = previouslyObserved,
+                strongTargetAvailable = true,
+            ),
+        )
+        assertEquals(
+            "✓ Verificado agora",
+            blaBlaVerificationLabel0407(
+                audit = BlaBlaCommandAuditSnapshot0407(
+                    commandId = "ok",
+                    status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
+                    requestedAtMillis = previouslyObserved + 1,
+                    finishedAtMillis = previouslyObserved + 2,
+                ),
+                lastObservedAtMillis = previouslyObserved,
+                strongTargetAvailable = true,
+            ),
+        )
+    }
+
 }
