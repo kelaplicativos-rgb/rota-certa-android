@@ -401,6 +401,13 @@ fun TripTimelineScreen(
         resumeTripId = addPassengerResumeTripId,
     )
 
+    RotaCertaAssistantPanel0410(
+        trips = trips,
+        bookings = bookings,
+        store = store,
+        onChanged = onChanged,
+    )
+
     val automaticSyncStatus0398 = AgendaBackgroundSyncConfig0392.status(context)
     AgendaAutomaticSyncTimelineStatus0398(automaticSyncStatus0398)
 

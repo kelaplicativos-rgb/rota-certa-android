@@ -1,9 +1,9 @@
-name: BlaBlaCar public permalink 0.1.409
+name: Rota Certa Assistant and canonical convergence 0.1.410
 
 on:
   push:
     branches:
-      - agent/blablacar-public-link-canonical-0.1.409
+      - agent/blablacar-assistant-command-registry-0.1.410
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5702' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.409"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5703' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.410"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -82,7 +82,10 @@ jobs:
           grep -Fq 'EXTERNAL_CANONICAL_SKIP_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'EXTERNAL_CANONICAL_MISSING_PRESERVED_0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'recordExternalCollectionMutation' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
-          grep -Fq 'eventSource = "EXTERNAL_COLLECTION"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'eventSource = if (remoteProjectionDivergenceObserved) "PROJECTION_RECONCILER" else "EXTERNAL_COLLECTION"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'shouldDeduplicatePublicationEvent0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'reason == "periodic" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
@@ -129,12 +132,19 @@ jobs:
           grep -Fq 'BlaBlaTripActionPalette0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
           grep -Fq 'write_not_verified_for_current_runtime' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
           ! grep -Fq 'SET_TRIP_BOOST(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'internal object RotaCertaCommandRegistry0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaCommand0410.kt
+          grep -Fq 'RotaCertaAssistantPanel0410(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'path = "/v1/assistant/interpret"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'path === "/v1/assistant/interpret"' trip-platform/functions/index.js
+          grep -Fq 'OPENAI_API_KEY' trip-platform/functions/index.js
 
       - name: Validate canonical booking, notification and sync-state contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/assistant-command-interpreter-0410.js
+          node --test trip-platform/functions/test/assistant-command-interpreter-0410.test.js
           node --check trip-platform/public/app.js
           node --check app/src/main/assets/blablacar/scripts/trip_detail.js
           node --check app/src/main/assets/blablacar/scripts/trip_public_share.js
@@ -224,7 +234,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.409-blablacar-public-link-${{ github.sha }}
+          name: rota-certa-0.1.410-assistant-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -241,7 +251,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/blablacar-public-link-canonical-0.1.409'
+    if: github.ref_name == 'agent/blablacar-assistant-command-registry-0.1.410'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -250,6 +260,7 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      OPENAI_API_KEY_FROM_GITHUB: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -276,9 +287,43 @@ jobs:
           else
             exit 3
           fi
+      - name: Prove Firebase deploy principal
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${FIREBASE_AUTH_MODE:-}" = "service-account" ]; then
+            DEPLOY_PRINCIPAL="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS,"utf8")); process.stdout.write(String(j.client_email||""));')"
+            test -n "$DEPLOY_PRINCIPAL"
+            echo "FIREBASE_DEPLOY_PRINCIPAL=$DEPLOY_PRINCIPAL"
+          else
+            echo "FIREBASE_DEPLOY_PRINCIPAL=token-auth"
+          fi
       - name: Install Functions dependencies
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
-      - name: Deploy exact SHA trip API
+      - name: Ensure OpenAI secret exists only in Firebase Secret Manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          auth_args=()
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            auth_args+=(--token "$FIREBASE_TOKEN")
+          fi
+          if npx --yes firebase-tools@latest functions:secrets:get OPENAI_API_KEY --project "$PROJECT" "${auth_args[@]}" >/tmp/openai-secret-metadata.txt 2>/dev/null; then
+            echo "OPENAI_SECRET_PRESENT=true"
+          else
+            if [ -z "${OPENAI_API_KEY_FROM_GITHUB:-}" ]; then
+              echo "::error::OPENAI_API_KEY is absent from Firebase Secret Manager and no GitHub Actions secret OPENAI_API_KEY is configured."
+              exit 9
+            fi
+            printf '%s' "$OPENAI_API_KEY_FROM_GITHUB" > /tmp/openai-api-key
+            chmod 600 /tmp/openai-api-key
+            npx --yes firebase-tools@latest functions:secrets:set OPENAI_API_KEY --project "$PROJECT" --data-file /tmp/openai-api-key "${auth_args[@]}"
+            rm -f /tmp/openai-api-key
+            echo "OPENAI_SECRET_CREATED=true"
+          fi
+      - name: Deploy exact SHA trip API and assistant API
         shell: bash
         run: |
           set -euo pipefail
@@ -310,3 +355,13 @@ jobs:
           CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/sync-state.json -w "%{http_code}" "$BASE/v1/driver/trips/sync-state")"
           test "$CODE" = "401"
           echo "DEPLOYED_SOURCE_SHA=${{ github.sha }}"
+      - name: Smoke live assistant route without exposing secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          CODE="$(curl --retry 8 --retry-delay 3 --silent --show-error             -o /tmp/assistant-smoke.json             -w "%{http_code}"             -X POST "$BASE/v1/assistant/interpret"             -H 'Content-Type: application/json'             --data '{"text":"liste minhas viagens","timezone":"America/Sao_Paulo","locale":"pt-BR","allowedActions":["LIST_TRIPS"]}')"
+          echo "LIVE_ASSISTANT_HTTP_CODE=$CODE"
+          test "$CODE" = "401"
+          grep -Fq '"error":"driver_auth_required"' /tmp/assistant-smoke.json
+          echo "LIVE_ASSISTANT_AUTH_BOUNDARY=PASS"

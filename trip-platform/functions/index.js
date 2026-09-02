@@ -6,6 +6,7 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
 const {
@@ -22,6 +23,7 @@ const {
 initializeApp();
 const db = getFirestore();
 const driverTokenSecret = defineSecret("ROTA_CERTA_DRIVER_TOKEN");
+const openaiApiKeySecret = defineSecret("OPENAI_API_KEY");
 
 const PUBLIC_STATUSES = new Set(["PUBLISHED", "FULL", "STARTING", "ACTIVE"]);
 const DRIVER_MUTABLE_STATUSES = new Set(["DRAFT", "PUBLISHED", "FULL", "STARTING", "ACTIVE", "COMPLETED", "CANCELLED"]);
@@ -6107,6 +6109,50 @@ async function listDriverBookings(req, res, token) {
     entityRevision: Math.max(0, Number(tripData.publicationRevision || 0)),
   });
 }
+
+async function interpretAssistant0410(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const textValue = cleanText(body.text, 1200);
+  const timezone = cleanText(body.timezone, 80) || "America/Sao_Paulo";
+  const locale = cleanText(body.locale, 40) || "pt-BR";
+  const allowedActions = normalizeAllowedActions0410(body.allowedActions);
+  if (!textValue) return fail(res, 400, "assistant_text_required", "Digite ou fale um comando.");
+  if (!allowedActions.length) return fail(res, 409, "assistant_action_not_allowed", "Nenhuma ação está habilitada neste dispositivo.");
+  try {
+    const interpreted = await interpretAssistantCommand0410({
+      text: textValue,
+      timezone,
+      locale,
+      allowedActions,
+      apiKey: openaiApiKeySecret.value() || "",
+    });
+    return json(res, 200, interpreted);
+  } catch (error) {
+    const status = error instanceof AssistantInterpreterError0410 ? error.httpStatus : 502;
+    const code = error instanceof AssistantInterpreterError0410 ? error.code : "assistant_interpretation_failed";
+    const message = error instanceof AssistantInterpreterError0410 ? error.message : "Não foi possível interpretar o comando.";
+    return fail(res, status, code, message);
+  }
+}
+
+exports.assistantApi = onRequest(
+  { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" },
+  async (req, res) => {
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
+    try {
+      if (req.method === "POST" && path === "/v1/assistant/interpret") {
+        return await interpretAssistant0410(req, res);
+      }
+      return fail(res, 404, "assistant_route_not_found", "Rota do Assistente não encontrada.");
+    } catch (error) {
+      console.error("assistant_api_unhandled", error);
+      return fail(res, 500, "assistant_internal_error", "Falha interna do Assistente.");
+    }
+  },
+);
 
 exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southamerica-east1" }, async (req, res) => {
   if (req.method === "OPTIONS") return res.status(204).send("");
