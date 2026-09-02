@@ -91,6 +91,34 @@ class AgendaCanonicalCentralSync0403Test {
                 1,
             ),
         )
+
+        val secondPassenger = BlaBlaCollectorPassenger(
+            name = "Second Passenger",
+            phone = "+222222",
+            booking_href = "https://www.blablacar.com.br/booking/booking-y",
+            boarding = "B",
+            dropoff = "C",
+            seats = 1,
+        )
+        val ordered = base.copy(passengers = base.passengers + secondPassenger, booked_seats = 2)
+        val reordered = ordered.copy(passengers = ordered.passengers.reversed())
+        assertEquals(
+            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(ordered, 1),
+            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(reordered, 1),
+        )
+        assertEquals(
+            fingerprint,
+            PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                base.copy(
+                    trip_href = base.trip_href + "?search_uuid=volatile-a",
+                    public_trip_href = base.public_trip_href + "?search_uuid=volatile-b",
+                    passengers = base.passengers.map {
+                        it.copy(booking_href = it.booking_href + "?search_uuid=volatile-c")
+                    },
+                ),
+                1,
+            ),
+        )
     }
 
     @Test
@@ -158,5 +186,21 @@ class AgendaCanonicalCentralSync0403Test {
         assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("blablacar_collection_result"))
         assertTrue(background.contains("val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE"))
         assertTrue(background.contains("binding?.externalFingerprint != incomingFingerprint"))
+        assertTrue(background.contains("EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403"))
+        assertTrue(background.contains("store.bookingsFor(previousBookingTripId)"))
+        assertTrue(background.contains("binding.copy("))
+        assertTrue(background.contains("bookingTripId = canonicalTripId"))
+    }
+
+    @Test
+    fun successfulPeriodicCoverageRefreshesRecoveryCheckpointWithoutFullPublication() {
+        assertTrue(agendaBackgroundSyncRefreshesCoverageCheckpoint0403("periodic"))
+        assertTrue(agendaBackgroundSyncRefreshesCoverageCheckpoint0403("blablacar_collection_result"))
+        assertTrue(agendaBackgroundSyncRefreshesCoverageCheckpoint0403("recovery"))
+        assertFalse(agendaBackgroundSyncRefreshesCoverageCheckpoint0403("trip_mutation"))
+        assertEquals(
+            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
+            agendaBackgroundSyncMode0392("periodic"),
+        )
     }
 }
