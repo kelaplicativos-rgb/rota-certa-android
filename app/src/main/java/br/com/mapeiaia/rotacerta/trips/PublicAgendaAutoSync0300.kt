@@ -328,7 +328,7 @@ internal object PublicAgendaAutoSync0300 {
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
 
         val existingExternalBindings = store.publicExternalBindings()
-        val remoteSyncStates0402 = runCatching { api.listDriverTripSyncStates0402().trips }
+        val remoteSyncStateList0402 = runCatching { api.listDriverTripSyncStates0402().trips }
             .onFailure { error ->
                 UnifiedDebugEventStore.record(
                     "PUBLIC_CAPACITY_REMOTE_STATE_READ_FAILED_0402",
@@ -342,11 +342,27 @@ internal object PublicAgendaAutoSync0300 {
                 )
             }
             .getOrDefault(emptyList())
-            .associateBy(DriverTripSyncState0402::remoteTripId)
+        val remoteSyncStates0402 = remoteSyncStateList0402.associateBy(DriverTripSyncState0402::remoteTripId)
+        val remoteByStrongIdentity0408 = remoteSyncStateList0402
+            .mapNotNull { remote ->
+                canonicalExternalTripIdentityKey(
+                    remote.blablaProfileUuid,
+                    remote.blablaTripId,
+                    "",
+                )?.let { key -> key to remote }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, matches) ->
+                matches.maxWithOrNull(
+                    compareBy<DriverTripSyncState0402> { it.publicationRevision }
+                        .thenBy { it.occupancyRevision }
+                        .thenBy { it.remoteTripId },
+                )
+            }
         UnifiedDebugEventStore.record(
             "PUBLIC_CAPACITY_REMOTE_STATE_READ_0402",
             context.packageName,
-            "requested=${externalTrips.size} serverStates=${remoteSyncStates0402.size} oneBatch=true",
+            "requested=${externalTrips.size} serverStates=${remoteSyncStates0402.size} strongIdentities=${remoteByStrongIdentity0408.size} oneBatch=true",
         )
         externalTrips.forEachIndexed { index, synthesized ->
             val diagnosticTripKey = sha256(synthesized.trip.publicToken).take(12)
@@ -354,10 +370,15 @@ internal object PublicAgendaAutoSync0300 {
                 (binding.profileUuid.equals(synthesized.profileUuid, ignoreCase = true) && binding.blablaTripId == synthesized.blablaTripId) ||
                     binding.publicToken == synthesized.trip.publicToken
             }
-            val resolvedPublicIdentity = existingBindingHint?.remoteTripId
+            val strongIdentity0408 = canonicalExternalTripIdentityKey(
+                synthesized.profileUuid,
+                synthesized.blablaTripId,
+                "",
+            )
             val remoteStateHint0402 = remoteSyncStates0402[
                 existingBindingHint?.remoteTripId ?: synthesized.trip.publicToken
-            ]
+            ] ?: strongIdentity0408?.let(remoteByStrongIdentity0408::get)
+            val resolvedPublicIdentity = remoteStateHint0402?.remoteTripId ?: existingBindingHint?.remoteTripId
             val externalFailureContext = AgendaFailureEvidence.tripContext(
                 trip = synthesized.trip,
                 bookings = synthesized.capacityClaims,
@@ -874,11 +895,19 @@ internal object PublicAgendaAutoSync0300 {
         } catch (firstError: Throwable) {
             if (firstError is CancellationException) throw firstError
             when {
-                existingBinding == null && isRemoteTripNotFound(firstError) -> {
+                isRemoteTripNotFound(firstError) -> {
+                    val staleRemoteTripId = remoteTripId
                     val created = api.publish(publicTrip.copy(capacityReliable = false))
                     createdPlaceholder = true
                     remoteTripId = created.tripId
                     effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
+                    effectiveClaims = synthesized.capacityClaims
+                    shapePreserved = false
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410",
+                        context.packageName,
+                        "tripKey=$diagnosticTripKey staleRemotePresent=${staleRemoteTripId.isNotBlank()} localBindingPresent=${existingBinding != null} recreatedRemoteChanged=${staleRemoteTripId != remoteTripId} strongIdentity=true canonicalTripIdPresent=${canonicalTripId.isNotBlank()}",
+                    )
                     reconcile()
                 }
                 (existingBinding != null || remoteStateHint0402 != null) && isImmutablePublicTripShapeFailure(firstError) -> {

@@ -421,6 +421,12 @@ data class DriverTripSyncState0402(
     val blablaTripId: String = "",
     val title: String = "",
     val capacity: Int = 0,
+    val publishedSeats: Int? = null,
+    val rotaCertaSeatAllocation: Int? = null,
+    val operationalAvailableSeats: Int? = null,
+    val availableSeatsMinimum: Int? = null,
+    val availableSeatsMaximum: Int? = null,
+    val occupancyRevision: Long? = null,
 )
 
 @Serializable

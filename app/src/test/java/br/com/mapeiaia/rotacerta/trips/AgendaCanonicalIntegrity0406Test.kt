@@ -114,7 +114,7 @@ class AgendaCanonicalIntegrity0406Test {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertFalse(publicSync.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
         assertTrue(publicSync.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
-        assertTrue(background.contains("PROJECTION_RECONCILER_0406"))
+        assertTrue(background.contains("PROJECTION_RECONCILER_0408"))
         assertTrue(background.contains("BLABLACAR_COMPLETE_SCOPE_DELETE"))
         assertTrue(background.contains("MIGRATION_DUPLICATE_PROJECTION"))
         assertTrue(background.contains("MIGRATION_ORPHAN_PROJECTION"))

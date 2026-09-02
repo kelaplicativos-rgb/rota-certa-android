@@ -51,6 +51,19 @@ internal data class TripPublicationOutboxEvent0387(
     val nextAttemptAtMillis: Long = 0L,
 )
 
+internal fun shouldDeduplicatePublicationEvent0410(
+    latest: TripPublicationOutboxEvent0387?,
+    operation: TripPublicationOperation0387,
+    snapshot: TripPublicationSnapshot0387,
+    remoteProjectionDivergenceObserved: Boolean = false,
+): Boolean {
+    if (latest == null || latest.operation != operation) return false
+    if (latest.snapshot.semanticSignature != snapshot.semanticSignature) return false
+    if (latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion) return false
+    if (latest.status == TripPublicationStatus0387.FAILED_FINAL) return false
+    return !(remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED)
+}
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -80,6 +93,7 @@ internal class TripPublicationOutbox0387(context: Context) {
         mutationType: String,
         source: String,
         snapshot: TripPublicationSnapshot0387,
+        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? {
         require(canonicalTripId.isNotBlank()) { "canonicalTripId obrigatório." }
         require(snapshot.semanticSignature.isNotBlank()) { "Assinatura semântica obrigatória." }
@@ -87,10 +101,12 @@ internal class TripPublicationOutbox0387(context: Context) {
             val events = recoverInterrupted(readEvents()).toMutableList()
             val latest = events.filter { it.canonicalTripId == canonicalTripId }.maxByOrNull { it.revision }
             if (
-                latest != null && latest.operation == operation &&
-                latest.snapshot.semanticSignature == snapshot.semanticSignature &&
-                latest.snapshot.seatAllocationVersion == snapshot.seatAllocationVersion &&
-                latest.status != TripPublicationStatus0387.FAILED_FINAL
+                shouldDeduplicatePublicationEvent0410(
+                    latest = latest,
+                    operation = operation,
+                    snapshot = snapshot,
+                    remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
+                )
             ) return null
 
             val revisions = readRevisions().toMutableMap()
@@ -494,12 +510,18 @@ internal class TripMutationCoordinator0387(
         sourceTrip: BlaBlaCollectorTrip,
         configuredRotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long = 0L,
+        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? = recordExternalMutation(
         sourceTrip = sourceTrip,
         configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
         seatAllocationVersion = seatAllocationVersion,
-        mutationType = "BLABLACAR_EXTERNAL_COLLECTION_DELTA",
-        eventSource = "EXTERNAL_COLLECTION",
+        mutationType = if (remoteProjectionDivergenceObserved) {
+            "CANONICAL_REMOTE_PROJECTION_REPAIR"
+        } else {
+            "BLABLACAR_EXTERNAL_COLLECTION_DELTA"
+        },
+        eventSource = if (remoteProjectionDivergenceObserved) "PROJECTION_RECONCILER" else "EXTERNAL_COLLECTION",
+        remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
     )
 
     fun recordExternalTenantMutation(
@@ -521,6 +543,7 @@ internal class TripMutationCoordinator0387(
         seatAllocationVersion: Long? = null,
         mutationType: String,
         eventSource: String,
+        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? {
         if (!store.onlineSettings().configured) return null
         val profileUuid = sourceTrip.profile_uuid.trim()
@@ -583,6 +606,7 @@ internal class TripMutationCoordinator0387(
                     ?: existingBinding?.seatAllocationVersionUsed?.coerceAtLeast(0L) ?: 0L,
                 semanticSignature = signature,
             ),
+            remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
         )?.also { event ->
             recordEvent(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
@@ -665,6 +689,73 @@ internal class TripMutationCoordinator0387(
                 "TRIP_MUTATION_TOMBSTONE_ENQUEUED",
                 event,
                 "historyPreserved=true blablaMutation=false external=true profileUuidPresent=true tripIdPresent=true",
+            )
+        }
+    }
+
+    fun recordProjectionTombstone0408(
+        remote: DriverTripSyncState0402,
+        mutationType: String,
+        source: String = "PROJECTION_RECONCILER",
+    ): TripPublicationOutboxEvent0387? {
+        if (!store.onlineSettings().configured) return null
+        if (remote.remoteTripId.isBlank() || remote.departureAtMillis <= 0L || remote.stops.size < 2) return null
+        val cleanupCanonicalId = "projection-cleanup:" +
+            sha256TripPublication0387(remote.remoteTripId).take(32)
+        outbox.ensureRevisionAtLeast(
+            cleanupCanonicalId,
+            remote.publicationRevision.coerceAtLeast(0L),
+        )
+        val orderedStops = remote.stops.sortedBy(TripStop::order)
+        val trip = Trip(
+            id = cleanupCanonicalId,
+            title = remote.title.ifBlank { orderedStops.first().name + " → " + orderedStops.last().name },
+            departureAtMillis = remote.departureAtMillis,
+            capacity = remote.capacity.coerceAtLeast(0),
+            status = TripStatus.CANCELLED,
+            stops = remote.stops,
+            publicToken = remote.remoteTripId,
+            remoteId = remote.remoteTripId,
+            blablaProfileUuid = remote.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaTripId = remote.blablaTripId.takeIf(String::isNotBlank),
+            publicBookingEnabled = false,
+            publishedSeats = remote.publishedSeats,
+            rotaCertaSeatAllocation = remote.rotaCertaSeatAllocation?.coerceAtLeast(0),
+            capacityReliable = remote.capacityReliable,
+            publicationRevision = remote.publicationRevision.coerceAtLeast(0L),
+            publicationTombstone = true,
+            tripKey = remote.tripKey,
+            canonicalStateHash = remote.canonicalStateHash,
+        )
+        val signature = "projection-tombstone-v1:" + sha256TripPublication0387(
+            listOf(
+                cleanupCanonicalId,
+                remote.remoteTripId,
+                remote.canonicalTripId,
+                remote.tripKey,
+                remote.blablaProfileUuid,
+                remote.blablaTripId,
+                "CANCELLED",
+            ).joinToString("|"),
+        )
+        return outbox.enqueue(
+            canonicalTripId = cleanupCanonicalId,
+            operation = TripPublicationOperation0387.TOMBSTONE,
+            mutationType = mutationType,
+            source = source,
+            snapshot = TripPublicationSnapshot0387(
+                trip = trip,
+                semanticSignature = signature,
+            ),
+            remoteProjectionDivergenceObserved = true,
+        )?.also { event ->
+            recordEvent(
+                "TRIP_MUTATION_PROJECTION_TOMBSTONE_ENQUEUED_0408",
+                event,
+                "remoteTripKey=" + sha256TripPublication0387(remote.remoteTripId).take(12) +
+                    " remoteRevision=" + remote.publicationRevision +
+                    " canonicalTripIdPresent=" + remote.canonicalTripId.isNotBlank() +
+                    " strongIdentityPresent=" + (remote.blablaProfileUuid.isNotBlank() && remote.blablaTripId.isNotBlank()),
             )
         }
     }

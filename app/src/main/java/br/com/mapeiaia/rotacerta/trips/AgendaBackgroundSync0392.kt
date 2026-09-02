@@ -50,8 +50,12 @@ internal data class AgendaBackgroundSyncRun0392(
     val collectorOrphanProjectionTombstones: Int = 0,
     val collectorStaleResultsRejected: Int = 0,
     val projectionMissingAgenda: Int = 0,
+    val projectionDuplicates: Int = 0,
     val projectionRevisionMismatch: Int = 0,
     val projectionHashMismatch: Int = 0,
+    val projectionCapacityMismatch: Int = 0,
+    val projectionStatusMismatch: Int = 0,
+    val projectionRevisionRegression: Int = 0,
     val projectionOrphans: Int = 0,
     val projectionFailures: Int = 0,
 )
@@ -633,6 +637,36 @@ internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMont
         status in setOf("success", "validated", "complete")
 }
 
+internal fun completeCollectorProfileUuids0408(
+    context: Context,
+    state: AgendaAutomaticCollectorState0400,
+): Set<String> {
+    if (state.completedAccountIds.isEmpty()) return emptySet()
+    val accounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list().associateBy { it.id }
+    val sessions = BlaBlaDynamicSessionStore(context.applicationContext)
+    return state.completedAccountIds.mapNotNull { accountId ->
+        val account = accounts[accountId] ?: return@mapNotNull null
+        val profileUuid = account.profileUuid?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        val snapshot = sessions.read(account) ?: return@mapNotNull null
+        if (
+            snapshot.identityVerified &&
+            snapshot.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+            snapshot.skippedTrips == 0
+        ) profileUuid.lowercase() else null
+    }.toSet()
+}
+
+internal fun externalCanonicalTripWithinCompleteScope0408(
+    trip: Trip,
+    response: BlaBlaCollectorMonthResponse,
+    completeProfileUuids: Set<String>,
+): Boolean {
+    val tripProfile = trip.blablaProfileUuid.orEmpty().trim().lowercase()
+    if (tripProfile.isNotBlank() && tripProfile in completeProfileUuids) return true
+    return externalCollectorAllowsTombstones0406(response) &&
+        externalCanonicalTripWithinCompleteScope0406(trip, response)
+}
+
 internal fun externalCanonicalTripWithinCompleteScope0406(
     trip: Trip,
     response: BlaBlaCollectorMonthResponse,
@@ -649,14 +683,140 @@ internal data class ProjectionIntegrity0406(
     val canonicalActive: Int = 0,
     val agendaProjections: Int = 0,
     val missingAgenda: Int = 0,
+    val duplicates: Int = 0,
     val revisionMismatch: Int = 0,
     val hashMismatch: Int = 0,
+    val capacityMismatch: Int = 0,
+    val statusMismatch: Int = 0,
+    val revisionRegression: Int = 0,
     val orphans: Int = 0,
     val repairQueued: Int = 0,
     val failures: Int = 0,
 ) {
     val verified: Boolean
-        get() = failures == 0 && missingAgenda == 0 && revisionMismatch == 0 && hashMismatch == 0 && orphans == 0
+        get() = failures == 0 &&
+            missingAgenda == 0 &&
+            duplicates == 0 &&
+            revisionMismatch == 0 &&
+            hashMismatch == 0 &&
+            capacityMismatch == 0 &&
+            statusMismatch == 0 &&
+            revisionRegression == 0 &&
+            orphans == 0
+}
+
+internal fun remoteMatchesCanonicalProjection0408(
+    canonical: Trip,
+    remote: DriverTripSyncState0402,
+): Boolean {
+    if (remote.canonicalTripId.isNotBlank() && remote.canonicalTripId == canonical.id) return true
+    if (canonical.tripKey.isNotBlank() && remote.tripKey.isNotBlank() && remote.tripKey == canonical.tripKey) return true
+    val profileUuid = canonical.blablaProfileUuid.orEmpty().trim()
+    val blablaTripId = canonical.blablaTripId.orEmpty().trim()
+    return profileUuid.isNotBlank() &&
+        blablaTripId.isNotBlank() &&
+        remote.blablaProfileUuid.trim().equals(profileUuid, ignoreCase = true) &&
+        remote.blablaTripId.trim() == blablaTripId
+}
+
+internal fun chooseProjectionWinner0408(
+    canonical: Trip,
+    preferredRemoteId: String?,
+    candidates: List<DriverTripSyncState0402>,
+): DriverTripSyncState0402? = candidates.maxWithOrNull(
+    compareBy<DriverTripSyncState0402> {
+        canonical.canonicalStateHash.isNotBlank() && it.canonicalStateHash == canonical.canonicalStateHash
+    }
+        .thenBy { it.publicationRevision }
+        .thenBy { it.occupancyRevision }
+        .thenBy { it.canonicalTripId == canonical.id }
+        .thenBy { it.remoteTripId == preferredRemoteId }
+        .thenBy { it.remoteTripId },
+)
+
+internal fun canonicalProjectionAvailabilityRange0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long,
+): SeatAvailabilityRange {
+    val capacity = operationalInventoryCapacity(trip, bookings)
+    val loads = SeatAvailabilityEngine.segmentLoads(
+        trip.copy(capacity = capacity),
+        bookings,
+        nowMillis,
+    )
+    return SeatAvailabilityRange(
+        minimum = loads.minOfOrNull(SegmentLoad::availableSeats) ?: capacity,
+        maximum = loads.maxOfOrNull(SegmentLoad::availableSeats) ?: capacity,
+    )
+}
+
+internal fun expectedProjectionStatus0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long,
+): String {
+    if (trip.status !in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) return trip.status.name
+    val capacity = operationalInventoryCapacity(trip, bookings)
+    val loads = SeatAvailabilityEngine.segmentLoads(
+        trip.copy(capacity = capacity),
+        bookings,
+        nowMillis,
+    )
+    val globallyFull = loads.isNotEmpty() && loads.all { it.occupiedSeats >= capacity }
+    return if (globallyFull) TripStatus.FULL.name else TripStatus.PUBLISHED.name
+}
+
+internal fun projectionCapacityMatches0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    remote: DriverTripSyncState0402,
+    nowMillis: Long,
+): Boolean {
+    if (!trip.capacityReliable) return true
+    val expectedCapacity = operationalInventoryCapacity(trip, bookings)
+    val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
+    val baseMatches = remote.capacityReliable && remote.capacity == expectedCapacity
+    val extendedAvailabilityPresent =
+        remote.rotaCertaSeatAllocation != null ||
+            remote.operationalAvailableSeats != null ||
+            remote.availableSeatsMinimum != null ||
+            remote.availableSeatsMaximum != null ||
+            remote.occupancyRevision != null
+    if (!extendedAvailabilityPresent) return baseMatches
+    val expectedPublishedSeats = trip.publishedSeats
+    val expectedRotaCertaSeats = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+    return baseMatches &&
+        remote.publishedSeats == expectedPublishedSeats &&
+        remote.rotaCertaSeatAllocation == expectedRotaCertaSeats &&
+        remote.operationalAvailableSeats == expectedRange.minimum &&
+        remote.availableSeatsMinimum == expectedRange.minimum &&
+        remote.availableSeatsMaximum == expectedRange.maximum
+}
+
+internal fun remoteProjectionWithinCompleteScope0408(
+    remote: DriverTripSyncState0402,
+    response: BlaBlaCollectorMonthResponse?,
+    completeProfileUuids: Set<String>,
+): Boolean {
+    val profileUuid = remote.blablaProfileUuid.trim().lowercase()
+    if (profileUuid.isNotBlank() && profileUuid in completeProfileUuids) return true
+    if (!externalCollectorAllowsTombstones0406(response) || response == null) return false
+    val month = response.month.orEmpty().trim()
+    val profileScope = response.profiles
+        .map { it.uuid.trim().lowercase() }
+        .filter(String::isNotBlank)
+        .toSet()
+    val remoteMonth = runCatching {
+        Instant.ofEpochMilli(remote.departureAtMillis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+            .take(7)
+    }.getOrDefault("")
+    return month.isNotBlank() &&
+        remoteMonth == month &&
+        profileUuid in profileScope
 }
 
 internal fun externalCollectorDeltaDecision0403(
@@ -971,6 +1131,7 @@ internal object AgendaBackgroundSync0392 {
         nowMillis: Long = System.currentTimeMillis(),
         collectionRunId: String = response?.collected_at.orEmpty(),
         collectionGeneration: Long = 0L,
+        completeProfileUuids: Set<String> = emptySet(),
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
         val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
@@ -1185,11 +1346,8 @@ internal object AgendaBackgroundSync0392 {
                 canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
                     ?.let { it !in observedStrongKeys } == true
         }
-        val deletionAllowed = externalCollectorAllowsTombstones0406(response)
-        val scopedMissing = if (deletionAllowed) {
-            missingActive.filter { externalCanonicalTripWithinCompleteScope0406(it, response) }
-        } else {
-            emptyList()
+        val scopedMissing = missingActive.filter {
+            externalCanonicalTripWithinCompleteScope0408(it, response, completeProfileUuids)
         }
         scopedMissing.forEach { missing ->
             val tombstoned = store.tombstoneExternalTrip0406(
@@ -1207,41 +1365,50 @@ internal object AgendaBackgroundSync0392 {
                 )?.let { publicationQueued++ }
             }
         }
-        if (deletionAllowed) {
-            val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
-            val month = response.month.orEmpty().trim()
-            val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
-            val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
-            store.publicExternalBindings().forEach { binding ->
-                val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
-                    ?: return@forEach
-                val observedKey = canonicalExternalTripIdentityKey(
-                    binding.profileUuid,
-                    binding.blablaTripId,
-                    binding.blablaTripHref,
-                ) ?: return@forEach
-                val bindingMonth = runCatching {
-                    Instant.ofEpochMilli(binding.departureAtMillis)
-                        .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
-                }.getOrDefault("")
+        val legacyProfileScope = response.profiles
+            .map { it.uuid.trim().lowercase() }
+            .filter(String::isNotBlank)
+            .toSet()
+        val legacyMonth = response.month.orEmpty().trim()
+        val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
+        val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+        store.publicExternalBindings().forEach { binding ->
+            val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
+                ?: return@forEach
+            val observedKey = canonicalExternalTripIdentityKey(
+                binding.profileUuid,
+                binding.blablaTripId,
+                binding.blablaTripHref,
+            ) ?: return@forEach
+            val bindingProfile = binding.profileUuid.trim().lowercase()
+            val bindingMonth = runCatching {
+                Instant.ofEpochMilli(binding.departureAtMillis)
+                    .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
+            }.getOrDefault("")
+            val profileComplete =
+                bindingProfile in completeProfileUuids ||
+                    (
+                        externalCollectorAllowsTombstones0406(response) &&
+                            bindingProfile in legacyProfileScope &&
+                            legacyMonth.isNotBlank() &&
+                            bindingMonth == legacyMonth
+                    )
+            if (
+                profileComplete &&
+                key !in canonicalKeys &&
+                observedKey !in observedStrongKeys
+            ) {
                 if (
-                    key !in canonicalKeys &&
-                    observedKey !in observedStrongKeys &&
-                    binding.profileUuid.trim().lowercase() in profileScope &&
-                    month.isNotBlank() && bindingMonth == month
+                    coordinator.recordExternalTombstone(
+                        binding = binding,
+                        mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
+                        source = "PROJECTION_RECONCILER",
+                        outboxCanonicalTripId = "projection-cleanup:" +
+                            sha256TripPublication0387(binding.remoteTripId).take(24),
+                    ) != null
                 ) {
-                    if (
-                        coordinator.recordExternalTombstone(
-                            binding = binding,
-                            mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
-                            source = "PROJECTION_RECONCILER",
-                            outboxCanonicalTripId = "projection-cleanup:" +
-                                sha256TripPublication0387(binding.remoteTripId).take(24),
-                        ) != null
-                    ) {
-                        orphanProjectionTombstones++
-                        publicationQueued++
-                    }
+                    orphanProjectionTombstones++
+                    publicationQueued++
                 }
             }
         }
@@ -1288,6 +1455,8 @@ internal object AgendaBackgroundSync0392 {
         rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         repair: Boolean,
+        completeCoverage: BlaBlaCollectorMonthResponse? = null,
+        completeProfileUuids: Set<String> = emptySet(),
         nowMillis: Long = System.currentTimeMillis(),
     ): ProjectionIntegrity0406 = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
@@ -1317,16 +1486,15 @@ internal object AgendaBackgroundSync0392 {
         val canonical = store.trips().filter {
             !it.deleted && it.departureAtMillis > nowMillis && it.status in publicStatuses
         }
-        val canonicalById = canonical.associateBy(Trip::id)
         val bindings = store.publicExternalBindings()
-        val remoteById = remoteStates.associateBy(DriverTripSyncState0402::remoteTripId)
-        val remoteByCanonicalId = remoteStates
-            .filter { it.canonicalTripId.isNotBlank() }
-            .associateBy(DriverTripSyncState0402::canonicalTripId)
         val coordinator = TripMutationCoordinator0387(context, store)
         var missing = 0
+        var duplicates = 0
         var revisionMismatch = 0
         var hashMismatch = 0
+        var capacityMismatch = 0
+        var statusMismatch = 0
+        var revisionRegression = 0
         var repairQueued = 0
 
         fun queueRepair(trip: Trip): Boolean {
@@ -1338,6 +1506,7 @@ internal object AgendaBackgroundSync0392 {
                     configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
                         ?: rotaCertaSeatAllocation,
                     seatAllocationVersion = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                    remoteProjectionDivergenceObserved = true,
                 ) != null
             } else {
                 coordinator.recordLocalMutation(
@@ -1352,19 +1521,48 @@ internal object AgendaBackgroundSync0392 {
 
         canonical.forEach { trip ->
             val binding = if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
-                val profile = trip.blablaProfileUuid.orEmpty()
-                val externalId = trip.blablaTripId.orEmpty()
-                store.publicExternalBindingForStrongIdentity(profile, externalId)
+                store.publicExternalBindingForStrongIdentity(
+                    trip.blablaProfileUuid.orEmpty(),
+                    trip.blablaTripId.orEmpty(),
+                )
             } else null
-            val remoteId = binding?.remoteTripId
+            val preferredRemoteId = binding?.remoteTripId
                 ?: trip.remoteId?.takeIf(String::isNotBlank)
                 ?: trip.publicToken.takeIf(String::isNotBlank)
-            val remote = remoteId?.let(remoteById::get) ?: remoteByCanonicalId[trip.id]
+            val candidates = remoteStates
+                .filter { remote -> remoteMatchesCanonicalProjection0408(trip, remote) }
+                .distinctBy(DriverTripSyncState0402::remoteTripId)
+            val remote = chooseProjectionWinner0408(trip, preferredRemoteId, candidates)
+            val duplicateRemotes = remote?.let { winner ->
+                candidates.filterNot { it.remoteTripId == winner.remoteTripId }
+            }.orEmpty()
+            if (duplicateRemotes.isNotEmpty()) {
+                duplicates += duplicateRemotes.size
+                if (repair) {
+                    duplicateRemotes.forEach { duplicate ->
+                        if (
+                            coordinator.recordProjectionTombstone0408(
+                                remote = duplicate,
+                                mutationType = "CANONICAL_DUPLICATE_PROJECTION",
+                            ) != null
+                        ) repairQueued++
+                    }
+                }
+                UnifiedDebugEventStore.record(
+                    "PROJECTION_DUPLICATE_DETECTED_0408",
+                    context.applicationContext.packageName,
+                    "canonicalTripId=" + trip.id +
+                        " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
+                        " blablaTripId=" + trip.blablaTripId.orEmpty() +
+                        " duplicateCount=" + duplicateRemotes.size,
+                )
+            }
             var needsRepair = false
             if (remote == null) {
                 missing++
                 needsRepair = true
             } else {
+                val bookings = store.bookingsFor(trip.id)
                 if (trip.canonicalStateHash.isNotBlank() && remote.canonicalStateHash != trip.canonicalStateHash) {
                     hashMismatch++
                     needsRepair = true
@@ -1373,39 +1571,93 @@ internal object AgendaBackgroundSync0392 {
                     ?: trip.publicationRevision.takeIf { it > 0L }
                 if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
                     revisionMismatch++
+                    if (remote.publicationRevision < expectedRevision) revisionRegression++
+                    needsRepair = true
+                }
+                if (!projectionCapacityMatches0408(trip, bookings, remote, nowMillis)) {
+                    val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
+                    capacityMismatch++
+                    needsRepair = true
+                    UnifiedDebugEventStore.record(
+                        "PROJECTION_CAPACITY_MISMATCH_0408",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + trip.id +
+                            " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
+                            " blablaTripId=" + trip.blablaTripId.orEmpty() +
+                            " expectedMin=" + expectedRange.minimum +
+                            " expectedMax=" + expectedRange.maximum +
+                            " remoteMin=" + remote.availableSeatsMinimum +
+                            " remoteMax=" + remote.availableSeatsMaximum,
+                    )
+                }
+                val expectedStatus = expectedProjectionStatus0408(trip, bookings, nowMillis)
+                if (remote.status != expectedStatus) {
+                    statusMismatch++
                     needsRepair = true
                 }
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
-        val knownRemoteIds = bindings.map(PublicExternalTripBinding::remoteTripId).filter(String::isNotBlank).toSet() +
-            canonical.mapNotNull(Trip::remoteId).toSet() +
-            canonical.map(Trip::publicToken).filter(String::isNotBlank).toSet()
-        val orphans = remoteStates.count { remote ->
-            val canonicalId = remote.canonicalTripId
-            remote.remoteTripId in knownRemoteIds &&
-                canonicalId.isNotBlank() &&
-                canonicalId !in canonicalById
+        val orphanStates = remoteStates.filter { remote ->
+            val attributable =
+                remote.canonicalTripId.isNotBlank() ||
+                    remote.tripKey.isNotBlank() ||
+                    (remote.blablaProfileUuid.isNotBlank() && remote.blablaTripId.isNotBlank())
+            attributable && canonical.none { trip -> remoteMatchesCanonicalProjection0408(trip, remote) }
+        }
+        orphanStates.forEach { orphan ->
+            val destructiveAllowed = remoteProjectionWithinCompleteScope0408(
+                orphan,
+                completeCoverage,
+                completeProfileUuids,
+            )
+            UnifiedDebugEventStore.record(
+                "PROJECTION_ORPHAN_DETECTED_0408",
+                context.applicationContext.packageName,
+                "remoteTripId=" + orphan.remoteTripId +
+                    " canonicalTripId=" + orphan.canonicalTripId +
+                    " profileUuid=" + orphan.blablaProfileUuid +
+                    " blablaTripId=" + orphan.blablaTripId +
+                    " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
+                    " destructiveAllowed=" + destructiveAllowed,
+            )
+            if (
+                repair &&
+                destructiveAllowed &&
+                coordinator.recordProjectionTombstone0408(
+                    remote = orphan,
+                    mutationType = "COMPLETE_SCOPE_ORPHAN_PROJECTION",
+                ) != null
+            ) repairQueued++
         }
         val report = ProjectionIntegrity0406(
             canonicalActive = canonical.size,
             agendaProjections = remoteStates.size,
             missingAgenda = missing,
+            duplicates = duplicates,
             revisionMismatch = revisionMismatch,
             hashMismatch = hashMismatch,
-            orphans = orphans,
+            capacityMismatch = capacityMismatch,
+            statusMismatch = statusMismatch,
+            revisionRegression = revisionRegression,
+            orphans = orphanStates.size,
             repairQueued = repairQueued,
         )
         UnifiedDebugEventStore.record(
-            "PROJECTION_RECONCILER_0406",
+            "PROJECTION_RECONCILER_0408",
             context.applicationContext.packageName,
             "canonical=" + report.canonicalActive +
                 " agenda=" + report.agendaProjections +
                 " missingAgenda=" + report.missingAgenda +
+                " duplicates=" + report.duplicates +
                 " revisionMismatch=" + report.revisionMismatch +
                 " hashMismatch=" + report.hashMismatch +
+                " capacityMismatch=" + report.capacityMismatch +
+                " statusMismatch=" + report.statusMismatch +
+                " revisionRegression=" + report.revisionRegression +
                 " orphans=" + report.orphans +
                 " repairQueued=" + report.repairQueued +
+                " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
                 " repair=" + repair,
         )
         report
@@ -1515,6 +1767,7 @@ internal object AgendaBackgroundSync0392 {
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 collectionRunId = "collector:" + collectorState.completedGeneration,
                 collectionGeneration = collectorState.completedGeneration,
+                completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
             if (collectorCanonical.changedTrips > 0) {
                 BookingRealtimeEvents0356.notifyChanged()
@@ -1556,6 +1809,11 @@ internal object AgendaBackgroundSync0392 {
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 collectionRunId = if (collectorTarget0407 != null) "trip-reverify" else "collector:" + collectorState.generation,
                 collectionGeneration = if (collectorTarget0407 != null) 0L else collectorState.generation,
+                completeProfileUuids = if (collectorTarget0407 == null) {
+                    completeCollectorProfileUuids0408(appContext, collectorState)
+                } else {
+                    emptySet()
+                },
             )
             collectorCanonical = freshCanonical
             if (freshCanonical.changedTrips > 0) {
@@ -1704,6 +1962,8 @@ internal object AgendaBackgroundSync0392 {
             rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
             seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
             repair = true,
+            completeCoverage = collectorResponseForThisCycle0407(),
+            completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
         )
         if (projectionIntegrity.repairQueued > 0) {
             try {
@@ -1729,6 +1989,8 @@ internal object AgendaBackgroundSync0392 {
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 repair = false,
+                completeCoverage = collectorResponseForThisCycle0407(),
+                completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
         }
         failures += projectionIntegrity.failures
@@ -1743,7 +2005,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_END_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} silentUi=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} projectionMissing=${projectionIntegrity.missingAgenda} projectionDuplicates=${projectionIntegrity.duplicates} capacityMismatch=${projectionIntegrity.capacityMismatch} statusMismatch=${projectionIntegrity.statusMismatch} revisionMismatch=${projectionIntegrity.revisionMismatch} revisionRegression=${projectionIntegrity.revisionRegression} projectionOrphans=${projectionIntegrity.orphans} projectionFailures=${projectionIntegrity.failures} projectionVerified=${projectionIntegrity.verified} silentUi=true",
         )
 
         return AgendaBackgroundSyncRun0392(
@@ -1763,8 +2025,12 @@ internal object AgendaBackgroundSync0392 {
             collectorOrphanProjectionTombstones = collectorCanonical.orphanProjectionTombstones,
             collectorStaleResultsRejected = collectorCanonical.staleResultsRejected,
             projectionMissingAgenda = projectionIntegrity.missingAgenda,
+            projectionDuplicates = projectionIntegrity.duplicates,
             projectionRevisionMismatch = projectionIntegrity.revisionMismatch,
             projectionHashMismatch = projectionIntegrity.hashMismatch,
+            projectionCapacityMismatch = projectionIntegrity.capacityMismatch,
+            projectionStatusMismatch = projectionIntegrity.statusMismatch,
+            projectionRevisionRegression = projectionIntegrity.revisionRegression,
             projectionOrphans = projectionIntegrity.orphans,
             projectionFailures = projectionIntegrity.failures,
         )
@@ -1918,8 +2184,12 @@ class AgendaBackgroundSyncWorker0392(
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
                 (fullReconcileComplete || targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) &&
                     cycle.projectionMissingAgenda == 0 &&
+                    cycle.projectionDuplicates == 0 &&
                     cycle.projectionRevisionMismatch == 0 &&
                     cycle.projectionHashMismatch == 0 &&
+                    cycle.projectionCapacityMismatch == 0 &&
+                    cycle.projectionStatusMismatch == 0 &&
+                    cycle.projectionRevisionRegression == 0 &&
                     cycle.projectionOrphans == 0 &&
                     cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
