@@ -1506,6 +1506,7 @@ internal object AgendaBackgroundSync0392 {
                     configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
                         ?: rotaCertaSeatAllocation,
                     seatAllocationVersion = maxOf(trip.seatAllocationVersionUsed, seatAllocationVersion),
+                    remoteProjectionDivergenceObserved = true,
                 ) != null
             } else {
                 coordinator.recordLocalMutation(
