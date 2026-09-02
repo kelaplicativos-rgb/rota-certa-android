@@ -57,8 +57,8 @@ class AgendaAutomaticSyncPhysicalFix0402Test {
 
     @Test
     fun localIncrementalPathStillDoesNotRequestFullCollection() {
-        assertTrue(background.contains("reason == \"trip_mutation\" -> AgendaBackgroundSyncMode0392.DELTA_ONLY"))
-        assertTrue(background.contains("reason == \"timeline_open\" -> AgendaBackgroundSyncMode0392.DELTA_ONLY"))
-        assertTrue(background.contains("reason == \"timeline_pull_refresh\" -> AgendaBackgroundSyncMode0392.DELTA_ONLY"))
+        assertTrue(agendaBackgroundSyncMode0392("trip_mutation") == AgendaBackgroundSyncMode0392.DELTA_ONLY)
+        assertTrue(agendaBackgroundSyncMode0392("timeline_open") == AgendaBackgroundSyncMode0392.DELTA_ONLY)
+        assertTrue(agendaBackgroundSyncMode0392("timeline_pull_refresh") == AgendaBackgroundSyncMode0392.DELTA_ONLY)
     }
 }
