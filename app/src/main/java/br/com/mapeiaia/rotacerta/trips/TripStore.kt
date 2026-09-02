@@ -7,6 +7,7 @@ import android.util.Base64
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.TenantStorageScope
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.time.ZoneId
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -74,7 +75,9 @@ class TripStore(context: Context) {
     }
 
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
-        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin())
+        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin()).let { keyed ->
+            if (keyed.publicTimezoneId0411.isBlank()) keyed.copy(publicTimezoneId0411 = ZoneId.systemDefault().id) else keyed
+        }
         val allTrips = trips()
         val existingById = allTrips.firstOrNull { it.id == keyedIncoming.id }
         val existingByStrongKey = keyedIncoming.tripKey.takeIf(String::isNotBlank)?.let { key ->
