@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   SERVER_ACTIONS_0410,
   validateRawTemporalText0410,
@@ -103,4 +105,28 @@ test("prompt injection cannot expand action allowlist", async () => {
   assert.equal(result.command.action, "LIST_TRIPS");
   assert.deepEqual(captured.text.format.schema.properties.action.enum, ["LIST_TRIPS"]);
   assert.equal(captured.text.format.strict, true);
+});
+
+
+test("OpenAI secret is isolated from tripApi and Hosting routes assistant first", () => {
+  const indexSource = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const firebase = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "..", "firebase.json"), "utf8"),
+  );
+  assert.match(
+    indexSource,
+    /exports\.assistantApi = onRequest\(\s*\{ secrets: \[driverTokenSecret, openaiApiKeySecret\]/,
+  );
+  assert.match(
+    indexSource,
+    /exports\.tripApi = onRequest\(\{ secrets: \[driverTokenSecret\]/,
+  );
+  assert.doesNotMatch(
+    indexSource,
+    /exports\.tripApi = onRequest\(\{ secrets: \[driverTokenSecret, openaiApiKeySecret\]/,
+  );
+  assert.equal(firebase.hosting.rewrites[0].source, "/v1/assistant/**");
+  assert.equal(firebase.hosting.rewrites[0].function.functionId, "assistantApi");
+  assert.equal(firebase.hosting.rewrites[1].source, "/v1/**");
+  assert.equal(firebase.hosting.rewrites[1].function.functionId, "tripApi");
 });
