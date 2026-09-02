@@ -178,7 +178,7 @@ class RotaCertaCommand0410Test {
                 TripStop(order = 0, name = "Santo André"),
                 TripStop(order = 1, name = "Extrema"),
             ),
-            blablaProfileUuid = "7371f028-9c55-4903-8444-308015823efd",
+            blablaProfileUuid = "11111111-1111-4111-8111-111111111111",
             blablaTripId = id,
             canonicalRevision = revision,
         )
