@@ -726,6 +726,58 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    internal data class TargetedTripWork0407(
+        val commandId: String,
+        val target: BlaBlaTripTarget0407,
+    )
+
+    fun enqueueTripReverify0407(context: Context, target: BlaBlaTripTarget0407, commandId: String): Boolean {
+        val appContext = context.applicationContext
+        val activeTenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        if (activeTenantId != target.tenantId || commandId.isBlank()) return false
+        if (BlaBlaCollectorUrlModule.tripId(target.tripHref) != target.tripId) return false
+        val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
+            .setConstraints(networkConstraints())
+            .setInputData(workDataOf(
+                INPUT_REASON to "trip_reverify",
+                INPUT_TENANT_ID to target.tenantId,
+                INPUT_COMMAND_ID_0407 to commandId,
+                INPUT_ACCOUNT_ID_0407 to target.accountId,
+                INPUT_PROFILE_UUID_0407 to target.profileUuid,
+                INPUT_TRIP_ID_0407 to target.tripId,
+                INPUT_TRIP_HREF_0407 to target.tripHref,
+            ))
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            tenantScopedWorkName(target.tenantId, IMMEDIATE_WORK),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request,
+        )
+        UnifiedDebugEventStore.record(
+            "COMMAND_REQUESTED",
+            appContext.packageName,
+            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true",
+        )
+        return true
+    }
+
+    internal fun targetedTripWork0407(workerParameters: WorkerParameters): TargetedTripWork0407? {
+        if (reason(workerParameters) != "trip_reverify") return null
+        val tenantId = scheduledTenantId(workerParameters)
+        val commandId = workerParameters.inputData.getString(INPUT_COMMAND_ID_0407)?.trim().orEmpty()
+        val accountId = workerParameters.inputData.getString(INPUT_ACCOUNT_ID_0407)?.trim().orEmpty()
+        val profileUuid = workerParameters.inputData.getString(INPUT_PROFILE_UUID_0407)?.trim()?.lowercase().orEmpty()
+        val tripId = workerParameters.inputData.getString(INPUT_TRIP_ID_0407)?.trim().orEmpty()
+        val tripHref = workerParameters.inputData.getString(INPUT_TRIP_HREF_0407)?.trim().orEmpty()
+        if (tenantId.isBlank() || commandId.isBlank() || accountId.isBlank() || profileUuid.isBlank() || tripId.isBlank() || tripHref.isBlank()) return null
+        if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return null
+        return TargetedTripWork0407(
+            commandId = commandId,
+            target = BlaBlaTripTarget0407(tenantId, accountId, profileUuid, tripId, tripHref),
+        )
+    }
     fun enqueueRecoveryIfNeeded(context: Context) {
         val appContext = context.applicationContext
         val status = AgendaBackgroundSyncConfig0392.status(appContext)
