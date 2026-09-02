@@ -100,8 +100,8 @@ class AgendaCanonicalProjectionConvergence0408Test {
                 global_profile_month_complete = true,
             ),
         )
-        val matching = trip(profileA, "complete-month", epoch("2027-06-28T10:00:00Z"))
-        val otherProfile = trip(profileB, "complete-month-b", epoch("2027-06-28T10:00:00Z"))
+        val matching = trip(profileA, "complete-month", epoch("2027-06-28T10:00:00Z"), sourceDate = "2027-06-28")
+        val otherProfile = trip(profileB, "complete-month-b", epoch("2027-06-28T10:00:00Z"), sourceDate = "2027-06-28")
         assertTrue(externalCanonicalTripWithinCompleteScope0408(matching, response, emptySet()))
         assertFalse(externalCanonicalTripWithinCompleteScope0408(otherProfile, response, emptySet()))
     }
@@ -269,6 +269,7 @@ class AgendaCanonicalProjectionConvergence0408Test {
         publishedSeats: Int = 4,
         origin: String = "A",
         destination: String = "C",
+        sourceDate: String = "2030-09-01",
     ): Trip {
         val internalId = "canonical-" + providerTripId
         return Trip(
@@ -293,7 +294,7 @@ class AgendaCanonicalProjectionConvergence0408Test {
             canonicalStateHash = "hash-" + providerTripId,
             externalSnapshot = BlaBlaCollectorTrip(
                 profile_uuid = profile,
-                date = "2030-09-01",
+                date = sourceDate,
                 departure_time = "10:00",
                 actual_departure = origin,
                 actual_arrival = destination,
