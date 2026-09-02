@@ -644,12 +644,22 @@ function blaBlaExternalTripId(url) {
   return cleanText(match[1], 160);
 }
 
+function isOfficialBlaBlaHost(hostname) {
+  const labels = cleanText(hostname, 253).toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function normalizeBlaBlaUrl(raw, expectedTripId = "", publicOnly = false) {
   const value = cleanText(raw, 1200);
   if (!value) return "";
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost(url.hostname)) return "";
     if (url.username || url.password || (url.port && url.port !== "443")) return "";
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
     if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";
@@ -719,10 +729,19 @@ function normalizeDriverTrip(raw, previous = null) {
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= 999
     ? rawPublishedSeats
     : null;
-  const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
-  const blablaTripId = cleanText(raw.blablaTripId, 160);
-  const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
-  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId);
+  const previousProfileUuid = cleanText(previous && previous.blablaProfileUuid, 160);
+  const previousTripId = cleanText(previous && previous.blablaTripId, 160);
+  const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160) || previousProfileUuid;
+  const blablaTripId = cleanText(raw.blablaTripId, 160) || previousTripId;
+  const samePersistentIdentity = !previousTripId || previousTripId === blablaTripId;
+  const previousManageUrl = samePersistentIdentity
+    ? normalizeBlaBlaManageUrl(previous && previous.blablaManageUrl, blablaTripId)
+    : "";
+  const previousPublicUrl = samePersistentIdentity
+    ? normalizeBlaBlaPublicUrl(previous && previous.blablaPublicUrl, blablaTripId)
+    : "";
+  const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId) || previousManageUrl;
+  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId) || previousPublicUrl;
   const previousPublicationRevision = Math.max(0, Number(previous && previous.publicationRevision || 0));
   const requestedPublicationRevision = raw.publicationRevision == null
     ? previousPublicationRevision
@@ -893,6 +912,7 @@ function safePublicTrip(token, data) {
     capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
+    blablaTripId: cleanText(data.blablaTripId, 160) || null,
     blablaPublicUrl: normalizeBlaBlaPublicUrl(data.blablaPublicUrl, cleanText(data.blablaTripId, 160)) || null,
     driverUsername: data.driverUsername || "",
     driverDisplayName: data.driverDisplayName || "",
