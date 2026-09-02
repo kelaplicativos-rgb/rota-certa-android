@@ -590,6 +590,8 @@ internal object PublicAgendaAutoSync0300 {
     ): String {
         val semantic = buildString {
             append(trip.id).append('|').append(trip.title.trim()).append('|')
+            append(trip.publicTimezoneId0411.trim()).append('|')
+            append(BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
             append(trip.departureAtMillis).append('|').append(trip.status.name).append('|')
             append(trip.publicBookingEnabled).append('|').append(trip.itineraryAuthoritative).append('|')
             append(trip.capacityReliable).append('|').append(trip.publishedSeats ?: -1).append('|')
