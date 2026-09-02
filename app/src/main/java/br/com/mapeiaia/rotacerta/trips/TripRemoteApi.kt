@@ -670,7 +670,7 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
-    suspend fun readPublicTripProjection0411(remoteTripId: String): DriverPublicTripReadback0411 = request(
+    internal suspend fun readPublicTripProjection0411(remoteTripId: String): DriverPublicTripReadback0411 = request(
         method = "GET",
         path = "/v1/driver/trips/${remoteTripId.trim()}/public-readback",
         requireDriverToken = true,
