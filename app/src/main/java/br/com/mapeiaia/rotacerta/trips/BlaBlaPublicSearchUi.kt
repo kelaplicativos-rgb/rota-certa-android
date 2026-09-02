@@ -77,6 +77,7 @@ fun BlaBlaPublicSearchPanel(
     val agendaRoute = remember(trips, agendaPeriod) {
         BlaBlaCollectorScope.fromAgenda(trips, agendaPeriod, maxRoutes = 4).firstOrNull()
     }
+    var names by remember { mutableStateOf(previous?.targetNames?.joinToString(", ").orEmpty()) }
     var from by remember { mutableStateOf(previous?.from.orEmpty()) }
     var to by remember { mutableStateOf(previous?.to.orEmpty()) }
     var captureDemand by remember { mutableStateOf(previous?.captureDemand ?: true) }
@@ -108,8 +109,15 @@ fun BlaBlaPublicSearchPanel(
                 Text("Consulta pública", style = MaterialTheme.typography.titleMedium)
             }
             Text(
-                "Somente leitura e auditável. Todos os cards públicos encontrados são preservados; perfis configurados são usados apenas para confirmar propriedade por UUID.",
+                "Somente leitura e auditável. A coleta bruta é preservada internamente; o resultado mostra somente os perfis solicitados quando o campo Perfis é preenchido.",
                 style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedTextField(
+                value = names,
+                onValueChange = { names = it },
+                label = { Text("Perfis") },
+                supportingText = { Text("Separe vários perfis por vírgulas.") },
+                modifier = Modifier.fillMaxWidth(),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -169,7 +177,7 @@ fun BlaBlaPublicSearchPanel(
             val plannedTasks = remember(from, to, dateSelection) {
                 BlaBlaPublicSearchPlanner.tasks(
                     BlaBlaPublicSearchRequest(
-                        targetNames = emptyList(),
+                        targetNames = BlaBlaPublicSearchPlanner.parseTargetNames(names),
                         from = from,
                         to = to,
                         period = "",
@@ -187,7 +195,7 @@ fun BlaBlaPublicSearchPanel(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val req = BlaBlaPublicSearchRequest(
-                        targetNames = emptyList(),
+                        targetNames = BlaBlaPublicSearchPlanner.parseTargetNames(names),
                         from = from.trim(),
                         to = to.trim(),
                         period = "",
@@ -206,7 +214,11 @@ fun BlaBlaPublicSearchPanel(
                         running = true
                         store.saveRequest(req)
                         onChanged(
-                            "Coleta pública auditável iniciada • todos os cards • ${BlaBlaPublicSearchPlanner.tasks(req).size} consultas (IDA/VOLTA por data).",
+                            if (req.targetNames.isEmpty()) {
+                                "Consulta pública iniciada • todos os perfis encontrados • ${BlaBlaPublicSearchPlanner.tasks(req).size} consultas (IDA/VOLTA por data)."
+                            } else {
+                                "Consulta pública iniciada • ${req.targetNames.size} perfil(is) solicitado(s) • ${BlaBlaPublicSearchPlanner.tasks(req).size} consultas (IDA/VOLTA por data)."
+                            },
                         )
                         launcher.launch(BlaBlaPublicSearchIntents.search(context, req))
                     }
