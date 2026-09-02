@@ -1770,13 +1770,6 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
-    private fun Throwable.rootCauseMessage0407(): String {
-        var current: Throwable = this
-        val seen = HashSet<Throwable>()
-        while (current.cause != null && seen.add(current)) current = current.cause ?: break
-        return (current.message ?: current::class.java.name).take(300)
-    }
-
     internal fun reason(workerParameters: WorkerParameters): String =
         workerParameters.inputData.getString(INPUT_REASON)?.takeIf(String::isNotBlank) ?: "periodic"
 
@@ -1965,7 +1958,7 @@ class AgendaBackgroundSyncWorker0392(
                             errorCode = "WORKER_EXCEPTION",
                             verification = "readback_not_completed",
                             exceptionMessage = error.message.orEmpty().take(300),
-                            rootCause = error.rootCauseMessage0407(),
+                            rootCause = error.cause?.message.orEmpty().take(300),
                             finishedAtMillis = System.currentTimeMillis(),
                         ),
                     )
