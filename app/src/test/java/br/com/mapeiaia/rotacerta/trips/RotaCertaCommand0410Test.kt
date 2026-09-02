@@ -187,6 +187,175 @@ class RotaCertaCommand0410Test {
     }
 
     @Test
+    fun pastedCanonicalJsonIsParsedLocally() {
+        val parsed = RotaCertaAssistantJson0413.parse(
+            raw = """
+                {
+                  "schemaVersion":"1.0",
+                  "action":"LIST_TRIPS",
+                  "temporal":{"explicitDate":"2026-10-10"}
+                }
+            """.trimIndent(),
+            allowedActions = setOf(RotaCertaAction0410.LIST_TRIPS),
+        )
+        assertEquals(RotaCertaAction0410.LIST_TRIPS, parsed.action)
+        assertEquals("2026-10-10", parsed.temporal.explicitDate)
+        assertEquals("local_json_0413", parsed.interpretationNotes)
+    }
+
+    @Test
+    fun createRoundTripCompatibilityPreservesBothTimes() {
+        val parsed = RotaCertaAssistantJson0413.parse(
+            raw = """
+                {
+                  "schemaVersion":"1.0",
+                  "action":"CREATE_ROUND_TRIP",
+                  "mode":"EXECUTE",
+                  "date":"2026-12-01",
+                  "outbound":{
+                    "origin":"Santo André",
+                    "destination":"São Tomé das Letras",
+                    "departureTime":"11:00"
+                  },
+                  "return":{
+                    "origin":"São Tomé das Letras",
+                    "destination":"Santo André",
+                    "departureTime":"19:00"
+                  },
+                  "validation":{
+                    "validateCalendarDate":true,
+                    "failClosed":true
+                  },
+                  "onInvalidDate":"REJECT_AND_DO_NOT_PUBLISH"
+                }
+            """.trimIndent(),
+            allowedActions = setOf(RotaCertaAction0410.CREATE_TRIPS),
+        )
+        assertEquals(RotaCertaAction0410.CREATE_TRIPS, parsed.action)
+        assertTrue(parsed.roundTrip)
+        assertEquals("2026-12-01", parsed.temporal.explicitDate)
+        assertEquals("11:00", parsed.temporal.time)
+        assertEquals("19:00", parsed.returnDepartureTime)
+        assertEquals("Santo André", parsed.origin)
+        assertEquals("São Tomé das Letras", parsed.destination)
+        assertEquals("EXECUTE", parsed.executionMode)
+    }
+
+    @Test
+    fun exactUserJsonRejectsNovember31BeforePublicationPlanning() {
+        val parsed = RotaCertaAssistantJson0413.parse(
+            raw = """
+                {
+                  "schemaVersion":"1.0",
+                  "action":"CREATE_ROUND_TRIP",
+                  "mode":"EXECUTE",
+                  "date":"2026-11-31",
+                  "outbound":{
+                    "origin":"Santo André",
+                    "destination":"São Tomé das Letras",
+                    "departureTime":"11:00"
+                  },
+                  "return":{
+                    "origin":"São Tomé das Letras",
+                    "destination":"Santo André",
+                    "departureTime":"19:00"
+                  },
+                  "profileSelection":{
+                    "strategy":"AUTO_RECONCILE",
+                    "checkAllDriverProfiles":true
+                  },
+                  "preExecution":{
+                    "runPublicCollector":true,
+                    "checkExactDateAndDirection":true,
+                    "confirmProfileUuid":true,
+                    "checkExistingTrips":true,
+                    "preventDuplicates":true,
+                    "checkPhysicalContinuity":true,
+                    "checkScheduleConflicts":true
+                  },
+                  "validation":{
+                    "validateCalendarDate":true,
+                    "failClosed":true
+                  },
+                  "onInvalidDate":"REJECT_AND_DO_NOT_PUBLISH"
+                }
+            """.trimIndent(),
+            allowedActions = setOf(RotaCertaAction0410.CREATE_TRIPS),
+        )
+        val planned = RotaCertaCommandPlanner0410.plan(
+            command = parsed,
+            trips = emptyList(),
+            bookings = emptyList(),
+            now = now,
+            zoneId = zone,
+        )
+        assertEquals(RotaCertaValidationCode0410.INVALID_DATE, planned.code)
+        assertEquals(null, planned.plan)
+    }
+
+    @Test
+    fun jsonCannotDisableCalendarFailClosedOrEnableBlockedAction() {
+        val weakened = runCatching {
+            RotaCertaAssistantJson0413.parse(
+                raw = """
+                    {
+                      "schemaVersion":"1.0",
+                      "action":"CREATE_TRIPS",
+                      "date":"2026-12-01",
+                      "validation":{"failClosed":false}
+                    }
+                """.trimIndent(),
+                allowedActions = setOf(RotaCertaAction0410.CREATE_TRIPS),
+            )
+        }.exceptionOrNull()
+        assertTrue(weakened is RotaCertaAssistantJsonException0413)
+
+        val blocked = runCatching {
+            RotaCertaAssistantJson0413.parse(
+                raw = """{"schemaVersion":"1.0","action":"CANCEL_TRIP"}""",
+                allowedActions = setOf(RotaCertaAction0410.LIST_TRIPS),
+            )
+        }.exceptionOrNull()
+        assertTrue(blocked is RotaCertaAssistantJsonException0413)
+    }
+
+    @Test
+    fun fencedLegacyCreateTripsJsonIsAccepted() {
+        val parsed = RotaCertaAssistantJson0413.parse(
+            raw = """
+                ```json
+                {
+                  "schemaVersion":"1.0",
+                  "action":"CREATE_TRIPS",
+                  "mode":"SIMULATION",
+                  "dates":["2026-09-05","2026-09-07"],
+                  "roundTrip":true,
+                  "route":{
+                    "outbound":{
+                      "origin":"Santo André",
+                      "destination":"São Tomé das Letras",
+                      "departureTime":"11:00"
+                    },
+                    "return":{
+                      "origin":"São Tomé das Letras",
+                      "destination":"Santo André",
+                      "departureTime":"19:00"
+                    }
+                  }
+                }
+                ```
+            """.trimIndent(),
+            allowedActions = setOf(RotaCertaAction0410.CREATE_TRIPS),
+        )
+        assertEquals(
+            listOf("2026-09-05", "2026-09-07"),
+            parsed.dateTokens,
+        )
+        assertEquals("SIMULATION", parsed.executionMode)
+        assertEquals("19:00", parsed.returnDepartureTime)
+    }
+
+    @Test
     fun publicSearchUsesExistingAuditableCollectorAndRequiresRoute() {
         val missing = RotaCertaCommandPlanner0410.plan(
             command(RotaCertaAction0410.PUBLIC_SEARCH).copy(publicTargetNames = listOf("Alessandra")),

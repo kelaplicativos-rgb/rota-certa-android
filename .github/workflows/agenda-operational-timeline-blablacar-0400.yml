@@ -1,9 +1,9 @@
-name: Rota Certa Assistant resilient conversational queries 0.1.412
+name: Rota Certa Assistant JSON input 0.1.413
 
 on:
   push:
     branches:
-      - agent/assistant-openai-429-fallback-0.1.412
+      - agent/assistant-json-input-0.1.413
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5705' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.412"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5706' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.413"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -234,7 +234,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.412-assistant-${{ github.sha }}
+          name: rota-certa-0.1.413-assistant-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -251,7 +251,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/assistant-openai-429-fallback-0.1.412'
+    if: github.ref_name == 'agent/assistant-json-input-0.1.413'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35

@@ -196,11 +196,18 @@ internal data class RotaCertaStructuredCommand0410(
     val roundTrip: Boolean = false,
     val origin: String = "",
     val destination: String = "",
+    val returnDepartureTime: String = "",
     val publicTargetNames: List<String> = emptyList(),
     val seats: Int? = null,
     val priceText: String = "",
     val freeTextValue: String = "",
     val requestedPolicy: String = "",
+    val executionMode: String = "",
+    val profileSelectionStrategy: String = "",
+    val checkAllDriverProfiles: Boolean = false,
+    val requirePublicCollectorPreExecution: Boolean = false,
+    val requirePhysicalContinuityCheck: Boolean = false,
+    val requireScheduleConflictCheck: Boolean = false,
     val interpretationConfidence: Double = 0.0,
     val interpretationNotes: String = "",
     val multipleActions: Boolean = false,
@@ -519,6 +526,22 @@ internal object RotaCertaCommandPlanner0410 {
         if (command.action == RotaCertaAction0410.CREATE_TRIPS && temporal.dates.isEmpty()) {
             return RotaCertaPlanResult0410(RotaCertaValidationCode0410.AMBIGUOUS_DATE, message = "Informe ao menos uma data para criar as viagens.")
         }
+        if (command.action == RotaCertaAction0410.CREATE_TRIPS &&
+            command.returnDepartureTime.isNotBlank()
+        ) {
+            if (!command.roundTrip) {
+                return RotaCertaPlanResult0410(
+                    RotaCertaValidationCode0410.INVALID_ARGUMENT,
+                    message = "Horário de volta só pode ser usado quando roundTrip=true.",
+                )
+            }
+            if (!Regex("""(?:[01]\d|2[0-3]):[0-5]\d""").matches(command.returnDepartureTime.trim())) {
+                return RotaCertaPlanResult0410(
+                    RotaCertaValidationCode0410.INVALID_TIME,
+                    message = "Horário de volta inválido; use HH:mm.",
+                )
+            }
+        }
         if (command.action == RotaCertaAction0410.PUBLIC_SEARCH &&
             (command.origin.isBlank() || command.destination.isBlank())
         ) {
@@ -531,7 +554,9 @@ internal object RotaCertaCommandPlanner0410 {
         val targetIdentity = entities.trip?.let { listOf(it.id, it.blablaProfileUuid.orEmpty(), it.blablaTripId.orEmpty(), it.canonicalRevision.toString()).joinToString("|") }.orEmpty()
         val keyMaterial = listOf(
             command.schemaVersion, command.action.name, targetIdentity, entities.booking?.id.orEmpty(),
-            temporal.dates.joinToString(","), command.origin, command.destination,
+            temporal.dates.joinToString(","), temporal.time?.toString().orEmpty(),
+            command.origin, command.destination, command.roundTrip.toString(),
+            command.returnDepartureTime,
             command.publicTargetNames.joinToString(","), command.seats?.toString().orEmpty(),
             command.priceText, command.freeTextValue,
         ).joinToString("|")

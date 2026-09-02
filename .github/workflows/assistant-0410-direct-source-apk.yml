@@ -1,9 +1,9 @@
-name: Rota Certa Assistant 0.1.411 conversational queries APK
+name: Rota Certa Assistant 0.1.413 JSON input APK
 
 on:
   push:
     branches:
-      - agent/assistant-date-query-0.1.411
+      - agent/assistant-json-input-0.1.413
     paths:
       - 'app/**'
       - 'trip-platform/functions/**'
@@ -28,8 +28,8 @@ jobs:
     env:
       GOOGLE_MAPS_API_KEY: assistant_ci_dummy_key
       BASE_AUTHORITY_SHA: 09bb5779404f0e789af2d6d76f85e84a932e9a64
-      EXPECTED_VERSION_CODE: '5704'
-      EXPECTED_VERSION_NAME: '0.1.411'
+      EXPECTED_VERSION_CODE: '5706'
+      EXPECTED_VERSION_NAME: '0.1.413'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -46,8 +46,8 @@ jobs:
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaCommand0410.kt
           test -s app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaAssistantUi0410.kt
           test -s trip-platform/functions/assistant-command-interpreter-0410.js
-          grep -Fq 'versionCode = 5704' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.411"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5706' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.413"' app/build.gradle.kts
           git diff --exit-code "$BASE_AUTHORITY_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           printf '%s
 ' "$SOURCE_HEAD" | tee source_head.txt
@@ -116,7 +116,7 @@ jobs:
       - name: Upload exact-head APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-assistant-0.1.411-queries-${{ github.sha }}
+          name: rota-certa-assistant-0.1.413-json-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
