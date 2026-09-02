@@ -37,10 +37,8 @@ fun ReservationRequestsHomeAlert0356() {
     }
 
     LaunchedEffect(Unit) {
-        runCatching {
-            BookingPushRegistration0304.ensureRegistered(context, store)
-            PublicBookingRemoteSync0296.pullAndReconcile(context, store)
-        }
+        // Network registration/reconciliation belongs to AgendaBackgroundSync0392.
+        // This composable only observes persisted state and in-process change events.
         refreshLocal()
         BookingRealtimeEvents0356.changes.collect { refreshLocal() }
     }
