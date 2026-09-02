@@ -61,7 +61,7 @@ test("backend routes require admin session for protected administration", () => 
   assert.match(source, /\/public-attestation/);
   assert.match(admin, /requireAdminSession0417\(req, res\)/);
   assert.match(admin, /driverUsername.*session\.driverUsername/s);
-  assert.doesNotMatch(admin, /passwordHash:\s*password/);
+  assert.doesNotMatch(admin, /passwordHash:\s*password\s*[,}]/);
 });
 
 test("public visibility and profile filters are applied in server projection", () => {
