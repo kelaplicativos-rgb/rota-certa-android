@@ -115,6 +115,15 @@ data class Trip(
     val publicationTombstone: Boolean = false,
     /** Durable outbox event id used only for publication idempotency/audit. */
     val publicationEventId: String = "",
+    /**
+     * Last normalized BlaBlaCar observation accepted into the canonical TripStore.
+     * The collector is only an input; Timeline/Agenda projections must not read its volatile cache directly.
+     */
+    val externalSnapshot: BlaBlaCollectorTrip? = null,
+    /** Semantic fingerprint of [externalSnapshot], excluding volatile browser/UI attributes. */
+    val externalSnapshotFingerprint: String = "",
+    /** False means the observation was partial and must not replace a previously complete canonical snapshot. */
+    val externalSnapshotComplete: Boolean = false,
 )
 
 internal enum class CanonicalTripRevisionDecision0395 {
