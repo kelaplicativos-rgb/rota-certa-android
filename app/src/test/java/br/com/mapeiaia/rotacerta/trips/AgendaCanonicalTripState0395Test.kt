@@ -220,7 +220,8 @@ class AgendaCanonicalTripState0395Test {
         assertTrue(background.contains("result=RETRY_PENDING"))
         assertTrue(background.contains("recordExternalTenantMutation("))
         assertTrue(store.contains("trip.seatAllocationVersionUsed > seatAllocationVersion"))
-        assertTrue(outbox.contains("latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion"))\n        assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
+        assertTrue(outbox.contains("latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion"))
+        assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
         assertTrue(outbox.contains("FAILED_RETRYABLE"))
         assertTrue(outbox.contains("SUPERSEDED"))
     }
