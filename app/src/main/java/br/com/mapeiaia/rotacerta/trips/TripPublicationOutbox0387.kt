@@ -623,6 +623,7 @@ internal class TripMutationCoordinator0387(
         binding: PublicExternalTripBinding,
         mutationType: String = "TIMELINE_OPERATIONAL_CLEAR",
         source: String = "TIMELINE",
+        outboxCanonicalTripId: String? = null,
     ): TripPublicationOutboxEvent0387? {
         if (!store.onlineSettings().configured) return null
         val profileUuid = binding.profileUuid.trim()
@@ -632,7 +633,8 @@ internal class TripMutationCoordinator0387(
             it.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
         }
         if (accounts.size != 1) return null
-        val canonicalTripId = binding.bookingTripId.takeIf(String::isNotBlank)
+        val canonicalTripId = outboxCanonicalTripId?.takeIf(String::isNotBlank)
+            ?: binding.bookingTripId.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(
                 outbox.tenantId,
                 accounts.single().id,
