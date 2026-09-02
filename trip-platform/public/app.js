@@ -1563,6 +1563,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       : 0;
     const soldOut = item.capacityReliable === true && segmentAvailable === 0;
     const actionsEnabled = item.capacityReliable === true && segmentAvailable > 0;
+    const blablaUrl = safeBlaBlaPublicUrl(item);
     const from = stops[fromIndex]?.name || "Origem";
     const to = stops[toIndex]?.name || "Destino";
     const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
@@ -1654,7 +1655,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       bottom.appendChild(fullWord);
     }
 
-    if (actionsEnabled) {
+    if (actionsEnabled || (!isTesterMode() && blablaUrl)) {
       const choices = document.createElement("div");
       choices.className = "reservationChoices";
 
@@ -1673,23 +1674,23 @@ function renderAgendaCards(entries, container, filtered = false) {
         return;
       }
 
-      const whatsapp = document.createElement("button");
-      whatsapp.type = "button";
-      whatsapp.className = "bookingChoice bookingWhatsapp";
-      whatsapp.textContent = "Reservar pelo WhatsApp";
-      whatsapp.addEventListener("click", () => openWhatsappSeatPicker(item, fromIndex, toIndex, filtered ? "searchResults" : "agenda"));
-
-      const blablaUrl = safeBlaBlaPublicUrl(item);
-      const blabla = document.createElement("a");
-      blabla.className = "bookingChoice bookingBlabla";
-      blabla.textContent = "Ver detalhes na BlaBlaCar";
-      if (blablaUrl) {
-        blabla.href = blablaUrl;
-                blabla.rel = "noopener noreferrer";
-        blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED", { fromIndex, toIndex }));
-        choices.append(whatsapp, blabla);
-      } else {
+      if (actionsEnabled) {
+        const whatsapp = document.createElement("button");
+        whatsapp.type = "button";
+        whatsapp.className = "bookingChoice bookingWhatsapp";
+        whatsapp.textContent = "Reservar pelo WhatsApp";
+        whatsapp.addEventListener("click", () => openWhatsappSeatPicker(item, fromIndex, toIndex, filtered ? "searchResults" : "agenda"));
         choices.appendChild(whatsapp);
+      }
+
+      if (blablaUrl) {
+        const blabla = document.createElement("a");
+        blabla.className = "bookingChoice bookingBlabla";
+        blabla.textContent = "Ver detalhes na BlaBlaCar";
+        blabla.href = blablaUrl;
+        blabla.rel = "noopener noreferrer";
+        blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_DETAILS_OPENED", { fromIndex, toIndex }));
+        choices.appendChild(blabla);
       }
       card.appendChild(choices);
     }
@@ -1774,17 +1775,17 @@ function renderTrip() {
   const canUseExternalActions = trip.capacityReliable === true && actionAvailable > 0;
 
   const testerCanReserve = isTesterMode() && trip.canReserve !== false && canUseExternalActions;
+  const blablaUrl = safeBlaBlaPublicUrl(trip);
   if (isTesterMode()) show("tripSticky", testerCanReserve);
-  else show("tripSticky", canUseExternalActions);
+  else show("tripSticky", canUseExternalActions || !!blablaUrl);
   $("startBooking").disabled = !(isTesterMode() ? testerCanReserve : canUseExternalActions);
   $("startBooking").textContent = isTesterMode() ? "🧪 Simular reserva" : "Reservar pelo WhatsApp";
   show("bookBlaBla", !isTesterMode());
 
-  const blablaUrl = safeBlaBlaPublicUrl(trip);
   const blabla = $("bookBlaBla");
-  if (blablaUrl && canUseExternalActions) {
+  if (blablaUrl) {
     blabla.href = blablaUrl;
-        blabla.removeAttribute("aria-disabled");
+    blabla.removeAttribute("aria-disabled");
   } else {
     blabla.removeAttribute("href");
     blabla.setAttribute("aria-disabled", "true");
