@@ -210,11 +210,11 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val merged = remember(mergedRaw, trips, appSettings.rotaCertaSeatAllocation) {
+    val merged = remember(mergedRaw, trips) {
         applyCanonicalTripCapacity0406(
             entries = mergedRaw,
             canonicalTrips = trips,
-            fallbackRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+            fallbackRotaCertaSeatAllocation = 0,
         )
     }
     val directionGeo = remember(merged, trips, appSettings) {
