@@ -1036,76 +1036,56 @@ internal object AgendaBackgroundSync0392 {
         val appContext = context.applicationContext
         val store = TripStore(appContext)
         val nowMillis = System.currentTimeMillis()
-        val changedLocalIds = store.reconcileOperationalInventoryTripIds(
+        // Legacy tenant allocation is migration-only from 0.1.416 onward. The canonical
+        // authority is Trip.rotaCertaSeatAllocation and explicit per-trip values are never fanned out.
+        val migratedTripIds = store.reconcileOperationalInventoryTripIds(
             rotaCertaSeatAllocation = rotaCertaSeatAllocation,
             seatAllocationVersion = seatAllocationVersion,
             nowMillis = nowMillis,
         )
         val coordinator = TripMutationCoordinator0387(appContext, store)
+        val migratedTrips = store.trips().filter { it.id in migratedTripIds }
         var localQueued = 0
-        val recoverableLocalTrips = store.trips().filter { trip ->
-            trip.isCanonicalLocalPublishSource() &&
-                trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) &&
-                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE)) &&
-                trip.seatAllocationVersionUsed == seatAllocationVersion
-        }
-        if (seatAllocationVersion > 0L || changedLocalIds.isNotEmpty()) {
-            recoverableLocalTrips.forEach { trip ->
+        migratedTrips
+            .filter(Trip::isCanonicalLocalPublishSource)
+            .filter { it.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) }
+            .forEach { trip ->
                 if (coordinator.recordLocalMutation(
                         canonicalTripId = trip.id,
-                        mutationType = "TENANT_SEAT_ALLOCATION_CHANGED",
-                        source = "TENANT_CONFIG_CANONICAL_FANOUT",
-                        configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                        mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
+                        source = "PER_TRIP_ALLOCATION_MIGRATION",
+                        configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
                         reconcileBookingInventory = false,
                     ) != null
                 ) {
                     localQueued++
                 }
             }
-        }
 
         var externalQueued = 0
         var externalRetryPending = 0
-        if (seatAllocationVersion > 0L) {
-            val cachedExternalTrips = BlaBlaCollectorStateStore(appContext)
-                .lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
-                .filterNot(BlaBlaCollectorTrip::identity_conflict)
-            val pendingBindings = store.publicExternalBindings().filter { binding ->
-                binding.departureAtMillis >= nowMillis &&
-                    binding.seatAllocationVersionUsed < seatAllocationVersion &&
-                    binding.profileUuid.isNotBlank() && binding.blablaTripId.isNotBlank()
-            }
-            pendingBindings.forEach { binding ->
-                val exactMatches = cachedExternalTrips.filter { source ->
-                    source.profile_uuid.trim().equals(binding.profileUuid.trim(), ignoreCase = true) &&
-                        source.trip_id?.trim() == binding.blablaTripId.trim()
-                }
-                if (exactMatches.size == 1) {
-                    if (coordinator.recordExternalTenantMutation(
-                            sourceTrip = exactMatches.single(),
-                            configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
-                            seatAllocationVersion = seatAllocationVersion,
-                        ) != null
-                    ) {
-                        externalQueued++
-                    }
-                } else {
+        migratedTrips
+            .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
+            .forEach { trip ->
+                val source = trip.externalSnapshot
+                val allocation = trip.rotaCertaSeatAllocation ?: 0
+                if (source == null || source.identity_conflict) {
                     externalRetryPending++
-                    UnifiedDebugEventStore.record(
-                        "TENANT_SEAT_ALLOCATION_FANOUT_0395",
-                        appContext.packageName,
-                        "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
-                            " internalTripId=" + seatSyncDiagnosticKey(binding.bookingTripId) +
-                            " configVersion=" + seatAllocationVersion +
-                            " result=RETRY_PENDING reason=external_snapshot_unavailable exactMatches=" + exactMatches.size,
-                    )
+                } else if (coordinator.recordExternalTenantMutation(
+                        sourceTrip = source,
+                        configuredRotaCertaSeatAllocation = allocation,
+                        seatAllocationVersion = trip.seatAllocationVersionUsed,
+                        mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
+                    ) != null
+                ) {
+                    externalQueued++
                 }
             }
-        }
-        BookingRealtimeEvents0356.notifyChanged()
+
+        if (migratedTripIds.isNotEmpty()) BookingRealtimeEvents0356.notifyChanged()
         val result = TenantSeatAllocationFanOut0395(
             configVersion = seatAllocationVersion,
-            localCanonicalUpdated = changedLocalIds.size,
+            localCanonicalUpdated = migratedTripIds.size,
             localPublicationQueued = localQueued,
             externalPublicationQueued = externalQueued,
             externalRetryPending = externalRetryPending,
@@ -1116,15 +1096,12 @@ internal object AgendaBackgroundSync0392 {
             "tenantKey=" + seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId) +
                 " configVersion=" + seatAllocationVersion +
                 " allocation=" + rotaCertaSeatAllocation +
+                " migratedOnly=true explicitPerTripPreserved=true" +
                 " localCanonicalUpdated=" + result.localCanonicalUpdated +
                 " localPublicationQueued=" + result.localPublicationQueued +
                 " externalPublicationQueued=" + result.externalPublicationQueued +
                 " externalRetryPending=" + result.externalRetryPending +
-                " result=" + when {
-                    result.externalRetryPending > 0 -> "RETRY_PENDING"
-                    result.localCanonicalUpdated > 0 || result.localPublicationQueued > 0 || result.externalPublicationQueued > 0 -> "UPDATE"
-                    else -> "SKIP_ALREADY_CURRENT"
-                } +
+                " result=" + if (migratedTripIds.isEmpty()) "SKIP_NO_LEGACY_TRIPS" else "MIGRATED" +
                 " fullSyncRequested=false",
         )
         result
