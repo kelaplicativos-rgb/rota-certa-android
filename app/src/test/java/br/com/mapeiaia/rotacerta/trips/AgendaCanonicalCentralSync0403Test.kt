@@ -174,7 +174,7 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(background.contains("val freshCanonical = reconcileCollectedExternalTrips0403"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_MISSING_PRESERVED_0403"))
         assertTrue(background.contains("recordExternalCollectionMutation("))
-        assertTrue(outbox.contains("eventSource = \"EXTERNAL_COLLECTION\""))
+        assertTrue(outbox.contains("eventSource = if (remoteProjectionDivergenceObserved) \"PROJECTION_RECONCILER\" else \"EXTERNAL_COLLECTION\""))
         assertTrue(timeline.contains("resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING"))
         assertTrue(timeline.contains("canonicalCollectorResponse0403"))
         assertTrue(timeline.contains("localTripId = binding.bookingTripId.takeIf(String::isNotBlank)"))
