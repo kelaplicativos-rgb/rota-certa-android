@@ -178,6 +178,32 @@ internal data class BlaBlaCommandResult0407(
     val finishedAtMillis: Long = System.currentTimeMillis(),
 )
 
+internal enum class BlaBlaTripAction0407 {
+    REVERIFY,
+    SEAT_DETAILS,
+    OPEN_PUBLICATION,
+}
+
+internal data class BlaBlaTripActionPalette0407(
+    val primary: List<BlaBlaTripAction0407>,
+    val overflow: List<BlaBlaTripAction0407>,
+)
+
+internal fun buildBlaBlaTripActionPalette0407(
+    snapshot: BlaBlaTripCapabilitySnapshot0407,
+    hasPublicationHref: Boolean,
+): BlaBlaTripActionPalette0407 {
+    val primary = buildList {
+        if (snapshot.canShow(BlaBlaTripCapability0407.REVERIFY_TRIP)) add(BlaBlaTripAction0407.REVERIFY)
+        if (snapshot.canShow(BlaBlaTripCapability0407.SET_TRIP_SEATS)) add(BlaBlaTripAction0407.SEAT_DETAILS)
+    }
+    val overflow = buildList {
+        if (snapshot.canShow(BlaBlaTripCapability0407.REVERIFY_TRIP)) add(BlaBlaTripAction0407.REVERIFY)
+        if (snapshot.canShow(BlaBlaTripCapability0407.SET_TRIP_SEATS)) add(BlaBlaTripAction0407.SEAT_DETAILS)
+        if (hasPublicationHref && snapshot.target != null) add(BlaBlaTripAction0407.OPEN_PUBLICATION)
+    }.distinct()
+    return BlaBlaTripActionPalette0407(primary = primary.take(3), overflow = overflow)
+}
 internal object BlaBlaCapabilityRegistry0407 {
     private val staticOnlyCandidates = setOf(
         BlaBlaTripCapability0407.SET_TRIP_BOOST,
