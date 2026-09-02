@@ -29,6 +29,16 @@ class AgendaHeadlessCollector0401Test {
     }
 
     @Test
+    fun headlessStateMachineDelaysDoNotDependOnViewAttachment() {
+        assertTrue(dynamic.contains("private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())"))
+        assertTrue(dynamic.contains("headlessDelayedHandler0405.postDelayed(guarded, delayMs)"))
+        assertTrue(dynamic.contains("private fun postSessionDelayed0405"))
+        assertFalse(dynamic.contains("view.postDelayed("))
+        assertEquals(1, dynamic.split("webView.postDelayed(").size - 1)
+        assertTrue(dynamic.contains("headlessDelayedHandler0405.removeCallbacksAndMessages(null)"))
+    }
+
+    @Test
     fun navigationNeverRequestsExternalCollection() {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_open"))
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
