@@ -405,7 +405,7 @@ private fun TripApp(
                 trip.id to PublicAgendaAutoSync0300.localCapacitySnapshotRevision(
                     trip = trip,
                     bookings = bookings.filter { it.tripId == trip.id },
-                    rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                 )
             }
         val previous = localCapacityIncrementalBaseline
@@ -419,7 +419,7 @@ private fun TripApp(
                 val failureBookings = bookings.filter { it.tripId == tripId }
                 val failureContext = failureTrip?.let { trip ->
                     val withAllocation = trip.copy(
-                        rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                     )
                     AgendaFailureEvidence.tripContext(
                         trip = withAllocation.copy(
@@ -437,7 +437,7 @@ private fun TripApp(
                         canonicalTripId = tripId,
                         mutationType = "LOCAL_TRIP_SEMANTIC_CHANGE",
                         source = "TIMELINE_STORE_OBSERVER",
-                        configuredRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                        configuredRotaCertaSeatAllocation = failureTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                     )
                     AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                 }.onFailure { error ->
@@ -597,7 +597,7 @@ private fun TripApp(
             when (screen) {
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
-                    defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    defaultRotaCertaSeatAllocation = 0,
                     onCancel = {
                         pendingCreateForPassengerId = ""
                         screen = parentRootScreen0396
