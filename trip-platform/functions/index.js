@@ -3334,6 +3334,7 @@ async function createPassengerAgendaViewSession(driverUsername, passengerContact
     contactHash: sha256Hex(passengerContact),
     passengerId: cleanText(passengerId, 120),
     createdAtMillis: now,
+    lastActivityAtMillis: now,
     expiresAtMillis,
   });
   return { token, expiresAtMillis };
@@ -3353,7 +3354,8 @@ async function requirePassengerAgendaView(req, res, driverUsername) {
     return null;
   }
   const data = snap.data();
-  if (Number(data.expiresAtMillis || 0) <= Date.now()) {
+  const now = Date.now();
+  if (Number(data.expiresAtMillis || 0) <= now) {
     await ref.delete().catch(() => {});
     fail(res, 401, "agenda_view_expired", "Informe seu WhatsApp novamente para consultar esta agenda.");
     return null;
@@ -4295,12 +4297,16 @@ async function requirePassengerSession(req, res) {
     fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
     return null;
   }
+  if (now - Number(data.lastActivityAtMillis || data.createdAtMillis || 0) > 60 * 1000) {
+    await sessionRef.set({ lastActivityAtMillis: now }, { merge: true }).catch(() => {});
+  }
   return {
     passengerContact: cleanText(data.passengerContact, 40),
     passengerId: cleanText(data.passengerId, 120),
     contactHash: cleanText(data.contactHash, 80),
     sessionRefId: sessionRef.id,
     createdAtMillis: Number(data.createdAtMillis || 0),
+    lastActivityAtMillis: Math.max(Number(data.lastActivityAtMillis || 0), now),
     expiresAtMillis: Number(data.expiresAtMillis || 0),
   };
 }
@@ -6350,6 +6356,9 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   db,
   resolveDriverUsername,
   requireDriver,
+  requirePassengerSession,
+  passengerAccessForIdentity,
+  passengerAccessIsAuthorized,
   sendDriverBookingPush,
 });
 
@@ -6376,8 +6385,6 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   const parts = path.split("/").filter(Boolean);
   try {
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
-    if (req.method === "POST" && path === "/v1/public/admin/session") return await agendaAdmin0417.createAdminSession0417(req, res);
-    if (req.method === "POST" && path === "/v1/admin/logout") return await agendaAdmin0417.logoutAdmin0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/me") return await agendaAdmin0417.getAdminMe0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/overview") return await agendaAdmin0417.getAdminOverview0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/trips") return await agendaAdmin0417.listAdminTrips0417(req, res);
@@ -6389,7 +6396,6 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/admin/logs") return await agendaAdmin0417.listAdminLogs0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/export") return await agendaAdmin0417.exportAdminLogs0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/sessions") return await agendaAdmin0417.listAdminSessions0417(req, res);
-    if (req.method === "PUT" && path === "/v1/driver/admin/password") return await agendaAdmin0417.setDriverAdminPassword0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/admin/sync-policy") return await agendaAdmin0417.getDriverAdminSyncPolicy0417(req, res);
     if (req.method === "POST" && path === "/v1/driver/admin/sync-health") return await agendaAdmin0417.reportDriverAdminSyncHealth0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
