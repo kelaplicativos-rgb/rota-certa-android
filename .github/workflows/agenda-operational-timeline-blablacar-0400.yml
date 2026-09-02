@@ -1,9 +1,9 @@
-name: Rota Certa Assistant authenticated vehicle read 0.1.414
+name: Rota Certa Timeline clean surface 0.1.415
 
 on:
   push:
     branches:
-      - agent/assistant-read-vehicle-0.1.414
+      - agent/timeline-clean-surface-0.1.415
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5707' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.414"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5708' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.415"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -62,7 +62,9 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407Test.kt' changed-files.txt
-          ! grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt' changed-files.txt
+          grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineSurface0415Test.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt' changed-files.txt
 
           # Timeline is now a canonical TripStore projection; the collector is input-only.
@@ -133,7 +135,13 @@ jobs:
           grep -Fq 'write_not_verified_for_current_runtime' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
           ! grep -Fq 'SET_TRIP_BOOST(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'internal object RotaCertaCommandRegistry0410' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaCommand0410.kt
-          grep -Fq 'RotaCertaAssistantPanel0410(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'RotaCertaAssistantPanel0410(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'AgendaAutomaticSyncTimelineStatus0398(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'Sincronização externa pendente ⚠️' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'TripScreen.NOTIFICATIONS -> {' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'Abrir Central de Notificações' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
           grep -Fq 'path = "/v1/assistant/interpret"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'path === "/v1/assistant/interpret"' trip-platform/functions/index.js
           grep -Fq 'OPENAI_API_KEY' trip-platform/functions/index.js
@@ -205,7 +213,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --tests 'br.com.mapeiaia.rotacerta.trips.RotaCertaCommand0410Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --tests 'br.com.mapeiaia.rotacerta.trips.RotaCertaCommand0410Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -234,7 +242,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.414-assistant-${{ github.sha }}
+          name: rota-certa-0.1.415-timeline-clean-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
