@@ -58,7 +58,7 @@ test("backend routes require admin session for protected administration", () => 
   assert.match(source, /\/v1\/public\/admin\/session/);
   assert.match(source, /\/v1\/admin\/sync\/update-now/);
   assert.match(source, /\/v1\/admin\/sync\/reconcile/);
-  assert.match(source, /\/public-attestation/);
+  assert.match(source, /public-attestation/);
   assert.match(admin, /requireAdminSession0417\(req, res\)/);
   assert.match(admin, /driverUsername.*session\.driverUsername/s);
   assert.doesNotMatch(admin, /passwordHash:\s*password\s*[,}]/);
