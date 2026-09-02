@@ -832,12 +832,21 @@ internal object AgendaBackgroundSync0392 {
                                 externalSnapshotComplete = incomingComplete,
                             ),
                         )
-                        changedTrips++
-                        UnifiedDebugEventStore.record(
-                            "EXTERNAL_CANONICAL_INGEST_0403",
-                            context.packageName,
-                            "internalTripId=${seatSyncDiagnosticKey(saved.id)} profileUuidPresent=true tripIdPresent=true oldFingerprint=${existing?.externalSnapshotFingerprint.orEmpty().takeLast(12)} newFingerprint=${incomingFingerprint.takeLast(12)} sourceComplete=$incomingComplete canonicalRevision=${saved.canonicalRevision} result=UPDATE",
-                        )
+                        if (saved.externalSnapshotFingerprint == incomingFingerprint) {
+                            changedTrips++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_CANONICAL_INGEST_0403",
+                                context.packageName,
+                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} profileUuidPresent=true tripIdPresent=true oldFingerprint=${existing?.externalSnapshotFingerprint.orEmpty().takeLast(12)} newFingerprint=${incomingFingerprint.takeLast(12)} sourceComplete=$incomingComplete canonicalRevision=${saved.canonicalRevision} result=UPDATE",
+                            )
+                        } else {
+                            skippedTrips++
+                            UnifiedDebugEventStore.record(
+                                "EXTERNAL_CANONICAL_WRITE_DEFERRED_0403",
+                                context.packageName,
+                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} committedFingerprint=${saved.externalSnapshotFingerprint.takeLast(12)} incomingFingerprint=${incomingFingerprint.takeLast(12)} result=DEFERRED reason=canonical_revision_race retry=next_cycle",
+                            )
+                        }
                         saved
                     }
                 }
@@ -874,6 +883,7 @@ internal object AgendaBackgroundSync0392 {
             if (
                 incomingComplete &&
                 canonicalTrip != null &&
+                canonicalTrip.externalSnapshotFingerprint == incomingFingerprint &&
                 canonicalTrip.departureAtMillis > nowMillis &&
                 binding?.externalFingerprint != incomingFingerprint
             ) {
