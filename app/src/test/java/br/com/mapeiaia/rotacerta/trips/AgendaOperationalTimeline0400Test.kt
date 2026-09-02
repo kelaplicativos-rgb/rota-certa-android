@@ -17,10 +17,14 @@ class AgendaOperationalTimeline0400Test {
     private val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
 
     @Test
-    fun operationalTimelineIsCollectorProjectionNotAgendaProjection() {
-        assertTrue(timeline.contains("BlaBlaTimelineAdapter.merge(emptyList(), collectorResponseForTimeline)"))
+    fun operationalTimelineIsCanonicalTripStoreProjectionNotCollectorOrAgendaProjection() {
+        assertTrue(timeline.contains("canonicalCollectorResponse0403"))
+        assertTrue(timeline.contains("BlaBlaTimelineAdapter.merge(emptyList(), canonicalCollectorResponseForTimeline0403)"))
+        assertTrue(timeline.contains("resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING"))
+        assertTrue(timeline.contains("it.externalSnapshot != null"))
+        assertFalse(timeline.contains("collectorStore.lastResponseRecoveringDynamicSessions()"))
+        assertFalse(timeline.contains("BlaBlaCollectorTimelineEvents0400.revision.collectAsState()"))
         assertFalse(timeline.contains("TripTimelineEngine.fromLocalAgenda(trips, bookings)"))
-        assertTrue(timeline.contains("BlaBlaCollectorTimelineEvents0400.revision.collectAsState()"))
         assertTrue(timeline.contains("val publicResponseForTimeline: BlaBlaPublicSearchResponse? = null"))
         assertTrue(timeline.contains("val publicTimelineCards: List<BlaBlaPublicSearchCard> = emptyList()"))
     }
