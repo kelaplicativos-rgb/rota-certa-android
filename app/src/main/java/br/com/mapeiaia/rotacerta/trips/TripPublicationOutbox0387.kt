@@ -834,6 +834,12 @@ internal class TripMutationCoordinator0387(
                         if (response.stale) throw PublicationStaleRevision0387(response.entityRevision)
                     }
                 }
+                store.recordPublicationCommitted0411(
+                    canonicalTripId = event.canonicalTripId,
+                    publicationRevision = event.revision,
+                    publicationEventId = event.id,
+                    tombstone = event.operation == TripPublicationOperation0387.TOMBSTONE,
+                )
                 outbox.markDelivered(event.id)
                 delivered++
                 recordEvent(
