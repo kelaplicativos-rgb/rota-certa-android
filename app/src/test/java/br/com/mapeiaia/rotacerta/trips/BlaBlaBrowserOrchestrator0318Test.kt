@@ -127,15 +127,17 @@ class BlaBlaBrowserOrchestrator0318Test {
     }
 
     @Test
-    fun blablaAccountManagementPanelStillExistsBehindSyncToolbar() {
-        val collectorUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
+    fun blablaAccountManagementIsSeparatedFromTimelineSynchronizationControls() {
+        val accountsUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt").readText()
         val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
-        assertTrue(collectorUi.contains("Text(\"Contas BlaBlaCar\")"))
-        assertTrue(collectorUi.contains("Text(\"+ Adicionar conta\")"))
-        assertTrue(collectorUi.contains("Sincronizar todas as contas"))
-        assertTrue(collectorUi.contains("Text(\"📅 Sincronizar por data/período\")"))
-        assertTrue(timelineUi.contains("BlaBlaCollectorPanel("))
-        assertTrue(timelineUi.contains("Sincronizar BlaBlaCar"))
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+
+        assertTrue(accountsUi.contains("Text(\"Contas e navegadores\""))
+        assertTrue(accountsUi.contains("Text(\"+ Adicionar conta\")"))
+        assertTrue(accountsUi.contains("A sincronização continua sendo controlada exclusivamente em Sincronização automática."))
+        assertFalse(timelineUi.contains("BlaBlaCollectorPanel("))
+        assertFalse(timelineUi.contains("Sincronizar BlaBlaCar"))
+        assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
     }
 
     @Test

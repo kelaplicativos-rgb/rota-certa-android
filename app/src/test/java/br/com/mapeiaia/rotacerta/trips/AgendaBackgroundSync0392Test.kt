@@ -26,7 +26,8 @@ class AgendaBackgroundSync0392Test {
         assertEquals(AgendaBackgroundSyncMode0392.BOOKING_EVENT, agendaBackgroundSyncMode0392("booking_push:reservation_created"))
         assertEquals(AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE, agendaBackgroundSyncMode0392("blablacar_collection_result"))
         assertEquals(AgendaBackgroundSyncMode0392.FULL_RECONCILE, agendaBackgroundSyncMode0392("periodic"))
-        assertEquals(AgendaBackgroundSyncMode0392.FULL_RECONCILE, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
+        assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_pull_refresh"))
+        assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("timeline_open"))
     }
 
     @Test

@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,10 @@ internal fun agendaAutomaticSyncIntervalLabel0397(minutes: Long): String = when 
 internal fun AgendaAutomaticSyncScreen0397() {
     val context = LocalContext.current
     var status by remember { mutableStateOf(AgendaBackgroundSyncConfig0392.status(context)) }
+    val collectorRevision0400 by BlaBlaCollectorTimelineEvents0400.revision.collectAsState()
+    val collectorState0400 = remember(status, collectorRevision0400) {
+        AgendaBackgroundSyncConfig0392.collectorState0400(context)
+    }
     var intervalMenuExpanded by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -121,6 +126,15 @@ internal fun AgendaAutomaticSyncScreen0397() {
                 )
                 Text("Último gatilho: ${status.lastTrigger.ifBlank { "—" }}")
                 Text("Último resultado: ${status.lastResult.ifBlank { "—" }}")
+                Text(
+                    "Coleta BlaBlaCar: " + when {
+                        collectorState0400.status == "COMPLETE" -> "COMPLETE"
+                        collectorState0400.status == "NO_ACCOUNTS" -> "sem contas configuradas"
+                        collectorState0400.status == "PENDING_AUTH" -> "PENDING_AUTH · ação necessária: reconecte ${collectorState0400.pendingAuthAccountIds.size} conta(s)"
+                        collectorState0400.pending -> "${collectorState0400.status} · ${collectorState0400.completedAccountIds.size + collectorState0400.failedAccountIds.size + collectorState0400.pendingAuthAccountIds.size}/${collectorState0400.targetAccountIds.size} contas processadas"
+                        else -> collectorState0400.status
+                    },
+                )
                 Text(
                     if (status.retryPending) {
                         "Falha/retry: retry pendente · tentativa ${status.retryAttempt + 1}"

@@ -5800,6 +5800,37 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   }
 }
 
+async function listDriverTripSyncState0402(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const now = Date.now();
+  try {
+    const snapshot = await db.collection("trips")
+      .where("driverUsername", "==", driver.username)
+      .limit(300)
+      .get();
+    const trips = snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          remoteTripId: doc.id,
+          status: cleanText(data.status, 24),
+          departureAtMillis: Math.max(0, Number(data.departureAtMillis || 0)),
+          stops: Array.isArray(data.stops) ? data.stops : [],
+          capacityReliable: data.capacityReliable === true,
+          capacitySnapshotRevision: cleanText(data.capacitySnapshotRevision, 128),
+          publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
+          canonicalTripId: cleanText(data.canonicalTripId, 180),
+        };
+      })
+      .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.departureAtMillis > now)
+      .sort((a, b) => a.departureAtMillis - b.departureAtMillis);
+    return json(res, 200, { trips });
+  } catch (error) {
+    return fail(res, error.httpStatus || 500, error.code || "driver_trip_sync_state_failed", error.message || "Falha ao ler estado canônico das viagens.");
+  }
+}
+
 async function reconcileDriverAgendaSeatAllocation(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -6015,6 +6046,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
+    if (req.method === "GET" && path === "/v1/driver/trips/sync-state") return await listDriverTripSyncState0402(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/regenerate") return await regenerateDriverPublicAgenda(req, res);
     if (req.method === "PUT" && path === "/v1/driver/agenda/seat-allocation") return await reconcileDriverAgendaSeatAllocation(req, res);

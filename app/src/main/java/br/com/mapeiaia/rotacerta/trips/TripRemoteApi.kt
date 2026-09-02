@@ -406,6 +406,23 @@ data class DriverAgendaSeatAllocationReconcileRequest(
 )
 
 @Serializable
+data class DriverTripSyncState0402(
+    val remoteTripId: String,
+    val status: String = "",
+    val departureAtMillis: Long = 0L,
+    val stops: List<TripStop> = emptyList(),
+    val capacityReliable: Boolean = false,
+    val capacitySnapshotRevision: String = "",
+    val publicationRevision: Long = 0L,
+    val canonicalTripId: String = "",
+)
+
+@Serializable
+data class DriverTripSyncStateResponse0402(
+    val trips: List<DriverTripSyncState0402> = emptyList(),
+)
+
+@Serializable
 data class DriverCapacitySnapshotResponse(
     val tripId: String,
     val publicToken: String,
@@ -576,6 +593,12 @@ class TripRemoteApi(
         method = "POST",
         path = "/v1/driver/test-link/revoke",
         body = "{}",
+        requireDriverToken = true,
+    )
+
+    suspend fun listDriverTripSyncStates0402(): DriverTripSyncStateResponse0402 = request(
+        method = "GET",
+        path = "/v1/driver/trips/sync-state",
         requireDriverToken = true,
     )
 
