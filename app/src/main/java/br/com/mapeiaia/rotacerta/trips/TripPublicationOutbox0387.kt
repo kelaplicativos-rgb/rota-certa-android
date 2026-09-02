@@ -489,6 +489,18 @@ internal class TripMutationCoordinator0387(
         eventSource = "BLABLACAR_MANUAL_CARD",
     )
 
+    fun recordExternalCollectionMutation(
+        sourceTrip: BlaBlaCollectorTrip,
+        configuredRotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long = 0L,
+    ): TripPublicationOutboxEvent0387? = recordExternalMutation(
+        sourceTrip = sourceTrip,
+        configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
+        seatAllocationVersion = seatAllocationVersion,
+        mutationType = "BLABLACAR_EXTERNAL_COLLECTION_DELTA",
+        eventSource = "EXTERNAL_COLLECTION",
+    )
+
     fun recordExternalTenantMutation(
         sourceTrip: BlaBlaCollectorTrip,
         configuredRotaCertaSeatAllocation: Int,
@@ -543,12 +555,16 @@ internal class TripMutationCoordinator0387(
             )
             return null
         }
+        val canonicalExternalTrip = store.trips().firstOrNull { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+        }
         val canonicalTripId = existingBinding?.bookingTripId?.takeIf(String::isNotBlank)
+            ?: canonicalExternalTrip?.id?.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(outbox.tenantId, accountId, profileUuid, tripId)
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
-            ?: store.trips()
-                .firstOrNull { it.blablaProfileUuid.equals(profileUuid, true) && it.blablaTripId == tripId }
-                ?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+            ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
         val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation)
         return outbox.enqueue(
