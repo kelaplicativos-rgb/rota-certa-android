@@ -3597,6 +3597,12 @@ async function syncDriverPassengerDirectory(req, res) {
   normalized.forEach((item, index) => {
     const previous = existingDocs[index];
     const data = previous.exists ? previous.data() : {};
+    const identitySource = identitySnapshots[index].docs
+      .map((doc) => doc.data())
+      .find((candidate) =>
+        normalizeUsername(candidate.driverUsername || "") === driver.username &&
+        cleanText(candidate.status, 20).toUpperCase() !== "MOVED"
+      ) || {};
     const status = item.blocked ? "BLOCKED" : "AUTHORIZED";
     const currentRef = driverPassengerAccessRef(driver.username, item.passengerContact);
     writes.push((batch) => batch.set(currentRef, {
@@ -3605,7 +3611,8 @@ async function syncDriverPassengerDirectory(req, res) {
       passengerId: item.passengerId,
       displayName: item.displayName,
       status,
-      referredByContact: cleanText(data.referredByContact, 40),
+      agendaAdmin: item.blocked ? false : (data.agendaAdmin === true || identitySource.agendaAdmin === true),
+      referredByContact: cleanText(data.referredByContact || identitySource.referredByContact, 40),
       referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
       createdAtMillis: Number(data.createdAtMillis || now),
       updatedAtMillis: now,
