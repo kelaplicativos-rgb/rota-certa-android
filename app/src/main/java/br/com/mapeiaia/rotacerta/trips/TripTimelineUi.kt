@@ -118,6 +118,10 @@ fun TripTimelineScreen(
         when (uiCommand0396) {
             AgendaTimelineCommand0396.ADD_PASSENGER -> passengerAddRequestToken++
             AgendaTimelineCommand0396.TOGGLE_ARCHIVED -> showArchived = !showArchived
+            AgendaTimelineCommand0396.TOGGLE_SYNC_PENDING -> {
+                syncPendingOnly = !syncPendingOnly
+                if (syncPendingOnly) searchQuery = ""
+            }
             AgendaTimelineCommand0396.DOWNLOAD_TIMELINE -> downloadRequestToken0399++
             null -> Unit
         }
@@ -401,16 +405,6 @@ fun TripTimelineScreen(
         resumeTripId = addPassengerResumeTripId,
     )
 
-    RotaCertaAssistantPanel0410(
-        trips = trips,
-        bookings = bookings,
-        store = store,
-        onChanged = onChanged,
-    )
-
-    val automaticSyncStatus0398 = AgendaBackgroundSyncConfig0392.status(context)
-    AgendaAutomaticSyncTimelineStatus0398(automaticSyncStatus0398)
-
     OutlinedTextField(
         value = searchQuery,
         onValueChange = { searchQuery = it },
@@ -418,35 +412,6 @@ fun TripTimelineScreen(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-
-    if (pendingSyncEntries.isNotEmpty() || syncPendingOnly) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = if (syncPendingOnly) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                TextButton(onClick = {
-                    syncPendingOnly = true
-                    searchQuery = ""
-                }) {
-                    Text("Sincronização externa pendente ⚠️ • ${pendingSyncEntries.size}")
-                }
-                if (syncPendingOnly) {
-                    TextButton(onClick = { syncPendingOnly = false }) { Text("✕ Limpar filtro") }
-                }
-            }
-            if (syncPendingOnly) {
-                Text(
-                    "Filtro ativo • exibindo somente cards pendentes em todas as datas.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
-        }
-    }
 
     LaunchedEffect(entries.map { it.tripId to it.issues }) {
         entries.firstOrNull { TripTimelineIssue.OVERBOOKING in it.issues }?.let {
