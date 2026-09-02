@@ -252,7 +252,7 @@ class TripStore(context: Context) {
                 ordered.drop(1)
                     .filter { it.remoteTripId.isNotBlank() && it.remoteTripId != keeperRemoteId }
             }.distinctBy(PublicExternalTripBinding::remoteTripId)
-            val strongBindingOrphans = dedupedBindings.count { binding ->
+            val orphanBindingsForCleanup = dedupedBindings.filter { binding ->
                 val key = canonicalBlaBlaTripKey0406(
                     tenantId = tenantScope.tenantId,
                     profileUuid = binding.profileUuid,
@@ -277,11 +277,12 @@ class TripStore(context: Context) {
                 duplicateCanonicalTrips = loserToWinner.size,
                 migratedBookings = originalBookings.indices.count { index -> originalBookings[index].tripId != remappedBookings[index].tripId },
                 duplicateAgendaBindings = (originalBindings.size - dedupedBindings.size).coerceAtLeast(0),
-                orphanAgendaBindings = strongBindingOrphans,
+                orphanAgendaBindings = orphanBindingsForCleanup.size,
                 unresolvedExternalIdentity = hashedTrips.count {
                     resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isBlank()
                 },
                 duplicateAgendaBindingsForCleanup = duplicateBindingsForCleanup,
+                orphanAgendaBindingsForCleanup = orphanBindingsForCleanup,
             )
         }
 
@@ -653,6 +654,7 @@ internal data class CanonicalIntegrityReport0406(
     val orphanAgendaBindings: Int = 0,
     val unresolvedExternalIdentity: Int = 0,
     val duplicateAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
+    val orphanAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
 )
 
 @kotlinx.serialization.Serializable
