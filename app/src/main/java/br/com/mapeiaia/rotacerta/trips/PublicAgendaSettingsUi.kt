@@ -308,41 +308,6 @@ internal fun OnlineSettingsEditor(
         automaticSnapshot?.badge.orEmpty(), publicProfileOverrideFields, { driverBadge = it.take(80) }, { publicProfileOverrideFields = it }, { it.take(80) })
 
     HorizontalDivider()
-    OutlinedButton(
-        onClick = { vehicleExpanded = !vehicleExpanded },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(if (vehicleExpanded) "🚗 Veículo ▲" else "🚗 Veículo ▼")
-    }
-    if (vehicleExpanded) {
-        if (vehicleAppSettings != null) {
-            TripDriverDefaultsCard(
-                settings = vehicleAppSettings,
-                repository = vehicleSettingsRepository,
-                referenceOrigin = vehicleReferenceOrigin,
-                onReferenceChanged = { origin -> vehicleReferenceOrigin = origin },
-                onChanged = { message -> vehicleSettingsMessage = message },
-            )
-        } else {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text("Carregando configurações do veículo…", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        vehicleSettingsMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-
-        PublicProfileTextField("Marca/modelo", PublicDriverProfileFields.VEHICLE, publicProfileMode, vehicleMakeModel,
-            automaticSnapshot?.vehicleMakeModel.orEmpty(), publicProfileOverrideFields, { vehicleMakeModel = it.take(120) }, { publicProfileOverrideFields = it }, { it.take(120) })
-        PublicProfileTextField("Cor", PublicDriverProfileFields.VEHICLE_COLOR, publicProfileMode, vehicleColor,
-            automaticSnapshot?.vehicleColor.orEmpty(), publicProfileOverrideFields, { vehicleColor = it.take(60) }, { publicProfileOverrideFields = it }, { it.take(60) })
-        PublicProfileTextField("Comodidades", PublicDriverProfileFields.AMENITIES, publicProfileMode, vehicleAmenities,
-            automaticSnapshot?.amenities.orEmpty(), publicProfileOverrideFields, { vehicleAmenities = it.take(240) }, { publicProfileOverrideFields = it }, { it.take(240) })
-    }
-
     PublicProfileTextField("Preferências", PublicDriverProfileFields.PREFERENCES, publicProfileMode, driverPreferences,
         automaticSnapshot?.preferences.orEmpty(), publicProfileOverrideFields, { driverPreferences = it.take(240) }, { publicProfileOverrideFields = it }, { it.take(240) })
 
@@ -604,4 +569,76 @@ internal fun OnlineSettingsEditor(
         ) { Text(if (usernameChangeInFlight) "Salvando…" else "Salvar") }
         TextButton(enabled = !linkRotationInFlight && !usernameChangeInFlight, onClick = onCancel) { Text("Voltar") }
     }
+}
+
+
+@Composable
+internal fun AgendaAppSettingsScreen0416(
+    initial: TripOnlineSettings,
+    onSave: (TripOnlineSettings) -> Unit,
+) {
+    val context = LocalContext.current
+    val referenceStore = remember(context) { TripReferenceOriginStore(context) }
+    var referenceOrigin by remember { mutableStateOf(referenceStore.read()) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var vehicleMakeModel by remember(initial.vehicleMakeModel) { mutableStateOf(initial.vehicleMakeModel) }
+    var vehicleColor by remember(initial.vehicleColor) { mutableStateOf(initial.vehicleColor) }
+    var vehicleAmenities by remember(initial.vehicleAmenities) { mutableStateOf(initial.vehicleAmenities) }
+
+    Text("Configurações", style = MaterialTheme.typography.titleLarge)
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Dados do veículo", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(
+                value = vehicleMakeModel,
+                onValueChange = { vehicleMakeModel = it.take(120) },
+                label = { Text("Marca/modelo") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = vehicleColor,
+                onValueChange = { vehicleColor = it.take(60) },
+                label = { Text("Cor") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = vehicleAmenities,
+                onValueChange = { vehicleAmenities = it.take(240) },
+                label = { Text("Comodidades") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = {
+                    onSave(
+                        initial.copy(
+                            vehicleMakeModel = vehicleMakeModel.trim(),
+                            vehicleColor = vehicleColor.trim(),
+                            vehicleAmenities = vehicleAmenities.trim(),
+                            publicProfileOverrideFields = initial.publicProfileOverrideFields +
+                                setOf(
+                                    PublicDriverProfileFields.VEHICLE,
+                                    PublicDriverProfileFields.VEHICLE_COLOR,
+                                    PublicDriverProfileFields.AMENITIES,
+                                ),
+                        ),
+                    )
+                    message = "Dados do veículo salvos."
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Salvar dados do veículo")
+            }
+        }
+    }
+
+    TripReferenceOriginSettingsCard0416(
+        referenceOrigin = referenceOrigin,
+        onReferenceChanged = { referenceOrigin = it },
+        onChanged = { message = it },
+    )
+
+    message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 }
