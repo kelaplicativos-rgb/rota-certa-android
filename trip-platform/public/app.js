@@ -2974,6 +2974,9 @@ function openPassengerPortal() {
   } else if (passengerMustChangePassword) {
     $("portalPasswordMessage").textContent = "Você entrou com uma senha temporária. Crie uma nova senha.";
   }
+  if (!isTesterMode()) {
+    validatePassengerSession().catch(() => false);
+  }
   loadPassengerCredits();
   loadPassengerBookings();
   loadPassengerNotifications();
