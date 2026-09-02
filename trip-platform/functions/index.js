@@ -6137,7 +6137,24 @@ async function interpretAssistant0410(req, res) {
   }
 }
 
-exports.tripApi = onRequest({ secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" }, async (req, res) => {
+exports.assistantApi = onRequest(
+  { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" },
+  async (req, res) => {
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
+    try {
+      if (req.method === "POST" && path === "/v1/assistant/interpret") {
+        return await interpretAssistant0410(req, res);
+      }
+      return fail(res, 404, "assistant_route_not_found", "Rota do Assistente não encontrada.");
+    } catch (error) {
+      console.error("assistant_api_unhandled", error);
+      return fail(res, 500, "assistant_internal_error", "Falha interna do Assistente.");
+    }
+  },
+);
+
+exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southamerica-east1" }, async (req, res) => {
   if (req.method === "OPTIONS") return res.status(204).send("");
   const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const parts = path.split("/").filter(Boolean);
@@ -6169,7 +6186,6 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret, openaiApiKeySecret], 
     if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
-    if (req.method === "POST" && path === "/v1/assistant/interpret") return await interpretAssistant0410(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "GET" && path === "/v1/driver/trips/sync-state") return await listDriverTripSyncState0402(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
