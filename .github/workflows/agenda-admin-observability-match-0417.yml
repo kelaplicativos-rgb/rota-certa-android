@@ -1,16 +1,16 @@
-name: Rota Certa Agenda admin observability MATCH 0.1.417
+name: Rota Certa passenger-scoped Agenda admin 0.1.418
 
 on:
   push:
     branches:
-      - agent/agenda-admin-observability-match-0.1.417
+      - agent/passenger-admin-role-0.1.418
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-admin-observability-match-0417-${{ github.ref }}
+  group: passenger-admin-role-0418-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0417_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0418_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -36,11 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          grep -Fq 'versionCode = 5710' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.417"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5711' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.418"' app/build.gradle.kts
           printf '%s\n' "${{ github.sha }}" > source_head.txt
           printf '%s\n' "${{ github.ref_name }}" > source_branch.txt
-          git diff --name-only b71af5ce0b8436dba398f1b8296c2c9725e10d1a...HEAD > changed-files.txt
+          git diff --name-only 89ed3b1455405e3b2c65882c922394be04fc2b28...HEAD > changed-files.txt
           if grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol' changed-files.txt; then
             echo "Protected FAROL scope changed unexpectedly."
             cat changed-files.txt
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile all debug unit tests
         run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -169,20 +169,26 @@ jobs:
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
           grep -Fq '"ok":true' /tmp/health.json
-          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' "$BASE/v1/admin/overview")"
-          test "$CODE" = "401"
+          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
+          test "$CODE" = "401" -o "$CODE" = "400"
           BUST="$(date +%s%N)"
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=$BUST" -o /tmp/live-admin.js
-          grep -Fq 'X-Rota-Certa-Admin-Session' /tmp/live-admin.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
+          grep -Fq 'rotacerta-passenger-session' /tmp/live-admin.js
+          grep -Fq 'X-Rota-Certa-Admin-Driver' /tmp/live-admin.js
+          ! grep -Fq 'X-Rota-Certa-Admin-Session' /tmp/live-admin.js
+          grep -Fq 'portalAgendaAdminCard0418' /tmp/live-index.html
+          grep -Fq 'openAgendaAdmin0418' /tmp/live-index.html
+          grep -Fq 'PASSENGER_AGENDA_ADMIN_CHANGED' trip-platform/functions/index.js
           grep -Fq 'admin_update_now' trip-platform/functions/agenda-admin-0417.js
           grep -Fq 'public-attestation' trip-platform/functions/index.js
-          echo "LIVE_ADMIN_MATCH_CONTRACT=PASS"
+          echo "LIVE_PASSENGER_ADMIN_MATCH_CONTRACT=PASS"
           echo "SOURCE_HEAD=${{ github.sha }}"
 
       - name: Upload exact SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.417-agenda-admin-match-${{ github.sha }}
+          name: rota-certa-0.1.418-passenger-admin-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
