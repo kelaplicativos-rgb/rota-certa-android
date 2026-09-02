@@ -942,6 +942,15 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    suspend fun interpretAssistant0410(
+        request: RotaCertaAssistantInterpretRequest0410,
+    ): RotaCertaAssistantInterpretResponse0410 = request(
+        method = "POST",
+        path = "/v1/assistant/interpret",
+        body = json.encodeToString(request),
+        requireDriverToken = true,
+    )
+
     suspend fun createPublicBooking(
         publicToken: String,
         request: PublicBookingRequest,
