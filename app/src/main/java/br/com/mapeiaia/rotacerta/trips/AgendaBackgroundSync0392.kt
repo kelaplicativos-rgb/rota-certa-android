@@ -819,6 +819,14 @@ internal fun remoteProjectionWithinCompleteScope0408(
         profileUuid in profileScope
 }
 
+internal fun canonicalBlaBlaPublicUrl0409(
+    existingUrl: String?,
+    observedUrl: String?,
+    expectedTripId: String?,
+): String? =
+    BlaBlaCollectorUrlModule.publicTrip(observedUrl, expectedTripId)
+        ?: BlaBlaCollectorUrlModule.publicTrip(existingUrl, expectedTripId)
+
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
     incomingFingerprint: String,
@@ -1245,7 +1253,7 @@ internal object AgendaBackgroundSync0392 {
                                 remoteId = existing?.remoteId ?: binding?.remoteTripId,
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
-                                blablaPublicUrl = observed.blablaPublicUrl ?: existing?.blablaPublicUrl,
+                                blablaPublicUrl = canonicalBlaBlaPublicUrl0409(existing?.blablaPublicUrl, observed.blablaPublicUrl, blablaTripId),
                                 publicBookingEnabled = existing?.publicBookingEnabled ?: true,
                                 capacityReliable = incomingComplete,
                                 createdAtMillis = existing?.createdAtMillis ?: nowMillis,
