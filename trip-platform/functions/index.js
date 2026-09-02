@@ -6254,6 +6254,13 @@ async function interpretAssistant0410(req, res) {
   }
 }
 
+const agendaAdmin0417 = createAgendaAdmin0417({
+  db,
+  resolveDriverUsername,
+  requireDriver,
+  sendDriverBookingPush,
+});
+
 exports.assistantApi = onRequest(
   { secrets: [driverTokenSecret, openaiApiKeySecret], region: "southamerica-east1" },
   async (req, res) => {
