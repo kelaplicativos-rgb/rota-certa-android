@@ -1053,25 +1053,32 @@ private fun TimelineEntryCard(
         )
     }
     var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
-    var reverifyQueuedAt0407 by remember(entry.tripId) { mutableStateOf(0L) }
-    val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
-    LaunchedEffect(lastObservedAt0407) {
-        if (reverifyQueuedAt0407 > 0L && lastObservedAt0407 >= reverifyQueuedAt0407) {
-            reverifyQueuedAt0407 = 0L
-        }
+    val commandRevision0407 by BlaBlaTripControlEvents0407.revision.collectAsState()
+    val commandAudit0407 = remember(tripTarget0407, commandRevision0407) {
+        tripTarget0407?.let { BlaBlaTripCommandStatusStore0407(context).get(it) }
     }
+    val reverifyPending0407 = commandAudit0407?.pending == true
+    val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
     val queueReverify0407: () -> Unit = {
         val target = tripTarget0407
         if (target == null) {
             onChanged("Não foi possível resolver conta, perfil e tripId desta viagem com identidade forte.")
+        } else if (reverifyPending0407) {
+            onChanged("Esta viagem já está sendo verificada em segundo plano.")
         } else {
             val command = BlaBlaCommand0407.forTarget(
                 target = target,
                 operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
                 origin = "CARD",
             )
-            if (AgendaBackgroundSync0392.enqueueTripReverify0407(context, target, command.commandId)) {
-                reverifyQueuedAt0407 = command.requestedAtMillis
+            if (
+                AgendaBackgroundSync0392.enqueueTripReverify0407(
+                    context = context,
+                    target = target,
+                    commandId = command.commandId,
+                    requestedAtMillis = command.requestedAtMillis,
+                )
+            ) {
                 onChanged("Verificação desta viagem enfileirada em segundo plano.")
             } else {
                 onChanged("Verificação bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
@@ -1162,17 +1169,16 @@ private fun TimelineEntryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val verificationLabel0407 = when {
-                    reverifyQueuedAt0407 > 0L -> "⟳ Atualizando"
-                    lastObservedAt0407 > 0L -> "✓ Verificado"
-                    tripTarget0407 != null -> "Dados desatualizados"
-                    else -> "⚠ Identidade externa incompleta"
-                }
+                val verificationLabel0407 = blaBlaVerificationLabel0407(
+                    audit = commandAudit0407,
+                    lastObservedAtMillis = lastObservedAt0407,
+                    strongTargetAvailable = tripTarget0407 != null,
+                )
                 Text(verificationLabel0407, style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.primary) {
                         TextButton(
-                            enabled = reverifyQueuedAt0407 == 0L,
+                            enabled = !reverifyPending0407,
                             onClick = queueReverify0407,
                         ) { Text("🔄 Verificar") }
                     }
@@ -1185,7 +1191,7 @@ private fun TimelineEntryCard(
                             if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.overflow) {
                                 DropdownMenuItem(
                                     text = { Text("🔄 Verificar agora") },
-                                    enabled = reverifyQueuedAt0407 == 0L,
+                                    enabled = !reverifyPending0407,
                                     onClick = {
                                         actionMenuExpanded0407 = false
                                         queueReverify0407()
