@@ -669,6 +669,72 @@ internal class TripMutationCoordinator0387(
         }
     }
 
+    fun recordProjectionTombstone0408(
+        remote: DriverTripSyncState0402,
+        mutationType: String,
+        source: String = "PROJECTION_RECONCILER",
+    ): TripPublicationOutboxEvent0387? {
+        if (!store.onlineSettings().configured) return null
+        if (remote.remoteTripId.isBlank() || remote.departureAtMillis <= 0L || remote.stops.size < 2) return null
+        val cleanupCanonicalId = "projection-cleanup:" +
+            sha256TripPublication0387(remote.remoteTripId).take(32)
+        outbox.ensureRevisionAtLeast(
+            cleanupCanonicalId,
+            remote.publicationRevision.coerceAtLeast(0L),
+        )
+        val orderedStops = remote.stops.sortedBy(TripStop::order)
+        val trip = Trip(
+            id = cleanupCanonicalId,
+            title = remote.title.ifBlank { orderedStops.first().name + " → " + orderedStops.last().name },
+            departureAtMillis = remote.departureAtMillis,
+            capacity = remote.capacity.coerceAtLeast(0),
+            status = TripStatus.CANCELLED,
+            stops = remote.stops,
+            publicToken = remote.remoteTripId,
+            remoteId = remote.remoteTripId,
+            blablaProfileUuid = remote.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaTripId = remote.blablaTripId.takeIf(String::isNotBlank),
+            publicBookingEnabled = false,
+            publishedSeats = remote.publishedSeats,
+            rotaCertaSeatAllocation = remote.rotaCertaSeatAllocation.coerceAtLeast(0),
+            capacityReliable = remote.capacityReliable,
+            publicationRevision = remote.publicationRevision.coerceAtLeast(0L),
+            publicationTombstone = true,
+            tripKey = remote.tripKey,
+            canonicalStateHash = remote.canonicalStateHash,
+        )
+        val signature = "projection-tombstone-v1:" + sha256TripPublication0387(
+            listOf(
+                cleanupCanonicalId,
+                remote.remoteTripId,
+                remote.canonicalTripId,
+                remote.tripKey,
+                remote.blablaProfileUuid,
+                remote.blablaTripId,
+                "CANCELLED",
+            ).joinToString("|"),
+        )
+        return outbox.enqueue(
+            canonicalTripId = cleanupCanonicalId,
+            operation = TripPublicationOperation0387.TOMBSTONE,
+            mutationType = mutationType,
+            source = source,
+            snapshot = TripPublicationSnapshot0387(
+                trip = trip,
+                semanticSignature = signature,
+            ),
+        )?.also { event ->
+            recordEvent(
+                "TRIP_MUTATION_PROJECTION_TOMBSTONE_ENQUEUED_0408",
+                event,
+                "remoteTripKey=" + sha256TripPublication0387(remote.remoteTripId).take(12) +
+                    " remoteRevision=" + remote.publicationRevision +
+                    " canonicalTripIdPresent=" + remote.canonicalTripId.isNotBlank() +
+                    " strongIdentityPresent=" + (remote.blablaProfileUuid.isNotBlank() && remote.blablaTripId.isNotBlank()),
+            )
+        }
+    }
+
     fun ensureRevisionAtLeast(canonicalTripId: String, revision: Long) =
         outbox.ensureRevisionAtLeast(canonicalTripId, revision)
 
