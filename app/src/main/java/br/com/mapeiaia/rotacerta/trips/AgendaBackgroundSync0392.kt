@@ -764,6 +764,26 @@ internal fun expectedProjectionStatus0408(
     return if (globallyFull) TripStatus.FULL.name else TripStatus.PUBLISHED.name
 }
 
+internal fun projectionCapacityMatches0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    remote: DriverTripSyncState0402,
+    nowMillis: Long,
+): Boolean {
+    if (!trip.capacityReliable) return true
+    val expectedCapacity = operationalInventoryCapacity(trip, bookings)
+    val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
+    val expectedPublishedSeats = trip.publishedSeats
+    val expectedRotaCertaSeats = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+    return remote.capacityReliable &&
+        remote.capacity == expectedCapacity &&
+        remote.publishedSeats == expectedPublishedSeats &&
+        remote.rotaCertaSeatAllocation == expectedRotaCertaSeats &&
+        remote.operationalAvailableSeats == expectedRange.minimum &&
+        remote.availableSeatsMinimum == expectedRange.minimum &&
+        remote.availableSeatsMaximum == expectedRange.maximum
+}
+
 internal fun remoteProjectionWithinCompleteScope0408(
     remote: DriverTripSyncState0402,
     response: BlaBlaCollectorMonthResponse?,
@@ -1543,34 +1563,21 @@ internal object AgendaBackgroundSync0392 {
                     if (remote.publicationRevision < expectedRevision) revisionRegression++
                     needsRepair = true
                 }
-                if (trip.capacityReliable) {
-                    val expectedCapacity = operationalInventoryCapacity(trip, bookings)
+                if (!projectionCapacityMatches0408(trip, bookings, remote, nowMillis)) {
                     val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
-                    val expectedPublishedSeats = trip.publishedSeats
-                    val expectedRotaCertaSeats = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
-                    if (
-                        !remote.capacityReliable ||
-                        remote.capacity != expectedCapacity ||
-                        remote.publishedSeats != expectedPublishedSeats ||
-                        remote.rotaCertaSeatAllocation != expectedRotaCertaSeats ||
-                        remote.operationalAvailableSeats != expectedRange.minimum ||
-                        remote.availableSeatsMinimum != expectedRange.minimum ||
-                        remote.availableSeatsMaximum != expectedRange.maximum
-                    ) {
-                        capacityMismatch++
-                        needsRepair = true
-                        UnifiedDebugEventStore.record(
-                            "PROJECTION_CAPACITY_MISMATCH_0408",
-                            context.applicationContext.packageName,
-                            "canonicalTripId=" + trip.id +
-                                " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
-                                " blablaTripId=" + trip.blablaTripId.orEmpty() +
-                                " expectedMin=" + expectedRange.minimum +
-                                " expectedMax=" + expectedRange.maximum +
-                                " remoteMin=" + remote.availableSeatsMinimum +
-                                " remoteMax=" + remote.availableSeatsMaximum,
-                        )
-                    }
+                    capacityMismatch++
+                    needsRepair = true
+                    UnifiedDebugEventStore.record(
+                        "PROJECTION_CAPACITY_MISMATCH_0408",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + trip.id +
+                            " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
+                            " blablaTripId=" + trip.blablaTripId.orEmpty() +
+                            " expectedMin=" + expectedRange.minimum +
+                            " expectedMax=" + expectedRange.maximum +
+                            " remoteMin=" + remote.availableSeatsMinimum +
+                            " remoteMax=" + remote.availableSeatsMaximum,
+                    )
                 }
                 val expectedStatus = expectedProjectionStatus0408(trip, bookings, nowMillis)
                 if (remote.status != expectedStatus) {
