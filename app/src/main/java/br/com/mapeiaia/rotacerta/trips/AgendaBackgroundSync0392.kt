@@ -776,10 +776,17 @@ internal fun projectionCapacityMatches0408(
     if (!trip.capacityReliable) return true
     val expectedCapacity = operationalInventoryCapacity(trip, bookings)
     val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
+    val baseMatches = remote.capacityReliable && remote.capacity == expectedCapacity
+    val extendedAvailabilityPresent =
+        remote.rotaCertaSeatAllocation != null ||
+            remote.operationalAvailableSeats != null ||
+            remote.availableSeatsMinimum != null ||
+            remote.availableSeatsMaximum != null ||
+            remote.occupancyRevision != null
+    if (!extendedAvailabilityPresent) return baseMatches
     val expectedPublishedSeats = trip.publishedSeats
     val expectedRotaCertaSeats = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
-    return remote.capacityReliable &&
-        remote.capacity == expectedCapacity &&
+    return baseMatches &&
         remote.publishedSeats == expectedPublishedSeats &&
         remote.rotaCertaSeatAllocation == expectedRotaCertaSeats &&
         remote.operationalAvailableSeats == expectedRange.minimum &&
