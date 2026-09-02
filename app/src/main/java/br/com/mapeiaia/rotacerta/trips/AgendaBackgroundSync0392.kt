@@ -50,8 +50,12 @@ internal data class AgendaBackgroundSyncRun0392(
     val collectorOrphanProjectionTombstones: Int = 0,
     val collectorStaleResultsRejected: Int = 0,
     val projectionMissingAgenda: Int = 0,
+    val projectionDuplicates: Int = 0,
     val projectionRevisionMismatch: Int = 0,
     val projectionHashMismatch: Int = 0,
+    val projectionCapacityMismatch: Int = 0,
+    val projectionStatusMismatch: Int = 0,
+    val projectionRevisionRegression: Int = 0,
     val projectionOrphans: Int = 0,
     val projectionFailures: Int = 0,
 )
@@ -649,14 +653,107 @@ internal data class ProjectionIntegrity0406(
     val canonicalActive: Int = 0,
     val agendaProjections: Int = 0,
     val missingAgenda: Int = 0,
+    val duplicates: Int = 0,
     val revisionMismatch: Int = 0,
     val hashMismatch: Int = 0,
+    val capacityMismatch: Int = 0,
+    val statusMismatch: Int = 0,
+    val revisionRegression: Int = 0,
     val orphans: Int = 0,
     val repairQueued: Int = 0,
     val failures: Int = 0,
 ) {
     val verified: Boolean
-        get() = failures == 0 && missingAgenda == 0 && revisionMismatch == 0 && hashMismatch == 0 && orphans == 0
+        get() = failures == 0 &&
+            missingAgenda == 0 &&
+            duplicates == 0 &&
+            revisionMismatch == 0 &&
+            hashMismatch == 0 &&
+            capacityMismatch == 0 &&
+            statusMismatch == 0 &&
+            revisionRegression == 0 &&
+            orphans == 0
+}
+
+internal fun remoteMatchesCanonicalProjection0408(
+    canonical: Trip,
+    remote: DriverTripSyncState0402,
+): Boolean {
+    if (remote.canonicalTripId.isNotBlank() && remote.canonicalTripId == canonical.id) return true
+    if (canonical.tripKey.isNotBlank() && remote.tripKey.isNotBlank() && remote.tripKey == canonical.tripKey) return true
+    val profileUuid = canonical.blablaProfileUuid.orEmpty().trim()
+    val blablaTripId = canonical.blablaTripId.orEmpty().trim()
+    return profileUuid.isNotBlank() &&
+        blablaTripId.isNotBlank() &&
+        remote.blablaProfileUuid.trim().equals(profileUuid, ignoreCase = true) &&
+        remote.blablaTripId.trim() == blablaTripId
+}
+
+internal fun chooseProjectionWinner0408(
+    canonical: Trip,
+    preferredRemoteId: String?,
+    candidates: List<DriverTripSyncState0402>,
+): DriverTripSyncState0402? = candidates.maxWithOrNull(
+    compareBy<DriverTripSyncState0402> { it.remoteTripId == preferredRemoteId }
+        .thenBy { it.canonicalTripId == canonical.id }
+        .thenBy { it.publicationRevision }
+        .thenBy { it.occupancyRevision }
+        .thenBy { it.remoteTripId },
+)
+
+internal fun canonicalProjectionAvailabilityRange0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long,
+): SeatAvailabilityRange {
+    val capacity = operationalInventoryCapacity(trip, bookings)
+    val loads = SeatAvailabilityEngine.segmentLoads(
+        trip.copy(capacity = capacity),
+        bookings,
+        nowMillis,
+    )
+    return SeatAvailabilityRange(
+        minimum = loads.minOfOrNull(SegmentLoad::availableSeats) ?: capacity,
+        maximum = loads.maxOfOrNull(SegmentLoad::availableSeats) ?: capacity,
+    )
+}
+
+internal fun expectedProjectionStatus0408(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long,
+): String {
+    if (trip.status !in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) return trip.status.name
+    val capacity = operationalInventoryCapacity(trip, bookings)
+    val loads = SeatAvailabilityEngine.segmentLoads(
+        trip.copy(capacity = capacity),
+        bookings,
+        nowMillis,
+    )
+    val globallyFull = loads.isNotEmpty() && loads.all { it.occupiedSeats >= capacity }
+    return if (globallyFull) TripStatus.FULL.name else TripStatus.PUBLISHED.name
+}
+
+internal fun remoteProjectionWithinCompleteScope0408(
+    remote: DriverTripSyncState0402,
+    response: BlaBlaCollectorMonthResponse?,
+): Boolean {
+    if (!externalCollectorAllowsTombstones0406(response) || response == null) return false
+    val month = response.month.orEmpty().trim()
+    val profileScope = response.profiles
+        .map { it.uuid.trim().lowercase() }
+        .filter(String::isNotBlank)
+        .toSet()
+    val remoteMonth = runCatching {
+        Instant.ofEpochMilli(remote.departureAtMillis)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+            .take(7)
+    }.getOrDefault("")
+    return month.isNotBlank() &&
+        remoteMonth == month &&
+        remote.blablaProfileUuid.trim().lowercase() in profileScope
 }
 
 internal fun externalCollectorDeltaDecision0403(
