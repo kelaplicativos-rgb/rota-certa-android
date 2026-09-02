@@ -30,7 +30,7 @@ class AgendaTimelineSurface0415Test {
         assertTrue(activity.contains("TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410("))
         assertTrue(assistant.contains("internal fun RotaCertaAssistantPanel0410("))
         assertTrue(assistant.contains("RotaCertaCommandRegistry0410"))
-        assertTrue(assistant.contains("interpretAssistantCommand0410"))
+        assertTrue(assistant.contains("interpretAssistant0410("))
         assertFalse(timeline.contains("RotaCertaAssistantPanel0410("))
     }
 
