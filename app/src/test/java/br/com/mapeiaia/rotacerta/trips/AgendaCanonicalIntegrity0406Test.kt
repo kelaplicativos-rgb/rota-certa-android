@@ -72,6 +72,9 @@ class AgendaCanonicalIntegrity0406Test {
             destination = "C",
             status = TripStatus.PUBLISHED,
             capacity = 1,
+            minimumOccupiedSeats = 0,
+            maximumOccupiedSeats = 0,
+            sourcePassengerSeats = emptyMap(),
             blablaProfileUuid = profile,
             blablaTripId = tripId,
             blablaPublishedSeats = 1,
@@ -123,7 +126,7 @@ class AgendaCanonicalIntegrity0406Test {
     @Test
     fun monotonicRevisionRejectsOlderConcurrentResult() {
         assertEquals(
-            CanonicalTripRevisionDecision0395.REJECT_STALE,
+            CanonicalTripRevisionDecision0395.SKIP_STALE_REVISION,
             canonicalTripRevisionDecision0395(51, 50, semanticChanged = true),
         )
         assertEquals(52, nextCanonicalTripRevision0395(51, 51, semanticChanged = true))
