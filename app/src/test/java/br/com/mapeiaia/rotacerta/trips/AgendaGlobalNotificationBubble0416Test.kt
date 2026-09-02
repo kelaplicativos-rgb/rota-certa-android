@@ -49,7 +49,7 @@ class AgendaGlobalNotificationBubble0416Test {
         assertTrue(farol.contains("setColor(color.argb(currentSettings))"))
         assertTrue(farol.contains("Color.argb(alpha, 255, 152, 0)"))
         assertTrue(farol.contains("setStroke(dp(if (unread > 0) 4 else 3), strokeColor)"))
-        assertTrue(farol.contains("\"Rota Certa, Agenda com $unread notificações não lidas\""))
+        assertTrue(farol.contains("\"Rota Certa, Agenda com \$unread notificações não lidas\""))
         assertTrue(farol.contains("if (agendaUnreadCount0416 != unread)"))
     }
 
