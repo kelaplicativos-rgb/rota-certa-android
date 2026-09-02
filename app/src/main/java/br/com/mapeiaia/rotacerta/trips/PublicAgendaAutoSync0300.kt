@@ -857,6 +857,7 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         if (
+            entityRevision <= 0L &&
             remoteStateHint0402?.capacityReliable == true &&
             remoteStateHint0402.capacitySnapshotRevision == synthesized.snapshotRevision
         ) {
