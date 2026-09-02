@@ -1,11 +1,17 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.ServiceInfo
+import android.os.Build
+import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
+import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
@@ -75,6 +81,45 @@ internal fun agendaBackgroundSyncIntervalMinutes0392(requestedMinutes: Long? = n
         )
 
 internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
+
+internal fun agendaBackgroundSyncForegroundInfo0402(context: Context, reason: String): ForegroundInfo {
+    val appContext = context.applicationContext
+    val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        manager.createNotificationChannel(
+            NotificationChannel(
+                "rota_certa_automatic_sync_0402",
+                "Sincronização automática",
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Mantém a sincronização da Agenda de Viagens em andamento sem abrir telas."
+                setShowBadge(false)
+            },
+        )
+    }
+    val notification = NotificationCompat.Builder(appContext, "rota_certa_automatic_sync_0402")
+        .setSmallIcon(android.R.drawable.stat_notify_sync)
+        .setContentTitle("Rota Certa · sincronização automática")
+        .setContentText("Atualizando viagens em segundo plano")
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setPriority(NotificationCompat.PRIORITY_LOW)
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setSilent(true)
+        .build()
+    val tenantKey = seatSyncDiagnosticKey(RotaCertaTenantRegistry(appContext).activeScope().tenantId)
+    val notificationId = 4020 + (tenantKey.hashCode() and 0x3ff)
+    UnifiedDebugEventStore.record(
+        "AGENDA_BACKGROUND_SYNC_FOREGROUND_0402",
+        appContext.packageName,
+        "reason=${reason.take(80)} serviceType=dataSync notificationOnly=true activityLaunch=false browserOpened=false",
+    )
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        ForegroundInfo(notificationId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+    } else {
+        ForegroundInfo(notificationId, notification)
+    }
+}
 
 internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncMode0392 = when {
     reason == "periodic" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
@@ -912,6 +957,10 @@ class AgendaBackgroundSyncWorker0392(
         if (reason == "periodic" && !AgendaBackgroundSyncConfig0392.isEnabled(applicationContext)) {
             AgendaBackgroundSync0392.cancelPeriodic(applicationContext, "worker_disabled_guard")
             return Result.success()
+        }
+
+        if (agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE) {
+            setForeground(agendaBackgroundSyncForegroundInfo0402(applicationContext, reason))
         }
 
         val startedElapsed = android.os.SystemClock.elapsedRealtime()

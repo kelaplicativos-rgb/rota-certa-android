@@ -561,6 +561,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
+        if (automaticCollectionGeneration > 0L && visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            webView.settings.loadsImagesAutomatically = false
+            webView.settings.blockNetworkImage = true
+            webView.settings.setSupportZoom(false)
+            webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_HEADLESS_WEBVIEW_TUNED_0402",
+                packageName,
+                "images=false visualHost=false sameCollector=true activityLaunch=false",
+            )
+        }
         if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             networkDiagnosticRecorder = browserOrchestrator.installNetworkEvidenceCapture(
                 androidContext = this,
