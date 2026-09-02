@@ -34,6 +34,54 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun deliveredSemanticEventIsNotEternalProofWhenRemoteProjectionDiverges() {
+        val snapshot = TripPublicationSnapshot0387(semanticSignature = "same-state")
+        val delivered = TripPublicationOutboxEvent0387(
+            id = "event-7",
+            tenantId = "tenant-a",
+            canonicalTripId = "trip-a",
+            revision = 7,
+            operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+            mutationType = "COLLECTOR",
+            source = "TEST",
+            snapshot = snapshot,
+            status = TripPublicationStatus0387.DELIVERED,
+        )
+        assertTrue(
+            shouldDeduplicatePublicationEvent0410(
+                latest = delivered,
+                operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                snapshot = snapshot,
+                remoteProjectionDivergenceObserved = false,
+            ),
+        )
+        assertFalse(
+            shouldDeduplicatePublicationEvent0410(
+                latest = delivered,
+                operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                snapshot = snapshot,
+                remoteProjectionDivergenceObserved = true,
+            ),
+        )
+        assertTrue(
+            shouldDeduplicatePublicationEvent0410(
+                latest = delivered.copy(status = TripPublicationStatus0387.PENDING),
+                operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                snapshot = snapshot,
+                remoteProjectionDivergenceObserved = true,
+            ),
+        )
+        assertTrue(
+            shouldDeduplicatePublicationEvent0410(
+                latest = delivered.copy(status = TripPublicationStatus0387.FAILED_RETRYABLE),
+                operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                snapshot = snapshot,
+                remoteProjectionDivergenceObserved = true,
+            ),
+        )
+    }
+
+    @Test
     fun outboxIsDurableTenantScopedAndSupportsRetryRebaseAndSupersede() {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertTrue(outbox.contains("getSharedPreferences(PREFS, Context.MODE_PRIVATE)"))
