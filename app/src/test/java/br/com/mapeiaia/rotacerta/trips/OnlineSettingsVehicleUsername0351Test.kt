@@ -10,17 +10,19 @@ class OnlineSettingsVehicleUsername0351Test {
     private val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
 
     @Test
-    fun vehicleBlockStartsClosedAndOnlyTogglesPresentationState() {
-        assertTrue(ui.contains("var vehicleExpanded by remember { mutableStateOf(false) }"))
-        assertTrue(ui.contains("onClick = { vehicleExpanded = !vehicleExpanded }"))
-        assertTrue(ui.contains("🚗 Veículo"))
-        assertTrue(ui.contains("if (vehicleExpanded)"))
-        assertTrue(ui.contains("PublicProfileTextField(\"Marca/modelo\", PublicDriverProfileFields.VEHICLE"))
-        assertTrue(ui.contains("PublicProfileTextField(\"Cor\", PublicDriverProfileFields.VEHICLE_COLOR"))
-        assertTrue(ui.contains("PublicProfileTextField(\"Comodidades\", PublicDriverProfileFields.AMENITIES"))
-        assertTrue(ui.contains("vehicleMakeModel = vehicleMakeModel.trim()"))
-        assertTrue(ui.contains("vehicleColor = vehicleColor.trim()"))
-        assertTrue(ui.contains("vehicleAmenities = vehicleAmenities.trim()"))
+    fun vehicleDataLivesInAppSettingsAndIntegrationPreservesExistingValues() {
+        val integration = ui.substringAfter("internal fun OnlineSettingsEditor(")
+            .substringBefore("@Composable\ninternal fun AgendaAppSettingsScreen0416")
+        val appSettings = ui.substringAfter("internal fun AgendaAppSettingsScreen0416(")
+        assertFalse(integration.contains("🚗 Veículo"))
+        assertFalse(integration.contains("PublicProfileTextField(\"Marca/modelo\""))
+        assertTrue(integration.contains("vehicleMakeModel = vehicleMakeModel.trim()"))
+        assertTrue(integration.contains("vehicleColor = vehicleColor.trim()"))
+        assertTrue(integration.contains("vehicleAmenities = vehicleAmenities.trim()"))
+        assertTrue(appSettings.contains("Text(\"Dados do veículo\""))
+        assertTrue(appSettings.contains("label = { Text(\"Marca/modelo\") }"))
+        assertTrue(appSettings.contains("label = { Text(\"Cor\") }"))
+        assertTrue(appSettings.contains("PublicDriverProfileFields.VEHICLE"))
     }
 
     @Test
