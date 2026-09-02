@@ -82,7 +82,7 @@ class AgendaAutomaticSync0397Test {
         assertTrue(header.contains("INTEGRATIONS(\"Integrações\")"))
         assertTrue(header.contains("APP_SETTINGS(\"Configurações\")"))
         assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()"))
-        assertTrue(activity.contains("activity.startActivity(Intent(activity, MainActivity::class.java))"))
+        assertTrue(activity.contains("TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416("))
 
         val overflow = activity
             .substringAfter("val headerActions0396 = when (screen) {")
