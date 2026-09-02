@@ -106,16 +106,25 @@ internal enum class BlaBlaCommandMode0407 {
     DRY_RUN,
 }
 
+internal enum class BlaBlaCommandOrigin0407 {
+    CARD,
+    SCRIPT,
+    PLANNER,
+    SYSTEM_RECONCILIATION,
+}
+
 internal data class BlaBlaCommand0407(
     val commandId: String,
     val tenantId: String,
     val accountId: String,
     val profileUuid: String,
     val tripId: String,
+    val passengerKey: String = "",
     val operation: BlaBlaTripCapability0407,
     val desiredState: String = "",
-    val origin: String,
+    val origin: BlaBlaCommandOrigin0407,
     val idempotencyKey: String,
+    val preconditions: List<String> = emptyList(),
     val expectedRevision: String = "",
     val requestedAtMillis: Long = System.currentTimeMillis(),
     val mode: BlaBlaCommandMode0407 = BlaBlaCommandMode0407.EXECUTE,
@@ -124,8 +133,10 @@ internal data class BlaBlaCommand0407(
         fun forTarget(
             target: BlaBlaTripTarget0407,
             operation: BlaBlaTripCapability0407,
-            origin: String,
+            origin: BlaBlaCommandOrigin0407,
             desiredState: String = "",
+            passengerKey: String = "",
+            preconditions: List<String> = emptyList(),
             mode: BlaBlaCommandMode0407 = BlaBlaCommandMode0407.EXECUTE,
             expectedRevision: String = "",
         ): BlaBlaCommand0407 {
@@ -136,14 +147,49 @@ internal data class BlaBlaCommand0407(
                 accountId = target.accountId,
                 profileUuid = target.profileUuid,
                 tripId = target.tripId,
+                passengerKey = passengerKey.take(200),
                 operation = operation,
                 desiredState = desiredState,
-                origin = origin.take(80),
+                origin = origin,
                 idempotencyKey = sha256TripPublication0387(
-                    listOf(target.strongIdentityKey, operation.name, desiredState, commandId).joinToString("|"),
+                    listOf(
+                        target.strongIdentityKey,
+                        passengerKey.take(200),
+                        operation.name,
+                        desiredState,
+                        commandId,
+                    ).joinToString("|"),
                 ),
+                preconditions = preconditions.map(String::trim).filter(String::isNotBlank).distinct().take(32),
                 expectedRevision = expectedRevision,
                 mode = mode,
+            )
+        }
+
+        fun forTarget(
+            target: BlaBlaTripTarget0407,
+            operation: BlaBlaTripCapability0407,
+            origin: String,
+            desiredState: String = "",
+            passengerKey: String = "",
+            preconditions: List<String> = emptyList(),
+            mode: BlaBlaCommandMode0407 = BlaBlaCommandMode0407.EXECUTE,
+            expectedRevision: String = "",
+        ): BlaBlaCommand0407 {
+            val typedOrigin = runCatching {
+                BlaBlaCommandOrigin0407.valueOf(origin.trim().uppercase())
+            }.getOrElse {
+                throw IllegalArgumentException("Origem de comando BlaBlaCar não suportada.")
+            }
+            return forTarget(
+                target = target,
+                operation = operation,
+                origin = typedOrigin,
+                desiredState = desiredState,
+                passengerKey = passengerKey,
+                preconditions = preconditions,
+                mode = mode,
+                expectedRevision = expectedRevision,
             )
         }
     }
@@ -153,11 +199,15 @@ internal enum class BlaBlaCommandStatus0407 {
     QUEUED,
     NO_OP_ALREADY_MATCHED,
     VERIFIED_SUCCESS,
+    NOT_AVAILABLE,
+    NOT_ELIGIBLE,
+    TRIP_NOT_FOUND,
     AUTH_REQUIRED,
     ACCOUNT_NOT_AVAILABLE,
     UNVERIFIED_TARGET,
     CAPABILITY_NOT_VERIFIED,
     STALE_STATE,
+    BROKEN_FOR_VERSION,
     FAILED,
     UNVERIFIED,
 }
@@ -288,7 +338,13 @@ internal fun blaBlaVerificationLabel0407(
     audit?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED -> "⚠ Sessão necessária"
     audit?.status == BlaBlaCommandStatus0407.ACCOUNT_NOT_AVAILABLE -> "⚠ Conta indisponível"
     audit?.status == BlaBlaCommandStatus0407.UNVERIFIED_TARGET -> "⚠ Identidade externa não confirmada"
-    audit?.errorCode == "BROKEN_FOR_VERSION" -> "⚠ Recurso incompatível"
+    audit?.status == BlaBlaCommandStatus0407.BROKEN_FOR_VERSION ||
+        audit?.errorCode == "BROKEN_FOR_VERSION" -> "⚠ Recurso incompatível"
+    audit?.status in setOf(
+        BlaBlaCommandStatus0407.NOT_AVAILABLE,
+        BlaBlaCommandStatus0407.NOT_ELIGIBLE,
+        BlaBlaCommandStatus0407.TRIP_NOT_FOUND,
+    ) -> "⚠ Recurso indisponível"
     audit?.status in setOf(BlaBlaCommandStatus0407.FAILED, BlaBlaCommandStatus0407.UNVERIFIED) -> "⚠ Falha na verificação"
     audit?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS -> "✓ Verificado agora"
     lastObservedAtMillis > 0L -> "✓ Verificado"
