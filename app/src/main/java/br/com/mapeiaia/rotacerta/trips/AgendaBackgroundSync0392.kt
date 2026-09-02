@@ -1133,6 +1133,8 @@ internal object AgendaBackgroundSync0392 {
                             binding = binding,
                             mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
                             source = "PROJECTION_RECONCILER",
+                            outboxCanonicalTripId = "projection-cleanup:" +
+                                sha256TripPublication0387(binding.remoteTripId).take(24),
                         ) != null
                     ) {
                         orphanProjectionTombstones++
@@ -1334,6 +1336,29 @@ internal object AgendaBackgroundSync0392 {
                 " orphanAgendaBindings=" + integrityMigration.orphanAgendaBindings +
                 " unresolvedIdentity=" + integrityMigration.unresolvedExternalIdentity,
         )
+        val migrationCoordinator = TripMutationCoordinator0387(appContext, store)
+        var migrationProjectionCleanupQueued = 0
+        integrityMigration.duplicateAgendaBindingsForCleanup.forEach { duplicate ->
+            if (
+                migrationCoordinator.recordExternalTombstone(
+                    binding = duplicate,
+                    mutationType = "MIGRATION_DUPLICATE_PROJECTION",
+                    source = "CANONICAL_MIGRATION",
+                    outboxCanonicalTripId = "projection-cleanup:" +
+                        sha256TripPublication0387(duplicate.remoteTripId).take(24),
+                ) != null
+            ) {
+                migrationProjectionCleanupQueued++
+            }
+        }
+        if (migrationProjectionCleanupQueued > 0) {
+            UnifiedDebugEventStore.record(
+                "CANONICAL_DUPLICATE_PROJECTION_CLEANUP_0406",
+                appContext.packageName,
+                "queued=" + migrationProjectionCleanupQueued +
+                    " duplicateBindings=" + integrityMigration.duplicateAgendaBindings,
+            )
+        }
         AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "NORMALIZING")
         var failures = 0
         var bookingImports = 0
