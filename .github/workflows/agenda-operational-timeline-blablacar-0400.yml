@@ -1,9 +1,9 @@
-name: Canonical projection convergence 0.1.408
+name: BlaBlaCar public permalink 0.1.409
 
 on:
   push:
     branches:
-      - agent/canonical-projection-convergence-0.1.408
+      - agent/blablacar-public-link-canonical-0.1.409
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5701' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.408"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5702' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.409"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -135,6 +135,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --check app/src/main/assets/blablacar/scripts/trip_detail.js
+          node --check app/src/main/assets/blablacar/scripts/trip_public_share.js
+          node --test trip-platform/functions/test/public-simple-reservation-0361.test.js
+          node --test trip-platform/functions/test/public-blablacar-link-0409.test.js
           node --test trip-platform/functions/test/driver-trip-sync-state-0402.test.js
           node --test trip-platform/functions/test/deterministic-trip-outbox-0387.test.js
           node --test trip-platform/functions/test/public-booking-0296.test.js
@@ -190,7 +195,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -219,7 +224,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.408-canonical-convergence-${{ github.sha }}
+          name: rota-certa-0.1.409-blablacar-public-link-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -236,7 +241,7 @@ jobs:
 
 
   deploy-backend:
-    if: github.ref_name == 'agent/canonical-central-sync-0.1.403'
+    if: github.ref_name == 'agent/blablacar-public-link-canonical-0.1.409'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -280,9 +285,9 @@ jobs:
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
           else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
       - name: Smoke live canonical sync-state route
         shell: bash
@@ -290,6 +295,18 @@ jobs:
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | grep -Fq '"ok":true'
+          BUST="$(date +%s%N)"
+          for attempt in $(seq 1 24); do
+            curl --retry 2 --fail --silent --show-error "$BASE/app.js?v=$BUST-$attempt" -o /tmp/live-app.js || true
+            if grep -Fq 'function isOfficialBlaBlaHost' /tmp/live-app.js \
+              && grep -Fq 'const expectedTripId = String(item?.blablaTripId || "").trim()' /tmp/live-app.js \
+              && grep -Fq 'blabla.rel = "noopener noreferrer external"' /tmp/live-app.js; then
+              echo "LIVE_BLABLACAR_PUBLIC_LINK_FRONTEND=PASS"
+              break
+            fi
+            test "$attempt" -lt 24
+            sleep 3
+          done
           CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/sync-state.json -w "%{http_code}" "$BASE/v1/driver/trips/sync-state")"
           test "$CODE" = "401"
           echo "DEPLOYED_SOURCE_SHA=${{ github.sha }}"
