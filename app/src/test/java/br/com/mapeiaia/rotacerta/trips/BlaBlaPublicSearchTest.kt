@@ -368,6 +368,90 @@ class BlaBlaPublicSearchTest {
         assertTrue(validatedQueryCoversAgendaTrip(validated, trip, zone))
     }
 
+    @Test
+    fun targetParserTrimsDropsEmptyAndDeduplicatesCaseInsensitively() {
+        assertEquals(
+            listOf("Perfil A", "Perfil B"),
+            BlaBlaPublicSearchPlanner.parseTargetNames(" Perfil A,  Perfil B , perfil a, ,"),
+        )
+    }
+
+    @Test
+    fun explicitTargetsFilterUsefulResultWhileRawCollectionCanContainOtherProfiles() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Perfil A", "Perfil C"),
+            from = "Origem",
+            to = "Destino",
+            selectedDates = listOf("2026-09-05"),
+        )
+        val raw = listOf(
+            BlaBlaPublicSearchCard("Perfil A", "2026-09-05", "Origem", "Destino", tripId = "trip-a", profileUuid = "uuid-a"),
+            BlaBlaPublicSearchCard("Perfil B", "2026-09-05", "Origem", "Destino", tripId = "trip-b", profileUuid = "uuid-b"),
+            BlaBlaPublicSearchCard("Perfil C", "2026-09-05", "Origem", "Destino", tripId = "trip-c", profileUuid = "uuid-c"),
+        )
+        val result = BlaBlaPublicSearchPlanner.filterRequestedCards(raw, request)
+        assertEquals(listOf("Perfil A", "Perfil C"), result.map { it.driverName })
+        assertEquals(3, raw.size)
+    }
+
+    @Test
+    fun knownStrongProfileIdentityRejectsSameNameWithDifferentUuid() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Perfil A"),
+            from = "Origem",
+            to = "Destino",
+            selectedDates = listOf("2026-09-05"),
+        )
+        val raw = listOf(
+            BlaBlaPublicSearchCard("Perfil A", "2026-09-05", "Origem", "Destino", tripId = "trip-ok", profileUuid = "uuid-a"),
+            BlaBlaPublicSearchCard("Perfil A", "2026-09-05", "Origem", "Destino", tripId = "trip-wrong", profileUuid = "uuid-other"),
+        )
+        val result = BlaBlaPublicSearchPlanner.filterRequestedCards(
+            rawCards = raw,
+            request = request,
+            knownProfiles = listOf(BlaBlaPublicSearchPlanner.KnownProfile("Perfil A", "uuid-a")),
+        )
+        assertEquals(listOf("trip-ok"), result.map { it.tripId })
+    }
+
+    @Test
+    fun ambiguousHomonymsAreNotMergedWhenStrongUuidsDisagree() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Perfil A"),
+            from = "Origem",
+            to = "Destino",
+            selectedDates = listOf("2026-09-05"),
+        )
+        val raw = listOf(
+            BlaBlaPublicSearchCard("Perfil A", "2026-09-05", "Origem", "Destino", tripId = "trip-1", profileUuid = "uuid-1"),
+            BlaBlaPublicSearchCard("Perfil A", "2026-09-05", "Origem", "Destino", tripId = "trip-2", profileUuid = "uuid-2"),
+        )
+        assertTrue(BlaBlaPublicSearchPlanner.filterRequestedCards(raw, request).isEmpty())
+    }
+
+    @Test
+    fun emptyProfileFieldPreservesHistoricalAllProfilesResultAndDedupesTrips() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = emptyList(),
+            from = "Origem",
+            to = "Destino",
+            selectedDates = listOf("2026-09-05"),
+        )
+        val duplicate = BlaBlaPublicSearchCard(
+            driverName = "Perfil A",
+            date = "2026-09-05",
+            searchFrom = "Origem",
+            searchTo = "Destino",
+            tripId = "trip-a",
+        )
+        val result = BlaBlaPublicSearchPlanner.filterRequestedCards(
+            rawCards = listOf(duplicate, duplicate.copy(captureIndex = 2), duplicate.copy(driverName = "Perfil A")),
+            request = request,
+        )
+        assertEquals(1, result.size)
+        assertEquals("trip-a", result.single().tripId)
+    }
+
     private fun sampleTrip(zone: ZoneId): Trip {
         val departure = LocalDate.of(2026, 9, 4).atTime(11, 0).atZone(zone).toInstant().toEpochMilli()
         return Trip(
