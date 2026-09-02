@@ -105,7 +105,10 @@ data class BlaBlaPublicSearchResponse(
     val collectedAtMillis: Long = System.currentTimeMillis(),
     val status: String,
     val request: BlaBlaPublicSearchRequest,
+    /** User-facing result after applying the explicit profile filter. */
     val cards: List<BlaBlaPublicSearchCard> = emptyList(),
+    /** Raw auditable collection. Kept separate so discovery never pollutes the requested result. */
+    val rawCards: List<BlaBlaPublicSearchCard> = emptyList(),
     val queries: List<BlaBlaPublicSearchQueryResult> = emptyList(),
     val demands: List<BlaBlaPublicSearchDemand> = emptyList(),
 ) {
@@ -182,6 +185,80 @@ object BlaBlaPublicSearchPlanner {
         if (normalizedTargets.isEmpty()) return true
         return normalizedTargets.any { it == driver }
     }
+
+
+    data class KnownProfile(
+        val name: String,
+        val profileUuid: String?,
+    )
+
+    fun parseTargetNames(raw: String): List<String> {
+        val unique = linkedMapOf<String, String>()
+        raw.split(',').forEach { token ->
+            val display = token.trim()
+            val normalized = normalizePerson(display)
+            if (normalized.isNotBlank() && normalized !in unique) unique[normalized] = display
+        }
+        return unique.values.toList()
+    }
+
+    fun filterRequestedCards(
+        rawCards: List<BlaBlaPublicSearchCard>,
+        request: BlaBlaPublicSearchRequest,
+        knownProfiles: List<KnownProfile> = emptyList(),
+    ): List<BlaBlaPublicSearchCard> {
+        val targets = request.targetNames
+            .mapNotNull { display -> normalizePerson(display).takeIf(String::isNotBlank)?.let { it to display } }
+            .distinctBy { it.first }
+        val targetKeys = targets.map { it.first }.toSet()
+        if (targetKeys.isEmpty()) return dedupeUsefulCards(rawCards)
+
+        val knownByName = knownProfiles
+            .mapNotNull { profile ->
+                val key = normalizePerson(profile.name)
+                val uuid = profile.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                key.takeIf(String::isNotBlank)?.let { it to uuid }
+            }
+            .groupBy({ it.first }, { it.second })
+
+        val observedStrongUuids = rawCards
+            .mapNotNull { card ->
+                val key = normalizePerson(card.driverName)
+                val uuid = card.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                if (key.isNotBlank() && uuid != null) key to uuid else null
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, uuids) -> uuids.toSet() }
+
+        val filtered = rawCards.filter { card ->
+            val key = normalizePerson(card.driverName)
+            if (key !in targetKeys) return@filter false
+            val cardUuid = card.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+            val knownUuids = knownByName[key].orEmpty().filterNotNull().toSet()
+            when {
+                knownUuids.size > 1 -> false
+                knownUuids.size == 1 -> cardUuid == knownUuids.single()
+                observedStrongUuids[key].orEmpty().size > 1 -> false
+                observedStrongUuids[key].orEmpty().size == 1 -> cardUuid == observedStrongUuids.getValue(key).single()
+                else -> true
+            }
+        }
+        return dedupeUsefulCards(filtered)
+    }
+
+    private fun dedupeUsefulCards(cards: List<BlaBlaPublicSearchCard>): List<BlaBlaPublicSearchCard> =
+        cards.distinctBy { card ->
+            card.tripId?.trim()?.takeIf(String::isNotBlank)?.let { "trip:$it" }
+                ?: card.tripHref?.let(BlaBlaCollectorUrlModule::canonical)?.takeIf(String::isNotBlank)?.let { "href:$it" }
+                ?: listOf(
+                    card.date,
+                    card.direction,
+                    normalizePerson(card.driverName),
+                    normalizePlace(card.searchFrom),
+                    normalizePlace(card.searchTo),
+                    card.departureTime.orEmpty(),
+                ).joinToString("|")
+        }
 
     /**
      * Visual identity belongs to the monitored profile, never to the travel direction.
