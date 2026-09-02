@@ -155,6 +155,12 @@ test("deterministic read parser covers the physical operational questions", () =
   assert.equal(full.temporal.dayOfMonth, 7);
   assert.equal(full.temporal.month, 9);
 
+  const vehicle = deterministicReadCommand0412({
+    text: "qual veículo está configurado no meu perfil do BlaBlaCar?",
+    allowedActions: ["READ_VEHICLE"],
+  });
+  assert.equal(vehicle.action, "READ_VEHICLE");
+
   const publicSearch = deterministicReadCommand0412({
     text: "faça uma busca pública no nome de Alessandra, sentido Santo André para São Tomé das Letras",
     allowedActions: ["PUBLIC_SEARCH"],

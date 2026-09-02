@@ -277,6 +277,11 @@ function deterministicReadCommand0412({ text, allowedActions }) {
   } else if (/\b(lotad[oa]s?|chei[oa]s?|vagas?|assentos?)\b/.test(normalized)) {
     action = "LIST_FULL_TRIPS";
   } else if (
+    /\bqual\s+(?:e\s+o\s+)?veiculo\b/.test(normalized) ||
+    /\bveiculo\b.*\b(perfil|configurad|blablacar)\b/.test(normalized)
+  ) {
+    action = "READ_VEHICLE";
+  } else if (
     /\bpedidos? de reserva\b/.test(normalized) ||
     /\b(quais|quantas|listar|liste|mostre|mostrar|ver|tenho)\b.*\breservas?\b/.test(normalized)
   ) {
