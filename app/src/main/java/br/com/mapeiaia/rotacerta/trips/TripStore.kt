@@ -107,6 +107,16 @@ class TripStore(context: Context) {
                 canonicalStateHash = existing.canonicalStateHash.ifBlank {
                     canonicalTripStateHash0406(existing.copy(tripKey = incoming.tripKey.ifBlank { existing.tripKey }), bookingsFor(existing.id))
                 },
+                publicTimezoneId0411 = incoming.publicTimezoneId0411.ifBlank { existing.publicTimezoneId0411 },
+                publicMirrorAttestationState0411 = incoming.publicMirrorAttestationState0411,
+                publicMirrorAttestedCanonicalRevision0411 = incoming.publicMirrorAttestedCanonicalRevision0411,
+                publicMirrorAttestedPublicationRevision0411 = incoming.publicMirrorAttestedPublicationRevision0411,
+                publicMirrorExpectedHash0411 = incoming.publicMirrorExpectedHash0411,
+                publicMirrorReadbackHash0411 = incoming.publicMirrorReadbackHash0411,
+                publicMirrorAttestedAtMillis0411 = incoming.publicMirrorAttestedAtMillis0411,
+                publicMirrorReadbackLatencyMillis0411 = incoming.publicMirrorReadbackLatencyMillis0411,
+                publicMirrorAttestationReason0411 = incoming.publicMirrorAttestationReason0411.take(160),
+                publicMirrorMismatchFields0411 = incoming.publicMirrorMismatchFields0411.distinct().take(24),
                 lastCollectionGeneration = maxOf(existing.lastCollectionGeneration, incomingGeneration),
                 lastCollectionRunId = if (
                     incoming.lastCollectionRunId.isNotBlank() &&
@@ -122,9 +132,23 @@ class TripStore(context: Context) {
         } else {
             nextCanonicalTripRevision0395(existing.canonicalRevision, incoming.canonicalRevision, semanticChanged)
         }
+        val attestationState = when {
+            incoming.deleted || incoming.publicationTombstone -> PublicMirrorAttestationState0411.UNPROVEN
+            semanticChanged -> PublicMirrorAttestationState0411.PENDING
+            else -> incoming.publicMirrorAttestationState0411
+        }
         val normalizedWithoutHash = incoming.copy(
             canonicalRevision = nextRevision,
             canonicalStateHash = "",
+            publicMirrorAttestationState0411 = attestationState,
+            publicMirrorAttestedCanonicalRevision0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedCanonicalRevision0411,
+            publicMirrorAttestedPublicationRevision0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedPublicationRevision0411,
+            publicMirrorExpectedHash0411 = if (semanticChanged) "" else incoming.publicMirrorExpectedHash0411,
+            publicMirrorReadbackHash0411 = if (semanticChanged) "" else incoming.publicMirrorReadbackHash0411,
+            publicMirrorAttestedAtMillis0411 = if (semanticChanged) 0L else incoming.publicMirrorAttestedAtMillis0411,
+            publicMirrorReadbackLatencyMillis0411 = if (semanticChanged) 0L else incoming.publicMirrorReadbackLatencyMillis0411,
+            publicMirrorAttestationReason0411 = if (semanticChanged) "CANONICAL_REVISION_CHANGED" else incoming.publicMirrorAttestationReason0411,
+            publicMirrorMismatchFields0411 = if (semanticChanged) emptyList() else incoming.publicMirrorMismatchFields0411,
             updatedAtMillis = System.currentTimeMillis(),
         )
         val normalized = normalizedWithoutHash.copy(
@@ -174,6 +198,15 @@ class TripStore(context: Context) {
         canonicalRevision = 0L,
         canonicalStateHash = "",
         tripKey = "",
+        publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+        publicMirrorAttestedCanonicalRevision0411 = 0L,
+        publicMirrorAttestedPublicationRevision0411 = 0L,
+        publicMirrorExpectedHash0411 = "",
+        publicMirrorReadbackHash0411 = "",
+        publicMirrorAttestedAtMillis0411 = 0L,
+        publicMirrorReadbackLatencyMillis0411 = 0L,
+        publicMirrorAttestationReason0411 = "",
+        publicMirrorMismatchFields0411 = emptyList(),
         lastCollectionRunId = "",
         lastCollectionGeneration = 0L,
         lastObservedAtMillis = 0L,
