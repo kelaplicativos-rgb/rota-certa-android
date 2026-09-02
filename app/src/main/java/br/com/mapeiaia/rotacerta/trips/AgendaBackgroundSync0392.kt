@@ -1278,7 +1278,7 @@ internal object AgendaBackgroundSync0392 {
                             UnifiedDebugEventStore.record(
                                 "EXTERNAL_CANONICAL_INGEST_0403",
                                 context.packageName,
-                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} profileUuidPresent=true tripIdPresent=true oldFingerprint=${existing?.externalSnapshotFingerprint.orEmpty().takeLast(12)} newFingerprint=${incomingFingerprint.takeLast(12)} sourceComplete=$incomingComplete canonicalRevision=${saved.canonicalRevision} result=UPDATE",
+                                "internalTripId=${seatSyncDiagnosticKey(saved.id)} profileUuidPresent=true tripId=$blablaTripId oldFingerprint=${existing?.externalSnapshotFingerprint.orEmpty().takeLast(12)} newFingerprint=${incomingFingerprint.takeLast(12)} sourceComplete=$incomingComplete canonicalRevision=${saved.canonicalRevision} publicTripUrlFound=${!saved.blablaPublicUrl.isNullOrBlank()} publicTripUrlSource=${if (!observed.blablaPublicUrl.isNullOrBlank()) "collector" else if (!existing?.blablaPublicUrl.isNullOrBlank()) "canonical_preserved" else "missing"} result=UPDATE",
                             )
                         } else {
                             skippedTrips++
@@ -1345,7 +1345,7 @@ internal object AgendaBackgroundSync0392 {
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_SKIP_0403",
                     context.packageName,
-                    "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} fingerprint=${incomingFingerprint.takeLast(12)} result=UNCHANGED_SKIP publicationAlreadyCurrent=${binding?.externalFingerprint == incomingFingerprint}",
+                    "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} tripId=$blablaTripId fingerprint=${incomingFingerprint.takeLast(12)} publicTripUrlFound=${!canonicalTrip?.blablaPublicUrl.isNullOrBlank()} result=UNCHANGED_SKIP publicationAlreadyCurrent=${binding?.externalFingerprint == incomingFingerprint && BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, blablaTripId) == BlaBlaCollectorUrlModule.publicTrip(canonicalTrip?.blablaPublicUrl, blablaTripId)}",
                 )
             }
         }
