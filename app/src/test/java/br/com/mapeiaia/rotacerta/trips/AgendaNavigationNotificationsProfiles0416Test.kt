@@ -59,8 +59,9 @@ class AgendaNavigationNotificationsProfiles0416Test {
         assertTrue(header.contains("else {\n                \"Notificações\""))
         assertFalse(header.contains("🔔"))
 
-        assertTrue(activity.contains("TripRemoteApi(online).listDriverNotifications()"))
-        assertTrue(activity.contains("notificationRefreshMutex0416.withLock"))
+        assertTrue(messaging.contains("TripRemoteApi(online).listDriverNotifications()"))
+        assertTrue(messaging.contains("private val refreshMutex = Mutex()"))
+        assertTrue(activity.contains("DriverNotificationProjection0416.state.collectAsState()"))
         assertTrue(activity.contains("BookingRealtimeEvents0356.changes.collect"))
         assertFalse(activity.contains("delay(15_000L)"))
         assertTrue(messaging.contains("BookingRealtimeEvents0356.notifyChanged()"))
