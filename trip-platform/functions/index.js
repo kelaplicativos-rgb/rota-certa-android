@@ -3799,6 +3799,7 @@ async function setDriverPassengerBlocked(req, res) {
     .map((doc) => (batch) => batch.set(doc.ref, {
       passengerId,
       status,
+      agendaAdmin: blocking ? false : doc.data().agendaAdmin === true,
       updatedAtMillis: Date.now(),
     }, { merge: true }));
   if (identityWrites.length) {
