@@ -7,7 +7,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Serializable
-internal enum class PublicMirrorAttestationState0411 {
+enum class PublicMirrorAttestationState0411 {
     UNPROVEN,
     PENDING,
     VALIDATED,
