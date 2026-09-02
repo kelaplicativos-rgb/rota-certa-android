@@ -404,6 +404,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesRestorePending = false
     private var ridesBottomStablePasses = 0
     private var tripRosterReadAttempts = 0
+    private var networkTripSourceReadAttempts0407 = 0
     private var lastTripRosterSignature = ""
     private var tripRosterStablePasses = 0
     private var publicTripShareReadAttempts = 0
@@ -742,6 +743,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesRestorePending = false
         ridesBottomStablePasses = 0
         tripRosterReadAttempts = 0
+        networkTripSourceReadAttempts0407 = 0
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
@@ -1288,7 +1290,36 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluateRequest
             }
+            if (shouldAwaitNetworkTripSource0407(
+                    sourcePresent = result.networkSource != null,
+                    readAttempts = networkTripSourceReadAttempts0407,
+                    maxReadAttempts = MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407,
+                )
+            ) {
+                networkTripSourceReadAttempts0407++
+                UnifiedDebugEventStore.record(
+                    "SYNC_NETWORK_SOURCE_PENDING",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId attempt=$networkTripSourceReadAttempts0407/$MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407 exactTrip=true fallback=DOM_AFTER_BOUNDED_WAIT piiLogged=false",
+                )
+                postSessionDelayed0405({
+                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                }, NETWORK_FIRST_SOURCE_RETRY_MS_0407)
+                return@evaluateRequest
+            }
             val networkResolution = BlaBlaCollectorNetworkSourceModule.resolve(candidateTripId, result.networkSource)
+            if (networkResolution == null) {
+                val fallbackReason = if (result.networkSource == null) {
+                    "network_source_unavailable_after_bounded_wait"
+                } else {
+                    "network_contract_incomplete_or_unverified"
+                }
+                UnifiedDebugEventStore.record(
+                    "SYNC_NETWORK_FALLBACK_DOM",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId networkSourcePresent=${result.networkSource != null} reason=$fallbackReason exactTrip=true fallback=DOM piiLogged=false",
+                )
+            }
             val sourceBackedResult = (networkResolution?.let { resolution ->
                 result.copy(
                     detail = result.detail.copy(
@@ -2478,6 +2509,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         passengerCallActionTriggered = false
         interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
+        networkTripSourceReadAttempts0407 = 0
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
@@ -2863,6 +2895,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
         private const val MAX_EDIT_LINK_READ_ATTEMPTS = 5
         private const val MAX_OPTIONS_READ_ATTEMPTS = 3
+        private const val MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407 = 2
+        private const val NETWORK_FIRST_SOURCE_RETRY_MS_0407 = 300L
         private const val ROSTER_RETRY_MS = 800L
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
         private const val PASSENGER_CALL_SETTLE_MS = 650L
