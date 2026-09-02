@@ -380,6 +380,62 @@ data class DriverProtectedBookingSnapshot(
 )
 
 @Serializable
+data class DriverPublicAttestationRequest0417(
+    val state: String,
+    val canonicalRevision: Long,
+    val publicationRevision: Long,
+    val canonicalStateHash: String,
+    val expectedHash: String,
+    val readbackHash: String,
+    val mismatchFields: List<String> = emptyList(),
+    val reason: String = "",
+    val correlationId: String = "",
+)
+
+@Serializable
+data class DriverPublicAttestationResponse0417(
+    val state: String = "",
+    val verified: Boolean = false,
+    val publicationRevision: Long = 0L,
+)
+
+@Serializable
+data class DriverAdminPasswordRequest0417(val password: String)
+
+@Serializable
+data class DriverAdminPasswordResponse0417(val configured: Boolean = false)
+
+@Serializable
+data class DriverAdminSyncPolicy0417(
+    val automatic: Boolean = true,
+    val intervalMinutes: Long = 15L,
+)
+
+@Serializable
+data class DriverAdminSyncPolicyResponse0417(
+    val syncPolicy: DriverAdminSyncPolicy0417 = DriverAdminSyncPolicy0417(),
+)
+
+@Serializable
+data class DriverAdminSyncHealthRequest0417(
+    val startedAtMillis: Long = 0L,
+    val finishedAtMillis: Long = 0L,
+    val result: String = "",
+    val trigger: String = "",
+    val correlationId: String = "",
+    val failures: Int = 0,
+    val changed: Int = 0,
+    val skipped: Int = 0,
+    val pending: Int = 0,
+    val divergent: Int = 0,
+    val readbackFailures: Int = 0,
+    val appVersion: String = "",
+)
+
+@Serializable
+data class DriverAdminSyncHealthResponse0417(val recorded: Boolean = false)
+
+@Serializable
 data class DriverCapacitySnapshotRequest(
     val trip: Trip,
     val claims: List<DriverCapacitySnapshotClaim> = emptyList(),
@@ -617,6 +673,38 @@ class TripRemoteApi(
     suspend fun readPublicTripProjection0411(remoteTripId: String): DriverPublicTripReadback0411 = request(
         method = "GET",
         path = "/v1/driver/trips/${remoteTripId.trim()}/public-readback",
+        requireDriverToken = true,
+    )
+
+    suspend fun reportPublicTripAttestation0417(
+        remoteTripId: String,
+        request: DriverPublicAttestationRequest0417,
+    ): DriverPublicAttestationResponse0417 = request(
+        method = "POST",
+        path = "/v1/driver/trips/${remoteTripId.trim()}/public-attestation",
+        body = json.encodeToString(request),
+        requireDriverToken = true,
+    )
+
+    suspend fun configureAdminPassword0417(password: String): DriverAdminPasswordResponse0417 = request(
+        method = "PUT",
+        path = "/v1/driver/admin/password",
+        body = json.encodeToString(DriverAdminPasswordRequest0417(password)),
+        requireDriverToken = true,
+    )
+
+    suspend fun adminSyncPolicy0417(): DriverAdminSyncPolicyResponse0417 = request(
+        method = "GET",
+        path = "/v1/driver/admin/sync-policy",
+        requireDriverToken = true,
+    )
+
+    suspend fun reportAdminSyncHealth0417(
+        health: DriverAdminSyncHealthRequest0417,
+    ): DriverAdminSyncHealthResponse0417 = request(
+        method = "POST",
+        path = "/v1/driver/admin/sync-health",
+        body = json.encodeToString(health),
         requireDriverToken = true,
     )
 
