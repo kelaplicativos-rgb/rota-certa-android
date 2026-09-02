@@ -1,9 +1,9 @@
-name: Agenda canonical integrity 0.1.406
+name: Agenda BlaBla trip control 0.1.407
 
 on:
   push:
     branches:
-      - agent/canonical-central-sync-0.1.403
+      - agent/blablacar-network-first-control-surface-0.1.407
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5699' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.406"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5700' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.407"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -60,6 +60,8 @@ jobs:
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt' changed-files.txt
           grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' changed-files.txt
+          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt' changed-files.txt
+          grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407Test.kt' changed-files.txt
           ! grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt' changed-files.txt
           grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt' changed-files.txt
 
@@ -116,6 +118,14 @@ jobs:
           ! grep -Fq 'AgendaHeaderAction0396("Limpar Timeline")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           ! grep -Fq 'trips_activity_resume' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+
+          # tripId control surface reuses the existing headless collector and central worker.
+          grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          grep -Fq 'enqueueTripReverify0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'resolveBlaBlaTripTarget0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          grep -Fq 'BlaBlaTripActionPalette0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          grep -Fq 'write_not_verified_for_current_runtime' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          ! grep -Fq 'SET_TRIP_BOOST(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
 
       - name: Validate canonical booking, notification and sync-state contracts
         shell: bash
@@ -177,7 +187,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalIntegrity0406Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripInventorySourceTruth0374Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBooking0296Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicBookingRealtime0304Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -206,7 +216,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.406-canonical-integrity-${{ github.sha }}
+          name: rota-certa-0.1.407-blablacar-trip-control-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -223,6 +233,7 @@ jobs:
 
 
   deploy-backend:
+    if: github.ref_name == 'agent/canonical-central-sync-0.1.403'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 35

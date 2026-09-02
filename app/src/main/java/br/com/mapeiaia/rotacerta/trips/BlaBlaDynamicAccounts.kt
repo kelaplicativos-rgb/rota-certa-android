@@ -142,6 +142,7 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
+    const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_PROFILE = "profile"
@@ -403,6 +404,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesRestorePending = false
     private var ridesBottomStablePasses = 0
     private var tripRosterReadAttempts = 0
+    private var networkTripSourceReadAttempts0407 = 0
+    private var targetedSnapshotSaved0407 = false
     private var lastTripRosterSignature = ""
     private var tripRosterStablePasses = 0
     private var publicTripShareReadAttempts = 0
@@ -498,14 +501,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
             targetDates = emptyList()
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            if (automaticCollectionClaimed) {
-                automaticCollectionReported = true
-                BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
-                    context = this,
-                    generation = automaticCollectionGeneration,
-                    accountId = account.id,
-                    accountResult = "partial",
-                    error = "android_system_webview_multi_profile_unavailable",
+            if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+                if (automaticCollectionClaimed) {
+                    automaticCollectionReported = true
+                    BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
+                        context = this,
+                        generation = automaticCollectionGeneration,
+                        accountId = account.id,
+                        accountResult = "partial",
+                        error = "android_system_webview_multi_profile_unavailable",
+                    )
+                }
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_HEADLESS_WEBVIEW_UNAVAILABLE_0407",
+                    packageName,
+                    "accountKey=${seatSyncDiagnosticKey(account.id)} targeted=${targetTripId.isNotBlank()} action=fail_closed browserOpened=false",
+                )
+                setResult(
+                    Activity.RESULT_CANCELED,
+                    Intent()
+                        .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                        .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "BROKEN_FOR_VERSION"),
                 )
                 finish()
                 return
@@ -565,7 +581,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
-        if (automaticCollectionGeneration > 0L && visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+        if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             webView.settings.loadsImagesAutomatically = false
             webView.settings.blockNetworkImage = true
             webView.settings.setSupportZoom(false)
@@ -728,6 +744,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesRestorePending = false
         ridesBottomStablePasses = 0
         tripRosterReadAttempts = 0
+        networkTripSourceReadAttempts0407 = 0
+        targetedSnapshotSaved0407 = false
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
@@ -766,8 +784,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun isAutomaticHeadless0404(): Boolean =
-        automaticCollectionClaimed &&
-            visualHost == null &&
+        visualHost == null &&
             mode == BlaBlaDynamicSessionIntents.MODE_SYNC
 
     private fun postSessionDelayed0405(action: () -> Unit, delayMs: Long) {
@@ -873,7 +890,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
             }
-            if (automaticCollectionClaimed && mode == BlaBlaDynamicSessionIntents.MODE_SYNC && !identityConfirmedThisSync) {
+            if (isAutomaticHeadless0404() && mode == BlaBlaDynamicSessionIntents.MODE_SYNC && !identityConfirmedThisSync) {
                 identityReadAttempts++
                 if (identityReadAttempts < MAX_IDENTITY_READ_ATTEMPTS) {
                     UnifiedDebugEventStore.record(
@@ -1224,6 +1241,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             skippedTrips = skipped,
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
+            targetedTripId = targetTripId.takeIf(String::isNotBlank),
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
@@ -1275,7 +1293,36 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 advanceCandidate(expectedSync, expectedCandidate)
                 return@evaluateRequest
             }
+            if (shouldAwaitNetworkTripSource0407(
+                    sourcePresent = result.networkSource != null,
+                    readAttempts = networkTripSourceReadAttempts0407,
+                    maxReadAttempts = MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407,
+                )
+            ) {
+                networkTripSourceReadAttempts0407++
+                UnifiedDebugEventStore.record(
+                    "SYNC_NETWORK_SOURCE_PENDING",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId attempt=$networkTripSourceReadAttempts0407/$MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407 exactTrip=true fallback=DOM_AFTER_BOUNDED_WAIT piiLogged=false",
+                )
+                postSessionDelayed0405({
+                    captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                }, NETWORK_FIRST_SOURCE_RETRY_MS_0407)
+                return@evaluateRequest
+            }
             val networkResolution = BlaBlaCollectorNetworkSourceModule.resolve(candidateTripId, result.networkSource)
+            if (networkResolution == null) {
+                val fallbackReason = if (result.networkSource == null) {
+                    "network_source_unavailable_after_bounded_wait"
+                } else {
+                    "network_contract_incomplete_or_unverified"
+                }
+                UnifiedDebugEventStore.record(
+                    "SYNC_NETWORK_FALLBACK_DOM",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId networkSourcePresent=${result.networkSource != null} reason=$fallbackReason exactTrip=true fallback=DOM piiLogged=false",
+                )
+            }
             val sourceBackedResult = (networkResolution?.let { resolution ->
                 result.copy(
                     detail = result.detail.copy(
@@ -2306,13 +2353,24 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (targetTripId.isNotBlank()) {
             completedCardTraversalKeys += currentCardTraversalKey
             resolvedCardTraversalKeys += currentCardTraversalKey
-            publishTargetedTripToTimeline(tripId)
+            val freshTargetCaptured =
+                identityConfirmedThisSync &&
+                    tripId == targetTripId &&
+                    collected.count { trip ->
+                        trip.profile_uuid.trim().equals(account.profileUuid?.trim(), ignoreCase = true) &&
+                            trip.trip_id?.trim() == targetTripId &&
+                            BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) == targetTripId
+                    } == 1 &&
+                    skipped == 0 &&
+                    quarantinedCardTraversalKeys.isEmpty()
+            targetedSnapshotSaved0407 =
+                freshTargetCaptured && saveFinalSnapshotOnce(verified = true)
             UnifiedDebugEventStore.record(
                 "CARD_TRAVERSAL_COMPLETE",
                 packageName,
-                "account=${account.displayLabel} order=1 tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=targeted_complete nextCardAllowed=false",
+                "account=${account.displayLabel} order=1 tripId=$tripId passengers=${pendingTripPassengers.size} publishedSeats=${pendingPublishedSeats ?: -1} result=${if (targetedSnapshotSaved0407) "targeted_complete" else "targeted_unverified"} nextCardAllowed=false siblingCardsPreserved=true canonicalWriteDeferred=true",
             )
-            networkDiagnosticRecorder?.finishFirstCard("targeted_complete")
+            networkDiagnosticRecorder?.finishFirstCard(if (targetedSnapshotSaved0407) "targeted_complete" else "targeted_unverified")
             clearPendingCardState()
             currentCardTraversalKey = ""
             completeSync(collected.size)
@@ -2334,32 +2392,6 @@ internal class BlaBlaDynamicAccountSessionController0401(
         enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "resume_ride_list_after_card")
         ridesRestorePending = ridesResumeScrollY > 0
         loadTrackedUrl(RIDES_URL)
-    }
-
-    private fun publishTargetedTripToTimeline(tripId: String) {
-        val updatedTrip = collected.lastOrNull { it.trip_id == tripId } ?: return
-        val timelineStore = BlaBlaCollectorStateStore(this)
-        val previous = timelineStore.lastResponse() ?: return
-        val merged = previous.trips.filterNot { trip ->
-            trip.profile_uuid.equals(updatedTrip.profile_uuid, ignoreCase = true) && trip.trip_id == tripId
-        } + updatedTrip
-        timelineStore.saveResponse(
-            previous.copy(
-                status = "success",
-                trips = merged.sortedWith(compareBy<BlaBlaCollectorTrip> { it.date }.thenBy { it.departure_time.orEmpty() }),
-                coverage = previous.coverage.copy(
-                    complete_for_scope = false,
-                    global_profile_month_complete = false,
-                    reason = "targeted_exact_card_sync",
-                ),
-            ),
-            preserveOnPartial = false,
-        )
-        UnifiedDebugEventStore.record(
-            "AGENDA_EXACT_CARD_TIMELINE_UPDATED",
-            packageName,
-            "profileUuidPresent=true tripIdPresent=true passengers=${updatedTrip.passengers.size}",
-        )
     }
 
     private fun persistDirectTripEvidence(tripId: String) {
@@ -2441,6 +2473,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             skippedTrips = maxOf(skipped, 1),
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
+            targetedTripId = targetTripId.takeIf(String::isNotBlank),
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
@@ -2465,6 +2498,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         passengerCallActionTriggered = false
         interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
+        networkTripSourceReadAttempts0407 = 0
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0
@@ -2705,7 +2739,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             automaticCollectionReported = true
             BlaBlaAutomaticCollectionCoordinator0400.onAccountPendingAuth(this, automaticCollectionGeneration, account.id, reason)
         }
-        setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "AUTH_REQUIRED"),
+        )
         finish()
     }
 
@@ -2719,11 +2758,26 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         enterBrowserPhase(Phase.IDLE, null, "sync_complete")
-        val finalStatus = if (skipped > 0 || quarantinedCardTraversalKeys.isNotEmpty()) "partial" else "success"
+        val targeted = targetTripId.isNotBlank()
+        val exactTargetFresh = !targeted || (
+            targetedSnapshotSaved0407 &&
+                identityConfirmedThisSync &&
+                completedCardTraversalKeys.size == 1 &&
+                collected.count { trip ->
+                    trip.profile_uuid.trim().equals(account.profileUuid?.trim(), ignoreCase = true) &&
+                        trip.trip_id?.trim() == targetTripId &&
+                        BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) == targetTripId
+                } == 1
+        )
+        val finalStatus = if (
+            !exactTargetFresh ||
+            skipped > 0 ||
+            quarantinedCardTraversalKeys.isNotEmpty()
+        ) "partial" else "success"
         UnifiedDebugEventStore.record(
             "SYNC_END",
             packageName,
-            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration",
+            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration targeted=$targeted exactTargetFresh=$exactTargetFresh siblingCardsPreserved=${!targeted || targetedSnapshotSaved0407}",
         )
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
@@ -2735,12 +2789,21 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 error = if (finalStatus == "success") "" else "skipped=$skipped quarantined=${quarantinedCardTraversalKeys.size}",
             )
         }
-        setResult(
-            Activity.RESULT_OK,
-            Intent()
-                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
-                .putExtra("trip_count", count),
-        )
+        if (targeted && !exactTargetFresh) {
+            setResult(
+                Activity.RESULT_CANCELED,
+                Intent()
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "TRIP_NOT_VERIFIED"),
+            )
+        } else {
+            setResult(
+                Activity.RESULT_OK,
+                Intent()
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                    .putExtra("trip_count", count),
+            )
+        }
         finish()
     }
 
@@ -2845,6 +2908,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_PASSENGER_BIND_READ_ATTEMPTS = 3
         private const val MAX_EDIT_LINK_READ_ATTEMPTS = 5
         private const val MAX_OPTIONS_READ_ATTEMPTS = 3
+        private const val MAX_NETWORK_FIRST_SOURCE_ATTEMPTS_0407 = 2
+        private const val NETWORK_FIRST_SOURCE_RETRY_MS_0407 = 300L
         private const val ROSTER_RETRY_MS = 800L
         private const val PASSENGER_NAVIGATION_SETTLE_MS = 1_200L
         private const val PASSENGER_CALL_SETTLE_MS = 650L
