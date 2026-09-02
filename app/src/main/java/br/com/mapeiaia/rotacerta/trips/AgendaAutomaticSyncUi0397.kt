@@ -130,7 +130,8 @@ internal fun AgendaAutomaticSyncScreen0397() {
                     "Coleta BlaBlaCar: " + when {
                         collectorState0400.status == "COMPLETE" -> "COMPLETE"
                         collectorState0400.status == "NO_ACCOUNTS" -> "sem contas configuradas"
-                        collectorState0400.pending -> "${collectorState0400.status} · ${collectorState0400.completedAccountIds.size + collectorState0400.failedAccountIds.size}/${collectorState0400.targetAccountIds.size} contas processadas"
+                        collectorState0400.status == "PENDING_AUTH" -> "PENDING_AUTH · ação necessária: reconecte ${collectorState0400.pendingAuthAccountIds.size} conta(s)"
+                        collectorState0400.pending -> "${collectorState0400.status} · ${collectorState0400.completedAccountIds.size + collectorState0400.failedAccountIds.size + collectorState0400.pendingAuthAccountIds.size}/${collectorState0400.targetAccountIds.size} contas processadas"
                         else -> collectorState0400.status
                     },
                 )

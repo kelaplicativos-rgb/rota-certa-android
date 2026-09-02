@@ -273,11 +273,7 @@ internal object PublicAgendaAutoSync0300 {
             syncOperation.operationId,
         )
         val connectedAccounts = BlaBlaDynamicAccountRegistry(context).list()
-        val allConnectedResponse = if (connectedAccounts.isNotEmpty()) {
-            BlaBlaDynamicSessionStore(context).combinedResponse(connectedAccounts)
-        } else {
-            BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
-        }
+        val allConnectedResponse = BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()
         AgendaTrace.operationEnd(
             context,
             connectedAccountsOperation,
@@ -334,11 +330,14 @@ internal object PublicAgendaAutoSync0300 {
             .toList()
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
 
+        val existingExternalBindings = store.publicExternalBindings()
         externalTrips.forEachIndexed { index, synthesized ->
             val diagnosticTripKey = sha256(synthesized.trip.publicToken).take(12)
-            val resolvedPublicIdentity = store.publicExternalBindings()
-                .firstOrNull { it.publicToken == synthesized.trip.publicToken }
-                ?.remoteTripId
+            val existingBindingHint = existingExternalBindings.firstOrNull { binding ->
+                (binding.profileUuid.equals(synthesized.profileUuid, ignoreCase = true) && binding.blablaTripId == synthesized.blablaTripId) ||
+                    binding.publicToken == synthesized.trip.publicToken
+            }
+            val resolvedPublicIdentity = existingBindingHint?.remoteTripId
             val externalFailureContext = AgendaFailureEvidence.tripContext(
                 trip = synthesized.trip,
                 bookings = synthesized.capacityClaims,
@@ -364,6 +363,7 @@ internal object PublicAgendaAutoSync0300 {
                     synthesized = synthesized,
                     traceId = traceId,
                     parentOperationId = operation.operationId,
+                    existingBindingHint = existingBindingHint,
                 )
                 if (snapshot.published) externalPublished++
                 seatClaimsSynced += snapshot.claimsApplied
@@ -693,13 +693,13 @@ internal object PublicAgendaAutoSync0300 {
         canonicalTripId: String = "",
         outboxEventId: String = "",
         seatAllocationVersion: Long = 0L,
+        existingBindingHint: PublicExternalTripBinding? = null,
     ): ExternalCapacitySnapshotSyncResult {
         val publicTrip = synthesized.trip
         val diagnosticTripKey = sha256(publicTrip.publicToken).take(12)
-        val existingBinding = store.publicExternalBindingForStrongIdentity(
-            synthesized.profileUuid,
-            synthesized.blablaTripId,
-        ) ?: store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
+        val existingBinding = existingBindingHint
+            ?: store.publicExternalBindingForStrongIdentity(synthesized.profileUuid, synthesized.blablaTripId)
+            ?: store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
 
         if (!synthesized.sourceComplete) {
             if (existingBinding != null) {
@@ -758,10 +758,21 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         var remoteTripId = existingBinding?.remoteTripId ?: publicTrip.publicToken
-        var effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
-        var effectiveClaims = synthesized.capacityClaims
-        var shapePreserved = false
+        val observedStopIds = publicTrip.stops.sortedBy(TripStop::order).map(TripStop::id)
+        val canonicalStopIds = existingBinding?.stops?.sortedBy(TripStop::order)?.map(TripStop::id).orEmpty()
+        var effectiveTrip = existingBinding?.let { preserveExternalBindingShape(publicTrip, it) }
+            ?: publicTrip.copy(remoteId = remoteTripId)
+        var effectiveClaims = existingBinding?.let {
+            remapExternalClaimsToBindingStructure(synthesized.capacityClaims, publicTrip.stops, effectiveTrip)
+        } ?: synthesized.capacityClaims
+        var shapePreserved = existingBinding != null && observedStopIds != canonicalStopIds
         var createdPlaceholder = false
+        if (existingBinding != null) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_CAPACITY_CANONICAL_SHAPE_REUSED_0401", context.packageName,
+                "tripKey=$diagnosticTripKey observedStops=${observedStopIds.size} canonicalStops=${canonicalStopIds.size} shapeChanged=$shapePreserved firstRequestUsesCanonical=true immutableStop400Prevented=true",
+            )
+        }
 
         suspend fun reconcile(): DriverCapacitySnapshotResponse = api.reconcileCapacitySnapshot(
             remoteTripId = remoteTripId,
@@ -787,15 +798,11 @@ internal object PublicAgendaAutoSync0300 {
                     reconcile()
                 }
                 existingBinding != null && isImmutablePublicTripShapeFailure(firstError) -> {
-                    effectiveTrip = preserveExternalBindingShape(publicTrip, existingBinding)
-                    effectiveClaims = remapExternalClaimsToBindingStructure(
-                        claims = synthesized.capacityClaims,
-                        observedStops = publicTrip.stops,
-                        preservedTrip = effectiveTrip,
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_CAPACITY_LEGACY_BINDING_IRRECONCILIABLE_0401", context.packageName,
+                        "tripKey=$diagnosticTripKey remoteIdentityPresent=true canonicalStops=${existingBinding.stops.size} action=preserve_remote_and_local_state noShapeMutation=true error=${firstError.message.orEmpty().take(240)}",
                     )
-                    remoteTripId = existingBinding.remoteTripId
-                    shapePreserved = true
-                    reconcile()
+                    throw firstError
                 }
                 else -> throw firstError
             }

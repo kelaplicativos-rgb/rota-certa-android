@@ -1,9 +1,9 @@
-name: Agenda operational Timeline BlaBlaCar auto collection 0.1.400
+name: Agenda operational Timeline BlaBlaCar auto collection 0.1.401
 
 on:
   push:
     branches:
-      - agent/timeline-blablacar-auto-collection-0.1.400
+      - agent/timeline-blablacar-auto-collection-0.1.401
   workflow_dispatch:
 
 permissions:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5693' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.400"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5694' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.401"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -70,10 +70,16 @@ jobs:
 
           # Central scheduler calls the existing collector and preserves truthful coverage.
           grep -Fq 'requestAutomaticCollector0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'cycle.collectorPending -> "COLLECTOR_PENDING"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'BlaBlaDynamicSessionIntents.sync' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.syncPayload' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          grep -Fq 'visualHost = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          ! grep -Fq 'startActivity(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          ! grep -Fq 'FLAG_ACTIVITY_NEW_TASK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
           ! grep -Fq 'WebView(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
+          grep -Fq 'BlaBlaDynamicAccountSessionController0401' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_CAPACITY_CANONICAL_SHAPE_REUSED_0401' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'saveProgressSnapshot("card_complete")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'REQUIRED_STABLE_BOTTOM_PASSES' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'tenantScope.key(KEY_RESPONSE)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
@@ -133,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorBoundaries0265Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0261Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0262Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Lint
         run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -162,7 +168,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.400-operational-timeline-blablacar-${{ github.sha }}
+          name: rota-certa-0.1.401-operational-timeline-blablacar-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |

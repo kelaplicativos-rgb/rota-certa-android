@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.ContextThemeWrapper
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -147,6 +148,9 @@ object BlaBlaDynamicSessionIntents {
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
     fun profile(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_PROFILE)
     fun sync(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_SYNC)
+    internal fun syncPayload(account: BlaBlaDynamicAccount): Intent = Intent()
+        .putExtra(EXTRA_ACCOUNT_ID, account.id)
+        .putExtra(EXTRA_MODE, MODE_SYNC)
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         syncDates(context, account, listOf(targetDate))
     fun syncDates(context: Context, account: BlaBlaDynamicAccount, targetDates: Collection<LocalDate>): Intent =
@@ -311,6 +315,57 @@ internal fun nextBlaBlaCandidateIndex(current: Int, size: Int): Int = when {
 }
 
 class BlaBlaDynamicAccountSessionActivity : Activity() {
+    private var controller: BlaBlaDynamicAccountSessionController0401? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        controller = BlaBlaDynamicAccountSessionController0401(
+            baseContext = this,
+            launchIntent = intent,
+            visualHost = { view -> setContentView(view) },
+            finishHost = { resultCode, data ->
+                setResult(resultCode, data)
+                if (!isFinishing) finish()
+            },
+        ).also(BlaBlaDynamicAccountSessionController0401::start)
+    }
+
+    @Deprecated("Android framework API")
+    override fun onBackPressed() {
+        controller?.handleBackPressed() ?: super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+        controller?.destroy("visual_activity_destroyed")
+        controller = null
+        super.onDestroy()
+    }
+}
+
+/** Existing authenticated collector state machine with a pluggable visual host. */
+internal class BlaBlaDynamicAccountSessionController0401(
+    baseContext: Context,
+    private val launchIntent: Intent?,
+    private val visualHost: ((android.view.View) -> Unit)?,
+    private val finishHost: (Int, Intent) -> Unit,
+) : ContextThemeWrapper(baseContext, baseContext.applicationInfo.theme) {
+    private var pendingResultCode = Activity.RESULT_CANCELED
+    private var pendingResultData = Intent()
+    private var hostFinished = false
+    private var destroyed = false
+    private val intent: Intent? get() = launchIntent
+
+    private fun setContentView(view: android.view.View) { visualHost?.invoke(view) }
+    private fun setResult(resultCode: Int, data: Intent = Intent()) {
+        pendingResultCode = resultCode
+        pendingResultData = data
+    }
+    private fun finish() {
+        if (hostFinished) return
+        hostFinished = true
+        finishHost(pendingResultCode, pendingResultData)
+    }
+
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var store: BlaBlaDynamicSessionStore
@@ -332,6 +387,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var skipped = 0
     private var identityConfirmedThisSync = false
     private var rideReadAttempts = 0
+    private var identityReadAttempts = 0
     private var profileBaseEvidence: DynamicIdentityEvidence? = null
     private val profileReviewsCollected = mutableListOf<BlaBlaPublicReview>()
     private var profileReviewsLastCount = -1
@@ -380,8 +436,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private var automaticCollectionClaimed = false
     private var automaticCollectionReported = false
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    fun start() {
         registry = BlaBlaDynamicAccountRegistry(this)
         store = BlaBlaDynamicSessionStore(this)
         passengerIdentityStore = PassengerIdentityStore(this)
@@ -398,7 +453,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         if (automaticCollectionGeneration > 0L) {
             automaticCollectionClaimed =
                 mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
-                    BlaBlaAutomaticCollectionCoordinator0400.claimActivity(
+                    BlaBlaAutomaticCollectionCoordinator0400.claimHost(
                         context = this,
                         generation = automaticCollectionGeneration,
                         accountId = account.id,
@@ -640,6 +695,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         candidateIndex = 0
         skipped = 0
         rideReadAttempts = 0
+        identityReadAttempts = 0
         completedCardTraversalKeys.clear()
         quarantinedCardTraversalKeys.clear()
         resolvedCardTraversalKeys.clear()
@@ -739,6 +795,20 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                     "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
             }
+            if (automaticCollectionClaimed && mode == BlaBlaDynamicSessionIntents.MODE_SYNC && !identityConfirmedThisSync) {
+                identityReadAttempts++
+                if (identityReadAttempts < MAX_IDENTITY_READ_ATTEMPTS) {
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_AUTOMATIC_AUTH_RETRY_0401", packageName,
+                        "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration attempt=$identityReadAttempts/$MAX_IDENTITY_READ_ATTEMPTS visibleUi=false",
+                    )
+                    webView.postDelayed({ captureIdentityForSync() }, IDENTITY_RETRY_MS)
+                    return@evaluateRequest
+                }
+                completeAutomaticAuthenticationRequired("authenticated_profile_identity_not_verified")
+                return@evaluateRequest
+            }
+            identityReadAttempts = 0
             if (identityConfirmedThisSync && !account.profileUuid.isNullOrBlank()) {
                 UnifiedDebugEventStore.record(
                     "IDENTITY_VERIFIED",
@@ -777,7 +847,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 packageName,
                 "account=${account.displayLabel} reason=identity_not_confirmed",
             )
-            setResult(RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+            setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
             finish()
             return
         }
@@ -901,7 +971,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             "account=${account.displayLabel} success=$success reviews=${profileReviewsCollected.size} profileUuidPresent=${!account.profileUuid.isNullOrBlank()}",
         )
         setResult(
-            if (success) RESULT_OK else RESULT_CANCELED,
+            if (success) Activity.RESULT_OK else Activity.RESULT_CANCELED,
             Intent()
                 .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
                 .putExtra("public_profile_review_count", profileReviewsCollected.size),
@@ -2547,6 +2617,21 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         }
     }
 
+    private fun completeAutomaticAuthenticationRequired(reason: String) {
+        if (!completionGate.claimCompletion(syncGeneration)) return
+        enterBrowserPhase(Phase.IDLE, null, "pending_auth")
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_PENDING_AUTH_0401", packageName,
+            "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration reason=${reason.take(120)} previousSnapshotPreserved=true browserOpened=false",
+        )
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountPendingAuth(this, automaticCollectionGeneration, account.id, reason)
+        }
+        setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+        finish()
+    }
+
     private fun completeSync(count: Int) {
         if (!completionGate.claimCompletion(syncGeneration)) {
             UnifiedDebugEventStore.record(
@@ -2574,7 +2659,7 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             )
         }
         setResult(
-            RESULT_OK,
+            Activity.RESULT_OK,
             Intent()
                 .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
                 .putExtra("trip_count", count),
@@ -2595,32 +2680,32 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
                 context = this,
                 generation = automaticCollectionGeneration,
                 accountId = account.id,
-                reason = "automatic_collection_activity_closed",
+                reason = "automatic_collection_visual_host_closed",
             )
         }
-        setResult(RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
+        setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
         finish()
     }
 
-    @Deprecated("Android framework API")
-    override fun onBackPressed() {
+    fun handleBackPressed() {
         if (::webView.isInitialized && webView.canGoBack()) webView.goBack() else finishSeen()
     }
 
-    override fun onDestroy() {
+    fun destroy(reason: String = "host_destroyed") {
+        if (destroyed) return
+        destroyed = true
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
             BlaBlaAutomaticCollectionCoordinator0400.onAccountInterrupted(
                 context = this,
                 generation = automaticCollectionGeneration,
                 accountId = account.id,
-                reason = "automatic_collection_activity_destroyed",
+                reason = reason.take(120),
             )
         }
-        networkDiagnosticRecorder?.finishFirstCard("activity_closed")
+        networkDiagnosticRecorder?.finishFirstCard("host_closed")
         networkDiagnosticRecorder?.close()
         if (::webView.isInitialized) webView.destroy()
-        super.onDestroy()
         syncCrashGuard?.close()
     }
 
@@ -2663,6 +2748,8 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         private const val RIDES_URL = "https://www.blablacar.com.br/rides"
         private const val PROFILE_URL = "https://www.blablacar.com.br/dashboard/profile/menu"
         private const val MAX_RIDES_EMPTY_READ_ATTEMPTS = 3
+        private const val MAX_IDENTITY_READ_ATTEMPTS = 3
+        private const val IDENTITY_RETRY_MS = 700L
         private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24
         private const val PROFILE_REVIEW_SCROLL_SETTLE_MS = 700L
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2

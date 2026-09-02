@@ -28,11 +28,14 @@ class AgendaOperationalTimeline0400Test {
     @Test
     fun permanentSchedulerRequestsTheExistingCollectorAndNeverClaimsSuccessWhilePending() {
         assertTrue(background.contains("requestAutomaticCollector0400"))
-        assertTrue(background.contains("BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending"))
+        assertTrue(background.contains("BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless"))
         assertTrue(background.contains("cycle.collectorPending -> \"COLLECTOR_PENDING\""))
         assertTrue(background.contains("fullReconcileComplete = fullReconcileComplete"))
         assertTrue(background.contains("reason == \"blablacar_collection_result\""))
-        assertTrue(coordinator.contains("BlaBlaDynamicSessionIntents.sync"))
+        assertTrue(coordinator.contains("BlaBlaDynamicSessionIntents.syncPayload"))
+        assertTrue(coordinator.contains("visualHost = null"))
+        assertFalse(coordinator.contains("startActivity("))
+        assertFalse(coordinator.contains("FLAG_ACTIVITY_NEW_TASK"))
         assertFalse(coordinator.contains("WebView("))
         assertFalse(coordinator.contains("BlaBlaDomNormalizer"))
         assertFalse(coordinator.contains("captureRideList"))
@@ -43,24 +46,26 @@ class AgendaOperationalTimeline0400Test {
         val targets = listOf("account-a", "account-b", "account-c")
         assertEquals(
             "account-a",
-            nextAutomaticCollectorAccountId0400(targets, emptySet(), emptySet()),
+            nextAutomaticCollectorAccountId0400(targets, emptySet(), emptySet(), emptySet()),
         )
         assertEquals(
             "account-b",
-            nextAutomaticCollectorAccountId0400(targets, setOf("account-a"), emptySet()),
+            nextAutomaticCollectorAccountId0400(targets, setOf("account-a"), emptySet(), emptySet()),
         )
         assertEquals(
             "account-c",
-            nextAutomaticCollectorAccountId0400(targets, setOf("account-a"), setOf("account-b")),
+            nextAutomaticCollectorAccountId0400(targets, setOf("account-a"), setOf("account-b"), emptySet()),
         )
         assertNull(
             nextAutomaticCollectorAccountId0400(
                 targets,
                 setOf("account-a", "account-c"),
                 setOf("account-b"),
+                emptySet(),
             ),
         )
-        assertTrue(coordinator.contains("tryLaunchPending(context, \"automatic_chain\")"))
+        assertFalse(coordinator.contains("automatic_chain"))
+        assertTrue(coordinator.contains("automaticChainOwnedByWorker=true"))
     }
 
     @Test
@@ -80,10 +85,11 @@ class AgendaOperationalTimeline0400Test {
             coverage = BlaBlaCollectorCoverage(complete_for_scope = false),
         )
 
-        assertEquals("COMPLETE", automaticCollectorTerminalStatus0400(complete, 0, 2))
-        assertEquals("PARTIAL", automaticCollectorTerminalStatus0400(partial, 1, 2))
-        assertEquals("FAILED", automaticCollectorTerminalStatus0400(failed, 2, 2))
-        assertEquals("NO_ACCOUNTS", automaticCollectorTerminalStatus0400(failed, 0, 0))
+        assertEquals("COMPLETE", automaticCollectorTerminalStatus0400(complete, 0, 2, 0))
+        assertEquals("PARTIAL", automaticCollectorTerminalStatus0400(partial, 1, 2, 0))
+        assertEquals("FAILED", automaticCollectorTerminalStatus0400(failed, 2, 2, 0))
+        assertEquals("PENDING_AUTH", automaticCollectorTerminalStatus0400(complete, 0, 2, 1))
+        assertEquals("NO_ACCOUNTS", automaticCollectorTerminalStatus0400(failed, 0, 0, 0))
     }
 
     @Test

@@ -44,6 +44,7 @@ internal data class AgendaAutomaticCollectorState0400(
     val targetAccountIds: List<String> = emptyList(),
     val completedAccountIds: List<String> = emptyList(),
     val failedAccountIds: List<String> = emptyList(),
+    val pendingAuthAccountIds: List<String> = emptyList(),
     val activeAccountId: String = "",
     val lastError: String = "",
 ) {
@@ -79,8 +80,8 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason == "periodic" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "manual" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason == "recovery" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
-    reason == "timeline_open" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
-    reason == "timeline_pull_refresh" -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
+    reason == "timeline_open" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
+    reason == "timeline_pull_refresh" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
     reason == "blablacar_collection_result" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
@@ -145,6 +146,7 @@ internal object AgendaBackgroundSyncConfig0392 {
     private const val KEY_COLLECTOR_TARGETS = "collector_targets_0400"
     private const val KEY_COLLECTOR_COMPLETED = "collector_completed_0400"
     private const val KEY_COLLECTOR_FAILED = "collector_failed_0400"
+    private const val KEY_COLLECTOR_PENDING_AUTH = "collector_pending_auth_0401"
     private const val KEY_COLLECTOR_ACTIVE = "collector_active_0400"
     private const val KEY_COLLECTOR_LAST_ERROR = "collector_last_error_0400"
 
@@ -255,6 +257,7 @@ internal object AgendaBackgroundSyncConfig0392 {
             targetAccountIds = parseCollectorIds0400(prefs.getString(scope.key(KEY_COLLECTOR_TARGETS), null)),
             completedAccountIds = parseCollectorIds0400(prefs.getString(scope.key(KEY_COLLECTOR_COMPLETED), null)),
             failedAccountIds = parseCollectorIds0400(prefs.getString(scope.key(KEY_COLLECTOR_FAILED), null)),
+            pendingAuthAccountIds = parseCollectorIds0400(prefs.getString(scope.key(KEY_COLLECTOR_PENDING_AUTH), null)),
             activeAccountId = prefs.getString(scope.key(KEY_COLLECTOR_ACTIVE), "").orEmpty(),
             lastError = prefs.getString(scope.key(KEY_COLLECTOR_LAST_ERROR), "").orEmpty(),
         )
@@ -282,6 +285,7 @@ internal object AgendaBackgroundSyncConfig0392 {
                 .putString(scope.key(KEY_COLLECTOR_TARGETS), encodeCollectorIds0400(targets))
                 .putString(scope.key(KEY_COLLECTOR_COMPLETED), "")
                 .putString(scope.key(KEY_COLLECTOR_FAILED), "")
+                .putString(scope.key(KEY_COLLECTOR_PENDING_AUTH), "")
                 .putString(scope.key(KEY_COLLECTOR_ACTIVE), "")
                 .putString(scope.key(KEY_COLLECTOR_LAST_ERROR), "")
                 .commit(),
@@ -302,7 +306,8 @@ internal object AgendaBackgroundSyncConfig0392 {
             current.activeAccountId.isNotBlank() ||
             target !in current.targetAccountIds ||
             target in current.completedAccountIds ||
-            target in current.failedAccountIds
+            target in current.failedAccountIds ||
+            target in current.pendingAuthAccountIds
         ) return@synchronized false
         val prefs = prefs(context)
         val scope = scope(context)
@@ -324,12 +329,11 @@ internal object AgendaBackgroundSyncConfig0392 {
         val id = accountId.trim()
         val completed = current.completedAccountIds.toMutableSet()
         val failed = current.failedAccountIds.toMutableSet()
-        if (result == "COMPLETE") {
-            failed.remove(id)
-            completed += id
-        } else {
-            completed.remove(id)
-            failed += id
+        val pendingAuth = current.pendingAuthAccountIds.toMutableSet()
+        when (result) {
+            "COMPLETE" -> { failed.remove(id); pendingAuth.remove(id); completed += id }
+            "PENDING_AUTH" -> { completed.remove(id); failed.remove(id); pendingAuth += id }
+            else -> { completed.remove(id); pendingAuth.remove(id); failed += id }
         }
         val prefs = prefs(context)
         val scope = scope(context)
@@ -337,11 +341,31 @@ internal object AgendaBackgroundSyncConfig0392 {
             prefs.edit()
                 .putString(scope.key(KEY_COLLECTOR_COMPLETED), encodeCollectorIds0400(completed))
                 .putString(scope.key(KEY_COLLECTOR_FAILED), encodeCollectorIds0400(failed))
+                .putString(scope.key(KEY_COLLECTOR_PENDING_AUTH), encodeCollectorIds0400(pendingAuth))
                 .putString(scope.key(KEY_COLLECTOR_ACTIVE), "")
-                .putString(scope.key(KEY_COLLECTOR_STATUS), if (result == "INTERRUPTED") "INTERRUPTED" else "PENDING")
+                .putString(scope.key(KEY_COLLECTOR_STATUS), when (result) { "INTERRUPTED" -> "INTERRUPTED"; "PENDING_AUTH" -> "PENDING_AUTH"; else -> "PENDING" })
                 .putString(scope.key(KEY_COLLECTOR_LAST_ERROR), error.take(500))
                 .commit(),
         ) { "Falha ao persistir avanço da coleta BlaBlaCar automática." }
+        collectorState0400(context)
+    }
+
+    internal fun recoverStaleCollectorHost0401(context: Context): AgendaAutomaticCollectorState0400 = synchronized(this) {
+        val current = collectorState0400(context)
+        if (!current.pending || current.activeAccountId.isBlank()) return@synchronized current
+        val prefs = prefs(context)
+        val scope = scope(context)
+        require(
+            prefs.edit()
+                .putString(scope.key(KEY_COLLECTOR_ACTIVE), "")
+                .putString(scope.key(KEY_COLLECTOR_STATUS), "PENDING")
+                .putString(scope.key(KEY_COLLECTOR_LAST_ERROR), "previous_headless_host_not_alive_recovered")
+                .commit(),
+        ) { "Falha ao recuperar coleta BlaBlaCar interrompida." }
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_HOST_RECOVERED_0401", context.applicationContext.packageName,
+            "generation=${current.generation} accountKey=${seatSyncDiagnosticKey(current.activeAccountId)} processDeathRecovery=true rerunSameAccount=true browserOpened=false",
+        )
         collectorState0400(context)
     }
 
@@ -664,19 +688,14 @@ internal object AgendaBackgroundSync0392 {
                 context = appContext,
                 accountIds = accountIds,
             )
-            val launchRequested = if (collectorState.pending) {
-                BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending(
-                    context = appContext,
-                    origin = "background_${reason.take(60)}",
-                )
+            collectorState = if (collectorState.pending) {
+                BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless(appContext, "background_${reason.take(60)}")
             } else {
-                false
+                collectorState
             }
-            collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
             UnifiedDebugEventStore.record(
-                "BLABLACAR_AUTOMATIC_COLLECTION_REQUEST_0400",
-                appContext.packageName,
-                "tenantKey=${seatSyncDiagnosticKey(tenantId)} generation=${collectorState.generation} status=${collectorState.status} pending=${collectorState.pending} accounts=${collectorState.targetAccountIds.size} launchRequested=$launchRequested source=AgendaBackgroundSync0392",
+                "BLABLACAR_AUTOMATIC_COLLECTION_REQUEST_0401", appContext.packageName,
+                "tenantKey=${seatSyncDiagnosticKey(tenantId)} generation=${collectorState.generation} status=${collectorState.status} pending=${collectorState.pending} accounts=${collectorState.targetAccountIds.size} executionHost=worker_headless_webview activityLaunch=false browserOpened=false source=AgendaBackgroundSync0392",
             )
         }
 
@@ -914,17 +933,19 @@ class AgendaBackgroundSyncWorker0392(
             )
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
             val collectorTerminalProblem =
-                reason == "blablacar_collection_result" &&
-                    collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED")
+                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE &&
+                    collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
+            val collectorAuthRequired = collectorState.status == "PENDING_AUTH"
             val retryPending = cycle.failures > 0 && runAttemptCount < 5
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
-                maxOf(1, collectorState.failedAccountIds.size)
+                maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
             } else {
                 0
             }
             val resultLabel = when {
                 retryPending -> "RETRY"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
+                collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
                 cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
                 else -> "SUCCESS"
