@@ -794,6 +794,14 @@ function normalizeDriverTrip(raw, previous = null) {
     canonicalStateHash,
     tripKey,
     publicTimezoneId0411,
+    publicAttestationState0417: publicationTombstone ? "UNPROVEN" : "PENDING",
+    publicAttestedPublicationRevision0417: 0,
+    publicAttestedCanonicalRevision0417: 0,
+    publicAttestedHash0417: "",
+    publicAttestedAtMillis0417: 0,
+    publicAttestationReason0417: publicationTombstone ? "PUBLICATION_TOMBSTONED" : "PUBLICATION_CHANGED",
+    publicAttestationMismatchFields0417: [],
+    publicAttestationCorrelationId0417: "",
     notes: cleanText(raw.notes, 1200),
   };
 }
