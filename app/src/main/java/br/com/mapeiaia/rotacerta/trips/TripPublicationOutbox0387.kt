@@ -696,7 +696,7 @@ internal class TripMutationCoordinator0387(
             blablaTripId = remote.blablaTripId.takeIf(String::isNotBlank),
             publicBookingEnabled = false,
             publishedSeats = remote.publishedSeats,
-            rotaCertaSeatAllocation = remote.rotaCertaSeatAllocation.coerceAtLeast(0),
+            rotaCertaSeatAllocation = remote.rotaCertaSeatAllocation?.coerceAtLeast(0),
             capacityReliable = remote.capacityReliable,
             publicationRevision = remote.publicationRevision.coerceAtLeast(0L),
             publicationTombstone = true,
