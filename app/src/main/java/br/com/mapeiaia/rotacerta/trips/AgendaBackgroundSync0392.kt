@@ -1101,6 +1101,7 @@ internal object AgendaBackgroundSync0392 {
         nowMillis: Long = System.currentTimeMillis(),
         collectionRunId: String = response?.collected_at.orEmpty(),
         collectionGeneration: Long = 0L,
+        completeProfileUuids: Set<String> = emptySet(),
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
         val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
@@ -1315,11 +1316,8 @@ internal object AgendaBackgroundSync0392 {
                 canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
                     ?.let { it !in observedStrongKeys } == true
         }
-        val deletionAllowed = externalCollectorAllowsTombstones0406(response)
-        val scopedMissing = if (deletionAllowed) {
-            missingActive.filter { externalCanonicalTripWithinCompleteScope0406(it, response) }
-        } else {
-            emptyList()
+        val scopedMissing = missingActive.filter {
+            externalCanonicalTripWithinCompleteScope0408(it, response, completeProfileUuids)
         }
         scopedMissing.forEach { missing ->
             val tombstoned = store.tombstoneExternalTrip0406(
@@ -1337,41 +1335,50 @@ internal object AgendaBackgroundSync0392 {
                 )?.let { publicationQueued++ }
             }
         }
-        if (deletionAllowed) {
-            val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
-            val month = response.month.orEmpty().trim()
-            val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
-            val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
-            store.publicExternalBindings().forEach { binding ->
-                val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
-                    ?: return@forEach
-                val observedKey = canonicalExternalTripIdentityKey(
-                    binding.profileUuid,
-                    binding.blablaTripId,
-                    binding.blablaTripHref,
-                ) ?: return@forEach
-                val bindingMonth = runCatching {
-                    Instant.ofEpochMilli(binding.departureAtMillis)
-                        .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
-                }.getOrDefault("")
+        val legacyProfileScope = response.profiles
+            .map { it.uuid.trim().lowercase() }
+            .filter(String::isNotBlank)
+            .toSet()
+        val legacyMonth = response.month.orEmpty().trim()
+        val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
+        val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+        store.publicExternalBindings().forEach { binding ->
+            val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
+                ?: return@forEach
+            val observedKey = canonicalExternalTripIdentityKey(
+                binding.profileUuid,
+                binding.blablaTripId,
+                binding.blablaTripHref,
+            ) ?: return@forEach
+            val bindingProfile = binding.profileUuid.trim().lowercase()
+            val bindingMonth = runCatching {
+                Instant.ofEpochMilli(binding.departureAtMillis)
+                    .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
+            }.getOrDefault("")
+            val profileComplete =
+                bindingProfile in completeProfileUuids ||
+                    (
+                        externalCollectorAllowsTombstones0406(response) &&
+                            bindingProfile in legacyProfileScope &&
+                            legacyMonth.isNotBlank() &&
+                            bindingMonth == legacyMonth
+                    )
+            if (
+                profileComplete &&
+                key !in canonicalKeys &&
+                observedKey !in observedStrongKeys
+            ) {
                 if (
-                    key !in canonicalKeys &&
-                    observedKey !in observedStrongKeys &&
-                    binding.profileUuid.trim().lowercase() in profileScope &&
-                    month.isNotBlank() && bindingMonth == month
+                    coordinator.recordExternalTombstone(
+                        binding = binding,
+                        mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
+                        source = "PROJECTION_RECONCILER",
+                        outboxCanonicalTripId = "projection-cleanup:" +
+                            sha256TripPublication0387(binding.remoteTripId).take(24),
+                    ) != null
                 ) {
-                    if (
-                        coordinator.recordExternalTombstone(
-                            binding = binding,
-                            mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
-                            source = "PROJECTION_RECONCILER",
-                            outboxCanonicalTripId = "projection-cleanup:" +
-                                sha256TripPublication0387(binding.remoteTripId).take(24),
-                        ) != null
-                    ) {
-                        orphanProjectionTombstones++
-                        publicationQueued++
-                    }
+                    orphanProjectionTombstones++
+                    publicationQueued++
                 }
             }
         }
