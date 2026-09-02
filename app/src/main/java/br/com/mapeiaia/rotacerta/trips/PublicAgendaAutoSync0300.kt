@@ -1278,6 +1278,19 @@ internal object PublicAgendaAutoSync0300 {
         source: BlaBlaCollectorTrip,
         rotaCertaSeatAllocation: Int,
     ): String {
+        fun stableHref(raw: String?): String = raw.orEmpty()
+            .substringBefore("&search_uuid=")
+            .substringBefore("?search_uuid=")
+            .trim()
+        val passengerSemantics = source.passengers.map { passenger ->
+            buildString {
+                append(stableHref(passenger.booking_href)).append('~')
+                append(passenger.name.trim()).append('~').append(passenger.phone.orEmpty().trim()).append('~')
+                append(passenger.seats.coerceAtLeast(1)).append('~')
+                append(normalizePlace(passenger.boarding.orEmpty())).append('~')
+                append(normalizePlace(passenger.dropoff.orEmpty()))
+            }
+        }.sorted()
         val semantic = buildString {
             append(source.profile_uuid.trim()).append('|')
             append(source.trip_id.orEmpty().trim()).append('|')
@@ -1288,18 +1301,12 @@ internal object PublicAgendaAutoSync0300 {
             append(source.price.orEmpty().trim()).append('|').append(source.availability.trim()).append('|')
             append(source.flags.map(String::trim).filter(String::isNotBlank).sorted().joinToString("~")).append('|')
             append(source.uuid_validation.trim()).append('|').append(source.identity_conflict).append('|')
-            append(source.trip_href.orEmpty().substringBefore("&search_uuid=").trim()).append('|')
-            append(source.public_trip_href.orEmpty().substringBefore("&search_uuid=").trim()).append('|')
+            append(stableHref(source.trip_href)).append('|')
+            append(stableHref(source.public_trip_href)).append('|')
             append(source.published_seats ?: -1).append('|').append(rotaCertaSeatAllocation.coerceIn(0, 999)).append('|')
             append(source.booked_seats.coerceAtLeast(0)).append('|').append(source.passenger_roster_complete).append('|')
             append(source.itinerary_authoritative).append('|').append(source.itinerary_stops.joinToString(">") { normalizePlace(it) }).append('|')
-            source.passengers.forEachIndexed { index, passenger ->
-                append(index).append('~').append(passenger.booking_href.orEmpty().substringBefore("&search_uuid=").trim()).append('~')
-                append(passenger.name.trim()).append('~').append(passenger.phone.orEmpty().trim()).append('~')
-                append(passenger.seats.coerceAtLeast(1)).append('~')
-                append(normalizePlace(passenger.boarding.orEmpty())).append('~')
-                append(normalizePlace(passenger.dropoff.orEmpty())).append(',')
-            }
+            passengerSemantics.forEach { passenger -> append(passenger).append(',') }
         }
         return "bbcap-v2:${sha256(semantic)}"
     }
