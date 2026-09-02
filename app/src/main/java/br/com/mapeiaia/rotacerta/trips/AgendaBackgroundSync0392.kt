@@ -1454,19 +1454,48 @@ internal object AgendaBackgroundSync0392 {
 
         canonical.forEach { trip ->
             val binding = if (resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING) {
-                val profile = trip.blablaProfileUuid.orEmpty()
-                val externalId = trip.blablaTripId.orEmpty()
-                store.publicExternalBindingForStrongIdentity(profile, externalId)
+                store.publicExternalBindingForStrongIdentity(
+                    trip.blablaProfileUuid.orEmpty(),
+                    trip.blablaTripId.orEmpty(),
+                )
             } else null
-            val remoteId = binding?.remoteTripId
+            val preferredRemoteId = binding?.remoteTripId
                 ?: trip.remoteId?.takeIf(String::isNotBlank)
                 ?: trip.publicToken.takeIf(String::isNotBlank)
-            val remote = remoteId?.let(remoteById::get) ?: remoteByCanonicalId[trip.id]
+            val candidates = remoteStates
+                .filter { remote -> remoteMatchesCanonicalProjection0408(trip, remote) }
+                .distinctBy(DriverTripSyncState0402::remoteTripId)
+            val remote = chooseProjectionWinner0408(trip, preferredRemoteId, candidates)
+            val duplicateRemotes = remote?.let { winner ->
+                candidates.filterNot { it.remoteTripId == winner.remoteTripId }
+            }.orEmpty()
+            if (duplicateRemotes.isNotEmpty()) {
+                duplicates += duplicateRemotes.size
+                if (repair) {
+                    duplicateRemotes.forEach { duplicate ->
+                        if (
+                            coordinator.recordProjectionTombstone0408(
+                                remote = duplicate,
+                                mutationType = "CANONICAL_DUPLICATE_PROJECTION",
+                            ) != null
+                        ) repairQueued++
+                    }
+                }
+                UnifiedDebugEventStore.record(
+                    "PROJECTION_DUPLICATE_DETECTED_0408",
+                    context.applicationContext.packageName,
+                    "canonicalTripId=" + trip.id +
+                        " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
+                        " blablaTripId=" + trip.blablaTripId.orEmpty() +
+                        " duplicateCount=" + duplicateRemotes.size,
+                )
+            }
             var needsRepair = false
             if (remote == null) {
                 missing++
                 needsRepair = true
             } else {
+                val bookings = store.bookingsFor(trip.id)
                 if (trip.canonicalStateHash.isNotBlank() && remote.canonicalStateHash != trip.canonicalStateHash) {
                     hashMismatch++
                     needsRepair = true
@@ -1475,6 +1504,41 @@ internal object AgendaBackgroundSync0392 {
                     ?: trip.publicationRevision.takeIf { it > 0L }
                 if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
                     revisionMismatch++
+                    if (remote.publicationRevision < expectedRevision) revisionRegression++
+                    needsRepair = true
+                }
+                if (trip.capacityReliable) {
+                    val expectedCapacity = operationalInventoryCapacity(trip, bookings)
+                    val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
+                    val expectedPublishedSeats = trip.publishedSeats
+                    val expectedRotaCertaSeats = trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+                    if (
+                        !remote.capacityReliable ||
+                        remote.capacity != expectedCapacity ||
+                        remote.publishedSeats != expectedPublishedSeats ||
+                        remote.rotaCertaSeatAllocation != expectedRotaCertaSeats ||
+                        remote.operationalAvailableSeats != expectedRange.minimum ||
+                        remote.availableSeatsMinimum != expectedRange.minimum ||
+                        remote.availableSeatsMaximum != expectedRange.maximum
+                    ) {
+                        capacityMismatch++
+                        needsRepair = true
+                        UnifiedDebugEventStore.record(
+                            "PROJECTION_CAPACITY_MISMATCH_0408",
+                            context.applicationContext.packageName,
+                            "canonicalTripId=" + trip.id +
+                                " profileUuid=" + trip.blablaProfileUuid.orEmpty() +
+                                " blablaTripId=" + trip.blablaTripId.orEmpty() +
+                                " expectedMin=" + expectedRange.minimum +
+                                " expectedMax=" + expectedRange.maximum +
+                                " remoteMin=" + remote.availableSeatsMinimum +
+                                " remoteMax=" + remote.availableSeatsMaximum,
+                        )
+                    }
+                }
+                val expectedStatus = expectedProjectionStatus0408(trip, bookings, nowMillis)
+                if (remote.status != expectedStatus) {
+                    statusMismatch++
                     needsRepair = true
                 }
             }
