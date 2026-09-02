@@ -1351,12 +1351,26 @@ internal object AgendaBackgroundSync0392 {
                 migrationProjectionCleanupQueued++
             }
         }
+        integrityMigration.orphanAgendaBindingsForCleanup.forEach { orphan ->
+            if (
+                migrationCoordinator.recordExternalTombstone(
+                    binding = orphan,
+                    mutationType = "MIGRATION_ORPHAN_PROJECTION",
+                    source = "CANONICAL_MIGRATION",
+                    outboxCanonicalTripId = "projection-cleanup:" +
+                        sha256TripPublication0387(orphan.remoteTripId).take(24),
+                ) != null
+            ) {
+                migrationProjectionCleanupQueued++
+            }
+        }
         if (migrationProjectionCleanupQueued > 0) {
             UnifiedDebugEventStore.record(
                 "CANONICAL_DUPLICATE_PROJECTION_CLEANUP_0406",
                 appContext.packageName,
                 "queued=" + migrationProjectionCleanupQueued +
-                    " duplicateBindings=" + integrityMigration.duplicateAgendaBindings,
+                    " duplicateBindings=" + integrityMigration.duplicateAgendaBindings +
+                    " orphanBindings=" + integrityMigration.orphanAgendaBindings,
             )
         }
         AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "NORMALIZING")
