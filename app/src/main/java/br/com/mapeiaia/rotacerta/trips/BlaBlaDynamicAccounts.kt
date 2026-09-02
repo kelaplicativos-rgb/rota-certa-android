@@ -137,6 +137,8 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
     const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
+    const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
+    const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_PROFILE = "profile"
@@ -374,6 +376,9 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     private val completionGate = BlaBlaSyncCompletionGate()
     private var networkDiagnosticRecorder: BlaBlaNetworkDiagnosticRecorder? = null
     private var syncCrashGuard: AgendaSyncCrashGuard? = null
+    private var automaticCollectionGeneration = 0L
+    private var automaticCollectionClaimed = false
+    private var automaticCollectionReported = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -386,6 +391,28 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             return
         }
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        automaticCollectionGeneration = intent?.getLongExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_AUTOMATIC_COLLECTION_GENERATION,
+            0L,
+        ) ?: 0L
+        if (automaticCollectionGeneration > 0L) {
+            automaticCollectionClaimed =
+                mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
+                    BlaBlaAutomaticCollectionCoordinator0400.claimActivity(
+                        context = this,
+                        generation = automaticCollectionGeneration,
+                        accountId = account.id,
+                    )
+            if (!automaticCollectionClaimed) {
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_AUTOMATIC_COLLECTION_STALE_LAUNCH_0400",
+                    packageName,
+                    "generation=$automaticCollectionGeneration accountKey=${seatSyncDiagnosticKey(account.id)} action=finish_without_collection",
+                )
+                finish()
+                return
+            }
+        }
         if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             AgendaSyncCrashTraceStore.arm(this)
             syncCrashGuard = AgendaSyncCrashGuard.install(this) { syncCrashSnapshot() }
@@ -412,6 +439,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             targetDates = emptyList()
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            if (automaticCollectionClaimed) {
+                automaticCollectionReported = true
+                BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
+                    context = this,
+                    generation = automaticCollectionGeneration,
+                    accountId = account.id,
+                    accountResult = "partial",
+                    error = "android_system_webview_multi_profile_unavailable",
+                )
+                finish()
+                return
+            }
             setContentView(TextView(this).apply {
                 text = "Este Android System WebView ainda não oferece perfis múltiplos. Atualize o WebView/Chrome para usar várias contas isoladas."
                 setPadding(32, 32, 32, 32)
@@ -1037,6 +1076,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             skippedTrips = skipped,
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
+        )
+        BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
+            context = this,
+            reason = "final_snapshot",
         )
         return true
     }
@@ -2252,6 +2295,10 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
         )
+        BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
+            context = this,
+            reason = reason,
+        )
         UnifiedDebugEventStore.record(
             "TIMELINE_CARD_CHECKPOINT_SAVED",
             packageName,
@@ -2514,8 +2561,18 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
         UnifiedDebugEventStore.record(
             "SYNC_END",
             packageName,
-            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync",
+            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration",
         )
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                accountResult = finalStatus,
+                error = if (finalStatus == "success") "" else "skipped=$skipped quarantined=${quarantinedCardTraversalKeys.size}",
+            )
+        }
         setResult(
             RESULT_OK,
             Intent()
@@ -2532,6 +2589,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
 
     private fun finishSeen() {
         store.markSeen(account, webView.url.orEmpty())
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountInterrupted(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                reason = "automatic_collection_activity_closed",
+            )
+        }
         setResult(RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
         finish()
     }
@@ -2542,6 +2608,15 @@ class BlaBlaDynamicAccountSessionActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountInterrupted(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                reason = "automatic_collection_activity_destroyed",
+            )
+        }
         networkDiagnosticRecorder?.finishFirstCard("activity_closed")
         networkDiagnosticRecorder?.close()
         if (::webView.isInitialized) webView.destroy()

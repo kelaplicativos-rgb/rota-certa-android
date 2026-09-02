@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -400,6 +401,7 @@ internal data class BlaBlaTimelineClearResult(
 
 class BlaBlaCollectorStateStore(context: Context) {
     private val appContext = context.applicationContext
+    private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
     private val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val secret = BlaBlaCollectorSecretStore(appContext)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
@@ -416,7 +418,7 @@ class BlaBlaCollectorStateStore(context: Context) {
     }
 
     fun lastResponse(): BlaBlaCollectorMonthResponse? = runCatching {
-        prefs.getString(KEY_RESPONSE, null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
+        prefs.getString(tenantScope.key(KEY_RESPONSE), null)?.let { json.decodeFromString<BlaBlaCollectorMonthResponse>(it) }
     }.getOrNull()
 
     fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
@@ -431,7 +433,7 @@ class BlaBlaCollectorStateStore(context: Context) {
         val dynamic = BlaBlaDynamicSessionStore(appContext).combinedResponse(accounts)
         if (dynamic.trips.isEmpty()) return persisted
 
-        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(dynamic)).apply()
+        prefs.edit().putString(tenantScope.key(KEY_RESPONSE), json.encodeToString(dynamic)).apply()
         UnifiedDebugEventStore.record(
             "TIMELINE_REBUILT_FROM_ALL_CONNECTED_ACCOUNTS",
             appContext.packageName,
@@ -489,16 +491,21 @@ class BlaBlaCollectorStateStore(context: Context) {
                 "status=${response.status} incomingTrips=${response.trips.size} publishedTrips=${effective.trips.size} incomingPassengers=${response.trips.sumOf { it.passengers.size }} publishedPassengers=${effective.trips.sumOf { it.passengers.size }}",
             )
         }
-        prefs.edit().putString(KEY_RESPONSE, json.encodeToString(effective)).apply()
+        prefs.edit().putString(tenantScope.key(KEY_RESPONSE), json.encodeToString(effective)).apply()
+        BlaBlaCollectorTimelineEvents0400.notifyChanged()
         return effective
     }
 
-    fun lastProfile1(): String = prefs.getString(KEY_PROFILE1, "").orEmpty()
-    fun lastProfile2(): String = prefs.getString(KEY_PROFILE2, "").orEmpty()
-    fun lastMonth(): String = prefs.getString(KEY_MONTH, "").orEmpty()
+    fun lastProfile1(): String = prefs.getString(tenantScope.key(KEY_PROFILE1), "").orEmpty()
+    fun lastProfile2(): String = prefs.getString(tenantScope.key(KEY_PROFILE2), "").orEmpty()
+    fun lastMonth(): String = prefs.getString(tenantScope.key(KEY_MONTH), "").orEmpty()
 
     fun saveQuery(profile1: String, profile2: String, month: String) {
-        prefs.edit().putString(KEY_PROFILE1, profile1.trim()).putString(KEY_PROFILE2, profile2.trim()).putString(KEY_MONTH, month.trim()).apply()
+        prefs.edit()
+            .putString(tenantScope.key(KEY_PROFILE1), profile1.trim())
+            .putString(tenantScope.key(KEY_PROFILE2), profile2.trim())
+            .putString(tenantScope.key(KEY_MONTH), month.trim())
+            .apply()
     }
 
     companion object {

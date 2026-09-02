@@ -92,6 +92,7 @@ fun TripTimelineScreen(
     val incrementalPublishMutex = remember { Mutex() }
     val tripMutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
+    val collectorRevision0400 by BlaBlaCollectorTimelineEvents0400.revision.collectAsState()
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
     val seatSyncStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
     val archiveStore = remember(context) {
@@ -138,6 +139,13 @@ fun TripTimelineScreen(
         }
     }
 
+    LaunchedEffect(collectorRevision0400) {
+        if (collectorRevision0400 <= 0L) return@LaunchedEffect
+        collectorResponse = withContext(Dispatchers.IO) {
+            collectorStore.lastResponseRecoveringDynamicSessions()
+        }
+    }
+
     val collectedIdentityKey = collectorResponse?.trips.orEmpty()
         .flatMap { collectedTrip ->
             collectedTrip.passengers.map { passenger ->
@@ -170,17 +178,6 @@ fun TripTimelineScreen(
     }
 
     val traceId = AgendaTrace.currentTraceId()
-    val localEntries = remember(trips, bookings) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE_LOCAL", "TripTimelineScreen", traceId)
-        try {
-            TripTimelineEngine.fromLocalAgenda(trips, bookings).also {
-                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
-            }
-        } catch (error: Throwable) {
-            AgendaTrace.operationError(context, operation, error)
-            throw error
-        }
-    }
     val publicExternalBindings = remember(trips, bookings, collectorResponse) {
         store.publicExternalBindings()
     }
@@ -190,11 +187,11 @@ fun TripTimelineScreen(
     val collectorResponseForTimeline = remember(collectorResponse, internallyCancelledExternalReservationKeys) {
         applyInternalCancellationTombstones(collectorResponse, internallyCancelledExternalReservationKeys)
     }
-    val mergedRaw = remember(localEntries, collectorResponseForTimeline, bookings, publicExternalBindings) {
+    val mergedRaw = remember(collectorResponseForTimeline, bookings, publicExternalBindings) {
         val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE", "TripTimelineScreen", traceId)
         try {
             applyPublicExternalBookingsToTimeline(
-                entries = BlaBlaTimelineAdapter.merge(localEntries, collectorResponseForTimeline),
+                entries = BlaBlaTimelineAdapter.merge(emptyList(), collectorResponseForTimeline),
                 bindings = publicExternalBindings,
                 bookings = bookings,
             ).also {
