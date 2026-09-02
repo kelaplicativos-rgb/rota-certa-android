@@ -1073,7 +1073,7 @@ internal object AgendaBackgroundSync0392 {
                     externalRetryPending++
                 } else if (coordinator.recordExternalTenantMutation(
                         sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = perTripAllocation,
+                        configuredRotaCertaSeatAllocation = allocation,
                         seatAllocationVersion = trip.seatAllocationVersionUsed,
                         mutationType = "LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED",
                     ) != null
@@ -1923,7 +1923,7 @@ internal object AgendaBackgroundSync0392 {
                     context = appContext,
                     store = store,
                     configuredVehicleCapacity = 0,
-                    configuredRotaCertaSeatAllocation = perTripAllocation,
+                    configuredRotaCertaSeatAllocation = allocation,
                 )
                 publicLocalPublished = publicResult.localPublished
                 publicExternalPublished = publicResult.externalPublished
