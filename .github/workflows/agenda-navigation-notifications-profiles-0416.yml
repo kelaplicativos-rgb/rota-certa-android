@@ -1,4 +1,5 @@
 name: Rota Certa Agenda consolidation 0.1.416
+# exact-SHA build for physical Samsung validation
 
 on:
   push:
