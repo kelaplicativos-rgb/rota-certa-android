@@ -134,6 +134,30 @@ internal object PublicMirrorAttestationCoordinator0411 {
             publicUrlFromReadback = readbackPublicUrl,
             nowMillis = nowMillis,
         )
+        try {
+            api.reportPublicTripAttestation0417(
+                remoteTripId = remote.remoteTripId,
+                request = DriverPublicAttestationRequest0417(
+                    state = if (decision.state == PublicMirrorAttestationState0411.VALIDATED) "VERIFIED" else decision.state.name,
+                    canonicalRevision = current.canonicalRevision,
+                    publicationRevision = current.publicationRevision,
+                    canonicalStateHash = current.canonicalStateHash,
+                    expectedHash = decision.expectedHash,
+                    readbackHash = decision.readbackHash,
+                    mismatchFields = decision.mismatchFields,
+                    reason = decision.reason,
+                    correlationId = current.publicationEventId.ifBlank { current.lastCollectionRunId }.take(100),
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_MIRROR_ATTESTATION_REPORT_FAILED_0417",
+                context.applicationContext.packageName,
+                "canonicalTripId=${seatSyncDiagnosticKey(current.id)} publicationRevision=${current.publicationRevision} error=${error::class.java.simpleName} message=${error.message.orEmpty().take(180)}",
+            )
+        }
         UnifiedDebugEventStore.record(
             "PUBLIC_MIRROR_ATTESTATION_0411",
             context.applicationContext.packageName,
