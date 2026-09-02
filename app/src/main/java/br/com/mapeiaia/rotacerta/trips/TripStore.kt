@@ -181,7 +181,7 @@ class TripStore(context: Context) {
         updatedAtMillis = 0L,
     )
 
-    fun reconcileCanonicalIntegrity0406(nowMillis: Long = System.currentTimeMillis()): CanonicalIntegrityReport0406 =
+    internal fun reconcileCanonicalIntegrity0406(nowMillis: Long = System.currentTimeMillis()): CanonicalIntegrityReport0406 =
         synchronized(CANONICAL_LOCK) {
             val originalTrips = trips()
             val keyedTrips = originalTrips.map(::canonicalizeTripIdentity0406)
@@ -233,20 +233,25 @@ class TripStore(context: Context) {
                     binding.copy(stateHash = canonical.canonicalStateHash, updatedAtMillis = nowMillis)
                 } else binding
             }
-            val dedupedBindings = normalizedBindings
-                .groupBy { binding ->
-                    canonicalBlaBlaTripKey0406(
-                        tenantId = tenantScope.tenantId,
-                        profileUuid = binding.profileUuid,
-                        providerTripId = binding.blablaTripId,
-                    ) ?: "remote:" + binding.remoteTripId
-                }
-                .values
-                .map { candidates ->
-                    candidates.maxWithOrNull(
-                        compareBy<PublicExternalTripBinding> { it.canonicalRevision }.thenBy { it.updatedAtMillis },
-                    ) ?: candidates.first()
-                }
+            val groupedBindings = normalizedBindings.groupBy { binding ->
+                canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = binding.profileUuid,
+                    providerTripId = binding.blablaTripId,
+                ) ?: "remote:" + binding.remoteTripId
+            }
+            val orderedBindingGroups = groupedBindings.values.map { candidates ->
+                candidates.sortedWith(
+                    compareByDescending<PublicExternalTripBinding> { it.canonicalRevision }
+                        .thenByDescending { it.updatedAtMillis },
+                )
+            }
+            val dedupedBindings = orderedBindingGroups.map(List<PublicExternalTripBinding>::first)
+            val duplicateBindingsForCleanup = orderedBindingGroups.flatMap { ordered ->
+                val keeperRemoteId = ordered.first().remoteTripId
+                ordered.drop(1)
+                    .filter { it.remoteTripId.isNotBlank() && it.remoteTripId != keeperRemoteId }
+            }.distinctBy(PublicExternalTripBinding::remoteTripId)
             val strongBindingOrphans = dedupedBindings.count { binding ->
                 val key = canonicalBlaBlaTripKey0406(
                     tenantId = tenantScope.tenantId,
@@ -276,6 +281,7 @@ class TripStore(context: Context) {
                 unresolvedExternalIdentity = hashedTrips.count {
                     resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isBlank()
                 },
+                duplicateAgendaBindingsForCleanup = duplicateBindingsForCleanup,
             )
         }
 
@@ -646,6 +652,7 @@ internal data class CanonicalIntegrityReport0406(
     val duplicateAgendaBindings: Int = 0,
     val orphanAgendaBindings: Int = 0,
     val unresolvedExternalIdentity: Int = 0,
+    val duplicateAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
 )
 
 @kotlinx.serialization.Serializable
