@@ -13,6 +13,7 @@ class AgendaAutomaticSyncPhysicalFix0402Test {
     private val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
     private val backend = File("../trip-platform/functions/index.js").takeIf { it.exists() }?.readText()
         ?: File("trip-platform/functions/index.js").readText()
+    private val reservationAlert = File("src/main/java/br/com/mapeiaia/rotacerta/trips/ReservationRequestsHomeAlert0356.kt").readText()
 
     @Test
     fun fullReconcileUsesWorkManagerLongRunningDataSyncWithoutLaunchingUi() {
@@ -43,6 +44,15 @@ class AgendaAutomaticSyncPhysicalFix0402Test {
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_REMOTE_REVISION_NO_OP_0402"))
         assertTrue(publicAgenda.contains("putSkipped=true"))
         assertTrue(publicAgenda.contains("remoteStateHint0402.capacitySnapshotRevision == synthesized.snapshotRevision"))
+    }
+
+    @Test
+    fun reservationHomeComposableNeverOwnsNetworkReconcileLifecycle() {
+        assertFalse(reservationAlert.contains("BookingPushRegistration0304.ensureRegistered"))
+        assertFalse(reservationAlert.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
+        assertTrue(reservationAlert.contains("BookingRealtimeEvents0356.changes.collect"))
+        assertTrue(background.contains("BookingPushRegistration0304.ensureRegistered"))
+        assertTrue(background.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
     }
 
     @Test
