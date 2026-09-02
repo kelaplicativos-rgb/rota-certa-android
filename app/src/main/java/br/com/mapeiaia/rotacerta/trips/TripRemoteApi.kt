@@ -942,7 +942,7 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
-    suspend fun interpretAssistant0410(
+    internal suspend fun interpretAssistant0410(
         request: RotaCertaAssistantInterpretRequest0410,
     ): RotaCertaAssistantInterpretResponse0410 = request(
         method = "POST",
