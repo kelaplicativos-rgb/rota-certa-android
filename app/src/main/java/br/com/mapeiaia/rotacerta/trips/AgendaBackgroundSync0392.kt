@@ -675,6 +675,7 @@ internal fun externalCollectorDeltaDecision0403(
 internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
+    private const val TRIP_REVERIFY_WORK_0407 = "agenda-background-sync-0407-trip-reverify"
     private const val INPUT_REASON = "reason"
     private const val INPUT_TENANT_ID = "tenant_id_0397"
     private const val INPUT_COMMAND_ID_0407 = "command_id_0407"
@@ -731,11 +732,27 @@ internal object AgendaBackgroundSync0392 {
         val target: BlaBlaTripTarget0407,
     )
 
-    fun enqueueTripReverify0407(context: Context, target: BlaBlaTripTarget0407, commandId: String): Boolean {
+    fun enqueueTripReverify0407(
+        context: Context,
+        target: BlaBlaTripTarget0407,
+        commandId: String,
+        requestedAtMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
         val appContext = context.applicationContext
         val activeTenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         if (activeTenantId != target.tenantId || commandId.isBlank()) return false
         if (BlaBlaCollectorUrlModule.tripId(target.tripHref) != target.tripId) return false
+
+        val commandStore = BlaBlaTripCommandStatusStore0407(appContext)
+        if (!commandStore.tryMarkQueued(target, commandId, requestedAtMillis)) {
+            UnifiedDebugEventStore.record(
+                "NO_OP",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending",
+            )
+            return true
+        }
+
         val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
             .setConstraints(networkConstraints())
             .setInputData(workDataOf(
@@ -750,15 +767,19 @@ internal object AgendaBackgroundSync0392 {
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
+        val workName = tenantScopedWorkName(
+            target.tenantId,
+            TRIP_REVERIFY_WORK_0407 + "-" + sha256TripPublication0387(target.strongIdentityKey).take(16),
+        )
         WorkManager.getInstance(appContext).enqueueUniqueWork(
-            tenantScopedWorkName(target.tenantId, IMMEDIATE_WORK),
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            workName,
+            ExistingWorkPolicy.KEEP,
             request,
         )
         UnifiedDebugEventStore.record(
             "COMMAND_REQUESTED",
             appContext.packageName,
-            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true",
+            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true uniqueTargetWork=true",
         )
         return true
     }
@@ -1368,12 +1389,16 @@ internal object AgendaBackgroundSync0392 {
         report
     }
 
-    internal suspend fun runCycle(context: Context, reason: String): AgendaBackgroundSyncRun0392 {
+    internal suspend fun runCycle(
+        context: Context,
+        reason: String,
+        collectorTarget0407: BlaBlaTripTarget0407? = null,
+    ): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         val mutex = tenantMutexes.computeIfAbsent(tenantId) { Mutex() }
         return mutex.withLock {
-            runTenantCycle(appContext, reason, tenantId)
+            runTenantCycle(appContext, reason, tenantId, collectorTarget0407)
         }
     }
 
@@ -1381,6 +1406,7 @@ internal object AgendaBackgroundSync0392 {
         appContext: Context,
         reason: String,
         tenantId: String,
+        collectorTarget0407: BlaBlaTripTarget0407?,
     ): AgendaBackgroundSyncRun0392 {
         val mode = agendaBackgroundSyncMode0392(reason)
         val store = TripStore(appContext)
@@ -1453,11 +1479,30 @@ internal object AgendaBackgroundSync0392 {
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
         )
-        if (reconcileCollectorSnapshot) {
+        fun collectorResponseForThisCycle0407(): BlaBlaCollectorMonthResponse? {
+            val response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions() ?: return null
+            val target = collectorTarget0407 ?: return response
+            val exact = response.trips.filter { source ->
+                source.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                    source.trip_id?.trim() == target.tripId &&
+                    BlaBlaCollectorUrlModule.tripId(source.trip_href.orEmpty()) == target.tripId
+            }
+            return response.copy(
+                status = if (exact.size == 1) "validated" else "partial",
+                trips = exact.takeIf { it.size == 1 }.orEmpty(),
+                coverage = response.coverage.copy(
+                    complete_for_scope = false,
+                    global_profile_month_complete = false,
+                    reason = if (exact.size == 1) "targeted_trip_reverify" else "targeted_trip_missing_or_ambiguous",
+                    unresolved_target_cards = if (exact.size == 1) 0 else 1,
+                ),
+            )
+        }
+        if (reconcileCollectorSnapshot && collectorTarget0407 == null) {
             collectorCanonical = reconcileCollectedExternalTrips0403(
                 context = appContext,
                 store = store,
-                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                response = collectorResponseForThisCycle0407(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
                 collectionRunId = "collector:" + collectorState.completedGeneration,
@@ -1498,11 +1543,11 @@ internal object AgendaBackgroundSync0392 {
             val freshCanonical = reconcileCollectedExternalTrips0403(
                 context = appContext,
                 store = store,
-                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                response = collectorResponseForThisCycle0407(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-                collectionRunId = "collector:" + collectorState.generation,
-                collectionGeneration = collectorState.generation,
+                collectionRunId = if (collectorTarget0407 != null) "trip-reverify" else "collector:" + collectorState.generation,
+                collectionGeneration = if (collectorTarget0407 != null) 0L else collectorState.generation,
             )
             collectorCanonical = freshCanonical
             if (freshCanonical.changedTrips > 0) {
@@ -1717,6 +1762,13 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    private fun Throwable.rootCauseMessage0407(): String {
+        var current: Throwable = this
+        val seen = HashSet<Throwable>()
+        while (current.cause != null && seen.add(current)) current = current.cause ?: break
+        return (current.message ?: current::class.java.name).take(300)
+    }
+
     internal fun reason(workerParameters: WorkerParameters): String =
         workerParameters.inputData.getString(INPUT_REASON)?.takeIf(String::isNotBlank) ?: "periodic"
 
@@ -1814,9 +1866,22 @@ class AgendaBackgroundSyncWorker0392(
                     origin = "timeline_card_worker",
                 )
             }
-            val cycle = AgendaBackgroundSync0392.runCycle(                context = applicationContext,
-                reason = reason,
-            )
+            val cycle = if (targetedWork != null) {
+                if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
+                    AgendaBackgroundSync0392.runCycle(
+                        context = applicationContext,
+                        reason = reason,
+                        collectorTarget0407 = targetedWork.target,
+                    )
+                } else {
+                    AgendaBackgroundSyncRun0392()
+                }
+            } else {
+                AgendaBackgroundSync0392.runCycle(
+                    context = applicationContext,
+                    reason = reason,
+                )
+            }
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
             val collectorWasRequested =
                 reason == "periodic" || agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
@@ -1858,6 +1923,9 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
             }
+            if (targetedResult != null && !retryPending) {
+                BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(targetedResult)
+            }
             AgendaBackgroundSyncConfig0392.recordRunFinished(
                 context = applicationContext,
                 reason = reason,
@@ -1877,6 +1945,24 @@ class AgendaBackgroundSyncWorker0392(
             throw cancelled
         } catch (error: Throwable) {
             val retryPending = runAttemptCount < 5
+            if (!retryPending) {
+                AgendaBackgroundSync0392.targetedTripWork0407(parameters)?.let { work ->
+                    BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(
+                        BlaBlaCommandResult0407(
+                            commandId = work.commandId,
+                            target = work.target,
+                            capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                            transportUsed = BlaBlaTransport0407.HYBRID,
+                            status = BlaBlaCommandStatus0407.FAILED,
+                            errorCode = "WORKER_EXCEPTION",
+                            verification = "readback_not_completed",
+                            exceptionMessage = error.message.orEmpty().take(300),
+                            rootCause = error.rootCauseMessage0407(),
+                            finishedAtMillis = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+            }
             AgendaBackgroundSyncConfig0392.recordRunFinished(
                 context = applicationContext,
                 reason = reason,
