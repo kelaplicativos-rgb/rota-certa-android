@@ -22,6 +22,8 @@ import androidx.work.workDataOf
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import java.time.Instant
+import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -44,6 +46,9 @@ internal data class AgendaBackgroundSyncRun0392(
     val collectorSkippedTrips: Int = 0,
     val collectorPublicationQueued: Int = 0,
     val collectorMissingPreserved: Int = 0,
+    val collectorTombstonedTrips: Int = 0,
+    val collectorOrphanProjectionTombstones: Int = 0,
+    val collectorStaleResultsRejected: Int = 0,
 )
 
 internal data class AgendaAutomaticCollectorState0400(
@@ -164,6 +169,9 @@ internal data class AgendaBackgroundSyncStatus0397(
     val retryPending: Boolean,
     val retryAttempt: Int,
     val lastFailures: Int,
+    val runId: String = "",
+    val runState: String = "IDLE",
+    val heartbeatAtMillis: Long = 0L,
 ) {
     fun nextExecutionEstimateMillis(nowMillis: Long = System.currentTimeMillis()): Long {
         if (!enabled || scheduledAtMillis <= 0L) return 0L
@@ -193,6 +201,10 @@ internal object AgendaBackgroundSyncConfig0392 {
     private const val KEY_RETRY_PENDING = "retry_pending_0397"
     private const val KEY_RETRY_ATTEMPT = "retry_attempt_0397"
     private const val KEY_LAST_FAILURES = "last_failures_0397"
+    private const val KEY_RUN_ID = "run_id_0406"
+    private const val KEY_RUN_STATE = "run_state_0406"
+    private const val KEY_HEARTBEAT = "heartbeat_at_0406"
+    internal const val RUN_LEASE_MILLIS_0406 = 45L * 60L * 1000L
     private const val KEY_COLLECTOR_GENERATION = "collector_generation_0400"
     private const val KEY_COLLECTOR_COMPLETED_GENERATION = "collector_completed_generation_0400"
     private const val KEY_COLLECTOR_REQUESTED_AT = "collector_requested_at_0400"
@@ -224,6 +236,7 @@ internal object AgendaBackgroundSyncConfig0392 {
     }
 
     fun status(context: Context): AgendaBackgroundSyncStatus0397 {
+        recoverStalledRun0406(context)
         val prefs = prefs(context)
         val scope = scope(context)
         val interval = agendaBackgroundSyncIntervalMinutes0392(
@@ -242,7 +255,55 @@ internal object AgendaBackgroundSyncConfig0392 {
             retryPending = prefs.getBoolean(scope.key(KEY_RETRY_PENDING), false),
             retryAttempt = prefs.getInt(scope.key(KEY_RETRY_ATTEMPT), 0),
             lastFailures = prefs.getInt(scope.key(KEY_LAST_FAILURES), 0),
+            runId = prefs.getString(scope.key(KEY_RUN_ID), "").orEmpty(),
+            runState = prefs.getString(scope.key(KEY_RUN_STATE), "IDLE").orEmpty(),
+            heartbeatAtMillis = prefs.getLong(scope.key(KEY_HEARTBEAT), 0L),
         )
+    }
+
+    internal fun recoverStalledRun0406(
+        context: Context,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean = synchronized(this) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        val result = prefs.getString(scope.key(KEY_LAST_RESULT), "").orEmpty()
+        val state = prefs.getString(scope.key(KEY_RUN_STATE), "").orEmpty()
+        val heartbeat = prefs.getLong(scope.key(KEY_HEARTBEAT), 0L)
+        val started = prefs.getLong(scope.key(KEY_LAST_STARTED), 0L)
+        if (!syncRunIsStalled0406(result, state, heartbeat, started, nowMillis, RUN_LEASE_MILLIS_0406)) {
+            return@synchronized false
+        }
+        require(
+            prefs.edit()
+                .putString(scope.key(KEY_LAST_RESULT), "STALLED")
+                .putString(scope.key(KEY_RUN_STATE), "RECOVERING")
+                .putBoolean(scope.key(KEY_RETRY_PENDING), true)
+                .putInt(scope.key(KEY_LAST_FAILURES), maxOf(1, prefs.getInt(scope.key(KEY_LAST_FAILURES), 0)))
+                .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
+                .commit(),
+        ) { "Falha ao recuperar sincronização abandonada." }
+        UnifiedDebugEventStore.record(
+            "AGENDA_BACKGROUND_SYNC_WATCHDOG_0406",
+            context.applicationContext.packageName,
+            "runId=" + prefs.getString(scope.key(KEY_RUN_ID), "").orEmpty().take(80) +
+                " previousState=" + state + " previousResult=" + result +
+                " action=MARK_STALLED_RECOVERING leaseMs=" + RUN_LEASE_MILLIS_0406,
+        )
+        true
+    }
+
+    internal fun recordRunHeartbeat0406(
+        context: Context,
+        state: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
+        val prefs = prefs(context)
+        val scope = scope(context)
+        prefs.edit()
+            .putString(scope.key(KEY_RUN_STATE), state.take(40))
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
+            .apply()
     }
 
     fun updateEnabled(context: Context, enabled: Boolean): Boolean {
@@ -468,12 +529,17 @@ internal object AgendaBackgroundSyncConfig0392 {
         ids.map(String::trim).filter(String::isNotBlank).distinct().joinToString(",")
 
     internal fun recordRunStarted(context: Context, reason: String, attempt: Int, nowMillis: Long = System.currentTimeMillis()) {
+        recoverStalledRun0406(context, nowMillis)
         val prefs = prefs(context)
         val scope = scope(context)
+        val runId = "sync-" + nowMillis + "-" + attempt
         prefs.edit()
             .putLong(scope.key(KEY_LAST_STARTED), nowMillis)
             .putString(scope.key(KEY_LAST_TRIGGER), agendaBackgroundSyncTrigger0397(reason))
             .putString(scope.key(KEY_LAST_RESULT), "RUNNING")
+            .putString(scope.key(KEY_RUN_ID), runId)
+            .putString(scope.key(KEY_RUN_STATE), "COLLECTING")
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
             .putBoolean(scope.key(KEY_RETRY_PENDING), false)
             .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
             .apply()
@@ -498,6 +564,13 @@ internal object AgendaBackgroundSyncConfig0392 {
             .putBoolean(scope.key(KEY_RETRY_PENDING), retryPending)
             .putInt(scope.key(KEY_RETRY_ATTEMPT), attempt)
             .putInt(scope.key(KEY_LAST_FAILURES), failures)
+            .putString(scope.key(KEY_RUN_STATE), when {
+                result == "VERIFIED" -> "COMPLETE"
+                result.startsWith("FAILED") || result == "STALLED" -> "FAILED"
+                result.startsWith("RETRY") || retryPending -> "RECOVERING"
+                else -> "COMPLETE"
+            })
+            .putLong(scope.key(KEY_HEARTBEAT), nowMillis)
         if (reason == "periodic") {
             editor.putLong(scope.key(KEY_LAST_PERIODIC_FINISHED), nowMillis)
         }
@@ -525,7 +598,45 @@ internal data class ExternalCollectorCanonicalBatch0403(
     val publicationQueued: Int = 0,
     val blockedTrips: Int = 0,
     val missingPreserved: Int = 0,
+    val tombstonedTrips: Int = 0,
+    val orphanProjectionTombstones: Int = 0,
+    val staleResultsRejected: Int = 0,
 )
+
+internal fun syncRunIsStalled0406(
+    lastResult: String,
+    runState: String,
+    heartbeatAtMillis: Long,
+    startedAtMillis: Long,
+    nowMillis: Long,
+    leaseMillis: Long,
+): Boolean {
+    if (lastResult != "RUNNING" && runState !in setOf("COLLECTING", "NORMALIZING", "RECONCILING", "COMMITTING", "PROJECTING", "VERIFYING")) {
+        return false
+    }
+    val anchor = maxOf(heartbeatAtMillis, startedAtMillis)
+    return anchor > 0L && nowMillis - anchor > leaseMillis.coerceAtLeast(1L)
+}
+
+internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMonthResponse?): Boolean {
+    if (response == null) return false
+    val status = response.status.trim().lowercase()
+    return response.coverage.complete_for_scope &&
+        response.coverage.global_profile_month_complete &&
+        status in setOf("success", "validated", "complete")
+}
+
+internal fun externalCanonicalTripWithinCompleteScope0406(
+    trip: Trip,
+    response: BlaBlaCollectorMonthResponse,
+): Boolean {
+    val month = response.month.orEmpty().trim()
+    val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
+    val tripProfile = trip.blablaProfileUuid.orEmpty().trim().lowercase()
+    val date = trip.externalSnapshot?.date.orEmpty()
+    return month.isNotBlank() && profileScope.isNotEmpty() &&
+        tripProfile in profileScope && date.startsWith(month)
+}
 
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
@@ -737,6 +848,8 @@ internal object AgendaBackgroundSync0392 {
         rotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long,
         nowMillis: Long = System.currentTimeMillis(),
+        collectionRunId: String = response?.collected_at.orEmpty(),
+        collectionGeneration: Long = 0L,
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
         val allocation = rotaCertaSeatAllocation.coerceIn(0, 999)
@@ -745,6 +858,9 @@ internal object AgendaBackgroundSync0392 {
         var skippedTrips = 0
         var publicationQueued = 0
         var blockedTrips = 0
+        var staleResultsRejected = 0
+        var tombstonedTrips = 0
+        var orphanProjectionTombstones = 0
 
         val observedStrongKeys = linkedSetOf<String>()
         response.trips.forEach { source ->
@@ -767,6 +883,18 @@ internal object AgendaBackgroundSync0392 {
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
+            if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
+                staleResultsRejected++
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_STALE_RESULT_REJECTED_0406",
+                    context.packageName,
+                    "internalTripId=" + seatSyncDiagnosticKey(existing.id) +
+                        " incomingGeneration=" + collectionGeneration +
+                        " currentGeneration=" + existing.lastCollectionGeneration +
+                        " result=SKIP_STALE_RESULT",
+                )
+                return@forEach
+            }
             val canonicalTripId = existing?.id
                 ?: externalBackingTripIdFor(profileUuid, blablaTripId, source.trip_href)
                 ?: run {
@@ -786,10 +914,27 @@ internal object AgendaBackgroundSync0392 {
             val canonicalTrip = when (decision) {
                 ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED -> {
                     skippedTrips++
-                    existing
+                    existing?.let { current ->
+                        store.saveTrip(
+                            current.copy(
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
+                                lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
+                            ),
+                        )
+                    }
                 }
                 ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL -> {
                     skippedTrips++
+                    existing?.let { current ->
+                        store.saveTrip(
+                            current.copy(
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
+                                lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
+                            ),
+                        )
+                    }
                     UnifiedDebugEventStore.record(
                         "EXTERNAL_CANONICAL_PARTIAL_PRESERVED_0403",
                         context.packageName,
@@ -818,7 +963,7 @@ internal object AgendaBackgroundSync0392 {
                                 remoteId = existing?.remoteId ?: binding?.remoteTripId,
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
-                                publicBookingEnabled = existing?.publicBookingEnabled ?: false,
+                                publicBookingEnabled = existing?.publicBookingEnabled ?: true,
                                 capacityReliable = incomingComplete,
                                 createdAtMillis = existing?.createdAtMillis ?: nowMillis,
                                 canonicalRevision = existing?.canonicalRevision ?: 0L,
@@ -830,6 +975,11 @@ internal object AgendaBackgroundSync0392 {
                                 externalSnapshot = source,
                                 externalSnapshotFingerprint = incomingFingerprint,
                                 externalSnapshotComplete = incomingComplete,
+                                lastCollectionRunId = collectionRunId.take(160),
+                                lastCollectionGeneration = maxOf(existing?.lastCollectionGeneration ?: 0L, collectionGeneration),
+                                lastObservedAtMillis = nowMillis,
+                                deleted = false,
+                                deletedAtMillis = 0L,
                             ),
                         )
                         if (saved.externalSnapshotFingerprint == incomingFingerprint) {
@@ -909,15 +1059,87 @@ internal object AgendaBackgroundSync0392 {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
                 !it.blablaProfileUuid.isNullOrBlank() && !it.blablaTripId.isNullOrBlank()
         }
-        val missingPreserved = canonicalExternal.count { trip ->
-            canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
-                ?.let { it !in observedStrongKeys } == true
+        val missingActive = canonicalExternal.filter { trip ->
+            !trip.deleted && trip.status != TripStatus.CANCELLED &&
+                canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
+                    ?.let { it !in observedStrongKeys } == true
         }
+        val deletionAllowed = externalCollectorAllowsTombstones0406(response)
+        val scopedMissing = if (deletionAllowed) {
+            missingActive.filter { externalCanonicalTripWithinCompleteScope0406(it, response) }
+        } else {
+            emptyList()
+        }
+        scopedMissing.forEach { missing ->
+            val tombstoned = store.tombstoneExternalTrip0406(
+                canonicalTripId = missing.id,
+                collectionRunId = collectionRunId,
+                collectionGeneration = collectionGeneration,
+                nowMillis = nowMillis,
+            )
+            if (tombstoned?.deleted == true) {
+                tombstonedTrips++
+                coordinator.recordTombstone(
+                    canonicalTripId = tombstoned.id,
+                    mutationType = "BLABLACAR_COMPLETE_SCOPE_DELETE",
+                    source = "EXTERNAL_COLLECTION",
+                )?.let { publicationQueued++ }
+            }
+        }
+        if (deletionAllowed) {
+            val profileScope = response.profiles.map { it.uuid.trim().lowercase() }.filter(String::isNotBlank).toSet()
+            val month = response.month.orEmpty().trim()
+            val canonicalKeys = canonicalExternal.map(Trip::tripKey).filter(String::isNotBlank).toSet()
+            val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+            store.publicExternalBindings().forEach { binding ->
+                val key = canonicalBlaBlaTripKey0406(tenantId, binding.profileUuid, binding.blablaTripId)
+                    ?: return@forEach
+                val bindingMonth = runCatching {
+                    Instant.ofEpochMilli(binding.departureAtMillis)
+                        .atZone(ZoneId.systemDefault()).toLocalDate().toString().take(7)
+                }.getOrDefault("")
+                if (
+                    key !in canonicalKeys &&
+                    canonicalExternalTripIdentityKey(binding.profileUuid, binding.blablaTripId, binding.blablaTripHref) !in observedStrongKeys &&
+                    binding.profileUuid.trim().lowercase() in profileScope &&
+                    month.isNotBlank() && bindingMonth == month
+                ) {
+                    if (
+                        coordinator.recordExternalTombstone(
+                            binding = binding,
+                            mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
+                            source = "PROJECTION_RECONCILER",
+                        ) != null
+                    ) {
+                        orphanProjectionTombstones++
+                        publicationQueued++
+                    }
+                }
+            }
+        }
+        val missingPreserved = (missingActive.size - scopedMissing.size).coerceAtLeast(0)
         if (missingPreserved > 0) {
             UnifiedDebugEventStore.record(
                 "EXTERNAL_CANONICAL_MISSING_PRESERVED_0403",
                 context.packageName,
-                "missing=$missingPreserved observed=${observedStrongKeys.size} canonical=${canonicalExternal.size} collectionStatus=${response.status} completeForScope=${response.coverage.complete_for_scope} action=preserve_no_cancel",
+                "missing=" + missingPreserved +
+                    " observed=" + observedStrongKeys.size +
+                    " canonical=" + canonicalExternal.size +
+                    " collectionStatus=" + response.status +
+                    " completeForScope=" + response.coverage.complete_for_scope +
+                    " globalProfileMonthComplete=" + response.coverage.global_profile_month_complete +
+                    " action=preserve_unproven_absence",
+            )
+        }
+        if (tombstonedTrips > 0 || orphanProjectionTombstones > 0) {
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_CANONICAL_TOMBSTONES_0406",
+                context.packageName,
+                "canonical=" + tombstonedTrips +
+                    " orphanProjection=" + orphanProjectionTombstones +
+                    " collectionRunId=" + collectionRunId.take(80) +
+                    " generation=" + collectionGeneration +
+                    " coverage=COMPLETE",
             )
         }
         return ExternalCollectorCanonicalBatch0403(
@@ -926,6 +1148,9 @@ internal object AgendaBackgroundSync0392 {
             publicationQueued = publicationQueued,
             blockedTrips = blockedTrips,
             missingPreserved = missingPreserved,
+            tombstonedTrips = tombstonedTrips,
+            orphanProjectionTombstones = orphanProjectionTombstones,
+            staleResultsRejected = staleResultsRejected,
         )
     }
 
@@ -945,6 +1170,18 @@ internal object AgendaBackgroundSync0392 {
     ): AgendaBackgroundSyncRun0392 {
         val mode = agendaBackgroundSyncMode0392(reason)
         val store = TripStore(appContext)
+        val integrityMigration = store.reconcileCanonicalIntegrity0406()
+        UnifiedDebugEventStore.record(
+            "CANONICAL_INTEGRITY_MIGRATION_0406",
+            appContext.packageName,
+            "canonical=" + integrityMigration.canonicalTrips +
+                " duplicates=" + integrityMigration.duplicateCanonicalTrips +
+                " migratedBookings=" + integrityMigration.migratedBookings +
+                " duplicateAgendaBindings=" + integrityMigration.duplicateAgendaBindings +
+                " orphanAgendaBindings=" + integrityMigration.orphanAgendaBindings +
+                " unresolvedIdentity=" + integrityMigration.unresolvedExternalIdentity,
+        )
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "NORMALIZING")
         var failures = 0
         var bookingImports = 0
         var outboxDelivered = 0
@@ -959,6 +1196,7 @@ internal object AgendaBackgroundSync0392 {
             "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} silentUi=true singleFlight=true",
         )
 
+        var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
         val reconcileCollectorSnapshot = mode in setOf(
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
@@ -970,6 +1208,8 @@ internal object AgendaBackgroundSync0392 {
                 response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                collectionRunId = "collector:" + collectorState.completedGeneration,
+                collectionGeneration = collectorState.completedGeneration,
             )
             if (collectorCanonical.changedTrips > 0) {
                 BookingRealtimeEvents0356.notifyChanged()
@@ -981,9 +1221,9 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
         val collectorRequested = reason == "periodic" || mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         if (collectorRequested) {
+            AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
             val accountIds = BlaBlaDynamicAccountRegistry(appContext).list().map { it.id }
             collectorState = AgendaBackgroundSyncConfig0392.requestAutomaticCollector0400(
                 context = appContext,
@@ -1009,6 +1249,8 @@ internal object AgendaBackgroundSync0392 {
                 response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                collectionRunId = "collector:" + collectorState.generation,
+                collectionGeneration = collectorState.generation,
             )
             collectorCanonical = freshCanonical
             if (freshCanonical.changedTrips > 0) {
@@ -1016,6 +1258,7 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "RECONCILING")
         val pullBookings = reason == "periodic" || mode in setOf(
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
             AgendaBackgroundSyncMode0392.BOOKING_EVENT,
@@ -1100,6 +1343,7 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "PROJECTING")
         try {
             outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending()
         } catch (cancelled: CancellationException) {
@@ -1148,6 +1392,7 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
+        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "VERIFYING")
         runCatching {
             BookingPushRegistration0304.ensureRegistered(appContext, store)
         }
@@ -1159,7 +1404,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "AGENDA_BACKGROUND_SYNC_END_0392",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} silentUi=true",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} trigger=${agendaBackgroundSyncTrigger0397(reason)} mode=${mode.name} bookingImports=$bookingImports outboxDelivered=$outboxDelivered localPublished=$publicLocalPublished externalPublished=$publicExternalPublished failures=$failures collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} collectorChanged=${collectorCanonical.changedTrips} collectorSkipped=${collectorCanonical.skippedTrips} collectorQueued=${collectorCanonical.publicationQueued} missingPreserved=${collectorCanonical.missingPreserved} tombstoned=${collectorCanonical.tombstonedTrips} orphanTombstones=${collectorCanonical.orphanProjectionTombstones} staleRejected=${collectorCanonical.staleResultsRejected} silentUi=true",
         )
 
         return AgendaBackgroundSyncRun0392(
@@ -1175,6 +1420,9 @@ internal object AgendaBackgroundSync0392 {
             collectorSkippedTrips = collectorCanonical.skippedTrips,
             collectorPublicationQueued = collectorCanonical.publicationQueued,
             collectorMissingPreserved = collectorCanonical.missingPreserved,
+            collectorTombstonedTrips = collectorCanonical.tombstonedTrips,
+            collectorOrphanProjectionTombstones = collectorCanonical.orphanProjectionTombstones,
+            collectorStaleResultsRejected = collectorCanonical.staleResultsRejected,
         )
     }
 
