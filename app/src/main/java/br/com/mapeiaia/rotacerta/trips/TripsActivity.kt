@@ -125,7 +125,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC, ACCOUNTS_BROWSERS }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -133,6 +133,7 @@ private fun TripScreen.isAgendaRoot0396(): Boolean =
         this == TripScreen.PUBLIC_SEARCH ||
         this == TripScreen.PASSENGERS ||
         this == TripScreen.SETTINGS ||
+        this == TripScreen.APP_SETTINGS ||
         this == TripScreen.AUTO_SYNC
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
@@ -141,6 +142,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
     TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
+    TripScreen.APP_SETTINGS -> AgendaRootSection0396.APP_SETTINGS
     else -> AgendaRootSection0396.ALL_TRIPS
 }
 
@@ -149,7 +151,8 @@ private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "Sincronização automática"
-    TripScreen.ACCOUNTS_BROWSERS -> "Contas e navegadores"
+    TripScreen.APP_SETTINGS -> "Configurações"
+    TripScreen.EXTRA_SEATS -> "Vagas extra"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
     TripScreen.PASSENGERS -> "Passageiros"
     TripScreen.CREATE -> "Nova viagem"
@@ -374,6 +377,7 @@ private fun TripApp(
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 refresh()
+                shareScope.launch { refreshDriverNotifications() }
             }
         }
         activity.lifecycle.addObserver(observer)
@@ -390,12 +394,8 @@ private fun TripApp(
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        while (true) {
-            refreshDriverNotifications()
-            kotlinx.coroutines.delay(15_000L)
-        }
+        refreshDriverNotifications()
     }
-
 
     androidx.compose.runtime.LaunchedEffect(settingsLoaded, trips, bookings, appSettings.rotaCertaSeatAllocation) {
         if (!settingsLoaded) return@LaunchedEffect
@@ -475,14 +475,6 @@ private fun TripApp(
     }
     val headerActions0396 = when (screen) {
         TripScreen.TIMELINE -> listOf(
-            AgendaHeaderAction0396("Contas e navegadores") {
-                parentRootScreen0396 = TripScreen.TIMELINE
-                screen = TripScreen.ACCOUNTS_BROWSERS
-            },
-            AgendaHeaderAction0396("Sincronização automática") {
-                parentRootScreen0396 = TripScreen.TIMELINE
-                screen = TripScreen.AUTO_SYNC
-            },
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
                 parentRootScreen0396 = TripScreen.TIMELINE
@@ -491,13 +483,14 @@ private fun TripApp(
             AgendaHeaderAction0396("Adicionar passageiro") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.ADD_PASSENGER)
             },
-            AgendaHeaderAction0396("Alternar próximas / arquivadas") {
+            AgendaHeaderAction0396("Vagas extra") {
+                parentRootScreen0396 = TripScreen.TIMELINE
+                screen = TripScreen.EXTRA_SEATS
+            },
+            AgendaHeaderAction0396("Próximas / arquivadas") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
             },
-            AgendaHeaderAction0396("Filtrar pendências das viagens") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_SYNC_PENDING)
-            },
-            AgendaHeaderAction0396("⬇️ Baixar Timeline") {
+            AgendaHeaderAction0396("Baixar Timeline") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.DOWNLOAD_TIMELINE)
             },
             AgendaHeaderAction0396("Fixar atalho") {
@@ -551,7 +544,9 @@ private fun TripApp(
                     screen = TripScreen.SETTINGS
                 }
                 AgendaRootSection0396.APP_SETTINGS -> {
-                    activity.startActivity(Intent(activity, MainActivity::class.java))
+                    parentRootScreen0396 = TripScreen.APP_SETTINGS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.APP_SETTINGS
                 }
             }
         },
@@ -787,7 +782,22 @@ private fun TripApp(
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
                 TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()
-                TripScreen.ACCOUNTS_BROWSERS -> BlaBlaAccountsAndBrowsersScreen0399()
+                TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
+                    initial = store.onlineSettings(),
+                    onSave = { saved ->
+                        store.saveOnlineSettings(saved)
+                        message = "Configurações salvas."
+                    },
+                )
+                TripScreen.EXTRA_SEATS -> TripExtraSeatsScreen0416(
+                    activity = activity,
+                    store = store,
+                    trips = trips,
+                    onChanged = { text ->
+                        refresh()
+                        message = text
+                    },
+                )
                 TripScreen.SETTINGS -> OnlineSettingsEditor(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
