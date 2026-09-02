@@ -397,7 +397,7 @@ class TripStore(context: Context) {
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = nowMillis,
-                    )
+                    ).invalidatePublicMirror0411("SEAT_ALLOCATION_CHANGED")
                     updated.copy(
                         canonicalStateHash = canonicalTripStateHash0406(
                             updated,
@@ -514,7 +514,7 @@ class TripStore(context: Context) {
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = now,
-                    )
+                    ).invalidatePublicMirror0411("BOOKING_DERIVED_INVENTORY_CHANGED")
                     updated.copy(
                         canonicalStateHash = canonicalTripStateHash0406(
                             updated,
@@ -605,7 +605,7 @@ class TripStore(context: Context) {
                     canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                     canonicalStateHash = "",
                     updatedAtMillis = nowMillis,
-                )
+                ).invalidatePublicMirror0411("BOOKING_STATE_CHANGED")
                 updated.copy(
                     canonicalStateHash = canonicalTripStateHash0406(updated, tripBookings),
                 )
