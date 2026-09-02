@@ -1,4 +1,4 @@
-name: Canonical projection convergence 0.1.408
+name: Canonical projection convergence 0.1.410
 
 on:
   push:
@@ -50,8 +50,8 @@ jobs:
           awk '{print $1}' farol-head.sha256 > farol-current.sha256
           cmp -s farol-base.sha256 farol-current.sha256
 
-          grep -Fq 'versionCode = 5701' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.408"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5703' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.410"' app/build.gradle.kts
 
           git diff --name-only "$BASE"...HEAD | tee changed-files.txt
           ! grep -Fxq "$FAROL" changed-files.txt
@@ -219,7 +219,7 @@ jobs:
       - name: Upload exact SHA APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.408-canonical-convergence-${{ github.sha }}
+          name: rota-certa-0.1.410-canonical-convergence-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
