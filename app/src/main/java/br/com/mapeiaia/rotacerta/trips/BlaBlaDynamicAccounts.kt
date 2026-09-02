@@ -498,15 +498,23 @@ internal class BlaBlaDynamicAccountSessionController0401(
             targetDates = emptyList()
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-            if (automaticCollectionClaimed) {
-                automaticCollectionReported = true
-                BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
-                    context = this,
-                    generation = automaticCollectionGeneration,
-                    accountId = account.id,
-                    accountResult = "partial",
-                    error = "android_system_webview_multi_profile_unavailable",
+            if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+                if (automaticCollectionClaimed) {
+                    automaticCollectionReported = true
+                    BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
+                        context = this,
+                        generation = automaticCollectionGeneration,
+                        accountId = account.id,
+                        accountResult = "partial",
+                        error = "android_system_webview_multi_profile_unavailable",
+                    )
+                }
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_HEADLESS_WEBVIEW_UNAVAILABLE_0407",
+                    packageName,
+                    "accountKey=${seatSyncDiagnosticKey(account.id)} targeted=${targetTripId.isNotBlank()} action=fail_closed browserOpened=false",
                 )
+                setResult(Activity.RESULT_CANCELED, Intent().putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id))
                 finish()
                 return
             }
@@ -565,7 +573,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
         }
-        if (automaticCollectionGeneration > 0L && visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
+        if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
             webView.settings.loadsImagesAutomatically = false
             webView.settings.blockNetworkImage = true
             webView.settings.setSupportZoom(false)
@@ -766,8 +774,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun isAutomaticHeadless0404(): Boolean =
-        automaticCollectionClaimed &&
-            visualHost == null &&
+        visualHost == null &&
             mode == BlaBlaDynamicSessionIntents.MODE_SYNC
 
     private fun postSessionDelayed0405(action: () -> Unit, delayMs: Long) {
@@ -873,7 +880,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} expectedUuid=${expectedUuid.orEmpty()} expectedFound=$expectedFoundInAuthenticatedPage observedCount=${observedUuids.size} profileLinkCount=${it.profileLinks.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
                 )
             }
-            if (automaticCollectionClaimed && mode == BlaBlaDynamicSessionIntents.MODE_SYNC && !identityConfirmedThisSync) {
+            if (isAutomaticHeadless0404() && mode == BlaBlaDynamicSessionIntents.MODE_SYNC && !identityConfirmedThisSync) {
                 identityReadAttempts++
                 if (identityReadAttempts < MAX_IDENTITY_READ_ATTEMPTS) {
                     UnifiedDebugEventStore.record(
