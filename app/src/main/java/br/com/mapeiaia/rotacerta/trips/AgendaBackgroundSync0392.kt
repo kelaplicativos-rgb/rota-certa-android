@@ -637,6 +637,36 @@ internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMont
         status in setOf("success", "validated", "complete")
 }
 
+internal fun completeCollectorProfileUuids0408(
+    context: Context,
+    state: AgendaAutomaticCollectorState0400,
+): Set<String> {
+    if (state.completedAccountIds.isEmpty()) return emptySet()
+    val accounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list().associateBy { it.id }
+    val sessions = BlaBlaDynamicSessionStore(context.applicationContext)
+    return state.completedAccountIds.mapNotNull { accountId ->
+        val account = accounts[accountId] ?: return@mapNotNull null
+        val profileUuid = account.profileUuid?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        val snapshot = sessions.read(account) ?: return@mapNotNull null
+        if (
+            snapshot.identityVerified &&
+            snapshot.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+            snapshot.skippedTrips == 0
+        ) profileUuid.lowercase() else null
+    }.toSet()
+}
+
+internal fun externalCanonicalTripWithinCompleteScope0408(
+    trip: Trip,
+    response: BlaBlaCollectorMonthResponse,
+    completeProfileUuids: Set<String>,
+): Boolean {
+    val tripProfile = trip.blablaProfileUuid.orEmpty().trim().lowercase()
+    if (tripProfile.isNotBlank() && tripProfile in completeProfileUuids) return true
+    return externalCollectorAllowsTombstones0406(response) &&
+        externalCanonicalTripWithinCompleteScope0406(trip, response)
+}
+
 internal fun externalCanonicalTripWithinCompleteScope0406(
     trip: Trip,
     response: BlaBlaCollectorMonthResponse,
@@ -737,7 +767,10 @@ internal fun expectedProjectionStatus0408(
 internal fun remoteProjectionWithinCompleteScope0408(
     remote: DriverTripSyncState0402,
     response: BlaBlaCollectorMonthResponse?,
+    completeProfileUuids: Set<String>,
 ): Boolean {
+    val profileUuid = remote.blablaProfileUuid.trim().lowercase()
+    if (profileUuid.isNotBlank() && profileUuid in completeProfileUuids) return true
     if (!externalCollectorAllowsTombstones0406(response) || response == null) return false
     val month = response.month.orEmpty().trim()
     val profileScope = response.profiles
@@ -753,7 +786,7 @@ internal fun remoteProjectionWithinCompleteScope0408(
     }.getOrDefault("")
     return month.isNotBlank() &&
         remoteMonth == month &&
-        remote.blablaProfileUuid.trim().lowercase() in profileScope
+        profileUuid in profileScope
 }
 
 internal fun externalCollectorDeltaDecision0403(
