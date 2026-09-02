@@ -1119,6 +1119,16 @@ async function openWhatsappFromSeatPicker() {
   }
 }
 
+function isOfficialBlaBlaHost(hostname) {
+  const labels = String(hostname || "").trim().toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function safeBlaBlaPublicUrl(item) {
   const raw = String(item?.blablaPublicUrl || "").trim();
   const expectedTripId = String(item?.blablaTripId || "").trim();
@@ -1126,7 +1136,8 @@ function safeBlaBlaPublicUrl(item) {
   try {
     const url = new URL(raw);
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
-    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost(url.hostname)) return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
     const actualTripId = String(url.searchParams.get("id") || url.pathname.match(/\/trip\/([^/?#]+)/i)?.[1] || "").trim();
     if (!actualTripId || actualTripId !== expectedTripId) return "";
@@ -1671,11 +1682,10 @@ function renderAgendaCards(entries, container, filtered = false) {
       const blablaUrl = safeBlaBlaPublicUrl(item);
       const blabla = document.createElement("a");
       blabla.className = "bookingChoice bookingBlabla";
-      blabla.textContent = "Reservar na BlaBlaCar";
+      blabla.textContent = "Ver detalhes na BlaBlaCar";
       if (blablaUrl) {
         blabla.href = blablaUrl;
-        blabla.target = "_blank";
-        blabla.rel = "noopener noreferrer";
+                blabla.rel = "noopener noreferrer";
         blabla.addEventListener("click", () => tracePublicAction("PUBLIC_BLABLACAR_RESERVATION_OPENED", { fromIndex, toIndex }));
         choices.append(whatsapp, blabla);
       } else {
@@ -1774,15 +1784,14 @@ function renderTrip() {
   const blabla = $("bookBlaBla");
   if (blablaUrl && canUseExternalActions) {
     blabla.href = blablaUrl;
-    blabla.target = "_blank";
-    blabla.removeAttribute("aria-disabled");
+        blabla.removeAttribute("aria-disabled");
   } else {
     blabla.removeAttribute("href");
     blabla.setAttribute("aria-disabled", "true");
   }
-  blabla.textContent = blablaUrl && canUseExternalActions
-    ? "Reservar na BlaBlaCar"
-    : (blablaUrl ? "BlaBlaCar — indisponível" : "BlaBlaCar — link indisponível");
+  blabla.textContent = blablaUrl
+    ? "Ver detalhes na BlaBlaCar"
+    : "BlaBlaCar — link indisponível";
 
   prepareBookingSelectors();
   restoreCancellation();
