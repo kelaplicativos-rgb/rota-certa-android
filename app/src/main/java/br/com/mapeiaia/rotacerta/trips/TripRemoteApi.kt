@@ -408,12 +408,6 @@ data class DriverPublicAttestationResponse0417(
 )
 
 @Serializable
-data class DriverAdminPasswordRequest0417(val password: String)
-
-@Serializable
-data class DriverAdminPasswordResponse0417(val configured: Boolean = false)
-
-@Serializable
 data class DriverAdminSyncPolicy0417(
     val automatic: Boolean = true,
     val intervalMinutes: Long = 15L,
@@ -691,13 +685,6 @@ class TripRemoteApi(
         method = "POST",
         path = "/v1/driver/trips/${remoteTripId.trim()}/public-attestation",
         body = json.encodeToString(request),
-        requireDriverToken = true,
-    )
-
-    suspend fun configureAdminPassword0417(password: String): DriverAdminPasswordResponse0417 = request(
-        method = "PUT",
-        path = "/v1/driver/admin/password",
-        body = json.encodeToString(DriverAdminPasswordRequest0417(password)),
         requireDriverToken = true,
     )
 
