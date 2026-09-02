@@ -824,6 +824,7 @@ internal fun applyPublicExternalBookingsToTimeline(
 ): List<TripTimelineEntry> = entries.map { entry ->
     val binding = bindings.firstOrNull { it.matches(entry) } ?: return@map entry
     val enriched = entry.copy(
+        localTripId = binding.bookingTripId.takeIf(String::isNotBlank) ?: entry.localTripId,
         blablaTripId = entry.blablaTripId ?: binding.blablaTripId.takeIf(String::isNotBlank),
         blablaTripHref = entry.blablaTripHref ?: binding.blablaTripHref.takeIf(String::isNotBlank),
         blablaPublicHref = entry.blablaPublicHref
