@@ -4016,6 +4016,72 @@ async function updateDriverPassengerWhatsapp(req, res) {
   return json(res, 200, { passenger: safePassengerAccess(updated) });
 }
 
+async function setDriverPassengerAgendaAdmin0418(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!driver.username) return fail(res, 400, "driver_username_required", "Identidade pública do motorista não configurada.");
+
+  const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  let passengerContact = "";
+  if (req.body && req.body.passengerContact) {
+    try { passengerContact = normalizeBrazilWhatsapp(req.body.passengerContact); }
+    catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message); }
+  }
+  if (!passengerId && !passengerContact) {
+    return fail(res, 400, "passenger_identity_required", "Selecione um passageiro com identidade canônica.");
+  }
+
+  const access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
+  if (!access) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
+  if (!passengerAccessIsAuthorized(access)) {
+    return fail(res, 409, "passenger_not_authorized", "Somente um passageiro autorizado em Minhas Viagens pode ser administrador.");
+  }
+
+  const enabled = req.body && req.body.agendaAdmin === true;
+  const currentContact = cleanText(access.passengerContact, 40);
+  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(currentContact)).get();
+  if (enabled && (!accountSnap.exists || !passengerAccountIsActivated(accountSnap.data()))) {
+    return fail(res, 409, "passenger_account_not_activated", "Este passageiro ainda não ativou o acesso Minhas Viagens.");
+  }
+
+  const before = access.agendaAdmin === true;
+  const now = Date.now();
+  const accessRef = db.collection("driverPassengerAccess").doc(access.id);
+  await accessRef.set({
+    agendaAdmin: enabled,
+    agendaAdminUpdatedAtMillis: now,
+    updatedAtMillis: now,
+  }, { merge: true });
+
+  const canonicalPassengerId = cleanText(access.passengerId || passengerId, 120);
+  const auditId = "passenger_admin_" + sha256Hex([
+    driver.username,
+    canonicalPassengerId,
+    currentContact,
+    enabled ? "grant" : "revoke",
+    now,
+    crypto.randomBytes(6).toString("hex"),
+  ].join("|")).slice(0, 48);
+  await db.collection("tripChangeEvents").doc(auditId).set({
+    eventId: auditId,
+    eventType: "PASSENGER_AGENDA_ADMIN_CHANGED",
+    tripId: "",
+    publicToken: "",
+    bookingId: "",
+    passengerId: canonicalPassengerId,
+    driverUsername: driver.username,
+    actor: "DRIVER",
+    actorId: "driver-app",
+    source: "ROTA_CERTA_ANDROID",
+    createdAtMillis: now,
+    changes: [{ field: "agendaAdmin", before: String(before), after: String(enabled) }],
+    affectedPassengerIds: canonicalPassengerId ? [canonicalPassengerId] : [],
+  });
+
+  const updated = await accessRef.get();
+  return json(res, 200, { passenger: safePassengerAccess(updated) });
+}
+
 async function resetDriverPassengerPassword(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -6349,6 +6415,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/driver/passengers/sync") return await syncDriverPassengerDirectory(req, res);
     if (req.method === "PUT" && path === "/v1/driver/passengers/whatsapp") return await updateDriverPassengerWhatsapp(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/block") return await setDriverPassengerBlocked(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/passengers/admin") return await setDriverPassengerAgendaAdmin0418(req, res);
     if (req.method === "POST" && path === "/v1/driver/passengers/reset-password") return await resetDriverPassengerPassword(req, res);
     if (req.method === "PUT" && path === "/v1/driver/referral-settings") return await updateDriverReferralSettings(req, res);
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
