@@ -1245,6 +1245,7 @@ internal object AgendaBackgroundSync0392 {
                                 remoteId = existing?.remoteId ?: binding?.remoteTripId,
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
+                                blablaPublicUrl = observed.blablaPublicUrl ?: existing?.blablaPublicUrl,
                                 publicBookingEnabled = existing?.publicBookingEnabled ?: true,
                                 capacityReliable = incomingComplete,
                                 createdAtMillis = existing?.createdAtMillis ?: nowMillis,
