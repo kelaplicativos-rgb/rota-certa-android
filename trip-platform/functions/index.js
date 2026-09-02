@@ -4313,6 +4313,46 @@ async function requirePassengerSession(req, res) {
 }
 
 
+async function logoutPassengerAccount(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const driverRaw = cleanText((req.body && req.body.driverUsername) || (req.query && req.query.driverUsername), 80);
+  const resolvedDriver = driverRaw ? await resolveDriverUsername(driverRaw) : null;
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
+  let agendaAdmin = false;
+  if (driverUsername) {
+    const access = await passengerAccessForIdentity(driverUsername, session.passengerId, session.passengerContact);
+    agendaAdmin = Boolean(access && access.agendaAdmin === true);
+  }
+  await db.collection("passengerSessions").doc(session.sessionRefId).delete().catch(() => {});
+  if (driverUsername && agendaAdmin) {
+    const now = Date.now();
+    const id = "admin_logout_" + sha256Hex([
+      driverUsername,
+      session.passengerId,
+      session.passengerContact,
+      now,
+      crypto.randomBytes(6).toString("hex"),
+    ].join("|")).slice(0, 48);
+    await db.collection("tripChangeEvents").doc(id).set({
+      eventId: id,
+      eventType: "ADMIN_LOGOUT",
+      tripId: "",
+      publicToken: "",
+      bookingId: "",
+      passengerId: cleanText(session.passengerId, 120),
+      driverUsername,
+      actor: "ADMIN",
+      actorId: cleanText(session.passengerId, 120) || sha256Hex(session.passengerContact).slice(0, 24),
+      source: "AGENDA_PASSENGER_SESSION",
+      createdAtMillis: now,
+      changes: [],
+      affectedPassengerIds: session.passengerId ? [cleanText(session.passengerId, 120)] : [],
+    });
+  }
+  return json(res, 200, { loggedOut: true });
+}
+
 async function signupPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
   return fail(res, 403, "passenger_invite_required", "Acesso somente por convite do motorista.");
@@ -6407,6 +6447,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/activate") return await activatePassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/session") return await loginPassengerAccount(req, res);
+    if (req.method === "POST" && path === "/v1/passenger/logout") return await logoutPassengerAccount(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me") return await getPassengerMe(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/password") return await changePassengerPassword(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/credits") return await getPassengerCredits(req, res);
