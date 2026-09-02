@@ -1177,6 +1177,7 @@ internal object PublicAgendaAutoSync0300 {
         )
         return synthesized.copy(
             trip = projectedTrip,
+            blablaPublicHref = projectedTrip.blablaPublicUrl.orEmpty(),
             capacityClaims = synthesized.capacityClaims.map { it.copy(tripId = canonical.id) },
             snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank { synthesized.snapshotRevision },
             realAvailableSeats = (canonical.capacity - synthesized.bookedSeats).coerceAtLeast(0),
