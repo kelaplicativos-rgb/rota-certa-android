@@ -907,6 +907,68 @@ private data class TimelineProfileCardColors(
     val border: Color,
 )
 
+private val PublicAgendaMirrorBlue0417 = Color(0xFF1769D2)
+private val PublicAgendaMirrorOrange0417 = Color(0xFFF59E0B)
+private val PublicAgendaMirrorRed0417 = Color(0xFFD32F2F)
+private val PublicAgendaMirrorGray0417 = Color(0xFF9E9E9E)
+
+private fun publicMirrorDotColor0417(trip: Trip?): Color = when {
+    trip == null -> PublicAgendaMirrorGray0417
+    trip.publicMirrorAttestationCurrent0411() -> PublicAgendaMirrorBlue0417
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> PublicAgendaMirrorOrange0417
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> PublicAgendaMirrorRed0417
+    else -> PublicAgendaMirrorGray0417
+}
+
+private fun publicMirrorDiagnosticTitle0417(trip: Trip?): String = when {
+    trip == null -> "Agenda ainda não verificada"
+    trip.publicMirrorAttestationCurrent0411() -> "MATCH confirmado"
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> "Sincronizando / pendente"
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "Divergência ou erro"
+    else -> "Agenda ainda não verificada"
+}
+
+private fun publicMirrorMismatchLabel0417(field: String): String = when (field) {
+    "identity" -> "identidade"
+    "revision" -> "revisão"
+    "canonicalStateHash" -> "estado canônico"
+    "title" -> "título"
+    "departureAtMillis", "timezoneId" -> "data/hora"
+    "status" -> "status"
+    "capacity", "availability", "publishedSeats", "rotaCertaSeatAllocation" -> "vagas"
+    "stops" -> "paradas/itinerário"
+    "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads" -> "ocupação por trecho"
+    "publicBookingEnabled" -> "reserva pública"
+    "capacityReliable" -> "confiabilidade da capacidade"
+    "itineraryAuthoritative" -> "confiabilidade do itinerário"
+    "publicUrl" -> "link público Rota Certa"
+    "blablaPublicUrl" -> "link público BlaBlaCar"
+    "serverHash", "publicHash" -> "hash público"
+    "projectionMissing" -> "card público ausente"
+    else -> field
+}
+
+private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
+    if (trip == null) return "Este card ainda não possui uma viagem canônica vinculada."
+    val mismatches = trip.publicMirrorMismatchFields0411.map(::publicMirrorMismatchLabel0417).distinct()
+    return buildString {
+        appendLine("Estado: " + when {
+            trip.publicMirrorAttestationCurrent0411() -> "MATCH"
+            trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> "PENDENTE"
+            trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "DIVERGENTE / ERRO"
+            else -> "NÃO VERIFICADO"
+        })
+        appendLine("Identidade da viagem: " + (trip.blablaTripId?.takeIf(String::isNotBlank) ?: trip.id))
+        appendLine("Revisão canônica: " + trip.canonicalRevision)
+        appendLine("Revisão publicada: " + trip.publicationRevision)
+        appendLine("Agenda encontrada: " + if (trip.publicMirrorReadbackHash0411.isNotBlank()) "sim" else "não comprovada")
+        appendLine("Link BlaBlaCar: " + if (trip.blablaTripId.isNullOrBlank()) "não aplicável" else if (BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).isNullOrBlank()) "pendente/inválido" else "válido")
+        appendLine("Última atestação: " + (trip.publicMirrorAttestedAtMillis0411.takeIf { it > 0L }?.toString() ?: "ainda não atestado"))
+        if (mismatches.isNotEmpty()) appendLine("Diferenças: " + mismatches.joinToString(", "))
+        append("Motivo: " + trip.publicMirrorAttestationReason0411.ifBlank { "evidência insuficiente" })
+    }
+}
+
 private fun timelineProfileCardColors(slot: Int, dark: Boolean): TimelineProfileCardColors = when (slot % 12) {
     0 -> if (dark) TimelineProfileCardColors(Color(0xFF172A46), Color(0xFF6EA0E8)) else TimelineProfileCardColors(Color(0xFFE7F0FF), Color(0xFF4F7FC7))
     1 -> if (dark) TimelineProfileCardColors(Color(0xFF183221), Color(0xFF6CAE7C)) else TimelineProfileCardColors(Color(0xFFE3F4E8), Color(0xFF4F8A62))
