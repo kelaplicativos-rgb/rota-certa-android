@@ -44,6 +44,40 @@ internal fun externalBackingTripIdFor(
 ): String? = canonicalExternalTripIdentityKey(profileUuid, blablaTripId, blablaManageUrl)
     ?.let { "timeline-ext-${sha256Short0373(it, 24)}" }
 
+internal fun canonicalTripKey0406(
+    tenantIdRaw: String,
+    providerRaw: String,
+    profileUuidRaw: String,
+    providerTripIdRaw: String,
+): String? {
+    val tenantId = tenantIdRaw.trim().takeIf(String::isNotEmpty) ?: return null
+    val provider = providerRaw.trim().uppercase(Locale.ROOT).takeIf(String::isNotEmpty) ?: return null
+    val profileUuid = profileUuidRaw.trim().lowercase(Locale.ROOT)
+        .takeIf { it.matches(CANONICAL_PROFILE_UUID_0373) } ?: return null
+    val providerTripId = providerTripIdRaw.trim().takeIf(String::isNotEmpty) ?: return null
+    return "tripkey:" + sha256Short0373(
+        listOf(tenantId, provider, profileUuid, providerTripId).joinToString("|"),
+        48,
+    )
+}
+
+internal fun canonicalBlaBlaTripKey0406(
+    tenantId: String,
+    profileUuid: String?,
+    providerTripId: String?,
+): String? = canonicalTripKey0406(
+    tenantIdRaw = tenantId,
+    providerRaw = "BLABLACAR",
+    profileUuidRaw = profileUuid.orEmpty(),
+    providerTripIdRaw = providerTripId.orEmpty(),
+)
+
+internal fun canonicalLocalTripKey0406(tenantId: String, internalTripId: String): String? {
+    val tenant = tenantId.trim().takeIf(String::isNotEmpty) ?: return null
+    val id = internalTripId.trim().takeIf(String::isNotEmpty) ?: return null
+    return "tripkey:" + sha256Short0373("$tenant|LOCAL|$id", 48)
+}
+
 /**
  * Legacy 0.1.372 backings predate Trip.recordOrigin. They are recognized only when
  * their strong external identity deterministically regenerates the exact persisted id.
