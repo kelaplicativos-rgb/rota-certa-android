@@ -32,7 +32,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(header.contains("\"Agenda de Viagens\""))
         assertTrue(header.contains("sectionLabel"))
         assertTrue(header.contains("contentDescription = navigationDescription"))
-        assertTrue(header.contains("\"Notificações, $unread não lidas\""))
+        assertTrue(header.contains("\"Notificações, \\$unread não lidas\""))
         assertTrue(header.contains("Icons.Filled.Notifications"))
         assertTrue(header.contains("contentDescription = \"Mais ações desta tela\""))
         assertTrue(header.contains("maxLines = 1"))
