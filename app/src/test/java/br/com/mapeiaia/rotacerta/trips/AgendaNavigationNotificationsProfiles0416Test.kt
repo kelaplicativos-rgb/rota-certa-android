@@ -76,6 +76,7 @@ class AgendaNavigationNotificationsProfiles0416Test {
         val settings = source("PublicAgendaSettingsUi.kt")
         val activity = source("TripsActivity.kt")
         val timeline = source("TripTimelineUi.kt")
+        val store = source("TripStore.kt")
         val background = source("AgendaBackgroundSync0392.kt")
 
         assertTrue(automatic.contains("BlaBlaAccountsAndBrowsersScreen0399()"))
@@ -92,7 +93,7 @@ class AgendaNavigationNotificationsProfiles0416Test {
         assertTrue(extra.contains("store.saveTrip("))
         assertTrue(extra.contains("TripMutationCoordinator0387"))
         assertTrue(extra.contains("AgendaBackgroundSync0392.enqueueImmediate"))
-        assertTrue(timeline.contains("trip.rotaCertaSeatAllocation != null"))
+        assertTrue(store.contains("trip.rotaCertaSeatAllocation != null"))
         assertTrue(background.contains("globalFanOut=false"))
         assertFalse(background.contains("TripRemoteApi(online).reconcileAgendaSeatAllocation("))
     }
