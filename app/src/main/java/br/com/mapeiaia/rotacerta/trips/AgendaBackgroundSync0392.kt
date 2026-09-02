@@ -1318,7 +1318,11 @@ internal object AgendaBackgroundSync0392 {
                 canonicalTrip != null &&
                 canonicalTrip.externalSnapshotFingerprint == incomingFingerprint &&
                 canonicalTrip.departureAtMillis > nowMillis &&
-                binding?.externalFingerprint != incomingFingerprint
+                (
+                    binding?.externalFingerprint != incomingFingerprint ||
+                        BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, blablaTripId) !=
+                        BlaBlaCollectorUrlModule.publicTrip(canonicalTrip.blablaPublicUrl, blablaTripId)
+                )
             ) {
                 if (
                     coordinator.recordExternalCollectionMutation(
