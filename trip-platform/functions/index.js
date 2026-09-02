@@ -644,12 +644,22 @@ function blaBlaExternalTripId(url) {
   return cleanText(match[1], 160);
 }
 
+function isOfficialBlaBlaHost(hostname) {
+  const labels = cleanText(hostname, 253).toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function normalizeBlaBlaUrl(raw, expectedTripId = "", publicOnly = false) {
   const value = cleanText(raw, 1200);
   if (!value) return "";
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "www.blablacar.com.br") return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost(url.hostname)) return "";
     if (url.username || url.password || (url.port && url.port !== "443")) return "";
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
     if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";
@@ -719,10 +729,23 @@ function normalizeDriverTrip(raw, previous = null) {
   const publishedSeats = Number.isInteger(rawPublishedSeats) && rawPublishedSeats >= 0 && rawPublishedSeats <= 999
     ? rawPublishedSeats
     : null;
-  const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160);
-  const blablaTripId = cleanText(raw.blablaTripId, 160);
-  const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId);
-  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId);
+  const previousProfileUuid = cleanText(previous && previous.blablaProfileUuid, 160);
+  const previousTripId = cleanText(previous && previous.blablaTripId, 160);
+  const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160) || previousProfileUuid;
+  const blablaTripId = cleanText(raw.blablaTripId, 160) || previousTripId;
+  const samePersistentIdentity = !previousTripId || previousTripId === blablaTripId;
+  const previousManageUrl = samePersistentIdentity
+    ? normalizeBlaBlaManageUrl(previous && previous.blablaManageUrl, blablaTripId)
+    : "";
+  const previousPublicUrl = samePersistentIdentity
+    ? normalizeBlaBlaPublicUrl(previous && previous.blablaPublicUrl, blablaTripId)
+    : "";
+  const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId) || previousManageUrl;
+  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId) || previousPublicUrl;
+  const publicTimezoneId0411 = cleanText(
+    raw.publicTimezoneId0411 == null ? (previous && previous.publicTimezoneId0411 || "") : raw.publicTimezoneId0411,
+    80,
+  );
   const previousPublicationRevision = Math.max(0, Number(previous && previous.publicationRevision || 0));
   const requestedPublicationRevision = raw.publicationRevision == null
     ? previousPublicationRevision
@@ -766,6 +789,7 @@ function normalizeDriverTrip(raw, previous = null) {
     publicationEventId,
     canonicalStateHash,
     tripKey,
+    publicTimezoneId0411,
     notes: cleanText(raw.notes, 1200),
   };
 }
@@ -893,11 +917,84 @@ function safePublicTrip(token, data) {
     capacityReliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
+    blablaTripId: cleanText(data.blablaTripId, 160) || null,
     blablaPublicUrl: normalizeBlaBlaPublicUrl(data.blablaPublicUrl, cleanText(data.blablaTripId, 160)) || null,
     driverUsername: data.driverUsername || "",
     driverDisplayName: data.driverDisplayName || "",
     updatedAtMillis: data.updatedAtMillis || null,
   };
+}
+
+function canonicalPublicStop0411(raw, index) {
+  const stop = raw || {};
+  return {
+    id: cleanText(stop.id, 80),
+    order: Number.isInteger(Number(stop.order)) ? Number(stop.order) : index,
+    name: cleanText(stop.name, 160),
+    address: cleanText(stop.address, 300),
+    plannedArrivalMillis: Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null,
+    plannedDepartureMillis: Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null,
+  };
+}
+
+function canonicalPublicTripPayload0411(token, data) {
+  const publicTrip = safePublicTrip(token, data);
+  const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
+  const blablaTripId = cleanText(data.blablaTripId, 160);
+  return {
+    schemaVersion: "public-trip-v1",
+    canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180),
+    blablaProfileUuid: profileUuid,
+    blablaTripId,
+    title: cleanText(publicTrip.title, 220),
+    departureAtMillis: Math.max(0, Number(publicTrip.departureAtMillis || 0)),
+    timezoneId: cleanText(data.publicTimezoneId0411, 80),
+    status: cleanText(publicTrip.status, 24),
+    capacity: Math.max(0, Number(publicTrip.capacity || 0)),
+    stops: (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
+      .map(canonicalPublicStop0411)
+      .sort((a, b) => a.order - b.order),
+    segmentLoads: (Array.isArray(publicTrip.segmentLoads) ? publicTrip.segmentLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentPassengerLoads: (Array.isArray(publicTrip.segmentPassengerLoads) ? publicTrip.segmentPassengerLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentBlockedLoads: (Array.isArray(publicTrip.segmentBlockedLoads) ? publicTrip.segmentBlockedLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    availableSeatsMinimum: Math.max(0, Number(publicTrip.availableSeatsMinimum || 0)),
+    availableSeatsMaximum: Math.max(0, Number(publicTrip.availableSeatsMaximum || 0)),
+    operationalAvailableSeats: Math.max(0, Number(publicTrip.operationalAvailableSeats || 0)),
+    publishedSeats: publicTrip.publishedSeats == null ? null : Math.max(0, Number(publicTrip.publishedSeats || 0)),
+    rotaCertaSeatAllocation: Math.max(0, Number(publicTrip.rotaCertaSeatAllocation || 0)),
+    publicBookingEnabled: publicTrip.publicBookingEnabled === true,
+    capacityReliable: publicTrip.capacityReliable === true,
+    itineraryAuthoritative: publicTrip.itineraryAuthoritative === true,
+    publicUrl: cleanText(publicTrip.publicUrl, 1200),
+    blablaPublicUrl: normalizeBlaBlaPublicUrl(publicTrip.blablaPublicUrl, blablaTripId),
+    publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
+    canonicalStateHash: cleanText(data.canonicalStateHash, 160),
+  };
+}
+
+function canonicalPublicTripHash0411(payload) {
+  return "public-v1:" + sha256Hex(JSON.stringify(payload));
+}
+
+async function getDriverPublicTripReadback0411(req, res, token) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const snap = await db.collection("trips").doc(token).get();
+  if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
+  const data = snap.data();
+  if (normalizeUsername(data.driverUsername || "") !== driver.username) {
+    return fail(res, 403, "trip_owner_mismatch", "Viagem pertence a outro motorista.");
+  }
+  if (data.publicationTombstone === true) {
+    return fail(res, 409, "trip_projection_tombstoned", "A projeção pública desta viagem está removida.");
+  }
+  const payload = canonicalPublicTripPayload0411(token, data);
+  return json(res, 200, {
+    remoteTripId: token,
+    payload,
+    publicProjectionHash: canonicalPublicTripHash0411(payload),
+    persistedAtMillis: Math.max(0, Number(data.updatedAtMillis || 0)),
+  });
 }
 
 function clientIp(req) {
@@ -6137,6 +6234,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-readback" && req.method === "GET") {
+      return await getDriverPublicTripReadback0411(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "capacity-snapshot" && req.method === "PUT") {
       return await reconcileDriverCapacitySnapshot(req, res, parts[3]);
