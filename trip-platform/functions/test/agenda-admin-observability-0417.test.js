@@ -52,16 +52,19 @@ test("exports redact credentials recursively", () => {
   assert.equal(sanitized.list[0].apiKey, "[REDACTED]");
 });
 
-test("backend routes require admin session for protected administration", () => {
+test("protected administration reuses scoped passenger session and role", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
   const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
-  assert.match(source, /\/v1\/public\/admin\/session/);
+  assert.doesNotMatch(source, /\/v1\/public\/admin\/session/);
+  assert.doesNotMatch(source, /\/v1\/driver\/admin\/password/);
+  assert.match(source, /\/v1\/driver\/passengers\/admin/);
   assert.match(source, /\/v1\/admin\/sync\/update-now/);
   assert.match(source, /\/v1\/admin\/sync\/reconcile/);
   assert.match(source, /public-attestation/);
-  assert.match(admin, /requireAdminSession0417\(req, res\)/);
-  assert.match(admin, /driverUsername.*session\.driverUsername/s);
-  assert.doesNotMatch(admin, /passwordHash:\s*password\s*[,}]/);
+  assert.match(admin, /requirePassengerSession\(req, res\)/);
+  assert.match(admin, /access\.agendaAdmin !== true/);
+  assert.match(admin, /passengerAccessForIdentity/);
+  assert.doesNotMatch(admin, /tripAdminSessions/);
 });
 
 test("public visibility and profile filters are applied in server projection", () => {
@@ -71,10 +74,17 @@ test("public visibility and profile filters are applied in server projection", (
   assert.match(source, /publicProfileScope0417\.has\(profileUuid\)/);
 });
 
-test("admin browser keeps session in sessionStorage and never persists password", () => {
+test("admin browser reuses Minhas Viagens bearer session without another password", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
-  assert.match(source, /sessionStorage\.setItem\(sessionKey/);
-  assert.doesNotMatch(source, /localStorage\.setItem\([^\n]*admin/i);
-  assert.doesNotMatch(source, /setItem\([^\n]*password/i);
-  assert.match(source, /X-Rota-Certa-Admin-Session/);
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+  assert.match(source, /rotacerta-passenger-session/);
+  assert.match(source, /Authorization.*Bearer/s);
+  assert.match(source, /X-Rota-Certa-Admin-Driver/);
+  assert.doesNotMatch(source, /X-Rota-Certa-Admin-Session/);
+  assert.doesNotMatch(html, /id="openAgendaAdmin0417"/);
+  assert.match(html, /id="portalAgendaAdminCard0418"/);
+  assert.match(html, /id="openAgendaAdmin0418"/);
+  assert.match(app, /passengerAgendaAdmin0418/);
+  assert.match(app, /body\.agendaAdmin === true/);
 });
