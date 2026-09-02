@@ -99,10 +99,10 @@ internal fun canonicalPublicProjectionPayload0411(
         timezoneId = trip.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
         status = status.name,
         capacity = capacity,
-        stops = trip.stops.sortedBy(TripStop::order).map { stop ->
+        stops = trip.stops.sortedBy(TripStop::order).mapIndexed { index, stop ->
             CanonicalPublicStop0411(
                 id = stop.id.trim(),
-                order = stop.order,
+                order = index,
                 name = stop.name.trim(),
                 address = stop.address.trim(),
                 plannedArrivalMillis = stop.plannedArrivalMillis,
@@ -174,7 +174,7 @@ internal fun evaluatePublicMirrorReadback0411(
     if (actual.publicBookingEnabled != expected.publicBookingEnabled) mismatch += "publicBookingEnabled"
     if (actual.capacityReliable != expected.capacityReliable) mismatch += "capacityReliable"
     if (actual.itineraryAuthoritative != expected.itineraryAuthoritative) mismatch += "itineraryAuthoritative"
-    if (actual.publicUrl != expected.publicUrl) mismatch += "publicUrl"
+    if (actual.publicUrl.isBlank() || actual.publicUrl != expected.publicUrl) mismatch += "publicUrl"
 
     val expectedTripId = expected.blablaTripId.takeIf(String::isNotBlank)
     val expectedLink = BlaBlaCollectorUrlModule.publicTrip(expected.blablaPublicUrl, expectedTripId).orEmpty()
