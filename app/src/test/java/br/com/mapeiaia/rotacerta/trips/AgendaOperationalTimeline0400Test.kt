@@ -13,6 +13,7 @@ class AgendaOperationalTimeline0400Test {
     private val coordinator = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt").readText()
     private val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
     private val collector = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt").readText()
+    private val timelineModule = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorTimelineModule.kt").readText()
     private val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
 
     @Test
@@ -95,7 +96,7 @@ class AgendaOperationalTimeline0400Test {
         assertTrue(dynamic.contains("BlaBlaTripIdentity.externalTripIdFromHref"))
         assertTrue(dynamic.contains("publishCurrentSessions("))
         assertTrue(collector.contains("fun resolveDistinct(trips: List<BlaBlaCollectorTrip>)"))
-        assertTrue(collector.contains("mergeSnapshotTrips("))
+        assertTrue(timelineModule.contains("fun mergeSnapshotTrips("))
     }
 
     @Test
