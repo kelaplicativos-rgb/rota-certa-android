@@ -431,7 +431,6 @@ internal class TripMutationCoordinator0387(
                 seatAllocationVersion = publicTrip.seatAllocationVersionUsed,
                 semanticSignature = signature,
             ),
-            remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
         )?.also { event ->
             recordEvent(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
@@ -607,6 +606,7 @@ internal class TripMutationCoordinator0387(
                     ?: existingBinding?.seatAllocationVersionUsed?.coerceAtLeast(0L) ?: 0L,
                 semanticSignature = signature,
             ),
+            remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
         )?.also { event ->
             recordEvent(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
