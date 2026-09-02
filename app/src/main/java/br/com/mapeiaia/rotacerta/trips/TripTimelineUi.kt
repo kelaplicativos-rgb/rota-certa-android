@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -983,6 +984,82 @@ private data class TimelineProfileCardColors(
     val border: Color,
 )
 
+private val PublicAgendaMirrorBlue0411 = Color(0xFF1769D2)
+private val PublicAgendaMirrorOrange0411 = Color(0xFFF59E0B)
+private val PublicAgendaMirrorRed0411 = Color(0xFFD32F2F)
+private val PublicAgendaMirrorGray0411 = Color(0xFF9E9E9E)
+
+private fun publicMirrorDotColor0411(trip: Trip?): Color = when {
+    trip == null -> PublicAgendaMirrorGray0411
+    trip.publicMirrorAttestationCurrent0411() -> PublicAgendaMirrorBlue0411
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> PublicAgendaMirrorOrange0411
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> PublicAgendaMirrorRed0411
+    else -> PublicAgendaMirrorGray0411
+}
+
+private fun publicMirrorDiagnosticTitle0411(trip: Trip?): String = when {
+    trip == null -> "Espelhamento não comprovado"
+    trip.publicMirrorAttestationCurrent0411() -> "Espelhamento integral validado"
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> "Sincronizando / validando"
+    trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "Divergência detectada"
+    else -> "Espelhamento não comprovado"
+}
+
+private fun publicMirrorMismatchLabel0411(field: String): String = when (field) {
+    "identity" -> "Identidade"
+    "revision" -> "Revisão"
+    "canonicalStateHash" -> "Estado canônico"
+    "title" -> "Título"
+    "departureAtMillis", "timezoneId" -> "Data/hora"
+    "status" -> "Status"
+    "capacity", "availability", "publishedSeats", "rotaCertaSeatAllocation" -> "Vagas"
+    "stops" -> "Paradas/itinerário"
+    "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads" -> "Ocupação por trecho"
+    "publicBookingEnabled" -> "Reserva pública"
+    "capacityReliable" -> "Confiabilidade da capacidade"
+    "itineraryAuthoritative" -> "Confiabilidade do itinerário"
+    "publicUrl" -> "Link público Rota Certa"
+    "blablaPublicUrl" -> "Link BlaBlaCar"
+    "serverHash", "publicHash" -> "Hash público"
+    "projectionMissing" -> "Projeção pública ausente"
+    else -> field
+}
+
+private fun publicMirrorDiagnosticBody0411(trip: Trip?): String {
+    if (trip == null) return "Este card ainda não possui uma viagem canônica vinculada."
+    if (trip.publicMirrorAttestationCurrent0411()) {
+        val hasBlaBlaIdentity = !trip.blablaTripId.isNullOrBlank()
+        return buildString {
+            appendLine("Identidade ✓")
+            appendLine(if (hasBlaBlaIdentity) "Trip ID ✓" else "Trip ID — não aplicável")
+            appendLine(if (!trip.blablaProfileUuid.isNullOrBlank()) "Perfil BlaBlaCar ✓" else "Perfil BlaBlaCar — não aplicável")
+            appendLine(if (hasBlaBlaIdentity) "Link BlaBlaCar ✓" else "Link BlaBlaCar — não aplicável")
+            appendLine("Itinerário ✓")
+            appendLine("Data/hora ✓")
+            appendLine("Paradas ✓")
+            appendLine("Vagas ✓")
+            appendLine("Ocupação ✓")
+            appendLine("Status ✓")
+            appendLine("Revisão ✓")
+            appendLine("Hash canônico ✓")
+            appendLine("Readback público ✓")
+            append("Revisão validada: ").append(trip.publicMirrorAttestedPublicationRevision0411)
+        }
+    }
+    val mismatches = trip.publicMirrorMismatchFields0411
+        .map(::publicMirrorMismatchLabel0411)
+        .distinct()
+    return buildString {
+        if (mismatches.isNotEmpty()) {
+            appendLine("Diferenças: " + mismatches.joinToString(", "))
+        }
+        appendLine("Revisão canônica: " + trip.canonicalRevision)
+        appendLine("Revisão pública local: " + trip.publicationRevision)
+        appendLine("Readback: " + if (trip.publicMirrorReadbackHash0411.isNotBlank()) "recebido" else "não comprovado")
+        append("Motivo: ").append(trip.publicMirrorAttestationReason0411.ifBlank { "evidência insuficiente" })
+    }
+}
+
 private fun timelineProfileCardColors(slot: Int, dark: Boolean): TimelineProfileCardColors = when (slot % 12) {
     0 -> if (dark) TimelineProfileCardColors(Color(0xFF172A46), Color(0xFF6EA0E8)) else TimelineProfileCardColors(Color(0xFFE7F0FF), Color(0xFF4F7FC7))
     1 -> if (dark) TimelineProfileCardColors(Color(0xFF183221), Color(0xFF6CAE7C)) else TimelineProfileCardColors(Color(0xFFE3F4E8), Color(0xFF4F8A62))
@@ -1030,6 +1107,12 @@ private fun TimelineEntryCard(
     val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
+    var showMirrorDiagnostic0411 by remember(
+        entry.tripId,
+        trip?.canonicalRevision,
+        trip?.publicationRevision,
+        trip?.publicMirrorAttestationState0411,
+    ) { mutableStateOf(false) }
     val tripTarget0407 = remember(entry.blablaProfileUuid, entry.blablaTripId, entry.blablaTripHref) {
         resolveBlaBlaTripTarget0407(context, entry)
     }
@@ -1086,6 +1169,19 @@ private fun TimelineEntryCard(
         }
     }
 
+    if (showMirrorDiagnostic0411) {
+        AlertDialog(
+            onDismissRequest = { showMirrorDiagnostic0411 = false },
+            title = { Text(publicMirrorDiagnosticTitle0411(trip)) },
+            text = { Text(publicMirrorDiagnosticBody0411(trip)) },
+            confirmButton = {
+                TextButton(onClick = { showMirrorDiagnostic0411 = false }) {
+                    Text("Fechar")
+                }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -1096,10 +1192,24 @@ private fun TimelineEntryCard(
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
-            Text(
-                date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = "●",
+                    color = publicMirrorDotColor0411(trip),
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier
+                        .clickable { showMirrorDiagnostic0411 = true }
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                )
+            }
             timelineDirectionDisplayLabel(direction)?.let { label ->
                 val chipColor = when (direction) {
                     TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF285A34) else Color(0xFFB8E6C4)
