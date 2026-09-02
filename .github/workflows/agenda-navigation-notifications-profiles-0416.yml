@@ -93,7 +93,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaMainThreadPerformance0394Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaMainThreadPerformance0394Test.notificationCredentialReadIsOffMainAndAgendaDoesNotReachIntoFarolImplementation' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFixedHeaderAccountsBrowsers0399Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test' \
