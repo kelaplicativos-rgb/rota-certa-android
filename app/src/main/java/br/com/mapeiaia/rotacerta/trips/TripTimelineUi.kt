@@ -1078,6 +1078,19 @@ private fun TimelineEntryCard(
         }
     }
 
+    if (showMirrorDiagnostic0417) {
+        AlertDialog(
+            onDismissRequest = { showMirrorDiagnostic0417 = false },
+            title = { Text(publicMirrorDiagnosticTitle0417(trip)) },
+            text = { Text(publicMirrorDiagnosticBody0417(trip)) },
+            confirmButton = {
+                TextButton(onClick = { showMirrorDiagnostic0417 = false }) {
+                    Text("Fechar")
+                }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
