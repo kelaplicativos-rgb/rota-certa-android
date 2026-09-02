@@ -112,14 +112,6 @@ class TripsActivity : ComponentActivity() {
         AgendaTrace.event(this, "TRIPS_ACTIVITY_ONCREATE_END", "durationMs=$createDurationMs", traceId)
     }
 
-    override fun onResume() {
-        super.onResume()
-        BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending(
-            context = this,
-            origin = "trips_activity_resume",
-        )
-    }
-
     override fun onDestroy() {
         AgendaTrace.event(
             this,

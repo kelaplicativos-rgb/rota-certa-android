@@ -109,7 +109,8 @@ class AgendaOperationalTimeline0400Test {
 
     @Test
     fun openingTimelineDoesNotStartCollectionAndManualSyncControlsStayRemoved() {
-        assertTrue(activity.contains("origin = \"trips_activity_resume\""))
+        assertFalse(activity.contains("BlaBlaAutomaticCollectionCoordinator0400.tryLaunchPending"))
+        assertFalse(activity.contains("trips_activity_resume"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Sincronizar BlaBlaCar\")"))
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Publicar agenda\")"))
