@@ -58,6 +58,14 @@ internal data class AgendaBackgroundSyncRun0392(
     val projectionRevisionRegression: Int = 0,
     val projectionOrphans: Int = 0,
     val projectionFailures: Int = 0,
+    val projectionValidated0411: Int = 0,
+    val projectionPending0411: Int = 0,
+    val projectionDivergent0411: Int = 0,
+    val projectionInvalidIdentity0411: Int = 0,
+    val projectionInvalidLink0411: Int = 0,
+    val projectionStaleRevision0411: Int = 0,
+    val projectionReadbackFailures0411: Int = 0,
+    val projectionReadbackLatencyMillis0411: Long = 0L,
 )
 
 internal data class AgendaAutomaticCollectorState0400(
@@ -692,6 +700,14 @@ internal data class ProjectionIntegrity0406(
     val orphans: Int = 0,
     val repairQueued: Int = 0,
     val failures: Int = 0,
+    val attestationValidated0411: Int = 0,
+    val attestationPending0411: Int = 0,
+    val attestationDivergent0411: Int = 0,
+    val attestationInvalidIdentity0411: Int = 0,
+    val attestationInvalidLink0411: Int = 0,
+    val attestationStaleRevision0411: Int = 0,
+    val attestationReadbackFailures0411: Int = 0,
+    val attestationReadbackLatencyMillis0411: Long = 0L,
 ) {
     val verified: Boolean
         get() = failures == 0 &&
@@ -702,7 +718,14 @@ internal data class ProjectionIntegrity0406(
             capacityMismatch == 0 &&
             statusMismatch == 0 &&
             revisionRegression == 0 &&
-            orphans == 0
+            orphans == 0 &&
+            attestationPending0411 == 0 &&
+            attestationDivergent0411 == 0 &&
+            attestationInvalidIdentity0411 == 0 &&
+            attestationInvalidLink0411 == 0 &&
+            attestationStaleRevision0411 == 0 &&
+            attestationReadbackFailures0411 == 0 &&
+            attestationValidated0411 == canonicalActive
 }
 
 internal fun remoteMatchesCanonicalProjection0408(
