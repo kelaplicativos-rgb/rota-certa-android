@@ -637,9 +637,7 @@ internal fun BlaBlaPublicTimelineCard(
 }
 
 @Composable
-internal fun TripDriverDefaultsCard(
-    settings: AppSettings,
-    repository: SettingsRepository,
+internal fun TripReferenceOriginSettingsCard0416(
     referenceOrigin: TripReferenceOrigin?,
     onReferenceChanged: (TripReferenceOrigin) -> Unit,
     onChanged: (String) -> Unit,
@@ -648,18 +646,6 @@ internal fun TripDriverDefaultsCard(
     val scope = rememberCoroutineScope()
     val referenceStore = remember(context) { TripReferenceOriginStore(context) }
     val locationService = remember(context) { DeviceLocationService(context) }
-    val traceId = AgendaTrace.currentTraceId()
-    var rotaCertaAllocation by remember(settings.rotaCertaSeatAllocation) {
-        mutableStateOf(settings.rotaCertaSeatAllocation.takeIf { it in 0..999 }?.toString() ?: "0")
-    }
-    LaunchedEffect(Unit) {
-        AgendaTrace.event(
-            context,
-            "ROTA_CERTA_SEAT_ALLOCATION_OPENED",
-            "source=vehicle_settings value=${rotaCertaAllocation.toIntOrNull() ?: 0}",
-            traceId,
-        )
-    }
     var locating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -686,6 +672,7 @@ internal fun TripDriverDefaultsCard(
                     context.packageName,
                     "accuracy=${fix.accuracyMeters ?: -1f} cached=${fix.fromCachedLocation} coordinate_saved=true",
                 )
+                onChanged("Origem operacional de referência atualizada.")
             }
             locating = false
         }
@@ -700,8 +687,9 @@ internal fun TripDriverDefaultsCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Origem operacional de referência", style = MaterialTheme.typography.titleMedium)
             Text(
-                if (referenceOrigin == null) "Origem de referência ainda não definida." else "📍 Origem definida por GPS",
+                if (referenceOrigin == null) "Origem ainda não definida." else "Origem definida por GPS.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             referenceOrigin?.let { origin ->
@@ -726,69 +714,32 @@ internal fun TripDriverDefaultsCard(
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (locating) "Obtendo GPS…" else if (referenceOrigin == null) "📍 DEFINIR ORIGEM" else "📍 REDEFINIR ORIGEM")
+                Text(if (locating) "Obtendo GPS…" else if (referenceOrigin == null) "DEFINIR ORIGEM" else "REDEFINIR ORIGEM")
             }
-
-            OutlinedTextField(
-                value = rotaCertaAllocation,
-                onValueChange = { raw -> rotaCertaAllocation = raw.filter(Char::isDigit).take(3) },
-                label = { Text("Vagas disponibilizadas no Rota Certa") },
-                supportingText = {
-                    Text("Única cota manual desta viagem. O valor 0 é válido.")
-                },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
             Text(
-                "A origem de referência é fixa até ser redefinida. O GPS atual continua separado e serve apenas para progresso da rota e próximo embarque.",
+                "Esta referência é uma preferência operacional persistente. O GPS atual da rota continua separado e serve ao progresso e aos embarques.",
                 style = MaterialTheme.typography.bodySmall,
             )
             error?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-            Button(
-                onClick = {
-                    val parsedRotaCerta = rotaCertaAllocation.toIntOrNull()
-                    if (parsedRotaCerta == null || parsedRotaCerta !in 0..999) {
-                        error = "Informe as vagas do Rota Certa entre 0 e 999."
-                        return@Button
-                    }
-                    error = null
-                    AgendaTrace.event(
-                        context,
-                        "ROTA_CERTA_SEAT_ALLOCATION_SAVE_REQUESTED",
-                        "source=user value=$parsedRotaCerta",
-                        traceId,
-                    )
-                    scope.launch {
-                        val saveOperation = AgendaTrace.operationStart(
-                            context,
-                            "ROTA_CERTA_SEAT_ALLOCATION_SAVE",
-                            "TripDriverDefaultsCard",
-                            traceId,
-                        )
-                        try {
-                            repository.saveSettings(
-                                settings.copy(rotaCertaSeatAllocation = parsedRotaCerta),
-                            )
-                            AgendaTrace.operationEnd(context, saveOperation, result = "saved", processedCount = 1)
-                            UnifiedDebugEventStore.record(
-                                "TRIP_DRIVER_DEFAULTS_SAVED",
-                                context.packageName,
-                                "rotaCertaSeatAllocation=$parsedRotaCerta legacyVehicleCapacityIgnored=true externalSeatAuthority=false referenceOriginConfigured=${referenceOrigin != null}",
-                            )
-                            onChanged("Vagas disponibilizadas no Rota Certa salvas.")
-                        } catch (failure: kotlinx.coroutines.CancellationException) {
-                            AgendaTrace.operationCancelled(context, saveOperation)
-                            throw failure
-                        } catch (failure: Throwable) {
-                            AgendaTrace.operationError(context, saveOperation, failure)
-                            throw failure
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text("Salvar veículo e vagas") }
         }
     }
+}
+
+/** Compatibility entry point for callers compiled against the pre-0.1.416 editor. */
+@Composable
+internal fun TripDriverDefaultsCard(
+    settings: AppSettings,
+    repository: SettingsRepository,
+    referenceOrigin: TripReferenceOrigin?,
+    onReferenceChanged: (TripReferenceOrigin) -> Unit,
+    onChanged: (String) -> Unit,
+) {
+    // settings/repository remain intentionally unused: manual seat allocation is trip-scoped now.
+    TripReferenceOriginSettingsCard0416(
+        referenceOrigin = referenceOrigin,
+        onReferenceChanged = onReferenceChanged,
+        onChanged = onChanged,
+    )
 }
 
 internal fun applyPublicExternalBookingsToTimeline(
