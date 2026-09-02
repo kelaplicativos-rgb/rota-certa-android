@@ -224,4 +224,36 @@ class BlaBlaTripControl0407Test {
         )
     }
 
+
+    @Test
+    fun targetedSessionDeltaPreservesSiblingTripInsteadOfReplacingAccountSnapshot() {
+        val oldA = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2026-09-02",
+            trip_href = target.tripHref,
+            trip_id = target.tripId,
+            published_seats = 3,
+            passenger_roster_complete = true,
+        )
+        val siblingB = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2026-09-03",
+            trip_href = "https://www.blablacar.com.br/trip/trip_other_654321",
+            trip_id = "trip_other_654321",
+            published_seats = 2,
+            passenger_roster_complete = true,
+        )
+        val freshA = oldA.copy(published_seats = 1)
+
+        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(oldA, siblingB),
+            current = listOf(freshA),
+            authoritativeComplete = false,
+        )
+
+        assertEquals(setOf(target.tripId, siblingB.trip_id), merged.trips.map { it.trip_id }.toSet())
+        assertEquals(1, merged.preservedMissingTrips)
+        assertEquals(2, merged.trips.size)
+    }
+
 }
