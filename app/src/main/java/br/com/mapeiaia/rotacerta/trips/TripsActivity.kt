@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -124,16 +125,18 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC, ACCOUNTS_BROWSERS }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, PASSENGERS, AUTO_SYNC, ACCOUNTS_BROWSERS }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
+        this == TripScreen.ASSISTANT ||
         this == TripScreen.PUBLIC_SEARCH ||
         this == TripScreen.PASSENGERS ||
         this == TripScreen.SETTINGS ||
         this == TripScreen.AUTO_SYNC
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
+    TripScreen.ASSISTANT -> AgendaRootSection0396.ASSISTANT
     TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
@@ -143,6 +146,8 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.TIMELINE -> "Todas as viagens"
+    TripScreen.ASSISTANT -> "Assistente Rota Certa"
+    TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "Sincronização automática"
     TripScreen.ACCOUNTS_BROWSERS -> "Contas e navegadores"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
@@ -256,7 +261,6 @@ private fun TripApp(
     var message by remember { mutableStateOf<String?>(null) }
     var driverNotifications by remember { mutableStateOf<List<DriverNotificationItem>>(emptyList()) }
     var driverUnreadCount by remember { mutableStateOf(0) }
-    var notificationsExpanded by remember { mutableStateOf(false) }
     val shareScope = rememberCoroutineScope()
 
     val refreshDriverNotifications: suspend () -> Unit = {
@@ -458,10 +462,16 @@ private fun TripApp(
         timelineUiCommand0396 = command
         timelineUiCommandToken0396 += 1
     }
-    val notificationLabel0396 = if (driverUnreadCount > 0) {
-        "Notificações (" + (if (driverUnreadCount > 99) "99+" else driverUnreadCount.toString()) + ")"
-    } else {
-        "Notificações"
+    val openNotifications0396 = {
+        if (screen != TripScreen.NOTIFICATIONS) {
+            if (screen.isAgendaRoot0396()) {
+                parentRootScreen0396 = screen
+            }
+            passengerSubscreenOpen0396 = false
+            screen = TripScreen.NOTIFICATIONS
+        }
+        shareScope.launch { refreshDriverNotifications() }
+        Unit
     }
     val headerActions0396 = when (screen) {
         TripScreen.TIMELINE -> listOf(
@@ -484,6 +494,9 @@ private fun TripApp(
             AgendaHeaderAction0396("Alternar próximas / arquivadas") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
             },
+            AgendaHeaderAction0396("Filtrar pendências das viagens") {
+                sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_SYNC_PENDING)
+            },
             AgendaHeaderAction0396("⬇️ Baixar Timeline") {
                 sendTimelineCommand0396(AgendaTimelineCommand0396.DOWNLOAD_TIMELINE)
             },
@@ -491,29 +504,8 @@ private fun TripApp(
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
                 message = if (requested) "Pedido de atalho enviado ao Android." else "O launcher não permite fixar atalhos automaticamente."
             },
-            AgendaHeaderAction0396(notificationLabel0396) {
-                notificationsExpanded = !notificationsExpanded
-                shareScope.launch { refreshDriverNotifications() }
-            },
         )
-        TripScreen.PUBLIC_SEARCH -> listOf(
-            AgendaHeaderAction0396(notificationLabel0396) {
-                notificationsExpanded = !notificationsExpanded
-                shareScope.launch { refreshDriverNotifications() }
-            },
-        )
-        TripScreen.PASSENGERS -> listOf(
-            AgendaHeaderAction0396(notificationLabel0396) {
-                notificationsExpanded = !notificationsExpanded
-                shareScope.launch { refreshDriverNotifications() }
-            },
-        )
-        else -> listOf(
-            AgendaHeaderAction0396(notificationLabel0396) {
-                notificationsExpanded = !notificationsExpanded
-                shareScope.launch { refreshDriverNotifications() }
-            },
-        )
+        else -> emptyList()
     }
     val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
     val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
@@ -532,6 +524,11 @@ private fun TripApp(
                     parentRootScreen0396 = TripScreen.TIMELINE
                     passengerSubscreenOpen0396 = false
                     screen = TripScreen.TIMELINE
+                }
+                AgendaRootSection0396.ASSISTANT -> {
+                    parentRootScreen0396 = TripScreen.ASSISTANT
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.ASSISTANT
                 }
                 AgendaRootSection0396.AUTOMATIC_SYNC -> {
                     parentRootScreen0396 = currentRootScreen0396
@@ -573,6 +570,8 @@ private fun TripApp(
                         }
                     },
                     overflowActions = headerActions0396,
+                    notificationUnreadCount = driverUnreadCount,
+                    onNotificationsClick = openNotifications0396,
                 )
             },
         ) { padding ->
@@ -591,69 +590,11 @@ private fun TripApp(
                 },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-            if (notificationsExpanded) {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Text("Notificações", style = MaterialTheme.typography.titleMedium)
-                            if (driverUnreadCount > 0) {
-                                TextButton(onClick = {
-                                    shareScope.launch {
-                                        val online = store.onlineSettings()
-                                        if (online.configured) {
-                                            runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
-                                            refreshDriverNotifications()
-                                        }
-                                    }
-                                }) { Text("Marcar todas como lidas") }
-                            }
-                        }
-                        if (driverNotifications.isEmpty()) {
-                            Text("Nenhuma notificação.", style = MaterialTheme.typography.bodySmall)
-                        } else {
-                            driverNotifications.take(20).forEach { item ->
-                                TextButton(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        shareScope.launch {
-                                            val online = store.onlineSettings()
-                                            if (online.configured && item.id.isNotBlank()) {
-                                                runCatching { TripRemoteApi(online).markDriverNotificationRead(item.id) }
-                                            }
-                                            val localTrip = trips.firstOrNull {
-                                                it.remoteId == item.tripId || it.id == item.tripId
-                                            }
-                                            if (localTrip != null) {
-                                                focusedTripId = localTrip.id
-                                                focusedRemoteTripId = item.tripId
-                                                focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
-                                                reservationPendingOnly = false
-                                                screen = TripScreen.TIMELINE
-                                            }
-                                            refreshDriverNotifications()
-                                        }
-                                    },
-                                ) {
-                                    Column(modifier = Modifier.fillMaxWidth()) {
-                                        Text(
-                                            (if (!item.read) "● " else "") + item.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                        )
-                                        Text(item.message, style = MaterialTheme.typography.bodySmall)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            message?.let {
+            message?.takeIf {
+                screen != TripScreen.TIMELINE &&
+                    screen != TripScreen.ASSISTANT &&
+                    screen != TripScreen.NOTIFICATIONS
+            }?.let {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(it, modifier = Modifier.padding(12.dp))
                 }
@@ -769,6 +710,69 @@ private fun TripApp(
                         }
                     },
                     )
+                }
+                TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(
+                    trips = trips,
+                    bookings = bookings,
+                    store = store,
+                    onChanged = { text -> refresh(); message = text },
+                )
+                TripScreen.NOTIFICATIONS -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Central de Notificações", style = MaterialTheme.typography.titleMedium)
+                        if (driverUnreadCount > 0) {
+                            TextButton(onClick = {
+                                shareScope.launch {
+                                    val online = store.onlineSettings()
+                                    if (online.configured) {
+                                        runCatching { TripRemoteApi(online).markAllDriverNotificationsRead() }
+                                        refreshDriverNotifications()
+                                    }
+                                }
+                            }) { Text("Marcar todas como lidas") }
+                        }
+                    }
+                    if (driverNotifications.isEmpty()) {
+                        Text("Nenhuma notificação.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        driverNotifications.take(20).forEach { item ->
+                            TextButton(
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = {
+                                    shareScope.launch {
+                                        val online = store.onlineSettings()
+                                        if (online.configured && item.id.isNotBlank()) {
+                                            runCatching { TripRemoteApi(online).markDriverNotificationRead(item.id) }
+                                        }
+                                        val localTrip = trips.firstOrNull {
+                                            it.remoteId == item.tripId || it.id == item.tripId
+                                        }
+                                        if (localTrip != null) {
+                                            focusedTripId = localTrip.id
+                                            focusedRemoteTripId = item.tripId
+                                            focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
+                                            reservationPendingOnly = false
+                                            parentRootScreen0396 = TripScreen.TIMELINE
+                                            screen = TripScreen.TIMELINE
+                                        }
+                                        refreshDriverNotifications()
+                                    }
+                                },
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        (if (!item.read) "● " else "") + item.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Text(item.message, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
                 }
                 TripScreen.PUBLIC_SEARCH -> AgendaPublicSearchRoot0396(
                     trips = trips,
