@@ -13,7 +13,10 @@ test("server registry exposes a bounded allowlist", () => {
   assert.ok(SERVER_ACTIONS_0410.includes("CREATE_TRIPS"));
   assert.ok(SERVER_ACTIONS_0410.includes("SET_TRIP_SEATS"));
   assert.equal(SERVER_ACTIONS_0410.includes("RUN_SHELL"), false);
-  assert.deepEqual(normalizeAllowedActions0410(["create_trips", "RUN_SHELL", "CREATE_TRIPS"]), ["CREATE_TRIPS"]);
+  assert.deepEqual(
+    normalizeAllowedActions0410(["create_trips", "RUN_SHELL", "SET_TRIP_BOOST", "CREATE_TRIPS"]),
+    ["CREATE_TRIPS"],
+  );
 });
 
 test("rejects day 32 before OpenAI", () => {
