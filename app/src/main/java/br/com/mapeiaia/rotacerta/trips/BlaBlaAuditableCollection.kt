@@ -302,7 +302,8 @@ object BlaBlaAuditableCollectionBuilder {
         }.toMap()
 
         data class Occurrence(val key: String, val value: BlaBlaAuditPublicCard)
-        val occurrences = response.cards.mapIndexed { occurrenceIndex, card ->
+        val auditCards = response.rawCards.ifEmpty { response.cards }
+        val occurrences = auditCards.mapIndexed { occurrenceIndex, card ->
             val fallbackTask = runCatching { BlaBlaPublicSearchTask(LocalDate.parse(card.date), card.searchFrom, card.searchTo) }.getOrNull()
             val queryId = card.queryId.ifBlank { fallbackTask?.let { publicSearchQueryId(request, it) }.orEmpty() }
             val direction = card.direction.ifBlank { fallbackTask?.let { publicSearchDirectionName(request, it) }.orEmpty() }
