@@ -175,6 +175,7 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(outbox.contains("eventSource = \"EXTERNAL_COLLECTION\""))
         assertTrue(timeline.contains("resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING"))
         assertTrue(timeline.contains("canonicalCollectorResponse0403"))
+        assertTrue(timeline.contains("localTripId = binding.bookingTripId.takeIf(String::isNotBlank)"))
         assertFalse(timeline.contains("collectorStore.lastResponseRecoveringDynamicSessions()"))
         assertFalse(timeline.contains("BlaBlaCollectorTimelineEvents0400.revision.collectAsState()"))
     }
