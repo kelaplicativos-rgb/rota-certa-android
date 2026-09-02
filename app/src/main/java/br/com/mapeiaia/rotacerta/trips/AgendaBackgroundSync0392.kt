@@ -1415,12 +1415,7 @@ internal object AgendaBackgroundSync0392 {
         val canonical = store.trips().filter {
             !it.deleted && it.departureAtMillis > nowMillis && it.status in publicStatuses
         }
-        val canonicalById = canonical.associateBy(Trip::id)
         val bindings = store.publicExternalBindings()
-        val remoteById = remoteStates.associateBy(DriverTripSyncState0402::remoteTripId)
-        val remoteByCanonicalId = remoteStates
-            .filter { it.canonicalTripId.isNotBlank() }
-            .associateBy(DriverTripSyncState0402::canonicalTripId)
         val coordinator = TripMutationCoordinator0387(context, store)
         var missing = 0
         var duplicates = 0
@@ -1544,34 +1539,62 @@ internal object AgendaBackgroundSync0392 {
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
-        val knownRemoteIds = bindings.map(PublicExternalTripBinding::remoteTripId).filter(String::isNotBlank).toSet() +
-            canonical.mapNotNull(Trip::remoteId).toSet() +
-            canonical.map(Trip::publicToken).filter(String::isNotBlank).toSet()
-        val orphans = remoteStates.count { remote ->
-            val canonicalId = remote.canonicalTripId
-            remote.remoteTripId in knownRemoteIds &&
-                canonicalId.isNotBlank() &&
-                canonicalId !in canonicalById
+        val orphanStates = remoteStates.filter { remote ->
+            val attributable =
+                remote.canonicalTripId.isNotBlank() ||
+                    remote.tripKey.isNotBlank() ||
+                    (remote.blablaProfileUuid.isNotBlank() && remote.blablaTripId.isNotBlank())
+            attributable && canonical.none { trip -> remoteMatchesCanonicalProjection0408(trip, remote) }
+        }
+        orphanStates.forEach { orphan ->
+            val destructiveAllowed = remoteProjectionWithinCompleteScope0408(orphan, completeCoverage)
+            UnifiedDebugEventStore.record(
+                "PROJECTION_ORPHAN_DETECTED_0408",
+                context.applicationContext.packageName,
+                "remoteTripId=" + orphan.remoteTripId +
+                    " canonicalTripId=" + orphan.canonicalTripId +
+                    " profileUuid=" + orphan.blablaProfileUuid +
+                    " blablaTripId=" + orphan.blablaTripId +
+                    " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
+                    " destructiveAllowed=" + destructiveAllowed,
+            )
+            if (
+                repair &&
+                destructiveAllowed &&
+                coordinator.recordProjectionTombstone0408(
+                    remote = orphan,
+                    mutationType = "COMPLETE_SCOPE_ORPHAN_PROJECTION",
+                ) != null
+            ) repairQueued++
         }
         val report = ProjectionIntegrity0406(
             canonicalActive = canonical.size,
             agendaProjections = remoteStates.size,
             missingAgenda = missing,
+            duplicates = duplicates,
             revisionMismatch = revisionMismatch,
             hashMismatch = hashMismatch,
-            orphans = orphans,
+            capacityMismatch = capacityMismatch,
+            statusMismatch = statusMismatch,
+            revisionRegression = revisionRegression,
+            orphans = orphanStates.size,
             repairQueued = repairQueued,
         )
         UnifiedDebugEventStore.record(
-            "PROJECTION_RECONCILER_0406",
+            "PROJECTION_RECONCILER_0408",
             context.applicationContext.packageName,
             "canonical=" + report.canonicalActive +
                 " agenda=" + report.agendaProjections +
                 " missingAgenda=" + report.missingAgenda +
+                " duplicates=" + report.duplicates +
                 " revisionMismatch=" + report.revisionMismatch +
                 " hashMismatch=" + report.hashMismatch +
+                " capacityMismatch=" + report.capacityMismatch +
+                " statusMismatch=" + report.statusMismatch +
+                " revisionRegression=" + report.revisionRegression +
                 " orphans=" + report.orphans +
                 " repairQueued=" + report.repairQueued +
+                " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
                 " repair=" + repair,
         )
         report
