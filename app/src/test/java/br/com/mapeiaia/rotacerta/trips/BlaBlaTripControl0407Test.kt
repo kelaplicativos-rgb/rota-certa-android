@@ -91,6 +91,13 @@ class BlaBlaTripControl0407Test {
     }
 
     @Test
+    fun networkFirstWaitIsBoundedBeforeDomFallback() {
+        assertTrue(shouldAwaitNetworkTripSource0407(sourcePresent = false, readAttempts = 0, maxReadAttempts = 2))
+        assertTrue(shouldAwaitNetworkTripSource0407(sourcePresent = false, readAttempts = 1, maxReadAttempts = 2))
+        assertFalse(shouldAwaitNetworkTripSource0407(sourcePresent = false, readAttempts = 2, maxReadAttempts = 2))
+        assertFalse(shouldAwaitNetworkTripSource0407(sourcePresent = true, readAttempts = 0, maxReadAttempts = 2))
+    }
+    @Test
     fun targetedReasonUsesCollectorReconcileWithoutFullCollectorSemantics() {
         assertEquals(
             AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
