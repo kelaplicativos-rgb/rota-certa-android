@@ -64,8 +64,13 @@ internal data class BlaBlaNetworkTripResolution(
  * memory. DOM extraction remains a fallback and never competes as an equal
  * authority once an exact, complete source roster is available.
  */
-internal object BlaBlaCollectorNetworkSourceModule {
-    private const val MAX_BOOKINGS = 48
+internal fun shouldAwaitNetworkTripSource0407(
+    sourcePresent: Boolean,
+    readAttempts: Int,
+    maxReadAttempts: Int,
+): Boolean = !sourcePresent && readAttempts >= 0 && readAttempts < maxReadAttempts.coerceAtLeast(0)
+
+internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BOOKINGS = 48
     private const val MAX_WAYPOINTS = 48
     private val stableIdRegex = Regex("[A-Za-z0-9_-]{8,160}")
 
