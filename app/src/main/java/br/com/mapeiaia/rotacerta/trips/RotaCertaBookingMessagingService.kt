@@ -159,6 +159,7 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
         val bookingId = message.data["bookingId"].orEmpty()
         val seats = message.data["seats"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
         val tripTitle = message.data["tripTitle"].orEmpty()
+        val correlationId0417 = message.data["correlationId"].orEmpty().take(100)
 
         BookingNotificationCenter0304.show(
             context = this,
@@ -177,12 +178,56 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
 
         BookingRealtimeEvents0356.notifyChanged()
         serviceScope.launch {
-            DriverNotificationProjection0416.refresh(this@RotaCertaBookingMessagingService)
+            if (event == "admin_sync_policy_changed") {
+                val store = TripStore(this@RotaCertaBookingMessagingService)
+                val settings = store.onlineSettings()
+                if (settings.configured) {
+                    runCatching { TripRemoteApi(settings).adminSyncPolicy0417().syncPolicy }
+                        .onSuccess { policy ->
+                            AgendaBackgroundSyncConfig0392.updateIntervalMinutes(
+                                this@RotaCertaBookingMessagingService,
+                                policy.intervalMinutes,
+                            )
+                            AgendaBackgroundSyncConfig0392.updateEnabled(
+                                this@RotaCertaBookingMessagingService,
+                                policy.automatic,
+                            )
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_ADMIN_SYNC_POLICY_APPLIED_0417",
+                                packageName,
+                                "automatic=${policy.automatic} intervalMinutes=${policy.intervalMinutes} correlationId=$correlationId0417",
+                            )
+                        }
+                        .onFailure { error ->
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_ADMIN_SYNC_POLICY_FAILED_0417",
+                                packageName,
+                                "correlationId=$correlationId0417 " +
+                                    AgendaFailureEvidence.describe(
+                                        error = error,
+                                        operation = "ADMIN_SYNC_POLICY_APPLY",
+                                        component = "RotaCertaBookingMessagingService",
+                                        method = "onMessageReceived",
+                                    ),
+                            )
+                        }
+                }
+            } else {
+                DriverNotificationProjection0416.refresh(this@RotaCertaBookingMessagingService)
+            }
         }
-        AgendaBackgroundSync0392.enqueueImmediate(
-            context = this,
-            reason = "booking_push:${event.take(40)}",
-        )
+        val syncReason0417 = when (event) {
+            "admin_update_now" -> "admin_update_now:$correlationId0417"
+            "admin_full_reconcile" -> "admin_full_reconcile:$correlationId0417"
+            "admin_sync_policy_changed" -> null
+            else -> "booking_push:${event.take(40)}"
+        }
+        syncReason0417?.let { reason ->
+            AgendaBackgroundSync0392.enqueueImmediate(
+                context = this,
+                reason = reason,
+            )
+        }
     }
 
     override fun onDestroy() {
