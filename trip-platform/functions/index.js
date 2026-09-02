@@ -197,6 +197,7 @@ async function sendDriverBookingPush({
   bookingId = "",
   seats = 0,
   tripTitle = "",
+  correlationId = "",
 }) {
   const username = normalizeUsername(driverUsername);
   if (!username) return;
@@ -234,6 +235,7 @@ async function sendDriverBookingPush({
         bookingId: cleanText(bookingId, 120),
         seats: String(Math.max(0, Number(seats || 0))),
         tripTitle: cleanText(tripTitle, 180),
+        correlationId: cleanText(correlationId, 100),
       },
       android: {
         priority: "high",
