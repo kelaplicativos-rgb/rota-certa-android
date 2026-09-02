@@ -20,7 +20,7 @@ internal enum class RotaCertaAction0410 {
     SET_SMART_STOPOVERS, SET_INSTANT_BOOKING, SET_TWO_MAX_IN_BACK, SET_WOMEN_ONLY, SET_TRIP_VEHICLE,
     SET_TRIP_COMMENT, DUPLICATE_TRIP, CREATE_RETURN_TRIP, CANCEL_TRIP, READ_BOOKINGS, ACCEPT_BOOKING,
     DECLINE_BOOKING, CANCEL_BOOKING, READ_PASSENGERS, READ_PASSENGER, CONTACT_PASSENGER, READ_MESSAGES,
-    SEND_MESSAGE, READ_PROFILE, READ_VEHICLE,
+    SEND_MESSAGE, READ_PROFILE, READ_VEHICLE, PUBLIC_SEARCH,
 }
 
 internal enum class RotaCertaCoverage0410 { DISCOVERED, MAPPED, IMPLEMENTED, VERIFIED, BLOCKED, NOT_AUTOMATABLE, NOT_APPLICABLE }
@@ -124,6 +124,13 @@ internal object RotaCertaCommandRegistry0410 {
         read(RotaCertaAction0410.READ_PASSENGER, setOf("ver passageiro"), "TripStore canonical bookings", coverage = RotaCertaCoverage0410.IMPLEMENTED, tripId = true),
         read(RotaCertaAction0410.READ_PROFILE, setOf("ver perfil"), "BlaBla collector profile snapshot", coverage = RotaCertaCoverage0410.IMPLEMENTED),
         read(RotaCertaAction0410.READ_VEHICLE, setOf("ver veículo"), "BlaBla collector profile snapshot", coverage = RotaCertaCoverage0410.IMPLEMENTED),
+        read(
+            RotaCertaAction0410.PUBLIC_SEARCH,
+            setOf("busca pública", "buscar publicamente", "procurar motorista", "buscar no blablacar"),
+            "BlaBlaPublicSearchActivity",
+            "BlaBlaPublicSearchStore validated/partial coverage",
+            coverage = RotaCertaCoverage0410.VERIFIED,
+        ),
         blocked(RotaCertaAction0410.SET_TRIP_DATE, setOf("alterar data"), "APK publication edit flow"),
         blocked(RotaCertaAction0410.SET_TRIP_TIME, setOf("alterar horário"), "APK /rides/offer/edit/itinerary/time"),
         blocked(RotaCertaAction0410.SET_TRIP_ORIGIN, setOf("alterar origem"), "APK trip edition departure autocomplete"),
@@ -189,6 +196,7 @@ internal data class RotaCertaStructuredCommand0410(
     val roundTrip: Boolean = false,
     val origin: String = "",
     val destination: String = "",
+    val publicTargetNames: List<String> = emptyList(),
     val seats: Int? = null,
     val priceText: String = "",
     val freeTextValue: String = "",
@@ -390,10 +398,20 @@ internal object RotaCertaEntityResolver0410 {
     ): RotaCertaResolvedEntities0410 {
         if (command.action !in tripTargetActions) return RotaCertaResolvedEntities0410(RotaCertaValidationCode0410.OK)
         val date = temporal.dates.singleOrNull()
+        val time = temporal.time
         val ref = command.tripReference.trim()
+        val origin = command.origin.trim()
+        val destination = command.destination.trim()
         val candidates = trips.asSequence()
             .filter { !it.deleted && it.status != TripStatus.CANCELLED }
             .filter { trip -> date == null || Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId).toLocalDate() == date }
+            .filter { trip ->
+                if (time == null) true
+                else Instant.ofEpochMilli(trip.departureAtMillis).atZone(zoneId).toLocalTime().let {
+                    it.hour == time.hour && it.minute == time.minute
+                }
+            }
+            .filter { trip -> tripRouteMatches0411(trip, origin, destination) }
             .filter { trip -> ref.isBlank() || tripMatches(trip, ref) }
             .toList()
         if (candidates.isEmpty()) return RotaCertaResolvedEntities0410(RotaCertaValidationCode0410.TRIP_NOT_FOUND, message = "Nenhuma viagem corresponde à referência informada.")
@@ -416,6 +434,29 @@ internal object RotaCertaEntityResolver0410 {
         if (passengerCandidates.isEmpty()) return RotaCertaResolvedEntities0410(RotaCertaValidationCode0410.PASSENGER_NOT_FOUND, trip = trip, message = "Passageiro não encontrado nessa viagem.")
         if (passengerCandidates.size != 1) return RotaCertaResolvedEntities0410(RotaCertaValidationCode0410.AMBIGUOUS_PASSENGER, trip = trip, message = "Encontrei mais de um passageiro com essa referência nessa viagem.")
         return RotaCertaResolvedEntities0410(RotaCertaValidationCode0410.OK, trip = trip, booking = passengerCandidates.single())
+    }
+
+    private fun tripRouteMatches0411(
+        trip: Trip,
+        origin: String,
+        destination: String,
+    ): Boolean {
+        if (origin.isBlank() && destination.isBlank()) return true
+        val stops = trip.stops.sortedBy(TripStop::order)
+        if (stops.size < 2) return false
+        fun stopMatches(stop: TripStop, reference: String): Boolean {
+            if (reference.isBlank()) return true
+            val needle = normalize(reference)
+            if (needle.isBlank()) return true
+            return listOf(stop.name, stop.address)
+                .map(::normalize)
+                .filter(String::isNotBlank)
+                .any { value ->
+                    value == needle || value.contains(needle) ||
+                        (value.length >= 4 && needle.contains(value))
+                }
+        }
+        return stopMatches(stops.first(), origin) && stopMatches(stops.last(), destination)
     }
 
     private fun tripMatches(trip: Trip, reference: String): Boolean {
@@ -478,10 +519,22 @@ internal object RotaCertaCommandPlanner0410 {
         if (command.action == RotaCertaAction0410.CREATE_TRIPS && temporal.dates.isEmpty()) {
             return RotaCertaPlanResult0410(RotaCertaValidationCode0410.AMBIGUOUS_DATE, message = "Informe ao menos uma data para criar as viagens.")
         }
+        if (command.action == RotaCertaAction0410.PUBLIC_SEARCH &&
+            (command.origin.isBlank() || command.destination.isBlank())
+        ) {
+            return RotaCertaPlanResult0410(
+                RotaCertaValidationCode0410.INVALID_ARGUMENT,
+                message = "Informe origem e destino para a busca pública.",
+            )
+        }
         val policy = if (capability.risk in setOf(RotaCertaRisk0410.HIGH_IMPACT, RotaCertaRisk0410.DESTRUCTIVE)) RotaCertaExecutionPolicy0410.CONFIRM_BEFORE_EXECUTION else RotaCertaExecutionPolicy0410.AUTO_EXECUTE_VALIDATED
         val targetIdentity = entities.trip?.let { listOf(it.id, it.blablaProfileUuid.orEmpty(), it.blablaTripId.orEmpty(), it.canonicalRevision.toString()).joinToString("|") }.orEmpty()
-        val keyMaterial = listOf(command.schemaVersion, command.action.name, targetIdentity, entities.booking?.id.orEmpty(),
-            temporal.dates.joinToString(","), command.seats?.toString().orEmpty(), command.priceText, command.freeTextValue).joinToString("|")
+        val keyMaterial = listOf(
+            command.schemaVersion, command.action.name, targetIdentity, entities.booking?.id.orEmpty(),
+            temporal.dates.joinToString(","), command.origin, command.destination,
+            command.publicTargetNames.joinToString(","), command.seats?.toString().orEmpty(),
+            command.priceText, command.freeTextValue,
+        ).joinToString("|")
         val idempotencyKey = sha256TripPublication0387(keyMaterial)
         return RotaCertaPlanResult0410(
             code = RotaCertaValidationCode0410.OK,

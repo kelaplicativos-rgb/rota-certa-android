@@ -43,6 +43,7 @@ const SERVER_ACTIONS_0410 = Object.freeze([
   "SEND_MESSAGE",
   "READ_PROFILE",
   "READ_VEHICLE",
+  "PUBLIC_SEARCH",
 ]);
 
 const INTERPRETER_ACTIONS_0410 = Object.freeze([
@@ -62,6 +63,7 @@ const INTERPRETER_ACTIONS_0410 = Object.freeze([
   "READ_PASSENGER",
   "READ_PROFILE",
   "READ_VEHICLE",
+  "PUBLIC_SEARCH",
 ]);
 
 class AssistantInterpreterError0410 extends Error {
@@ -124,7 +126,7 @@ function outputSchema0410(allowedActions) {
   return {
     type: "object",
     additionalProperties: false,
-    required: ["action","tripReference","passengerReference","bookingReference","temporal","dateTokens","roundTrip","origin","destination","seats","priceText","freeTextValue","requestedPolicy","interpretationConfidence","interpretationNotes","multipleActions"],
+    required: ["action","tripReference","passengerReference","bookingReference","temporal","dateTokens","roundTrip","origin","destination","publicTargetNames","seats","priceText","freeTextValue","requestedPolicy","interpretationConfidence","interpretationNotes","multipleActions"],
     properties: {
       action: { type: "string", enum: allowedActions },
       tripReference: { type: "string" },
@@ -148,6 +150,7 @@ function outputSchema0410(allowedActions) {
       roundTrip: { type: "boolean" },
       origin: { type: "string" },
       destination: { type: "string" },
+      publicTargetNames: { type: "array", items: { type: "string" }, maxItems: 8 },
       seats: { type: ["integer","null"] },
       priceText: { type: "string" },
       freeTextValue: { type: "string" },
@@ -169,6 +172,12 @@ function systemInstruction0410({ timezone, locale, allowedActions }) {
     "Não corrija datas impossíveis. Preserve os componentes temporais para validação determinística no Rota Certa.",
     "Para várias datas numéricas, coloque os tokens em dateTokens.",
     "Para hoje/amanhã/dias da semana, preencha temporal.relative/weekday; explicitDate só quando o usuário fornecer uma data inequívoca.",
+    "Copie em temporal.raw a expressão temporal relevante do usuário. Se ele disser manhã, tarde, noite ou madrugada, preserve essa palavra e não invente um horário exato.",
+    "Perguntas como 'tenho viagem dia X?', 'amanhã eu viajo?', 'amanhã à noite viajo que horas?' ou 'quais viagens tenho?' usam LIST_TRIPS, preservando data, horário e rota quando informados.",
+    "Perguntas como 'quem viaja comigo amanhã às 11?' ou 'quem vai nessa viagem?' usam READ_PASSENGERS; preserve data, horário e rota para o Rota Certa resolver a viagem real.",
+    "Perguntas como 'o carro está cheio dia X?' ou 'essa viagem está lotada?' usam LIST_FULL_TRIPS; preserve data, horário e rota.",
+    "Pedidos como 'faça uma busca pública no nome de Alessandra, sentido A para B' usam PUBLIC_SEARCH; coloque os nomes em publicTargetNames e a rota em origin/destination.",
+    "Use READ_TRIP somente quando o usuário pedir detalhes de uma viagem individual já identificável; não use READ_TRIP para uma simples pergunta de existência por data.",
     "Se houver duas operações independentes, marque multipleActions=true; o Rota Certa bloqueará e pedirá uma operação por vez.",
     "Não inclua cookies, tokens, senhas, chaves, HTML ou conteúdo externo.",
     "Timezone: " + clean(timezone, 80) + ". Locale: " + clean(locale, 40) + ".",
@@ -235,5 +244,6 @@ module.exports = {
   normalizeAllowedActions0410,
   validateRawTemporalText0410,
   outputSchema0410,
+  systemInstruction0410,
   interpretAssistantCommand0410,
 };

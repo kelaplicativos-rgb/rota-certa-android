@@ -28,6 +28,7 @@ class RotaCertaCommand0410Test {
         )
         assertTrue(RotaCertaAction0410.CREATE_TRIPS in allowed)
         assertTrue(RotaCertaAction0410.SET_TRIP_SEATS in allowed)
+        assertTrue(RotaCertaAction0410.PUBLIC_SEARCH in allowed)
         assertFalse(RotaCertaAction0410.SET_TRIP_BOOST in allowed)
         assertFalse(RotaCertaAction0410.CANCEL_TRIP in allowed)
         assertFalse(RotaCertaAction0410.SEND_MESSAGE in allowed)
@@ -152,6 +153,52 @@ class RotaCertaCommand0410Test {
                 listOf(original.copy(canonicalRevision = 8L)),
             ),
         )
+    }
+
+    @Test
+    fun dateOnlyListTripsFiltersCanonicalStateInsteadOfListingEverything() {
+        val october10 = trip("oct10", 10L).copy(
+            title = "Santo André para São Tomé das Letras",
+            departureAtMillis = Instant.parse("2026-10-10T14:00:00Z").toEpochMilli(),
+            stops = listOf(TripStop(order = 0, name = "Santo André"), TripStop(order = 1, name = "São Tomé das Letras")),
+        )
+        val september = trip("sep", 11L)
+        val query = command(RotaCertaAction0410.LIST_TRIPS, RotaCertaTemporalReference0410(explicitDate = "2026-10-10"))
+        val planned = RotaCertaCommandPlanner0410.plan(query, listOf(september, october10), emptyList(), now, zone)
+        val plan = assertNotNull(planned.plan)
+        assertEquals(listOf("oct10"), assistantMatchingTrips0411(query, plan, listOf(september, october10), zone).map(Trip::id))
+    }
+
+    @Test
+    fun passengerQueryUsesDateTimeAndRouteToResolveOneTrip() {
+        val target = trip("target", 10L).copy(
+            title = "Santo André para São Tomé das Letras",
+            departureAtMillis = Instant.parse("2026-10-10T14:00:00Z").toEpochMilli(),
+            stops = listOf(TripStop(order = 0, name = "Santo André"), TripStop(order = 1, name = "São Tomé das Letras")),
+        )
+        val otherTime = target.copy(id = "other", blablaTripId = "other", departureAtMillis = Instant.parse("2026-10-10T15:00:00Z").toEpochMilli())
+        val query = command(
+            RotaCertaAction0410.READ_PASSENGERS,
+            RotaCertaTemporalReference0410(explicitDate = "2026-10-10", time = "11:00"),
+        ).copy(origin = "Santo André", destination = "São Tomé das Letras")
+        val planned = RotaCertaCommandPlanner0410.plan(query, listOf(target, otherTime), emptyList(), now, zone)
+        assertEquals(RotaCertaValidationCode0410.OK, planned.code)
+        assertEquals("target", assertNotNull(planned.plan).trip?.id)
+    }
+
+    @Test
+    fun publicSearchUsesExistingAuditableCollectorAndRequiresRoute() {
+        val missing = RotaCertaCommandPlanner0410.plan(
+            command(RotaCertaAction0410.PUBLIC_SEARCH).copy(publicTargetNames = listOf("Alessandra")),
+            emptyList(), emptyList(), now, zone,
+        )
+        assertEquals(RotaCertaValidationCode0410.INVALID_ARGUMENT, missing.code)
+        val valid = RotaCertaCommandPlanner0410.plan(
+            command(RotaCertaAction0410.PUBLIC_SEARCH, RotaCertaTemporalReference0410(explicitDate = "2026-10-10"))
+                .copy(origin = "Santo André", destination = "São Tomé das Letras", publicTargetNames = listOf("Alessandra")),
+            emptyList(), emptyList(), now, zone,
+        )
+        assertEquals(RotaCertaValidationCode0410.OK, valid.code)
     }
 
     private fun command(
