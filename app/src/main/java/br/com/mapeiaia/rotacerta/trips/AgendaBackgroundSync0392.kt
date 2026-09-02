@@ -1707,6 +1707,13 @@ class AgendaBackgroundSyncWorker0392(
             } else {
                 0
             }
+            val fullReconcileComplete = when {
+                cycle.collectorPending -> false
+                reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
+                collectorWasRequested ->
+                    collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
+                else -> false
+            }
             val resultLabel = when {
                 retryPending -> "RETRY"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
@@ -1720,13 +1727,6 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionOrphans == 0 &&
                     cycle.projectionFailures == 0 -> "VERIFIED"
                 else -> "SUCCESS"
-            }
-            val fullReconcileComplete = when {
-                cycle.collectorPending -> false
-                reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
-                collectorWasRequested ->
-                    collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
-                else -> false
             }
             AgendaBackgroundSyncConfig0392.recordRunFinished(
                 context = applicationContext,
