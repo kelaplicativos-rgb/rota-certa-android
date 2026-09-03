@@ -611,7 +611,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           if (window.__rotaCertaNetworkDiagnosticInstalled === true) return;
           if (window !== window.top) return;
           const isOfficialPageHost = function(hostname) {
-            const labels = String(hostname || '').trim().toLowerCase().replace(/^\\.+|\\.+$/g, '').split('.').filter(Boolean);
+            const labels = String(hostname || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
             const root = labels[0] === 'www' ? labels.slice(1) : labels;
             if (root[0] !== 'blablacar') return false;
             const suffix = root.slice(1);
@@ -696,7 +696,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               const current = new URL(location.href);
               let value = sourceText(current.searchParams.get('id'), 160);
               if (!value) {
-                const match = current.pathname.match(/\\/rides\\/offer\\/(?!edit(?:\\/|$)|passenger(?:\\/|$))([^/?#]+)/i);
+                const match = current.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
                 value = sourceText(match && match[1], 160);
               }
               return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value.toLowerCase() : '';
@@ -709,11 +709,11 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             try {
               const url = new URL(String(raw || ''), location.href);
               if (!['http:', 'https:'].includes(url.protocol) || !isOfficialPageHost(url.hostname)) return null;
-              const path = url.pathname.replace(/\\/+$/, '').toLowerCase();
+              const path = url.pathname.replace(/\/+$/, '').toLowerCase();
               if (path !== '/trip' && !path.startsWith('/trip/')) return null;
               let publicId = sourceText(url.searchParams.get('id'), 160);
               if (!publicId) {
-                const match = url.pathname.match(/\\/trip\\/([^/?#]+)/i);
+                const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
                 publicId = sourceText(match && match[1], 160);
               }
               if (!/^[A-Za-z0-9_-]{8,160}$/.test(publicId)) return null;
