@@ -184,6 +184,22 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     else -> "EVENT_DELTA"
 }
 
+internal fun targetedReverifyTransportRevision0439(
+    canonicalRevision: Long,
+    localPublicationRevision: Long,
+    remotePublicationRevision: Long,
+): Long = maxOf(
+    canonicalRevision.coerceAtLeast(0L),
+    localPublicationRevision.coerceAtLeast(0L),
+    remotePublicationRevision.coerceAtLeast(0L),
+).coerceAtLeast(1L)
+
+internal fun targetedReverifyRemoteLogicalAhead0439(
+    canonicalRevision: Long,
+    remoteCanonicalRevision: Long,
+): Boolean =
+    remoteCanonicalRevision > canonicalRevision.coerceAtLeast(0L)
+
 internal data class AgendaBackgroundSyncStatus0397(
     val enabled: Boolean,
     val intervalMinutes: Long,
@@ -1142,13 +1158,64 @@ internal object AgendaBackgroundSync0392 {
                 .joinToString("|"),
         )
         return try {
+            val api = TripRemoteApi(settings)
+            val remoteBefore = api.listDriverTripSyncStates0402().trips
+                .filter { state ->
+                    state.canonicalTripId == canonicalTripId ||
+                        (
+                            state.blablaProfileUuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                                state.blablaTripId.trim() == target.tripId
+                            )
+                }
+                .maxWithOrNull(
+                    compareBy<DriverTripSyncState0402> { it.canonicalTripId == canonicalTripId }
+                        .thenBy { it.canonicalRevision }
+                        .thenBy { it.publicationRevision },
+                )
+            if (
+                remoteBefore != null &&
+                targetedReverifyRemoteLogicalAhead0439(
+                    canonicalRevision = canonical.canonicalRevision,
+                    remoteCanonicalRevision = remoteBefore.canonicalRevision,
+                )
+            ) {
+                return BlaBlaCommandResult0407(
+                    commandId = work.commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.NETWORK,
+                    status = BlaBlaCommandStatus0407.UNVERIFIED,
+                    errorCode = "REMOTE_LOGICAL_REVISION_AHEAD",
+                    verification = "remote_projection_newer_than_local_canonical",
+                    exceptionMessage = "Revisão lógica remota=" + remoteBefore.canonicalRevision +
+                        " local=" + canonical.canonicalRevision,
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            }
+            val transportRevision0439 = targetedReverifyTransportRevision0439(
+                canonicalRevision = canonical.canonicalRevision,
+                localPublicationRevision = canonical.publicationRevision,
+                remotePublicationRevision = remoteBefore?.publicationRevision ?: 0L,
+            )
+            UnifiedDebugEventStore.record(
+                "AGENDA_CANONICAL_REVERIFY_TRANSPORT_0439",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonical.id) +
+                    " logicalRevision=" + canonical.canonicalRevision +
+                    " localTransportRevision=" + canonical.publicationRevision +
+                    " remoteTransportRevision=" + (remoteBefore?.publicationRevision ?: 0L) +
+                    " effectiveTransportRevision=" + transportRevision0439 +
+                    " remoteLogicalRevision=" + (remoteBefore?.canonicalRevision ?: 0L) +
+                    " transportRebased=" + (transportRevision0439 > canonical.canonicalRevision),
+            )
             PublicAgendaAutoSync0300.syncExternalTripIncremental(
                 context = appContext,
                 store = store,
                 source = source,
                 configuredRotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation ?: 0,
                 nowMillis = nowMillis,
-                entityRevision = canonical.canonicalRevision,
+                entityRevision = transportRevision0439,
                 outboxEventId = work.commandId,
                 mutationId0421 = mutationId,
                 idempotencyKey0421 = idempotencyKey,
@@ -1156,8 +1223,14 @@ internal object AgendaBackgroundSync0392 {
                 canonicalTripId = canonicalTripId,
                 seatAllocationVersion = canonical.seatAllocationVersionUsed,
                 canonicalTripSnapshot = canonical,
+                remoteStateHint0402 = remoteBefore,
             )
-            val api = TripRemoteApi(settings)
+            store.recordPublicationCommitted0411(
+                canonicalTripId = canonical.id,
+                publicationRevision = transportRevision0439,
+                publicationEventId = work.commandId,
+                tombstone = false,
+            )
             val remote = api.listDriverTripSyncStates0402().trips
                 .filter { state ->
                     state.canonicalTripId == canonicalTripId ||
