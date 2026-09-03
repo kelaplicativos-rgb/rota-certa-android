@@ -4,6 +4,7 @@ import android.content.Context
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
+import java.text.Normalizer
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
@@ -11,6 +12,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+@Serializable
+enum class BlaBlaSourceAccessStatus0426 {
+    AVAILABLE,
+    TEMPORARILY_RESTRICTED,
+}
 
 @Serializable
 data class BlaBlaDynamicSessionSnapshot(
@@ -22,6 +29,107 @@ data class BlaBlaDynamicSessionSnapshot(
     val updatedAtMillis: Long = System.currentTimeMillis(),
     val trips: List<BlaBlaCollectorTrip> = emptyList(),
     val skippedTrips: Int = 0,
+    val sourceAccessStatus0426: BlaBlaSourceAccessStatus0426 = BlaBlaSourceAccessStatus0426.AVAILABLE,
+    val sourceAccessSinceMillis0426: Long = 0L,
+    val sourceAccessDetector0426: String = "",
+    val sourceAccessIncidentReference0426: String = "",
+    val sourceAccessHttpStatus0426: Int = 0,
+    val lastValidSyncAtMillis0426: Long = 0L,
+    val sourceRestrictionCount0426: Int = 0,
+)
+
+internal data class BlaBlaSourceAccessProbe0426(
+    val finalUrl: String,
+    val title: String = "",
+    val bodyText: String = "",
+    val httpStatus: Int = 0,
+)
+
+internal data class BlaBlaSourceAccessDetection0426(
+    val status: BlaBlaSourceAccessStatus0426,
+    val detector: String = "",
+    val incidentReference: String = "",
+    val httpStatus: Int = 0,
+) {
+    val temporarilyRestricted: Boolean
+        get() = status == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED
+}
+
+internal object BlaBlaSourceAccessDetector0426 {
+    private val incidentLabeled = Regex(
+        "(?i)(?:incident(?:e)?|reference|refer[eê]ncia)[^0-9a-f]{0,48}" +
+            "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+    )
+    private val uuidLike = Regex(
+        "(?i)\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b",
+    )
+
+    fun detect(probe: BlaBlaSourceAccessProbe0426): BlaBlaSourceAccessDetection0426 {
+        val combined = listOf(probe.title, probe.bodyText).joinToString(" ")
+        val normalized = normalize(combined)
+        val url = probe.finalUrl.lowercase()
+        val temporaryPhrase = listOf(
+            "acesso esta temporariamente restrito",
+            "acesso temporariamente restrito",
+            "access is temporarily restricted",
+            "access temporarily restricted",
+            "temporarily restricted",
+            "temporarily blocked",
+        ).any(normalized::contains)
+        val protectionHints = listOf(
+            "javascript",
+            "comportamento automatizado",
+            "automated behavior",
+            "automated traffic",
+            "velocidade excessiva",
+            "too many requests",
+            "cliques",
+            "clicks",
+            "incident",
+            "incidente",
+            "reference",
+            "referencia",
+        ).count(normalized::contains)
+        val labeledIncident = incidentLabeled.find(combined)?.groupValues?.getOrNull(1).orEmpty()
+        val anyIncident = labeledIncident.ifBlank { uuidLike.find(combined)?.value.orEmpty() }
+        val challengeUrl = listOf("/challenge", "/captcha", "/blocked", "/access-denied")
+            .any(url::contains)
+
+        val detector = when {
+            probe.httpStatus == 429 -> "main_frame_http_429"
+            temporaryPhrase && anyIncident.isNotBlank() -> "temporary_restriction_text+incident_reference"
+            temporaryPhrase && protectionHints > 0 -> "temporary_restriction_text+protection_context"
+            probe.httpStatus == 403 && anyIncident.isNotBlank() && protectionHints > 0 ->
+                "main_frame_http_403+incident_reference+protection_context"
+            challengeUrl && anyIncident.isNotBlank() -> "challenge_url+incident_reference"
+            else -> ""
+        }
+        return if (detector.isNotBlank()) {
+            BlaBlaSourceAccessDetection0426(
+                status = BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED,
+                detector = detector,
+                incidentReference = anyIncident.take(120),
+                httpStatus = probe.httpStatus,
+            )
+        } else {
+            BlaBlaSourceAccessDetection0426(
+                status = BlaBlaSourceAccessStatus0426.AVAILABLE,
+                httpStatus = probe.httpStatus,
+            )
+        }
+    }
+
+    private fun normalize(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
+            .replace(Regex("\\s+"), " ")
+            .trim()
+}
+
+internal data class BlaBlaExternalFlightLease0426(
+    val key: String,
+    val token: String,
 )
 
 internal data class BlaBlaHarvestSessionMergeResult(
@@ -95,6 +203,89 @@ class BlaBlaDynamicSessionStore(context: Context) {
         }
     }
 
+    fun isSourceCircuitOpen0426(account: BlaBlaDynamicAccount): Boolean =
+        read(account)?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED
+
+    fun markTemporarilyRestricted0426(
+        account: BlaBlaDynamicAccount,
+        lastUrl: String,
+        detection: BlaBlaSourceAccessDetection0426,
+    ): BlaBlaDynamicSessionSnapshot = withAccountLock(account.id) {
+        val now = System.currentTimeMillis()
+        val previous = readUnlocked(account)
+            ?: BlaBlaDynamicSessionSnapshot(
+                accountId = account.id,
+                profileUuid = account.profileUuid,
+                profileLabel = account.displayLabel,
+            )
+        val replacement = previous.copy(
+            profileUuid = account.profileUuid ?: previous.profileUuid,
+            profileLabel = account.displayLabel,
+            lastUrl = lastUrl.take(1000),
+            updatedAtMillis = now,
+            sourceAccessStatus0426 = BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED,
+            sourceAccessSinceMillis0426 = previous.sourceAccessSinceMillis0426
+                .takeIf {
+                    previous.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED &&
+                        it > 0L
+                } ?: now,
+            sourceAccessDetector0426 = detection.detector.take(160),
+            sourceAccessIncidentReference0426 = detection.incidentReference.take(120),
+            sourceAccessHttpStatus0426 = detection.httpStatus.coerceAtLeast(0),
+            sourceRestrictionCount0426 = previous.sourceRestrictionCount0426 + 1,
+        )
+        writeUnlocked(account, replacement)
+        replacement
+    }
+
+    fun markSourceAvailable0426(
+        account: BlaBlaDynamicAccount,
+        lastUrl: String,
+    ): BlaBlaDynamicSessionSnapshot? = withAccountLock(account.id) {
+        val previous = readUnlocked(account) ?: return@withAccountLock null
+        if (previous.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.AVAILABLE) return@withAccountLock previous
+        val replacement = previous.copy(
+            lastUrl = lastUrl.take(1000),
+            updatedAtMillis = System.currentTimeMillis(),
+            sourceAccessStatus0426 = BlaBlaSourceAccessStatus0426.AVAILABLE,
+            sourceAccessSinceMillis0426 = 0L,
+            sourceAccessDetector0426 = "",
+            sourceAccessIncidentReference0426 = "",
+            sourceAccessHttpStatus0426 = 0,
+        )
+        writeUnlocked(account, replacement)
+        replacement
+    }
+
+    fun tryAcquireExternalFlight0426(
+        account: BlaBlaDynamicAccount,
+        token: String,
+    ): BlaBlaExternalFlightLease0426? {
+        val normalizedToken = token.trim().takeIf(String::isNotEmpty) ?: return null
+        val identity = account.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+            ?.let { "profile:" + it }
+            ?: "account:" + account.id.trim()
+        val key = tenantScope.tenantId.trim() + "|" + identity
+        val existing = externalFlightOwners0426.putIfAbsent(key, normalizedToken)
+        return if (existing == null || existing == normalizedToken) {
+            BlaBlaExternalFlightLease0426(key, normalizedToken)
+        } else {
+            null
+        }
+    }
+
+    fun releaseExternalFlight0426(lease: BlaBlaExternalFlightLease0426?) {
+        lease ?: return
+        externalFlightOwners0426.remove(lease.key, lease.token)
+    }
+
+    fun hasConcurrentExternalFlight0426(account: BlaBlaDynamicAccount): Boolean {
+        val identity = account.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+            ?.let { "profile:" + it }
+            ?: "account:" + account.id.trim()
+        return externalFlightOwners0426.containsKey(tenantScope.tenantId.trim() + "|" + identity)
+    }
+
     fun saveSync(
         account: BlaBlaDynamicAccount,
         lastUrl: String,
@@ -150,6 +341,21 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     updatedAtMillis = System.currentTimeMillis(),
                     trips = merged.trips,
                     skippedTrips = effectiveSkippedTrips,
+                    sourceAccessStatus0426 = if (authoritativeComplete) {
+                        BlaBlaSourceAccessStatus0426.AVAILABLE
+                    } else {
+                        previous?.sourceAccessStatus0426 ?: BlaBlaSourceAccessStatus0426.AVAILABLE
+                    },
+                    sourceAccessSinceMillis0426 = if (authoritativeComplete) 0L else previous?.sourceAccessSinceMillis0426 ?: 0L,
+                    sourceAccessDetector0426 = if (authoritativeComplete) "" else previous?.sourceAccessDetector0426.orEmpty(),
+                    sourceAccessIncidentReference0426 = if (authoritativeComplete) "" else previous?.sourceAccessIncidentReference0426.orEmpty(),
+                    sourceAccessHttpStatus0426 = if (authoritativeComplete) 0 else previous?.sourceAccessHttpStatus0426 ?: 0,
+                    lastValidSyncAtMillis0426 = if (authoritativeComplete) {
+                        System.currentTimeMillis()
+                    } else {
+                        previous?.lastValidSyncAtMillis0426 ?: 0L
+                    },
+                    sourceRestrictionCount0426 = previous?.sourceRestrictionCount0426 ?: 0,
                 ),
             )
             UnifiedDebugEventStore.record(
@@ -340,5 +546,6 @@ class BlaBlaDynamicSessionStore(context: Context) {
     companion object {
         private const val MAX_HTML_CHARS = 350_000
         private val accountLocks = ConcurrentHashMap<String, Any>()
+        private val externalFlightOwners0426 = ConcurrentHashMap<String, String>()
     }
 }
