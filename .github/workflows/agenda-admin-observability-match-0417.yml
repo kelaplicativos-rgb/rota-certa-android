@@ -1,16 +1,16 @@
-name: Rota Certa passenger-scoped Agenda admin 0.1.418
+name: Rota Certa passenger admin detail performance 0.1.419
 
 on:
   push:
     branches:
-      - agent/passenger-admin-role-0.1.418
+      - agent/passenger-admin-detail-performance-0.1.419
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: passenger-admin-role-0418-${{ github.ref }}
+  group: passenger-admin-detail-performance-0419-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0418_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0419_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -36,11 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          grep -Fq 'versionCode = 5711' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.418"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5712' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.419"' app/build.gradle.kts
           printf '%s\n' "${{ github.sha }}" > source_head.txt
           printf '%s\n' "${{ github.ref_name }}" > source_branch.txt
-          git diff --name-only 89ed3b1455405e3b2c65882c922394be04fc2b28...HEAD > changed-files.txt
+          git diff --name-only 11b448a4a677960ae1b37767d80d9bae3ce37aed...HEAD > changed-files.txt
           if grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol' changed-files.txt; then
             echo "Protected FAROL scope changed unexpectedly."
             cat changed-files.txt
@@ -111,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile all debug unit tests
         run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -188,7 +188,7 @@ jobs:
       - name: Upload exact SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.418-passenger-admin-${{ github.sha }}
+          name: rota-certa-0.1.419-passenger-admin-detail-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
