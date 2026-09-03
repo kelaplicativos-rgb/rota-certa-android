@@ -1897,6 +1897,51 @@ internal object AgendaBackgroundSync0392 {
         report
     }
 
+    private suspend fun runCollectorCardDelta0431(
+        appContext: Context,
+        tenantId: String,
+    ): AgendaBackgroundSyncRun0392 {
+        val store = TripStore(appContext)
+        val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
+        val tenantSettings = SettingsRepository(appContext).settings.first()
+        val response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions()
+        val batch = reconcileCollectedExternalTrips0403(
+            context = appContext,
+            store = store,
+            response = response,
+            rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            collectionRunId = "collector-card-delta:" + collectorState.generation,
+            collectionGeneration = collectorState.generation,
+            completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
+        )
+        if (batch.changedTrips > 0 || batch.tombstonedTrips > 0) {
+            BookingRealtimeEvents0356.notifyChanged()
+        }
+        val delivered = TripMutationCoordinator0387(appContext, store).drainPending(
+            canonicalTripIds = batch.publicationCanonicalTripIds0431,
+        )
+        TripWidgetProvider.updateAll(appContext)
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_CARD_DELTA_APPLIED_0431",
+            appContext.packageName,
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} changed=${batch.changedTrips} tombstoned=${batch.tombstonedTrips} targetedCards=${batch.publicationCanonicalTripIds0431.size} delivered=$delivered timelineUpdated=true publicUpdated=true fullSyncRequested=false",
+        )
+        return AgendaBackgroundSyncRun0392(
+            outboxDelivered = delivered,
+            collectorGeneration = collectorState.generation,
+            collectorStatus = collectorState.status,
+            collectorPending = collectorState.pending,
+            collectorChangedTrips = batch.changedTrips,
+            collectorSkippedTrips = batch.skippedTrips,
+            collectorPublicationQueued = batch.publicationQueued,
+            collectorMissingPreserved = batch.missingPreserved,
+            collectorTombstonedTrips = batch.tombstonedTrips,
+            collectorOrphanProjectionTombstones = batch.orphanProjectionTombstones,
+            collectorStaleResultsRejected = batch.staleResultsRejected,
+        )
+    }
+
     private suspend fun runBookingCardDelta0431(
         appContext: Context,
         reason: String,
