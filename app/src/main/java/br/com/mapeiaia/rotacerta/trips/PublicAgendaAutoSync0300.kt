@@ -514,6 +514,7 @@ internal object PublicAgendaAutoSync0300 {
         var publicTrip = withAllocation.copy(
             capacity = operationalInventoryCapacity(withAllocation, localBookings),
             capacityReliable = true,
+            publicTimezoneId0411 = withAllocation.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
         )
         val mirrors = localCapacityMirrors(publicTrip, localBookings)
         val revision = localCapacitySnapshotRevision(publicTrip, localBookings, allocation)
@@ -1274,6 +1275,7 @@ internal object PublicAgendaAutoSync0300 {
             publicationEventId = canonical.publicationEventId,
             tripKey = canonical.tripKey,
             canonicalStateHash = canonical.canonicalStateHash,
+            publicTimezoneId0411 = canonical.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
             lastCollectionRunId = canonical.lastCollectionRunId,
             lastCollectionGeneration = canonical.lastCollectionGeneration,
             lastObservedAtMillis = canonical.lastObservedAtMillis,
@@ -1361,6 +1363,8 @@ internal object PublicAgendaAutoSync0300 {
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
+            publicTimezoneId0411 = zoneId.id,
+
             capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()
