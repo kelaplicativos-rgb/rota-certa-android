@@ -1,4 +1,4 @@
-name: Rota Certa Agenda canonical B2B mirror 0.1.431
+name: Rota Certa Agenda canonical B2B mirror 0.1.432
 
 on:
   push:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5724' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.431"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5725' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.432"' app/build.gradle.kts
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           if git diff --name-only "$BASE"..HEAD | grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol'; then
             echo "Protected FAROL scope changed unexpectedly."
@@ -145,8 +145,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5724'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.431'" /tmp/aapt.txt
+          grep -Fq "versionCode='5725'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.432'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -218,7 +218,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/0431
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0431/rota-certa-0.1.431-agenda-canonical-b2b-mirror.apk
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0431/rota-certa-0.1.432-agenda-canonical-b2b-mirror.apk
           cp /tmp/source-head.txt /tmp/0431/source-head.txt
           cp /tmp/source-branch.txt /tmp/0431/source-branch.txt
           cp /tmp/changed-files.txt /tmp/0431/changed-files.txt
@@ -228,7 +228,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.431-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.432-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0431
