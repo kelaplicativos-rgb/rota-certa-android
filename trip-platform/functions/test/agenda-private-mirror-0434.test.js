@@ -48,6 +48,20 @@ test("capacity contract persists exact canonical projection instead of reinterpr
   assert.ok(persistenceIndex > statusIndex, "canonical projection must override server-derived public status");
 });
 
+test("partial collector repairs exact canonical projection without replacing managed capacity claims", () => {
+  const capacity = source.slice(
+    source.indexOf("async function reconcileDriverCapacitySnapshot"),
+    source.indexOf("async function listDriverTripSyncState0402"),
+  );
+  assert.match(capacity, /preserveManagedClaims0436/);
+  assert.match(capacity, /partial_projection_requires_canonical_bytes/);
+  assert.match(capacity, /partial_projection_claims_forbidden/);
+  assert.doesNotMatch(capacity, /if \(!sourceComplete \|\| !snapshotRevision\)/);
+  assert.match(capacity, /const staleManaged = preserveManagedClaims0436/);
+  assert.match(capacity, /const candidateRecords = preserveManagedClaims0436 \? recordsWithProtected/);
+  assert.match(capacity, /capacitySnapshotRevision: preserveManagedClaims0436/);
+  assert.match(capacity, /sameRevisionCanonicalAdvance0436/);
+});
 test("visibility policy is server-side and revisioned separately", () => {
   assert.match(admin, /visibilityPolicyRevision0434/);
   assert.match(admin, /privateByDefault = \["passengerNames", "passengerContacts"\]/);
