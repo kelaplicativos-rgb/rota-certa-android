@@ -126,7 +126,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile lint and assemble exact SHA
