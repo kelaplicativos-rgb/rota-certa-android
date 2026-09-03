@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import java.lang.reflect.Modifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class AgendaPrivateMirror0434Test {
