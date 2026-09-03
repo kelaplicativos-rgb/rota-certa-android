@@ -155,6 +155,11 @@ data class Trip(
     val publicMirrorHttpStatus0421: Int = 0,
     val publicMirrorBackendErrorCode0421: String = "",
     val publicMirrorFailedStage0421: String = "",
+    val publicMirrorNetworkCallId0421: String = "",
+    val publicMirrorRequestBytes0421: Int = 0,
+    val publicMirrorResponseBytes0421: Int = 0,
+    val publicMirrorRequestHash0421: String = "",
+    val publicMirrorResponseHash0421: String = "",
     /** Collector execution that last observed this trip. Metadata only; it never defines identity. */
     val lastCollectionRunId: String = "",
     /** Monotonic collector generation used to reject delayed results from older executions. */
