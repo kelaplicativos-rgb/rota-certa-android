@@ -450,6 +450,7 @@ data class DriverCapacitySnapshotRequest(
     val outboxEventId: String = "",
     val mutationId0421: String = "",
     val idempotencyKey0421: String = "",
+    val expectedPublicProjectionHash0425: String = "",
 )
 
 @Serializable
@@ -479,6 +480,8 @@ data class DriverTripSyncState0402(
     val canonicalRevision: Long = 0L,
     val canonicalTripId: String = "",
     val canonicalStateHash: String = "",
+    val publicProjectionHash: String = "",
+    val bookingsCount: Int = 0,
     val tripKey: String = "",
     val blablaProfileUuid: String = "",
     val blablaTripId: String = "",
@@ -759,6 +762,7 @@ class TripRemoteApi(
         outboxEventId: String = "",
         mutationId0421: String = "",
         idempotencyKey0421: String = "",
+        expectedPublicProjectionHash0425: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -806,6 +810,7 @@ class TripRemoteApi(
                 outboxEventId = outboxEventId,
                 mutationId0421 = mutationId0421,
                 idempotencyKey0421 = idempotencyKey0421,
+                expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
             ),
         ),
         requireDriverToken = true,
