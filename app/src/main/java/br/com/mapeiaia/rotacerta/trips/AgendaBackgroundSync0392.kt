@@ -2394,6 +2394,7 @@ class AgendaBackgroundSyncWorker0392(
 
         return try {
             val targetedWork = AgendaBackgroundSync0392.targetedTripWork0407(parameters)
+            val bookingTargetRemoteTripId0431 = AgendaBackgroundSync0392.targetedBookingRemoteTripId0431(parameters)
             if (reason == "trip_reverify" && targetedWork == null) {
                 UnifiedDebugEventStore.record(
                     "FAILED",
@@ -2433,6 +2434,7 @@ class AgendaBackgroundSyncWorker0392(
                 AgendaBackgroundSync0392.runCycle(
                     context = applicationContext,
                     reason = reason,
+                    bookingTargetRemoteTripId0431 = bookingTargetRemoteTripId0431,
                 )
             }
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
@@ -2447,6 +2449,7 @@ class AgendaBackgroundSyncWorker0392(
             )
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
+            val bookingCardDeltaSuccess0431 = bookingTargetRemoteTripId0431.isNotBlank() && cycle.failures == 0
             val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < 3)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
@@ -2482,6 +2485,7 @@ class AgendaBackgroundSyncWorker0392(
             val resultLabel = when {
                 targetedAuthRequired -> "PENDING_AUTH"
                 retryPending -> "RETRY"
+                bookingCardDeltaSuccess0431 -> "SUCCESS"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
@@ -2551,7 +2555,7 @@ class AgendaBackgroundSyncWorker0392(
             UnifiedDebugEventStore.record(
                 "AGENDA_BACKGROUND_SYNC_WORK_0397",
                 applicationContext.packageName,
-                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"} scopeFullyAttested=$scopeFullyAttested0421 ignoredProven=${if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0}",
+                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"} bookingCardTargetPresent=${bookingTargetRemoteTripId0431.isNotBlank()} scopeFullyAttested=$scopeFullyAttested0421 ignoredProven=${if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0}",
             )
             if (retryPending) Result.retry() else Result.success()
         } catch (cancelled: CancellationException) {
