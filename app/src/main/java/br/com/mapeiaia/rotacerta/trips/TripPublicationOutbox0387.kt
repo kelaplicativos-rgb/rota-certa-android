@@ -914,7 +914,26 @@ internal class TripMutationCoordinator0387(
                 throw cancelled
             } catch (error: Throwable) {
                 val retryable = publicationFailureRetryable0387(error)
+                val remote = generateSequence(error) { it.cause }
+                    .filterIsInstance<TripRemoteApiException>()
+                    .firstOrNull()
                 outbox.markFailure(event.id, error, retryable)
+                store.recordPublicMirrorPublicationFailure0421(
+                    canonicalTripId = event.canonicalTripId,
+                    expectedCanonicalRevision = event.snapshot.trip?.canonicalRevision ?: 0L,
+                    transportRevision = event.revision,
+                    evidenceId = publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L),
+                    traceId = event.id,
+                    retryable = retryable,
+                    httpStatus = remote?.httpStatus ?: 0,
+                    backendErrorCode = remote?.backendErrorCode.orEmpty(),
+                    networkCallId = remote?.networkCallId.orEmpty(),
+                    requestBytes = remote?.requestBytes ?: 0,
+                    responseBytes = remote?.responseBytes ?: 0,
+                    requestHash = remote?.requestSha256.orEmpty(),
+                    responseHash = remote?.responseSha256.orEmpty(),
+                    reason = error::class.java.simpleName,
+                )
                 recordEvent(
                     "TRIP_MUTATION_OUTBOX_FAILED",
                     event,
@@ -1080,10 +1099,29 @@ internal fun publicationFailureRetryable0387(error: Throwable): Boolean {
 }
 
 internal fun failureSummary0387(error: Throwable): String {
-    val root = generateSequence(error) { it.cause }.last()
+    val chain = generateSequence(error) { it.cause }.toList()
+    val root = chain.last()
+    val remote = chain.filterIsInstance<TripRemoteApiException>().firstOrNull()
     val exceptionMessage = UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(240)
     val rootMessage = UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()).take(240)
-    return "exceptionClass=${error.javaClass.name} exceptionMessage=$exceptionMessage rootCauseClass=${root.javaClass.name} rootCauseMessage=$rootMessage"
+    return buildString {
+        append("exceptionClass=").append(error.javaClass.name)
+        append(" exceptionMessage=").append(exceptionMessage)
+        append(" rootCauseClass=").append(root.javaClass.name)
+        append(" rootCauseMessage=").append(rootMessage)
+        remote?.let { value ->
+            append(" httpStatus=").append(value.httpStatus)
+            append(" backendErrorCode=").append(value.backendErrorCode)
+            append(" networkCallId=").append(value.networkCallId)
+            append(" transportPhase=").append(value.transportPhase)
+            append(" requestBytes=").append(value.requestBytes)
+            append(" responseBytes=").append(value.responseBytes)
+            append(" requestSha256=").append(value.requestSha256)
+            append(" responseSha256=").append(value.responseSha256)
+            append(" requestId=").append(value.requestId)
+            append(" correlationId=").append(value.correlationId)
+        }
+    }
 }
 
 internal fun sha256TripPublication0387(value: String): String = MessageDigest.getInstance("SHA-256")
