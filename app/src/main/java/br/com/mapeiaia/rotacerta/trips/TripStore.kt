@@ -108,11 +108,8 @@ class TripStore(context: Context) {
     ): Trip? = synchronized(CANONICAL_LOCK) {
         val current = trips()
         val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
-        if (
-            existing.canonicalRevision != expectedCanonicalRevision ||
-            existing.publicationRevision != expectedPublicationRevision
-        ) {
-            val invalidated = existing.invalidatePublicMirror0411("REVISION_CHANGED_DURING_READBACK")
+        if (existing.canonicalRevision != expectedCanonicalRevision) {
+            val invalidated = existing.invalidatePublicMirror0411("CANONICAL_REVISION_CHANGED_DURING_READBACK")
             if (invalidated != existing) persistCanonicalTrip0406(invalidated, current)
             return@synchronized invalidated
         }
@@ -121,7 +118,7 @@ class TripStore(context: Context) {
                 ?: publicUrlFromReadback?.trim()?.takeIf(String::isNotBlank),
             publicMirrorAttestationState0411 = state,
             publicMirrorAttestedCanonicalRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedCanonicalRevision else 0L,
-            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedPublicationRevision else 0L,
+            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) readbackPublicationRevision0421.coerceAtLeast(expectedPublicationRevision) else 0L,
             publicMirrorExpectedHash0411 = expectedHash.take(96),
             publicMirrorReadbackHash0411 = readbackHash.take(96),
             publicMirrorAttestedAtMillis0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) nowMillis else 0L,
