@@ -51,58 +51,8 @@ class AgendaImmediateCardDelta0431Test {
         assertTrue(background.contains("canonicalTripIds = batch.publicationCanonicalTripIds0431"))
         assertTrue(background.contains("collectorDeltaMutexes0431"))
         assertTrue(collector.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431"))
-        assertTrue(collector.contains("account_" + '
-        assertTrue(collector.contains("run_terminal:" + '
-    }
-
-    @Test
-    fun fullReconcileIsStrictlyTimelineToPublicAgendaAndDoesNotMaterializeCollectorSnapshot() {
-        val background = source("AgendaBackgroundSync0392.kt")
-        val collectorScope = background.substring(
-            background.indexOf("val reconcileCollectorSnapshot"),
-            background.indexOf("fun collectorResponseForThisCycle0407"),
-        )
-        assertTrue(collectorScope.contains("AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE"))
-        assertFalse(collectorScope.contains("FULL_RECONCILE"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_full_reconcile:test"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("manual"))
-    }
-}
- + "{normalizedResult.lowercase()}"))
-        assertTrue(collector.contains("run_terminal:\\$result"))
-    }
-
-    @Test
-    fun fullReconcileIsStrictlyTimelineToPublicAgendaAndDoesNotMaterializeCollectorSnapshot() {
-        val background = source("AgendaBackgroundSync0392.kt")
-        val collectorScope = background.substring(
-            background.indexOf("val reconcileCollectorSnapshot"),
-            background.indexOf("fun collectorResponseForThisCycle0407"),
-        )
-        assertTrue(collectorScope.contains("AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE"))
-        assertFalse(collectorScope.contains("FULL_RECONCILE"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_full_reconcile:test"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("manual"))
-    }
-}
- + "result"))
-    }
-
-    @Test
-    fun fullReconcileIsStrictlyTimelineToPublicAgendaAndDoesNotMaterializeCollectorSnapshot() {
-        val background = source("AgendaBackgroundSync0392.kt")
-        val collectorScope = background.substring(
-            background.indexOf("val reconcileCollectorSnapshot"),
-            background.indexOf("fun collectorResponseForThisCycle0407"),
-        )
-        assertTrue(collectorScope.contains("AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE"))
-        assertFalse(collectorScope.contains("FULL_RECONCILE"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_full_reconcile:test"))
-        assertFalse(agendaBackgroundSyncRequestsCollector0430("manual"))
-    }
-}
- + "{normalizedResult.lowercase()}"))
-        assertTrue(collector.contains("run_terminal:\\$result"))
+        assertTrue(collector.contains("account_" + '$' + "{normalizedResult.lowercase()}"))
+        assertTrue(collector.contains("run_terminal:" + '$' + "result"))
     }
 
     @Test
