@@ -95,6 +95,24 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun rideV3RequestIdIsAnAuthoritativeBindingOnlyForTheDocumentedStructuredSharePath() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt").readText()
+
+        assertTrue(source.contains("function requestAdministrativeTripId(rawUrl)"))
+        assertTrue(source.contains("path === '/ride/v3' || path.endsWith('/ride/v3')"))
+        assertTrue(source.contains("const pageTripIdAtRequest = currentAdministrativeTripId();"))
+        assertTrue(source.contains("const requestBound = requestTripId === tripId;"))
+        assertTrue(source.contains("function rideDetailsShareJsonPath(path)"))
+        assertTrue(source.contains("normalized.includes('tripconditions')"))
+        assertTrue(source.contains("normalized.includes('tripactions')"))
+        assertTrue(source.contains("normalized.includes('.actions')"))
+        assertTrue(source.contains("normalized.endsWith('.share.url')"))
+        assertTrue(source.contains("publicTripHrefSource: 'network_structured_request_id'"))
+        assertTrue(source.contains("rememberNetworkTripSources(parsed, endpoint, rawUrl, pageTripIdAtRequest)"))
+        assertTrue(source.contains("rememberNetworkTripSources(parsed, endpoint, meta.url, meta.pageTripId)"))
+    }
+
+    @Test
     fun staleCallbacksAndCardChangesRemainFailClosed() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         assertTrue(source.contains("expectedSync != syncGeneration"))
