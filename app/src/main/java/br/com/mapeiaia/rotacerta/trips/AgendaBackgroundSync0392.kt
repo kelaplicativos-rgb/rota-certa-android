@@ -1073,6 +1073,176 @@ internal object AgendaBackgroundSync0392 {
             target = BlaBlaTripTarget0407(tenantId, accountId, profileUuid, tripId, tripHref),
         )
     }
+    /**
+     * Verifies the Agenda mirror from the canonical Timeline snapshot only.
+     * This path must never navigate BlaBlaCar or start a collector session.
+     */
+    internal suspend fun reverifyCanonicalMirror0435(
+        context: Context,
+        work: TargetedTripWork0407,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): BlaBlaCommandResult0407 {
+        val appContext = context.applicationContext
+        val startedAt = nowMillis
+        val target = work.target
+        val store = TripStore(appContext)
+        val matches = store.trips().filter { trip ->
+            !trip.deleted &&
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == target.tripId
+        }
+        if (matches.size != 1) {
+            return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                errorCode = if (matches.isEmpty()) "CANONICAL_TRIP_NOT_FOUND" else "CANONICAL_TRIP_AMBIGUOUS",
+                verification = "canonical_timeline_identity_not_unique",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+        val canonical = matches.single()
+        val source = canonical.externalSnapshot
+            ?: return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED,
+                errorCode = "CANONICAL_SOURCE_SNAPSHOT_MISSING",
+                verification = "canonical_timeline_snapshot_missing",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        val settings = store.onlineSettings()
+        if (!settings.configured) {
+            return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.NOT_AVAILABLE,
+                errorCode = "AGENDA_ONLINE_NOT_CONFIGURED",
+                verification = "canonical_mirror_not_configured",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+
+        val canonicalTripId = strongExternalCanonicalTripId0387(
+            TripPublicationOutbox0387(appContext).tenantId,
+            target.accountId,
+            target.profileUuid,
+            target.tripId,
+        )
+        val mutationId = "mirror-verify-" + seatSyncDiagnosticKey(work.commandId)
+        val idempotencyKey = sha256TripPublication0387(
+            listOf(canonicalTripId, canonical.canonicalRevision, canonical.canonicalStateHash, "VERIFY_MIRROR_0435")
+                .joinToString("|"),
+        )
+        return try {
+            PublicAgendaAutoSync0300.syncExternalTripIncremental(
+                context = appContext,
+                store = store,
+                source = source,
+                configuredRotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation ?: 0,
+                nowMillis = nowMillis,
+                entityRevision = canonical.canonicalRevision,
+                outboxEventId = work.commandId,
+                mutationId0421 = mutationId,
+                idempotencyKey0421 = idempotencyKey,
+                externalAccountId = target.accountId,
+                canonicalTripId = canonicalTripId,
+                seatAllocationVersion = canonical.seatAllocationVersionUsed,
+                canonicalTripSnapshot = canonical,
+            )
+            val api = TripRemoteApi(settings)
+            val remote = api.listDriverTripSyncStates0402().trips
+                .filter { state ->
+                    state.canonicalTripId == canonicalTripId ||
+                        (
+                            state.blablaProfileUuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                                state.blablaTripId.trim() == target.tripId
+                            )
+                }
+                .maxWithOrNull(
+                    compareBy<DriverTripSyncState0402> { it.canonicalTripId == canonicalTripId }
+                        .thenBy { it.canonicalRevision }
+                        .thenBy { it.publicationRevision },
+                )
+            if (remote == null) {
+                BlaBlaCommandResult0407(
+                    commandId = work.commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.NETWORK,
+                    status = BlaBlaCommandStatus0407.UNVERIFIED,
+                    errorCode = "PUBLIC_PROJECTION_NOT_FOUND",
+                    verification = "private_mirror_written_public_readback_missing",
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            } else {
+                val attestation = PublicMirrorAttestationCoordinator0411.attest(
+                    context = appContext,
+                    store = store,
+                    api = api,
+                    trip = canonical,
+                    remote = remote,
+                    force = true,
+                    nowMillis = System.currentTimeMillis(),
+                )
+                val verified =
+                    attestation.validated == 1 &&
+                        attestation.pending == 0 &&
+                        attestation.divergent == 0 &&
+                        attestation.invalidIdentity == 0 &&
+                        attestation.invalidLink == 0 &&
+                        attestation.staleRevision == 0 &&
+                        attestation.readbackFailures == 0
+                BlaBlaCommandResult0407(
+                    commandId = work.commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.NETWORK,
+                    before = "CANONICAL_TIMELINE",
+                    after = if (verified) "PRIVATE_AND_PUBLIC_ATTESTED" else "PUBLIC_READBACK_NOT_ATTESTED",
+                    status = if (verified) BlaBlaCommandStatus0407.VERIFIED_SUCCESS else BlaBlaCommandStatus0407.UNVERIFIED,
+                    errorCode = if (verified) "" else "PUBLIC_MIRROR_NOT_ATTESTED",
+                    verification = if (verified) "private_mirror_and_public_readback" else "canonical_repair_completed_attestation_denied",
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            UnifiedDebugEventStore.record(
+                "AGENDA_CANONICAL_REVERIFY_FAILED_0435",
+                appContext.packageName,
+                AgendaFailureEvidence.describe(
+                    error = error,
+                    operation = "CANONICAL_MIRROR_REVERIFY",
+                    component = "AgendaBackgroundSync0392",
+                    method = "reverifyCanonicalMirror0435",
+                ),
+            )
+            BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                transportUsed = BlaBlaTransport0407.NETWORK,
+                status = BlaBlaCommandStatus0407.FAILED,
+                errorCode = "CANONICAL_MIRROR_REPAIR_FAILED",
+                verification = "canonical_mirror_readback_failed",
+                exceptionMessage = error.message.orEmpty().take(300),
+                rootCause = error.cause?.message.orEmpty().take(300),
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+    }
     fun enqueueRecoveryIfNeeded(context: Context) {
         val appContext = context.applicationContext
         val status = AgendaBackgroundSyncConfig0392.status(appContext)
