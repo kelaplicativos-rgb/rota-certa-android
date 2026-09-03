@@ -510,6 +510,15 @@ data class DriverCapacitySnapshotResponse(
     val logicalReplay: Boolean = false,
 )
 
+internal data class RemotePublicationEvidenceContext0421(
+    val evidenceId: String,
+    val traceId: String,
+    val canonicalTripId: String,
+    val logicalRevision: Long,
+    val transportRevision: Long,
+    val mutationId: String,
+    val idempotencyKey: String,
+)
 internal class TripRemoteApiException(
     val httpMethod: String,
     val endpoint: String,
@@ -1082,6 +1091,7 @@ class TripRemoteApi(
         path: String,
         body: String? = null,
         requireDriverToken: Boolean,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
     ): T = withContext(Dispatchers.IO) {
         val requestPayload = body.orEmpty()
         val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
