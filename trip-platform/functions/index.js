@@ -4719,7 +4719,10 @@ async function listPassengerBookings(req, res) {
     delete safeBooking.idempotencyFingerprint;
     return { trip: safePublicTrip(tripToken, tripSnap.data()), booking: safeBooking };
   }));
-  return json(res, 200, { bookings: entries.filter(Boolean) });
+  const visibleEntries = entries.filter(Boolean).filter((entry) =>
+    !session.driverScope0428 || normalizeUsername(entry.trip && entry.trip.driverUsername || "") === session.driverScope0428
+  );
+  return json(res, 200, { bookings: visibleEntries });
 }
 
 async function createBooking(req, res, token) {
