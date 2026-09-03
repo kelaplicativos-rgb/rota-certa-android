@@ -108,6 +108,80 @@ internal object BlaBlaCollectorUrlModule {
         return value
     }
 
+    /**
+     * Structured network responses may authoritatively bind an administrative trip id to a
+     * passenger-facing permalink whose public token is different. This is the only path where
+     * an id mismatch is accepted, and the returned value is always HTTPS.
+     */
+    fun publicTripFromAuthoritativeNetwork(
+        raw: String?,
+        expectedAdministrativeTripId: String?,
+        boundAdministrativeTripId: String?,
+    ): String? {
+        val expected = expectedAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
+        val bound = boundAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
+        if (!expected.equals(bound, ignoreCase = true)) return null
+        val value = canonicalPublicTripPromotingOfficialHttp(raw) ?: return null
+        val actualPublicId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        if (!STABLE_EXTERNAL_ID.matches(actualPublicId)) return null
+        return value
+    }
+
+    /**
+     * Revalidates a permalink already carried by collector state. A network-authoritative
+     * binding remains tied to the same canonical administrative trip id; every other source
+     * keeps the historical strict same-id contract.
+     */
+    fun publicTripForCollectorState(
+        raw: String?,
+        expectedTripId: String?,
+        binding: String?,
+    ): String? = when (binding?.trim()) {
+        PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE ->
+            publicTripFromAuthoritativeNetwork(raw, expectedTripId, expectedTripId)
+        else -> publicTrip(raw, expectedTripId)
+    }
+
+    fun publicTripPublicId(raw: String?): String? {
+        val value = canonicalPublicTripPromotingOfficialHttp(raw) ?: return null
+        return tripId(value)?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches)
+    }
+
+    private fun canonicalPublicTripPromotingOfficialHttp(raw: String?): String? {
+        val uri = parseOfficialHttpOrHttps(raw) ?: return null
+        val path = uri.path.orEmpty().trimEnd('/').lowercase()
+        if (path != "/trip" && !path.startsWith("/trip/")) return null
+        val query = uri.rawQuery.orEmpty()
+            .split('&')
+            .filter(String::isNotBlank)
+            .filterNot { part -> part.substringBefore('=').equals("search_uuid", ignoreCase = true) }
+            .joinToString("&")
+        val promoted = buildString {
+            append("https://").append(uri.host.lowercase())
+            append(uri.rawPath.orEmpty().ifBlank { "/" })
+            if (query.isNotBlank()) append('?').append(query)
+        }
+        return promoted.takeIf { publicTrip(it, null) != null }
+    }
+
+    private fun parseOfficialHttpOrHttps(raw: String?): URI? = runCatching {
+        URI(absolute(raw))
+    }.getOrNull()?.takeIf { uri ->
+        val https = uri.scheme.equals("https", ignoreCase = true)
+        val http = uri.scheme.equals("http", ignoreCase = true)
+        (https || http) &&
+            isOfficialBlaBlaHost(uri.host) &&
+            uri.rawUserInfo == null &&
+            when {
+                https -> uri.port in setOf(-1, 443)
+                http -> uri.port in setOf(-1, 80)
+                else -> false
+            }
+    }
+
+    const val PUBLIC_TRIP_BINDING_SAME_ID = "same_trip_id"
+    const val PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE = "network_authoritative"
+
     /** URLs the authenticated management browser may open on explicit user action. */
     fun isManageTarget(raw: String?): Boolean =
         isSpecificTrip(raw) || (isAllowed(raw) && isPassenger(raw))
