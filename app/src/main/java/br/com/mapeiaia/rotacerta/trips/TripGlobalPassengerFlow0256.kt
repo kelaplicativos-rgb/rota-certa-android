@@ -350,11 +350,19 @@ internal fun prepareTimelineTripForPassenger(
     val direct = entry.localTripId?.let(store::getTrip)
         ?: store.getTrip(entry.tripId)
         ?: deterministicId?.let(store::getTrip)
-    val physicalMatches = if (direct == null) timelinePhysicalTripMatches(entry, allTrips) else emptyList()
-    if (direct == null && physicalMatches.size > 1) {
-        throw IllegalStateException("Há mais de uma viagem interna compatível. Não criei nem escolhi uma viagem automaticamente.")
+    val strongMatches = if (direct == null && strongExternal != null) {
+        allTrips.filter { trip ->
+            canonicalExternalTripIdentityKey(
+                trip.blablaProfileUuid,
+                trip.blablaTripId,
+                trip.blablaManageUrl,
+            ) == strongExternal
+        }
+    } else emptyList()
+    if (strongMatches.size > 1) {
+        throw IllegalStateException("Identidade externa forte está associada a mais de uma viagem interna. Não escolhi automaticamente.")
     }
-    var trip = direct ?: physicalMatches.singleOrNull()
+    var trip = direct ?: strongMatches.singleOrNull()
     var created = false
     if (trip == null) {
         require(strongExternal != null) { "Selecione uma viagem interna existente ou crie uma nova viagem particular." }
