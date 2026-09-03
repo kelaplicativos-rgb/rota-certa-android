@@ -716,6 +716,17 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             }
           }
 
+          function requestAdministrativeTripId(rawUrl) {
+            try {
+              const url = new URL(String(rawUrl || ''), location.href);
+              if (url.protocol !== 'https:' || !allowedHost(url.hostname)) return '';
+              const value = sourceText(url.searchParams.get('id'), 160);
+              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
+            } catch (_) {
+              return '';
+            }
+          }
+
           function publicTripCandidate(raw) {
             try {
               const url = new URL(String(raw || ''), location.href);
@@ -734,6 +745,14 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             }
           }
 
+          function rideDetailsShareJsonPath(path) {
+            const normalized = String(path || '').replace(/_/g, '').toLowerCase();
+            return normalized.includes('tripconditions') &&
+              normalized.includes('tripactions') &&
+              normalized.includes('.actions') &&
+              normalized.endsWith('.share.url');
+          }
+
           function structuredShareCandidates(value, path, depth, seen) {
             if (!value || typeof value !== 'object' || depth > 9 || seen.has(value)) return [];
             seen.add(value);
@@ -746,7 +765,10 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 if (key.toLowerCase() === 'share' && child && typeof child === 'object') {
                   const share = sourceObject(child);
                   const candidate = publicTripCandidate(share.url);
-                  if (candidate) found.push({ candidate: candidate, jsonPath: nextPath + '.url' });
+                  const sharePath = nextPath + '.url';
+                  if (candidate && rideDetailsShareJsonPath(sharePath)) {
+                    found.push({ candidate: candidate, jsonPath: sharePath });
+                  }
                 }
                 if (child && typeof child === 'object') {
                   structuredShareCandidates(child, nextPath, depth + 1, seen).forEach(function(item) { found.push(item); });
@@ -793,9 +815,11 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             networkTripSources.set(tripId, Object.assign({}, existing, patch || {}, { tripId: tripId }));
           }
 
-          function rememberStructuredShareForCurrentTrip(parsed, endpoint) {
-            const tripId = currentAdministrativeTripId();
-            if (!tripId || !parsed || typeof parsed !== 'object') return;
+          function rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
+            const tripId = sourceText(pageTripIdAtRequest, 160);
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId) || !parsed || typeof parsed !== 'object') return;
+            const requestTripId = requestAdministrativeTripId(requestUrl);
+            const requestBound = requestTripId === tripId;
             const pending = [{ value: parsed, depth: 0, path: '$' }];
             const seen = new WeakSet();
             let visited = 0;
@@ -840,6 +864,366 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   if (child && typeof child === 'object') {
                     pending.push({ value: child, depth: current.depth + 1, path: current.path + '.' + key });
                   }
+                });
+              }
+            }
+
+            if (requestBound) {
+              const shares = structuredShareCandidates(parsed, '
+            const waypoint = sourceObject(rawValue);
+            const place = sourceObject(waypoint.place);
+            const address = sourceText(place.address || waypoint.address || waypoint.secondary_text, 500);
+            return {
+              label: sourceText(waypoint.main_text || place.city || waypoint.secondary_text || address, 240),
+              address: address,
+              latitude: sourceNumber(place.latitude !== undefined ? place.latitude : waypoint.latitude, -90, 90),
+              longitude: sourceNumber(place.longitude !== undefined ? place.longitude : waypoint.longitude, -180, 180)
+            };
+          }
+
+          function sourcePhone(rawModes) {
+            if (!Array.isArray(rawModes)) return '';
+            for (const rawMode of rawModes.slice(0, 12)) {
+              const mode = sourceObject(rawMode);
+              const phone = sourceText(mode.phone_number || mode.phoneNumber, 40);
+              if (phone) return phone;
+            }
+            return '';
+          }
+
+          function rememberTripRoot(rawRoot, endpoint) {
+            const root = sourceObject(rawRoot);
+            if (!Array.isArray(root.bookings)) return;
+            const tripId = sourceText(root.trip_offer_encrypted_id, 160);
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
+            const rawWaypoints = Array.isArray(root.waypoints) ? root.waypoints : [];
+            const waypoints = rawWaypoints.slice(0, MAX_SOURCE_WAYPOINTS).map(function(rawWaypoint) {
+              return sourceWaypoint(rawWaypoint);
+            });
+            const bookings = root.bookings.slice(0, MAX_SOURCE_BOOKINGS).map(function(rawBooking) {
+              const booking = sourceObject(rawBooking);
+              const passenger = sourceObject(booking.passenger);
+              const price = sourceObject(booking.price);
+              return {
+                passengerId: sourceText(passenger.id, 160),
+                passengerName: sourceText(passenger.display_name, 120),
+                seats: sourceNumber(booking.seats_reserved, 1, 20) || 0,
+                phone: sourcePhone(booking.contact_modes),
+                fareAmount: sourceText(price.amount, 40),
+                fareCurrencyCode: sourceText(price.currency, 3).toUpperCase(),
+                fareFormatted: sourceText(price.formatted_price, 80),
+                pickup: sourceWaypoint(booking.pickup_waypoint),
+                dropoff: sourceWaypoint(booking.dropoff_waypoint)
+              };
+            });
+            mergeTripSource(tripId, {
+              bookingsComplete: root.bookings.length <= MAX_SOURCE_BOOKINGS,
+              bookings: bookings,
+              waypointsComplete: rawWaypoints.length >= 2 && rawWaypoints.length <= MAX_SOURCE_WAYPOINTS,
+              waypoints: waypoints
+            });
+            const shares = structuredShareCandidates(root, '$', 0, new WeakSet());
+            const unique = [];
+            shares.forEach(function(item) {
+              if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) unique.push(item);
+            });
+            if (unique.length === 1) {
+              mergeTripSource(tripId, {
+                publicTripHref: unique[0].candidate.href,
+                publicTripHrefSource: 'network_structured',
+                publicTripHrefBinding: 'network_authoritative',
+                publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+              });
+            }
+          }
+
+          function rememberNetworkTripSources(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
+            if (!parsed || typeof parsed !== 'object') return;
+            rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest);
+            const pending = [{ value: parsed, depth: 0 }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 160) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+              if (!Array.isArray(value) && Array.isArray(value.bookings) && value.trip_offer_encrypted_id) {
+                rememberTripRoot(value, endpoint);
+              }
+              if (current.depth >= 5) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 32).forEach(function(item) {
+                  if (item && typeof item === 'object') pending.push({ value: item, depth: current.depth + 1 });
+                });
+              } else {
+                Object.keys(value).slice(0, 64).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') pending.push({ value: child, depth: current.depth + 1 });
+                });
+              }
+            }
+          }
+
+          function lengthBucket(length) {
+            if (length <= 0) return '0';
+            if (length <= 4) return '1-4';
+            if (length <= 8) return '5-8';
+            if (length <= 16) return '9-16';
+            if (length <= 32) return '17-32';
+            if (length <= 64) return '33-64';
+            if (length <= 128) return '65-128';
+            return '129+';
+          }
+
+          function magnitude(value) {
+            const absolute = Math.abs(value);
+            if (absolute === 0) return 'zero';
+            if (absolute < 1) return 'lt1';
+            if (absolute < 10) return 'lt10';
+            if (absolute < 100) return 'lt100';
+            if (absolute < 1000) return 'lt1000';
+            if (absolute < 1000000) return 'lt1000000';
+            return 'large';
+          }
+
+          function classifyString(value) {
+            if (!value) return 'empty';
+            if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)) return 'uuid';
+            if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) return 'email';
+            if (/^\+?[0-9()\-\s]{8,20}$/.test(value)) return 'phone';
+            if (/^https?:\/\//i.test(value)) return 'url';
+            return 'text';
+          }
+
+          function safeKey(raw, index) {
+            const value = String(raw || '');
+            if (value === '__proto__' || value === 'prototype' || value === 'constructor') return 'field_' + index;
+            return /^[A-Za-z_][A-Za-z0-9_.-]{0,79}$/.test(value) ? value : 'field_' + index;
+          }
+
+          function anonymize(value, key, depth, state, seen) {
+            state.nodes += 1;
+            if (state.nodes > MAX_NODES) return { kind: 'node_limit' };
+            if (depth > MAX_DEPTH) return { kind: 'depth_limit' };
+            if (key && secretKey.test(key)) return { kind: 'redacted' };
+            if (value === null || typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+              if (key && personalKey.test(key)) return { kind: 'redacted' };
+              return { kind: classifyString(value), lengthBucket: lengthBucket(value.length) };
+            }
+            if (typeof value === 'number') {
+              if (!Number.isFinite(value)) return { kind: 'number', magnitude: 'large' };
+              if (key && seatKey.test(key) && Number.isInteger(value) && value >= 0 && value <= 20) return value;
+              return {
+                kind: 'number',
+                integer: Number.isInteger(value),
+                sign: value < 0 ? 'negative' : (value > 0 ? 'positive' : 'zero'),
+                magnitude: magnitude(value)
+              };
+            }
+            if (typeof value !== 'object') return { kind: 'unsupported' };
+            if (seen.has(value)) return { kind: 'unsupported' };
+            seen.add(value);
+            if (Array.isArray(value)) {
+              const sample = value.slice(0, MAX_ARRAY).map(function(item) {
+                return anonymize(item, key, depth + 1, state, seen);
+              });
+              return { kind: 'array', arrayLength: value.length, sample: sample };
+            }
+            const fields = Object.create(null);
+            const keys = Object.keys(value);
+            keys.slice(0, MAX_FIELDS).forEach(function(rawKey, index) {
+              let fieldValue;
+              try { fieldValue = value[rawKey]; } catch (_) { fieldValue = undefined; }
+              fields[safeKey(rawKey, index)] = anonymize(fieldValue, rawKey, depth + 1, state, seen);
+            });
+            return {
+              kind: 'object',
+              fieldCount: keys.length,
+              truncated: keys.length > MAX_FIELDS,
+              fields: fields
+            };
+          }
+
+          function durationBucket(started) {
+            const elapsed = Math.max(0, performance.now() - started);
+            if (elapsed < 50) return 0;
+            if (elapsed < 100) return 50;
+            if (elapsed < 250) return 100;
+            if (elapsed < 500) return 250;
+            if (elapsed < 1000) return 500;
+            if (elapsed < 2000) return 1000;
+            if (elapsed < 5000) return 2000;
+            if (elapsed < 10000) return 5000;
+            return 10000;
+          }
+
+          function post(envelope) {
+            if (!bridge || typeof bridge.postMessage !== 'function') return;
+            try {
+              let serialized = JSON.stringify(envelope);
+              if (serialized.length > MAX_MESSAGE_CHARS) {
+                envelope.body = { kind: 'too_large' };
+                envelope.contentKind = 'too_large';
+                serialized = JSON.stringify(envelope);
+              }
+              bridge.postMessage(serialized);
+            } catch (_) {}
+          }
+
+          function baseEnvelope(transport, method, endpoint, status, started, contentKind, body) {
+            return {
+              schema: 1,
+              transport: transport,
+              method: String(method || 'GET').toUpperCase(),
+              endpoint: endpoint,
+              page: safeEndpoint(location.href),
+              status: Number.isInteger(status) ? status : 0,
+              durationBucketMs: durationBucket(started),
+              contentKind: contentKind,
+              body: body
+            };
+          }
+
+          async function observeFetch(response, rawUrl, method, started, pageTripIdAtRequest) {
+            if (!capturePage()) return;
+            const endpoint = safeEndpoint(response && response.url ? response.url : rawUrl);
+            if (!endpoint) return;
+            let contentType = '';
+            let contentLength = 0;
+            try {
+              contentType = String(response.headers.get('content-type') || '').toLowerCase();
+              contentLength = Number(response.headers.get('content-length') || 0);
+            } catch (_) {}
+            if (!contentType.includes('json')) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'non_json', {
+                kind: 'non_json', lengthBucket: lengthBucket(contentLength)
+              }));
+              return;
+            }
+            if (contentLength > MAX_BODY_CHARS) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'too_large', { kind: 'too_large' }));
+              return;
+            }
+            try {
+              const text = await response.clone().text();
+              if (text.length > MAX_BODY_CHARS) {
+                post(baseEnvelope('fetch', method, endpoint, response.status, started, 'too_large', { kind: 'too_large' }));
+                return;
+              }
+              if (!text) {
+                post(baseEnvelope('fetch', method, endpoint, response.status, started, 'empty', { kind: 'empty' }));
+                return;
+              }
+              const parsed = JSON.parse(text);
+              if (response.status >= 200 && response.status < 300) {
+                rememberNetworkTripSources(parsed, endpoint, rawUrl, pageTripIdAtRequest);
+              }
+              const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
+            } catch (_) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'invalid_json', { kind: 'invalid_json' }));
+            }
+          }
+
+          const originalFetch = window.fetch;
+          if (typeof originalFetch === 'function') {
+            window.fetch = function() {
+              const args = arguments;
+              const started = performance.now();
+              const pageTripIdAtRequest = currentAdministrativeTripId();
+              let rawUrl = '';
+              let method = 'GET';
+              try {
+                rawUrl = args[0] instanceof Request ? args[0].url : String(args[0] || '');
+                method = args[0] instanceof Request ? args[0].method : (args[1] && args[1].method ? args[1].method : 'GET');
+              } catch (_) {}
+              return originalFetch.apply(this, args).then(function(response) {
+                observeFetch(response, rawUrl, method, started, pageTripIdAtRequest);
+                return response;
+              });
+            };
+          }
+
+          const xhrMeta = new WeakMap();
+          const originalOpen = XMLHttpRequest.prototype.open;
+          const originalSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function(method, url) {
+            xhrMeta.set(this, {
+              method: String(method || 'GET'),
+              url: String(url || ''),
+              started: 0,
+              pageTripId: currentAdministrativeTripId()
+            });
+            return originalOpen.apply(this, arguments);
+          };
+          XMLHttpRequest.prototype.send = function() {
+            const xhr = this;
+            const meta = xhrMeta.get(xhr) || {
+              method: 'GET',
+              url: '',
+              started: 0,
+              pageTripId: currentAdministrativeTripId()
+            };
+            meta.started = performance.now();
+            xhr.addEventListener('loadend', function() {
+              if (!capturePage()) return;
+              const endpoint = safeEndpoint(xhr.responseURL || meta.url);
+              if (!endpoint) return;
+              let contentType = '';
+              try { contentType = String(xhr.getResponseHeader('content-type') || '').toLowerCase(); } catch (_) {}
+              if (!contentType.includes('json')) {
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'non_json', { kind: 'non_json' }));
+                return;
+              }
+              try {
+                let parsed;
+                if (xhr.responseType === 'json') {
+                  parsed = xhr.response;
+                } else {
+                  const text = String(xhr.responseText || '');
+                  if (text.length > MAX_BODY_CHARS) {
+                    post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'too_large', { kind: 'too_large' }));
+                    return;
+                  }
+                  if (!text) {
+                    post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'empty', { kind: 'empty' }));
+                    return;
+                  }
+                  parsed = JSON.parse(text);
+                }
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  rememberNetworkTripSources(parsed, endpoint, meta.url, meta.pageTripId);
+                }
+                const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
+              } catch (_) {
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'invalid_json', { kind: 'invalid_json' }));
+              }
+            }, { once: true });
+            return originalSend.apply(this, arguments);
+          };
+        })();
+    """.trimIndent()
+}
+, 0, new WeakSet());
+              const unique = [];
+              shares.forEach(function(item) {
+                if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) {
+                  unique.push(item);
+                }
+              });
+              if (unique.length === 1) {
+                mergeTripSource(tripId, {
+                  publicTripHref: unique[0].candidate.href,
+                  publicTripHrefSource: 'network_structured_request_id',
+                  publicTripHrefBinding: 'network_authoritative',
+                  publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                  publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
                 });
               }
             }
