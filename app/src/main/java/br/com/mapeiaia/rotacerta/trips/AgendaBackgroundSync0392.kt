@@ -1975,7 +1975,7 @@ internal object AgendaBackgroundSync0392 {
 
         // Reconcile again after collection so the same canonical TripStore receives only
         // the fresh per-card deltas. Timeline and public Agenda keep one shared identity.
-        if (reconcileCollectorSnapshot) {
+        if (reconcileCollectorSnapshot && (collectorRequested || collectorTarget0407 != null)) {
             val freshCanonical = reconcileCollectedExternalTrips0403(
                 context = appContext,
                 store = store,
