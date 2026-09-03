@@ -483,6 +483,8 @@ internal object PublicAgendaAutoSync0300 {
         snapshotBookings: List<Booking>? = null,
         entityRevision: Long = 0L,
         outboxEventId: String = "",
+        mutationId0421: String = "",
+        idempotencyKey0421: String = "",
     ): Boolean = withContext(Dispatchers.IO) {
         val settings = store.onlineSettings()
         if (!settings.configured) return@withContext false
@@ -530,6 +532,8 @@ internal object PublicAgendaAutoSync0300 {
             entityRevision = entityRevision,
             canonicalTripId = original.id,
             outboxEventId = outboxEventId,
+            mutationId0421 = mutationId0421,
+            idempotencyKey0421 = idempotencyKey0421,
         )
 
         val response = try {
@@ -582,7 +586,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} entityRevision=$entityRevision outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
+            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} entityRevision=$entityRevision mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
         )
         response.changed
     }
@@ -628,6 +632,8 @@ internal object PublicAgendaAutoSync0300 {
         nowMillis: Long = System.currentTimeMillis(),
         entityRevision: Long = 0L,
         outboxEventId: String = "",
+        mutationId0421: String = "",
+        idempotencyKey0421: String = "",
         externalAccountId: String = "",
         canonicalTripId: String = "",
         seatAllocationVersion: Long = 0L,
@@ -728,6 +734,8 @@ internal object PublicAgendaAutoSync0300 {
                 entityRevision = entityRevision,
                 canonicalTripId = resolvedInternalTripId,
                 outboxEventId = outboxEventId,
+                mutationId0421 = mutationId0421,
+                idempotencyKey0421 = idempotencyKey0421,
                 seatAllocationVersion = seatAllocationVersion,
             )
         } catch (error: Throwable) {
@@ -764,6 +772,8 @@ internal object PublicAgendaAutoSync0300 {
         entityRevision: Long = 0L,
         canonicalTripId: String = "",
         outboxEventId: String = "",
+        mutationId0421: String = "",
+        idempotencyKey0421: String = "",
         seatAllocationVersion: Long = 0L,
         existingBindingHint: PublicExternalTripBinding? = null,
         remoteStateHint0402: DriverTripSyncState0402? = null,
@@ -894,6 +904,8 @@ internal object PublicAgendaAutoSync0300 {
             entityRevision = entityRevision,
             canonicalTripId = canonicalTripId,
             outboxEventId = outboxEventId,
+            mutationId0421 = mutationId0421,
+            idempotencyKey0421 = idempotencyKey0421,
         )
 
         val response = try {
@@ -943,7 +955,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} entityRevision=$entityRevision outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
+            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} entityRevision=$entityRevision mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
         )
         AgendaTrace.event(
             context,
