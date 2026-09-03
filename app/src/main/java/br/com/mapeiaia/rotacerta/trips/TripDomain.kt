@@ -141,6 +141,19 @@ data class Trip(
     val publicMirrorReadbackLatencyMillis0411: Long = 0L,
     val publicMirrorAttestationReason0411: String = "",
     val publicMirrorMismatchFields0411: List<String> = emptyList(),
+    /** Last independent public readback evidence. Diagnostic only; never a source of truth. */
+    val publicMirrorReadbackCanonicalRevision0421: Long = 0L,
+    val publicMirrorReadbackPublicationRevision0421: Long = 0L,
+    val publicMirrorPublicIdentity0421: String = "",
+    val publicMirrorLastReadbackAtMillis0421: Long = 0L,
+    val publicMirrorEvidenceId0421: String = "",
+    val publicMirrorTraceId0421: String = "",
+    val publicMirrorExpectedBytes0421: Int = 0,
+    val publicMirrorActualBytes0421: Int = 0,
+    val publicMirrorFirstDifferentByteOffset0421: Int = -1,
+    val publicMirrorDifferentByteRanges0421: List<String> = emptyList(),
+    val publicMirrorHttpStatus0421: Int = 0,
+    val publicMirrorBackendErrorCode0421: String = "",
     /** Collector execution that last observed this trip. Metadata only; it never defines identity. */
     val lastCollectionRunId: String = "",
     /** Monotonic collector generation used to reject delayed results from older executions. */
