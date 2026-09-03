@@ -5,6 +5,8 @@
   const section = byId("agendaAdmin0417");
   const entry = byId("openAgendaAdmin0418");
   if (!section || !entry) return;
+  if (globalThis.__rotaCertaAgendaAdminBound0427) return;
+  globalThis.__rotaCertaAgendaAdminBound0427 = true;
 
   function slug0417() {
     const parts = location.pathname.split("/").filter(Boolean);
@@ -26,6 +28,27 @@
   }
   let currentTrips = [];
   let currentSettings = null;
+  const adminInFlight0427 = new Set();
+  let dashboardLoadPromise0427 = null;
+
+  function newAdminOperationId0427(kind) {
+    const suffix = (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function")
+      ? globalThis.crypto.randomUUID()
+      : Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 18);
+    return String(kind || "admin").replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 24) + "_" + suffix;
+  }
+
+  async function runAdminAction0427(key, button, action) {
+    if (adminInFlight0427.has(key)) return;
+    adminInFlight0427.add(key);
+    if (button) button.disabled = true;
+    try {
+      return await action();
+    } finally {
+      adminInFlight0427.delete(key);
+      if (button) button.disabled = false;
+    }
+  }
 
   function hidePublicSections0417() {
     document.querySelectorAll("main > section").forEach((node) => node.classList.add("hidden"));
@@ -51,13 +74,15 @@
       error.status = 401;
       throw error;
     }
+    const { operationId, ...fetchOptions } = options;
     const headers = {
       "Content-Type": "application/json",
       "Authorization": "Bearer " + token,
       "X-Rota-Certa-Admin-Driver": driverUsername,
-      ...(options.headers || {}),
+      ...(operationId ? { "X-Rota-Certa-Operation-Id": operationId } : {}),
+      ...(fetchOptions.headers || {}),
     };
-    const response = await fetch(path, { ...options, headers });
+    const response = await fetch(path, { ...fetchOptions, headers });
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
@@ -188,16 +213,20 @@
   function renderSessions0417(sessions) {
     const list = Array.isArray(sessions) ? sessions : [];
     byId("adminSessions0417").innerHTML = list.length
-      ? list.map((item) => '<div class="adminLogItem0417"><strong>'+(item.current ? "Esta sessão" : "Sessão administrativa")+
+      ? list.map((item) => '<div class="adminLogItem0417"><strong>'+(
+          item.current ? "Esta sessão" : (item.legacyContext ? "Sessão anterior (legada)" : "Outra sessão")
+        )+
           '</strong><small>Início '+fmt0417(item.createdAtMillis)+' • última atividade '+fmt0417(item.lastActivityAtMillis)+
           ' • expira '+fmt0417(item.expiresAtMillis)+'</small></div>').join("")
       : '<p class="muted">Nenhuma sessão ativa.</p>';
   }
 
   async function loadDashboard0417() {
-    setMessage0417("Carregando administração…");
-    try {
-      const [overview, trips, settings, logs, sessions] = await Promise.all([
+    if (dashboardLoadPromise0427) return dashboardLoadPromise0427;
+    dashboardLoadPromise0427 = (async () => {
+      setMessage0417("Carregando administração…");
+      try {
+        const [overview, trips, settings, logs, sessions] = await Promise.all([
         api0417("/v1/admin/overview"),
         api0417("/v1/admin/trips"),
         api0417("/v1/admin/settings"),
@@ -210,14 +239,20 @@
       renderSettings0417(settings);
       renderLogs0417(logs.events);
       renderSessions0417(sessions.sessions);
-      setMessage0417("");
-    } catch (error) {
-      if (error.status === 401 || error.status === 403) {
-        byId("adminPanel0417").classList.add("hidden");
-        const roleCard = byId("portalAgendaAdminCard0418");
-        if (roleCard && error.status === 403) roleCard.classList.add("hidden");
+        setMessage0417("");
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) {
+          byId("adminPanel0417").classList.add("hidden");
+          const roleCard = byId("portalAgendaAdminCard0418");
+          if (roleCard && error.status === 403) roleCard.classList.add("hidden");
+        }
+        setMessage0417(error.message, true);
       }
-      setMessage0417(error.message, true);
+    })();
+    try {
+      return await dashboardLoadPromise0427;
+    } finally {
+      dashboardLoadPromise0427 = null;
     }
   }
 
@@ -247,37 +282,56 @@
 
   byId("adminRefresh0417").addEventListener("click", loadDashboard0417);
 
-  byId("adminUpdateNow0417").addEventListener("click", async () => {
+  const updateNowButton0427 = byId("adminUpdateNow0417");
+  updateNowButton0427.addEventListener("click", () => runAdminAction0427("update-now", updateNowButton0427, async () => {
     setMessage0417("Solicitando atualização real…");
     try {
-      const result = await api0417("/v1/admin/sync/update-now", { method: "POST", body: "{}" });
+      const operationId = newAdminOperationId0427("update_now");
+      const result = await api0417("/v1/admin/sync/update-now", {
+        method: "POST",
+        body: "{}",
+        operationId,
+      });
       setMessage0417("Atualização enviada ao sincronizador canônico. Operação: " + result.correlationId);
       setTimeout(loadDashboard0417, 1800);
     } catch (error) { setMessage0417(error.message, true); }
-  });
+  }));
 
-  byId("adminReconcile0417").addEventListener("click", async () => {
+  const reconcileButton0427 = byId("adminReconcile0417");
+  reconcileButton0427.addEventListener("click", () => runAdminAction0427("reconcile", reconcileButton0427, async () => {
     setMessage0417("Solicitando reconciliação completa…");
     try {
-      const result = await api0417("/v1/admin/sync/reconcile", { method: "POST", body: "{}" });
+      const operationId = newAdminOperationId0427("reconcile");
+      const result = await api0417("/v1/admin/sync/reconcile", {
+        method: "POST",
+        body: "{}",
+        operationId,
+      });
       setMessage0417("Reconciliação enviada. Operação: " + result.correlationId);
       setTimeout(loadDashboard0417, 1800);
     } catch (error) { setMessage0417(error.message, true); }
-  });
+  }));
 
-  byId("adminSaveSync0417").addEventListener("click", async () => {
+  const saveSyncButton0427 = byId("adminSaveSync0417");
+  saveSyncButton0427.addEventListener("click", () => runAdminAction0427("save-sync", saveSyncButton0427, async () => {
     try {
+      const operationId = newAdminOperationId0427("save_sync");
       const result = await api0417("/v1/admin/settings/sync", {
         method: "PUT",
+        operationId,
         body: JSON.stringify({
           automatic: byId("adminAutoSync0417").checked,
           intervalMinutes: Number(byId("adminSyncInterval0417").value || 15),
         }),
       });
-      setMessage0417("Configuração enviada ao dispositivo. Operação: " + result.correlationId);
+      if (result.changed === false) {
+        setMessage0417("Sincronização já estava com esses valores; nenhuma alteração foi gravada.");
+      } else {
+        setMessage0417("Configuração enviada ao dispositivo. Operação: " + result.correlationId);
+      }
       await loadDashboard0417();
     } catch (error) { setMessage0417(error.message, true); }
-  });
+  }));
 
   byId("adminSavePublic0417").addEventListener("click", async () => {
     const publicVisibility = {};

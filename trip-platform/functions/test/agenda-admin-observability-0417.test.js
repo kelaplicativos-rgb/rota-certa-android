@@ -8,6 +8,7 @@ const path = require("node:path");
 const {
   normalizeProfileScope0417,
   normalizeSyncPolicy0417,
+  sameSyncPolicy0417,
   safeVisibility0417,
   redact0417,
   activeAdminTrips0417,
@@ -79,7 +80,10 @@ test("BlaBla link is valid only for concrete public trip URL matching strong tri
 test("admin sync request is REQUESTED and SUCCESS health is guarded by attestation metrics", () => {
   const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
   const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
-  assert.match(admin, /eventType: full \? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED"[\s\S]{0,160}result: "REQUESTED"/);
+  assert.match(admin, /const eventType = full \? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED"/);
+  assert.match(admin, /result: "DISPATCHING"/);
+  assert.match(admin, /result: "REQUESTED"/);
+  assert.match(admin, /X-Rota-Certa-Operation-Id/);
   assert.match(admin, /requestedResult === "SUCCESS" && \(failures \|\| pending \|\| divergent \|\| readbackFailures\)/);
   assert.match(browser, /ignorados comprovados/);
   assert.doesNotMatch(browser, /trip\.blablaPublicUrl \|\| trip\.publicUrl/);
@@ -151,12 +155,53 @@ test("admin role is tenant scoped on passenger access rather than global account
 });
 
 
-test("passenger session validation defines activity timestamp before using it", () => {
+test("passenger session activity returns the persisted value and admin mutations force a real touch", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
   const start = source.indexOf("async function requirePassengerSession");
   const end = source.indexOf("async function logoutPassengerAccount", start);
   assert.ok(start >= 0 && end > start);
   const block = source.slice(start, end);
-  assert.match(block, /const now = Date\.now\(\)/);
-  assert.match(block, /lastActivityAtMillis: Math\.max\([^\n]*now\)/);
+  assert.match(block, /let lastActivityAtMillis = Number\(data\.lastActivityAtMillis/);
+  assert.match(block, /lastActivityAtMillis = now/);
+  assert.doesNotMatch(block, /lastActivityAtMillis: Math\.max/);
+  assert.match(source, /async function touchPassengerSessionActivity0427/);
+  assert.match(admin, /touchAdminSession0417\(session\)/);
+});
+
+test("sync save is a no-op when requested policy already matches persisted policy", () => {
+  assert.equal(sameSyncPolicy0417(
+    { automatic: true, intervalMinutes: 15 },
+    { automatic: true, intervalMinutes: 15 },
+  ), true);
+  assert.equal(sameSyncPolicy0417(
+    { automatic: true, intervalMinutes: 15 },
+    { automatic: false, intervalMinutes: 15 },
+  ), false);
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  assert.match(admin, /db\.runTransaction/);
+  assert.match(admin, /sameSyncPolicy0417\(before, requested\)/);
+  assert.match(admin, /changed: false/);
+});
+
+test("same browser context replaces its previous passenger session while other contexts survive", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+  assert.match(app, /rotacerta-passenger-session-context-0427/);
+  assert.match(app, /sessionContextId: passengerSessionContextId0427/);
+  assert.match(source, /passengerSessionContextHash0427/);
+  assert.match(source, /sameContext = Boolean/);
+  assert.match(source, /return expired \|\| sameContext/);
+  assert.match(source, /sessionContextHash,/);
+});
+
+test("admin browser binds once and keeps each mutating control single-flight", () => {
+  const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
+  assert.match(browser, /__rotaCertaAgendaAdminBound0427/);
+  assert.match(browser, /adminInFlight0427/);
+  assert.match(browser, /button\.disabled = true/);
+  assert.match(browser, /X-Rota-Certa-Operation-Id/);
+  assert.match(browser, /operationId = newAdminOperationId0427\("update_now"\)/);
+  assert.match(browser, /operationId = newAdminOperationId0427\("reconcile"\)/);
+  assert.match(browser, /result\.changed === false/);
 });
