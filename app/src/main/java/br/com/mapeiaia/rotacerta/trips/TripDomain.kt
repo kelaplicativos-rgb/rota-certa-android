@@ -154,6 +154,8 @@ data class Trip(
     val publicMirrorActualBytes0421: Int = 0,
     val publicMirrorFirstDifferentByteOffset0421: Int = -1,
     val publicMirrorDifferentByteRanges0421: List<String> = emptyList(),
+    /** Bounded structured field/value/byte evidence for the latest public mismatch. */
+    val publicMirrorFieldDiffs0422: List<String> = emptyList(),
     val publicMirrorHttpStatus0421: Int = 0,
     val publicMirrorBackendErrorCode0421: String = "",
     val publicMirrorFailedStage0421: String = "",
