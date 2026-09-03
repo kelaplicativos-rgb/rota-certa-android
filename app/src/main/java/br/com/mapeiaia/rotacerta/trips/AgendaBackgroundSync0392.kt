@@ -2534,6 +2534,7 @@ class AgendaBackgroundSyncWorker0392(
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
             val bookingCardDeltaSuccess0431 = bookingTargetRemoteTripId0431.isNotBlank() && cycle.failures == 0
+            val collectorCardDeltaSuccess0431 = reason == "blablacar_collection_result" && cycle.failures == 0
             val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < 3)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)
@@ -2570,6 +2571,7 @@ class AgendaBackgroundSyncWorker0392(
                 targetedAuthRequired -> "PENDING_AUTH"
                 retryPending -> "RETRY"
                 bookingCardDeltaSuccess0431 -> "SUCCESS"
+                collectorCardDeltaSuccess0431 -> "SUCCESS"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
