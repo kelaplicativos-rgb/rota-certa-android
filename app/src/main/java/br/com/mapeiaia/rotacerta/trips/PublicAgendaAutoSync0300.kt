@@ -721,10 +721,6 @@ internal object PublicAgendaAutoSync0300 {
                 nowMillis = nowMillis,
             )
         } ?: return@withContext false
-        if (store.trips().filter(Trip::isCanonicalLocalPublishSource).any { samePhysicalTrip(it, synthesized.trip) }) {
-            return@withContext false
-        }
-
         val startedAt = System.nanoTime()
         val tripKey = sha256(synthesized.trip.publicToken).take(12)
         val failureContext = AgendaFailureEvidence.tripContext(
