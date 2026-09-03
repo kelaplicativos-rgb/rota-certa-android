@@ -334,7 +334,7 @@ internal fun evaluatePublicMirrorReadback0411(
         actual.canonicalRevision > 0L
     if (!logicalRevisionValid) mismatch += "canonicalRevision"
     val transportRevisionValid = expected.publicationRevision > 0L &&
-        actual.publicationRevision >= expected.publicationRevision
+        actual.publicationRevision == expected.publicationRevision
     if (!transportRevisionValid) mismatch += "publicationRevision"
     val persistedCommitValid = readback.persistedAtMillis > 0L
     if (!persistedCommitValid) mismatch += "persistedAtMillis"
@@ -399,6 +399,9 @@ internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
         publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+        publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
+        publicMirrorAttemptedPublicationRevision0421 == publicationRevision &&
+        publicMirrorReadbackPublicationRevision0421 == publicationRevision &&
         publicMirrorLastReadbackAtMillis0421 > 0L &&
         publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&
