@@ -809,6 +809,17 @@ class TripRemoteApi(
             ),
         ),
         requireDriverToken = true,
+        evidence0421 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+            RemotePublicationEvidenceContext0421(
+                evidenceId = publicationEvidenceId0421(traceId, trip.canonicalRevision),
+                traceId = traceId,
+                canonicalTripId = canonicalTripId.ifBlank { trip.id },
+                logicalRevision = trip.canonicalRevision,
+                transportRevision = entityRevision,
+                mutationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+            )
+        },
     )
 
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
