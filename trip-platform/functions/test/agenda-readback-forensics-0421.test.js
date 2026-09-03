@@ -50,6 +50,15 @@ test("capacity publication persists stable mutation identity and idempotency", (
   assert.match(source, /idempotencyKey:\s*cleanText\(idempotencyKey/);
 });
 
+test("public trip create upserts by canonical identity and rejects incompatible strong-id reuse", () => {
+  const create = source.slice(source.indexOf("async function createDriverTrip"), source.indexOf("async function processReferralCreditsForCompletedTrip"));
+  assert.match(source, /canonicalTripId: cleanText\(raw\.canonicalTripId \|\| raw\.id/);
+  assert.match(create, /sameCanonicalTrip/);
+  assert.match(create, /projectionPhysicalIdentityCompatible0421/);
+  assert.match(create, /code: "strong_identity_conflict"/);
+  assert.match(create, /adoptedCanonicalIdentity/);
+});
+
 test("sync-state exposes both logical and transport revision spaces", () => {
   const syncState = source.slice(source.indexOf("async function listDriverTripSyncState0402"), source.indexOf("async function reconcileDriverAgendaSeatAllocation"));
   assert.match(syncState, /canonicalRevision:/);
