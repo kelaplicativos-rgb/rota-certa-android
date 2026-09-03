@@ -36,6 +36,20 @@ test("older transport revision is not stale when the logical snapshot is identic
   assert.match(capacity, /stale:\s*false/);
 });
 
+test("capacity publication persists stable mutation identity and idempotency", () => {
+  const capacity = source.slice(
+    source.indexOf("async function reconcileDriverCapacitySnapshot"),
+    source.indexOf("async function listDriverTripSyncState0402"),
+  );
+  assert.match(capacity, /mutationId0421/);
+  assert.match(capacity, /idempotencyKey0421/);
+  assert.match(capacity, /publicationMutationId0421/);
+  assert.match(capacity, /publicationIdempotencyKey0421/);
+  assert.match(capacity, /sameIdempotentMutation/);
+  assert.match(source, /mutationId:\s*cleanText\(mutationId/);
+  assert.match(source, /idempotencyKey:\s*cleanText\(idempotencyKey/);
+});
+
 test("sync-state exposes both logical and transport revision spaces", () => {
   const syncState = source.slice(source.indexOf("async function listDriverTripSyncState0402"), source.indexOf("async function reconcileDriverAgendaSeatAllocation"));
   assert.match(syncState, /canonicalRevision:/);
