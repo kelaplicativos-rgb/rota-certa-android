@@ -1003,9 +1003,20 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
 private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
     if (trip == null) return "{}"
     fun q(value: String): String = JSONObject.quote(UnifiedDebugEventStore.sanitizeForExport(value))
+    fun detail(raw: String, key: String): String = Regex("(?:^|\\s)" + Regex.escape(key) + "=([^\\s]*)")
+        .find(raw)?.groupValues?.getOrNull(1).orEmpty()
+    val evidenceKey = trip.publicMirrorEvidenceId0421
+    val correlated = if (evidenceKey.isBlank()) emptyList() else UnifiedDebugEventStore.snapshot().events
+        .asSequence()
+        .filter { event -> event.stage == "PUBLIC_EVIDENCE_0421" && event.details.contains("evidenceId=$evidenceKey") }
+        .sortedBy { it.monotonicNs }
+        .toList()
+    val maxStages = 64
+    val stages = correlated.takeLast(maxStages)
+    val truncated = correlated.size > stages.size
     return buildString {
         append('{')
-        append("\"schemaVersion\":\"public-evidence-v1\",")
+        append("\"schemaVersion\":\"public-evidence-v2\",")
         append("\"evidenceId\":").append(q(trip.publicMirrorEvidenceId0421)).append(',')
         append("\"traceId\":").append(q(trip.publicMirrorTraceId0421)).append(',')
         append("\"canonicalTripId\":").append(q(trip.id)).append(',')
@@ -1025,7 +1036,22 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"failedStage\":").append(q(trip.publicMirrorFailedStage0421)).append(',')
         append("\"reasonCode\":").append(q(trip.publicMirrorAttestationReason0411)).append(',')
         append("\"readbackAtMillis\":").append(trip.publicMirrorLastReadbackAtMillis0421).append(',')
-        append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411)
+        append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411).append(',')
+        append("\"truncated\":").append(truncated).append(',')
+        append("\"stageCount\":").append(correlated.size).append(',')
+        append("\"stages\":[")
+        stages.forEachIndexed { index, event ->
+            if (index > 0) append(',')
+            append('{')
+            append("\"atMillis\":").append(event.atMillis).append(',')
+            append("\"stage\":").append(q(detail(event.details, "stage"))).append(',')
+            append("\"status\":").append(q(detail(event.details, "status"))).append(',')
+            append("\"reasonCode\":").append(q(detail(event.details, "reasonCode"))).append(',')
+            append("\"durationMs\":").append(detail(event.details, "durationMs").toLongOrNull() ?: 0L).append(',')
+            append("\"details\":").append(q(event.details.take(1200)))
+            append('}')
+        }
+        append(']')
         append('}')
     }
 }
