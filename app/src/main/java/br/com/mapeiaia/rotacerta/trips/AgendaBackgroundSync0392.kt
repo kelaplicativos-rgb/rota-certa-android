@@ -1409,7 +1409,10 @@ internal object AgendaBackgroundSync0392 {
                     canonicalTripId = tombstoned.id,
                     mutationType = "BLABLACAR_COMPLETE_SCOPE_DELETE",
                     source = "EXTERNAL_COLLECTION",
-                )?.let { publicationQueued++ }
+                )?.let { event ->
+                    publicationQueued++
+                    publicationCanonicalTripIds0431 += event.canonicalTripId
+                }
             }
         }
         val legacyProfileScope = response.profiles
