@@ -930,6 +930,7 @@ internal object AgendaBackgroundSync0392 {
     private const val WORK_BACKOFF_SECONDS = 30L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
     private val cardDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
+    private val collectorDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
