@@ -630,8 +630,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 setOnClickListener { onClick() }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        action("Perfil") { loadTrackedUrl(PROFILE_URL) }
-        action("Suas viagens") { loadTrackedUrl(RIDES_URL) }
+        action("Perfil") {
+            if (acquireExternalFlight0426("interactive_profile")) loadTrackedUrl(PROFILE_URL)
+        }
+        action("Suas viagens") {
+            if (acquireExternalFlight0426("interactive_rides")) loadTrackedUrl(RIDES_URL)
+        }
         action("Sincronizar") { beginSync() }
         action("Voltar") { finishSeen() }
         root.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
