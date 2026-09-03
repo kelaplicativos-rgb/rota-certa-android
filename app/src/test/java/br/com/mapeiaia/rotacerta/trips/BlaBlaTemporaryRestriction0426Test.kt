@@ -121,6 +121,8 @@ class BlaBlaTemporaryRestriction0426Test {
 
         assertTrue(coordinator.contains("isSourceCircuitOpen0426(account)"))
         assertTrue(coordinator.contains("externalNavigationStarted=false"))
+        assertTrue(coordinator.contains("action=stop_profile_continue_batch"))
+        assertTrue(coordinator.contains("action=continue_other_profiles"))
         assertTrue(coordinator.contains("onAccountTemporarilyRestricted0426"))
         val terminalStart = coordinator.indexOf("fun onAccountTemporarilyRestricted0426")
         val terminalEnd = coordinator.indexOf("fun onAccountTransientFailure0426", terminalStart)
@@ -136,6 +138,9 @@ class BlaBlaTemporaryRestriction0426Test {
         assertTrue(session.contains("externalFlightOwners0426.putIfAbsent"))
         assertTrue(session.contains("profile:"))
         assertTrue(browser.contains("tryAcquireExternalFlight0426"))
+        assertTrue(browser.contains("externalFlightLease0426 != null"))
+        assertTrue(browser.contains("manage_browser"))
+        assertTrue(browser.contains("interactive_browser"))
         assertTrue(browser.contains("BLABLACAR_PROFILE_SINGLE_FLIGHT_DEDUPED_0426"))
         assertFalse(session.contains("WorkManager"))
         assertFalse(session.contains("CoroutineWorker"))
