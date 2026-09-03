@@ -102,6 +102,11 @@ class TripStore(context: Context) {
         httpStatus0421: Int = 0,
         backendErrorCode0421: String = "",
         failedStage0421: String = "",
+        networkCallId0421: String = "",
+        requestBytes0421: Int = 0,
+        responseBytes0421: Int = 0,
+        requestHash0421: String = "",
+        responseHash0421: String = "",
         readbackAtMillis0421: Long = 0L,
         nowMillis: Long = System.currentTimeMillis(),
     ): Trip? = synchronized(CANONICAL_LOCK) {
@@ -137,6 +142,70 @@ class TripStore(context: Context) {
             publicMirrorHttpStatus0421 = httpStatus0421.coerceAtLeast(0),
             publicMirrorBackendErrorCode0421 = backendErrorCode0421.take(80),
             publicMirrorFailedStage0421 = failedStage0421.take(80),
+            publicMirrorNetworkCallId0421 = networkCallId0421.take(120),
+            publicMirrorRequestBytes0421 = requestBytes0421.coerceAtLeast(0),
+            publicMirrorResponseBytes0421 = responseBytes0421.coerceAtLeast(0),
+            publicMirrorRequestHash0421 = requestHash0421.take(96),
+            publicMirrorResponseHash0421 = responseHash0421.take(96),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
+
+    internal fun recordPublicMirrorPublicationFailure0421(
+        canonicalTripId: String,
+        expectedCanonicalRevision: Long,
+        transportRevision: Long,
+        evidenceId: String,
+        traceId: String,
+        retryable: Boolean,
+        httpStatus: Int,
+        backendErrorCode: String,
+        networkCallId: String,
+        requestBytes: Int,
+        responseBytes: Int,
+        requestHash: String,
+        responseHash: String,
+        reason: String,
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (existing.canonicalRevision != expectedCanonicalRevision) return@synchronized existing
+        if (existing.publicMirrorAttestationCurrent0411()) return@synchronized existing
+        val resolvedReason = backendErrorCode.ifBlank { reason.ifBlank { "PUBLICATION_FAILED" } }.take(160)
+        val updated = existing.copy(
+            publicMirrorAttestationState0411 = if (retryable) {
+                PublicMirrorAttestationState0411.PENDING
+            } else {
+                PublicMirrorAttestationState0411.DIVERGENT
+            },
+            publicMirrorAttestedCanonicalRevision0411 = 0L,
+            publicMirrorAttestedPublicationRevision0411 = 0L,
+            publicMirrorExpectedHash0411 = "",
+            publicMirrorReadbackHash0411 = "",
+            publicMirrorAttestedAtMillis0411 = 0L,
+            publicMirrorReadbackLatencyMillis0411 = 0L,
+            publicMirrorAttestationReason0411 = resolvedReason,
+            publicMirrorMismatchFields0411 = listOf("publication"),
+            publicMirrorReadbackCanonicalRevision0421 = 0L,
+            publicMirrorReadbackPublicationRevision0421 = 0L,
+            publicMirrorPublicIdentity0421 = "",
+            publicMirrorLastReadbackAtMillis0421 = 0L,
+            publicMirrorEvidenceId0421 = evidenceId.take(80),
+            publicMirrorTraceId0421 = traceId.take(120),
+            publicMirrorExpectedBytes0421 = 0,
+            publicMirrorActualBytes0421 = 0,
+            publicMirrorFirstDifferentByteOffset0421 = -1,
+            publicMirrorDifferentByteRanges0421 = emptyList(),
+            publicMirrorHttpStatus0421 = httpStatus.coerceAtLeast(0),
+            publicMirrorBackendErrorCode0421 = backendErrorCode.take(80),
+            publicMirrorFailedStage0421 = if (httpStatus > 0) "HTTP_RESPONSE" else "HTTP_SEND",
+            publicMirrorNetworkCallId0421 = networkCallId.take(120),
+            publicMirrorRequestBytes0421 = requestBytes.coerceAtLeast(0),
+            publicMirrorResponseBytes0421 = responseBytes.coerceAtLeast(0),
+            publicMirrorRequestHash0421 = requestHash.take(96),
+            publicMirrorResponseHash0421 = responseHash.take(96),
+            publicationRevision = maxOf(existing.publicationRevision, transportRevision.coerceAtLeast(0L)),
         )
         if (updated != existing) persistCanonicalTrip0406(updated, current)
         updated
