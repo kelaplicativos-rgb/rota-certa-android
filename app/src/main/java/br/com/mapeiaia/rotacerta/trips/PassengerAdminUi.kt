@@ -81,9 +81,13 @@ fun PassengerAdminScreen(
     var temporaryPasswordFor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
+    var selectedHistory0420 by remember { mutableStateOf<PassengerPersistentHistory?>(null) }
     var selectedCandidateKey0419 by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(historyProfileId) {
         onHierarchyChanged(historyProfileId != null)
+        selectedHistory0420 = historyProfileId?.let { id ->
+            withContext(Dispatchers.IO) { passengerStore.persistentHistory(id) }
+        }
     }
     LaunchedEffect(externalBackToken) {
         if (externalBackToken > 0 && historyProfileId != null) {
@@ -165,6 +169,10 @@ fun PassengerAdminScreen(
                     candidate.whatsapp.contains(needle, ignoreCase = true)
             }
     }
+    var visibleCandidateLimit0420 by remember(search) { mutableIntStateOf(24) }
+    val visibleCandidates0420 = remember(candidates, visibleCandidateLimit0420) {
+        candidates.take(visibleCandidateLimit0420)
+    }
 
     var newPassengerSuggestions by remember { mutableStateOf<List<PassengerProfile>>(emptyList()) }
     LaunchedEffect(newName, newWhatsapp, revision) {
@@ -215,10 +223,9 @@ fun PassengerAdminScreen(
         reloadRemote()
     }
 
-    val selectedHistory = historyProfileId?.let(passengerStore::persistentHistory)
     if (historyProfileId != null) {
         PassengerHistoryPanel(
-            history = selectedHistory,
+            history = selectedHistory0420,
             onBack = { historyProfileId = null },
             showHeader = showHeader,
             onArchiveToggle = { profile ->
@@ -461,16 +468,13 @@ fun PassengerAdminScreen(
         )
     }
 
-    candidates.forEach { candidate ->
+    visibleCandidates0420.forEach { candidate ->
         val access = candidate.remoteAccess
         val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
             ?: candidate.agendaAccessWhatsapp.ifBlank { candidate.whatsapp }
         val accessWhatsappDraft = accessWhatsappDrafts[candidate.key] ?: activeAccessWhatsapp
         val expanded0419 = selectedCandidateKey0419 == candidate.key
         Card(
-            onClick = {
-                selectedCandidateKey0419 = if (expanded0419) null else candidate.key
-            },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
@@ -514,10 +518,14 @@ fun PassengerAdminScreen(
                     Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
                 }
                 if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
-                Text(
-                    if (expanded0419) "▲ Toque para recolher" else "▼ Toque para administrar este passageiro",
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                OutlinedButton(
+                    onClick = {
+                        selectedCandidateKey0419 = if (expanded0419) null else candidate.key
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (expanded0419) "Fechar opções" else "Gerenciar passageiro")
+                }
                 if (expanded0419) {
                     HorizontalDivider()
                     Text("Gerenciar passageiro", style = MaterialTheme.typography.titleSmall)
@@ -532,8 +540,7 @@ fun PassengerAdminScreen(
                         enabled = settings.configured &&
                             !loading &&
                             access != null &&
-                            accessAuthorized0419 &&
-                            (access.accountActivated || access.agendaAdmin),
+                            accessAuthorized0419,
                         onClick = {
                             loading = true
                             scope.launch {
@@ -579,7 +586,7 @@ fun PassengerAdminScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                         !access.accountActivated && !access.agendaAdmin -> Text(
-                            "Este passageiro precisa primeiro ativar Minhas Viagens; depois o botão acima será habilitado.",
+                            "Você pode salvar a permissão agora. Ela aparecerá para o passageiro assim que ele ativar e entrar em Minhas Viagens.",
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -715,6 +722,18 @@ fun PassengerAdminScreen(
                 }
                 }
             }
+        }
+    }
+
+    if (visibleCandidates0420.size < candidates.size) {
+        val remaining0420 = candidates.size - visibleCandidates0420.size
+        OutlinedButton(
+            onClick = {
+                visibleCandidateLimit0420 = (visibleCandidateLimit0420 + 24).coerceAtMost(candidates.size)
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Mostrar mais passageiros ($remaining0420)")
         }
     }
 
