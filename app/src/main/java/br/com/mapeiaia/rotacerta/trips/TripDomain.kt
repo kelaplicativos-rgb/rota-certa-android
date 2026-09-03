@@ -143,6 +143,8 @@ data class Trip(
     val publicMirrorMismatchFields0411: List<String> = emptyList(),
     /** Last independent public readback evidence. Diagnostic only; never a source of truth. */
     val publicMirrorReadbackCanonicalRevision0421: Long = 0L,
+    /** Last transport revision actually attempted for this logical snapshot. */
+    val publicMirrorAttemptedPublicationRevision0421: Long = 0L,
     val publicMirrorReadbackPublicationRevision0421: Long = 0L,
     val publicMirrorPublicIdentity0421: String = "",
     val publicMirrorLastReadbackAtMillis0421: Long = 0L,
