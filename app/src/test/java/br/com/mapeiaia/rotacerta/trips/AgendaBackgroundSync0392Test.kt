@@ -31,6 +31,26 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
+    fun canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector() {
+        assertEquals(
+            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
+            agendaBackgroundSyncMode0392("admin_full_reconcile:physical-0429"),
+        )
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_full_reconcile:physical-0429"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("manual"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("recovery"))
+        assertTrue(agendaBackgroundSyncRequestsCollector0430("periodic"))
+        assertTrue(agendaBackgroundSyncRequestsCollector0430("admin_update_now:explicit-collector"))
+
+        val source = backgroundSource()
+        assertTrue(source.contains("val collectorRequested = agendaBackgroundSyncRequestsCollector0430(reason)"))
+        assertTrue(source.contains("collectorPending = collectorRequested && collectorState.pending"))
+        assertTrue(source.contains("val collectorWasRequested = agendaBackgroundSyncRequestsCollector0430(reason)"))
+        assertTrue(source.contains("val collectorAuthRequired = collectorWasRequested && collectorState.status == \"PENDING_AUTH\""))
+        assertTrue(source.contains("agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE -> true"))
+    }
+
+    @Test
     fun oneBackgroundModuleFeedsTimelineAndPublicAgenda() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
 
