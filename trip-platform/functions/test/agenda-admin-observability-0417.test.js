@@ -90,12 +90,15 @@ test("admin browser reuses Minhas Viagens bearer session without another passwor
 });
 
 
-test("driver grants admin only to authorized activated passenger and blocking revokes role", () => {
+test("driver grants admin to authorized passenger without requiring a second activation gate", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
-  assert.match(source, /async function setDriverPassengerAgendaAdmin0418/);
-  assert.match(source, /passengerAccessIsAuthorized\(access\)/);
-  assert.match(source, /passengerAccountIsActivated\(accountSnap\.data\(\)\)/);
-  assert.match(source, /PASSENGER_AGENDA_ADMIN_CHANGED/);
+  const start = source.indexOf("async function setDriverPassengerAgendaAdmin0418");
+  const end = source.indexOf("async function resetDriverPassengerPassword", start);
+  assert.ok(start >= 0 && end > start);
+  const block = source.slice(start, end);
+  assert.match(block, /passengerAccessIsAuthorized\(access\)/);
+  assert.doesNotMatch(block, /passengerAccountIsActivated/);
+  assert.match(block, /PASSENGER_AGENDA_ADMIN_CHANGED/);
   assert.match(source, /agendaAdmin: blocking \? false/);
   assert.match(source, /\/v1\/passenger\/logout/);
 });
