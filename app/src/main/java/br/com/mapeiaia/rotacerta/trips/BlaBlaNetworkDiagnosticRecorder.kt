@@ -105,7 +105,7 @@ internal class BlaBlaNetworkDiagnosticRecorder(
             UnifiedDebugEventStore.record(
                 "BLABLACAR_NETWORK_DIAGNOSTIC_INSTALLED",
                 appPackageName,
-                "origin=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true networkSource=true diagnosticBridge=$listenerInstalled domRead=false requestHeaders=false requestBody=false",
+                "originPolicy=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true networkSource=true diagnosticBridge=$listenerInstalled domRead=false requestHeaders=false requestBody=false",
             )
             true
         }.getOrElse {
@@ -373,8 +373,8 @@ internal class BlaBlaNetworkDiagnosticStore(
 
 internal object BlaBlaNetworkDiagnosticPolicy {
     const val SCHEMA_VERSION = 1
-    const val PAGE_ORIGIN = "https://www.blablacar.com.br"
-    val ALLOWED_PAGE_ORIGINS: Set<String> = setOf(PAGE_ORIGIN)
+    const val PAGE_ORIGIN = "official-blablacar-https"
+    val ALLOWED_PAGE_ORIGINS: Set<String> = setOf("*")
 
     private const val MAX_BRIDGE_CHARS = 80_000
     private const val MAX_DEPTH = 9
@@ -412,11 +412,11 @@ internal object BlaBlaNetworkDiagnosticPolicy {
         val uri = URI(raw)
         if (
             !uri.scheme.equals("https", ignoreCase = true) ||
-            !uri.host.equals("www.blablacar.com.br", ignoreCase = true) ||
+            !BlaBlaCollectorUrlModule.isOfficialBlaBlaHost(uri.host) ||
             uri.userInfo != null ||
             uri.port !in setOf(-1, 443)
         ) return@runCatching null
-        PAGE_ORIGIN
+        "https://${uri.host.lowercase(Locale.ROOT)}"
     }.getOrNull()
 
     fun isAllowedNetworkHost(rawHost: String?): Boolean {
@@ -484,7 +484,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
 
     private fun sanitizePageUrl(raw: String, salt: String): String? {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return null
-        if (!uri.host.equals("www.blablacar.com.br", ignoreCase = true)) return null
+        if (!BlaBlaCollectorUrlModule.isOfficialBlaBlaHost(uri.host)) return null
         return sanitizeEndpoint(raw, salt)
     }
 
@@ -610,7 +610,16 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           'use strict';
           if (window.__rotaCertaNetworkDiagnosticInstalled === true) return;
           if (window !== window.top) return;
-          if (location.protocol !== 'https:' || location.hostname.toLowerCase() !== 'www.blablacar.com.br') return;
+          const isOfficialPageHost = function(hostname) {
+            const labels = String(hostname || '').trim().toLowerCase().replace(/^\\.+|\\.+$/g, '').split('.').filter(Boolean);
+            const root = labels[0] === 'www' ? labels.slice(1) : labels;
+            if (root[0] !== 'blablacar') return false;
+            const suffix = root.slice(1);
+            if (suffix.length === 1) return suffix[0] === 'com' || /^[a-z]{2}$/.test(suffix[0]);
+            if (suffix.length === 2) return ['com', 'co'].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+            return false;
+          };
+          if (location.protocol !== 'https:' || !isOfficialPageHost(location.hostname)) return;
           const bridge = window.RotaCertaNetworkDiagnostic;
           Object.defineProperty(window, '__rotaCertaNetworkDiagnosticInstalled', { value: true });
 
@@ -680,6 +689,474 @@ internal object BlaBlaNetworkDiagnosticPolicy {
 
           function sourceObject(value) {
             return value && typeof value === 'object' && !Array.isArray(value) ? value : Object.create(null);
+          }
+
+          function currentAdministrativeTripId() {
+            try {
+              const current = new URL(location.href);
+              let value = sourceText(current.searchParams.get('id'), 160);
+              if (!value) {
+                const match = current.pathname.match(/\\/rides\\/offer\\/(?!edit(?:\\/|$)|passenger(?:\\/|$))([^/?#]+)/i);
+                value = sourceText(match && match[1], 160);
+              }
+              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value.toLowerCase() : '';
+            } catch (_) {
+              return '';
+            }
+          }
+
+          function publicTripCandidate(raw) {
+            try {
+              const url = new URL(String(raw || ''), location.href);
+              if (!['http:', 'https:'].includes(url.protocol) || !isOfficialPageHost(url.hostname)) return null;
+              const path = url.pathname.replace(/\\/+$/, '').toLowerCase();
+              if (path !== '/trip' && !path.startsWith('/trip/')) return null;
+              let publicId = sourceText(url.searchParams.get('id'), 160);
+              if (!publicId) {
+                const match = url.pathname.match(/\\/trip\\/([^/?#]+)/i);
+                publicId = sourceText(match && match[1], 160);
+              }
+              if (!/^[A-Za-z0-9_-]{8,160}$/.test(publicId)) return null;
+              return { href: url.href.slice(0, 2000), publicId: publicId };
+            } catch (_) {
+              return null;
+            }
+          }
+
+          function structuredShareCandidates(value, path, depth, seen) {
+            if (!value || typeof value !== 'object' || depth > 9 || seen.has(value)) return [];
+            seen.add(value);
+            const found = [];
+            if (!Array.isArray(value)) {
+              Object.keys(value).slice(0, 80).forEach(function(key) {
+                let child;
+                try { child = value[key]; } catch (_) { child = null; }
+                const nextPath = path ? path + '.' + key : key;
+                if (key.toLowerCase() === 'share' && child && typeof child === 'object') {
+                  const share = sourceObject(child);
+                  const candidate = publicTripCandidate(share.url);
+                  if (candidate) found.push({ candidate: candidate, jsonPath: nextPath + '.url' });
+                }
+                if (child && typeof child === 'object') {
+                  structuredShareCandidates(child, nextPath, depth + 1, seen).forEach(function(item) { found.push(item); });
+                }
+              });
+            } else {
+              value.slice(0, 48).forEach(function(child, index) {
+                if (child && typeof child === 'object') {
+                  structuredShareCandidates(child, path + '[' + index + ']', depth + 1, seen).forEach(function(item) { found.push(item); });
+                }
+              });
+            }
+            return found;
+          }
+
+          function subtreeContainsExactScalar(value, expected, depth, seen) {
+            if (!expected || depth > 8 || value === null || value === undefined) return false;
+            if (typeof value === 'string' || typeof value === 'number') {
+              return String(value).trim().toLowerCase() === expected.toLowerCase();
+            }
+            if (typeof value !== 'object' || seen.has(value)) return false;
+            seen.add(value);
+            if (Array.isArray(value)) {
+              return value.slice(0, 48).some(function(child) {
+                return subtreeContainsExactScalar(child, expected, depth + 1, seen);
+              });
+            }
+            return Object.keys(value).slice(0, 80).some(function(key) {
+              let child;
+              try { child = value[key]; } catch (_) { child = null; }
+              return subtreeContainsExactScalar(child, expected, depth + 1, seen);
+            });
+          }
+
+          function mergeTripSource(tripId, patch) {
+            if (!tripId) return;
+            if (!networkTripSources.has(tripId) && networkTripSources.size >= MAX_SOURCE_TRIPS) {
+              const oldest = networkTripSources.keys().next();
+              if (!oldest.done) networkTripSources.delete(oldest.value);
+            }
+            const existing = networkTripSources.get(tripId) || {
+              tripId: tripId,
+              publicTripHref: '',
+              publicTripHrefSource: '',
+              publicTripHrefBinding: '',
+              publicTripHrefEndpoint: '',
+              publicTripHrefJsonPath: '',
+              bookingsComplete: false,
+              bookings: [],
+              waypointsComplete: false,
+              waypoints: []
+            };
+            networkTripSources.set(tripId, Object.assign({}, existing, patch || {}, { tripId: tripId }));
+          }
+
+          function rememberStructuredShareForCurrentTrip(parsed, endpoint) {
+            const tripId = currentAdministrativeTripId();
+            if (!tripId || !parsed || typeof parsed !== 'object') return;
+            const pending = [{ value: parsed, depth: 0, path: '          function sourceWaypoint(rawValue) {
+            const waypoint = sourceObject(rawValue);
+            const place = sourceObject(waypoint.place);
+            const address = sourceText(place.address || waypoint.address || waypoint.secondary_text, 500);
+            return {
+              label: sourceText(waypoint.main_text || place.city || waypoint.secondary_text || address, 240),
+              address: address,
+              latitude: sourceNumber(place.latitude !== undefined ? place.latitude : waypoint.latitude, -90, 90),
+              longitude: sourceNumber(place.longitude !== undefined ? place.longitude : waypoint.longitude, -180, 180)
+            };
+          }
+
+          function sourcePhone(rawModes) {
+            if (!Array.isArray(rawModes)) return '';
+            for (const rawMode of rawModes.slice(0, 12)) {
+              const mode = sourceObject(rawMode);
+              const phone = sourceText(mode.phone_number || mode.phoneNumber, 40);
+              if (phone) return phone;
+            }
+            return '';
+          }
+
+          function rememberTripRoot(rawRoot, endpoint) {
+            const root = sourceObject(rawRoot);
+            if (!Array.isArray(root.bookings)) return;
+            const tripId = sourceText(root.trip_offer_encrypted_id, 160).toLowerCase();
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
+            const rawWaypoints = Array.isArray(root.waypoints) ? root.waypoints : [];
+            const waypoints = rawWaypoints.slice(0, MAX_SOURCE_WAYPOINTS).map(function(rawWaypoint) {
+              return sourceWaypoint(rawWaypoint);
+            });
+            const bookings = root.bookings.slice(0, MAX_SOURCE_BOOKINGS).map(function(rawBooking) {
+              const booking = sourceObject(rawBooking);
+              const passenger = sourceObject(booking.passenger);
+              const price = sourceObject(booking.price);
+              return {
+                passengerId: sourceText(passenger.id, 160),
+                passengerName: sourceText(passenger.display_name, 120),
+                seats: sourceNumber(booking.seats_reserved, 1, 20) || 0,
+                phone: sourcePhone(booking.contact_modes),
+                fareAmount: sourceText(price.amount, 40),
+                fareCurrencyCode: sourceText(price.currency, 3).toUpperCase(),
+                fareFormatted: sourceText(price.formatted_price, 80),
+                pickup: sourceWaypoint(booking.pickup_waypoint),
+                dropoff: sourceWaypoint(booking.dropoff_waypoint)
+              };
+            });
+            mergeTripSource(tripId, {
+              bookingsComplete: root.bookings.length <= MAX_SOURCE_BOOKINGS,
+              bookings: bookings,
+              waypointsComplete: rawWaypoints.length >= 2 && rawWaypoints.length <= MAX_SOURCE_WAYPOINTS,
+              waypoints: waypoints
+            });
+            const shares = structuredShareCandidates(root, '$', 0, new WeakSet());
+            const unique = [];
+            shares.forEach(function(item) {
+              if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) unique.push(item);
+            });
+            if (unique.length === 1) {
+              mergeTripSource(tripId, {
+                publicTripHref: unique[0].candidate.href,
+                publicTripHrefSource: 'network_structured',
+                publicTripHrefBinding: 'network_authoritative',
+                publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+              });
+            }
+          }
+
+          function rememberNetworkTripSources(parsed, endpoint) {
+            if (!parsed || typeof parsed !== 'object') return;
+            rememberStructuredShareForCurrentTrip(parsed, endpoint);
+            const pending = [{ value: parsed, depth: 0 }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 160) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+              if (!Array.isArray(value) && Array.isArray(value.bookings) && value.trip_offer_encrypted_id) {
+                rememberTripRoot(value, endpoint);
+              }
+              if (current.depth >= 5) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 32).forEach(function(item) {
+                  if (item && typeof item === 'object') pending.push({ value: item, depth: current.depth + 1 });
+                });
+              } else {
+                Object.keys(value).slice(0, 64).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') pending.push({ value: child, depth: current.depth + 1 });
+                });
+              }
+            }
+          }
+
+          function lengthBucket(length) {
+            if (length <= 0) return '0';
+            if (length <= 4) return '1-4';
+            if (length <= 8) return '5-8';
+            if (length <= 16) return '9-16';
+            if (length <= 32) return '17-32';
+            if (length <= 64) return '33-64';
+            if (length <= 128) return '65-128';
+            return '129+';
+          }
+
+          function magnitude(value) {
+            const absolute = Math.abs(value);
+            if (absolute === 0) return 'zero';
+            if (absolute < 1) return 'lt1';
+            if (absolute < 10) return 'lt10';
+            if (absolute < 100) return 'lt100';
+            if (absolute < 1000) return 'lt1000';
+            if (absolute < 1000000) return 'lt1000000';
+            return 'large';
+          }
+
+          function classifyString(value) {
+            if (!value) return 'empty';
+            if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(value)) return 'uuid';
+            if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) return 'email';
+            if (/^\+?[0-9()\-\s]{8,20}$/.test(value)) return 'phone';
+            if (/^https?:\/\//i.test(value)) return 'url';
+            return 'text';
+          }
+
+          function safeKey(raw, index) {
+            const value = String(raw || '');
+            if (value === '__proto__' || value === 'prototype' || value === 'constructor') return 'field_' + index;
+            return /^[A-Za-z_][A-Za-z0-9_.-]{0,79}$/.test(value) ? value : 'field_' + index;
+          }
+
+          function anonymize(value, key, depth, state, seen) {
+            state.nodes += 1;
+            if (state.nodes > MAX_NODES) return { kind: 'node_limit' };
+            if (depth > MAX_DEPTH) return { kind: 'depth_limit' };
+            if (key && secretKey.test(key)) return { kind: 'redacted' };
+            if (value === null || typeof value === 'boolean') return value;
+            if (typeof value === 'string') {
+              if (key && personalKey.test(key)) return { kind: 'redacted' };
+              return { kind: classifyString(value), lengthBucket: lengthBucket(value.length) };
+            }
+            if (typeof value === 'number') {
+              if (!Number.isFinite(value)) return { kind: 'number', magnitude: 'large' };
+              if (key && seatKey.test(key) && Number.isInteger(value) && value >= 0 && value <= 20) return value;
+              return {
+                kind: 'number',
+                integer: Number.isInteger(value),
+                sign: value < 0 ? 'negative' : (value > 0 ? 'positive' : 'zero'),
+                magnitude: magnitude(value)
+              };
+            }
+            if (typeof value !== 'object') return { kind: 'unsupported' };
+            if (seen.has(value)) return { kind: 'unsupported' };
+            seen.add(value);
+            if (Array.isArray(value)) {
+              const sample = value.slice(0, MAX_ARRAY).map(function(item) {
+                return anonymize(item, key, depth + 1, state, seen);
+              });
+              return { kind: 'array', arrayLength: value.length, sample: sample };
+            }
+            const fields = Object.create(null);
+            const keys = Object.keys(value);
+            keys.slice(0, MAX_FIELDS).forEach(function(rawKey, index) {
+              let fieldValue;
+              try { fieldValue = value[rawKey]; } catch (_) { fieldValue = undefined; }
+              fields[safeKey(rawKey, index)] = anonymize(fieldValue, rawKey, depth + 1, state, seen);
+            });
+            return {
+              kind: 'object',
+              fieldCount: keys.length,
+              truncated: keys.length > MAX_FIELDS,
+              fields: fields
+            };
+          }
+
+          function durationBucket(started) {
+            const elapsed = Math.max(0, performance.now() - started);
+            if (elapsed < 50) return 0;
+            if (elapsed < 100) return 50;
+            if (elapsed < 250) return 100;
+            if (elapsed < 500) return 250;
+            if (elapsed < 1000) return 500;
+            if (elapsed < 2000) return 1000;
+            if (elapsed < 5000) return 2000;
+            if (elapsed < 10000) return 5000;
+            return 10000;
+          }
+
+          function post(envelope) {
+            if (!bridge || typeof bridge.postMessage !== 'function') return;
+            try {
+              let serialized = JSON.stringify(envelope);
+              if (serialized.length > MAX_MESSAGE_CHARS) {
+                envelope.body = { kind: 'too_large' };
+                envelope.contentKind = 'too_large';
+                serialized = JSON.stringify(envelope);
+              }
+              bridge.postMessage(serialized);
+            } catch (_) {}
+          }
+
+          function baseEnvelope(transport, method, endpoint, status, started, contentKind, body) {
+            return {
+              schema: 1,
+              transport: transport,
+              method: String(method || 'GET').toUpperCase(),
+              endpoint: endpoint,
+              page: safeEndpoint(location.href),
+              status: Number.isInteger(status) ? status : 0,
+              durationBucketMs: durationBucket(started),
+              contentKind: contentKind,
+              body: body
+            };
+          }
+
+          async function observeFetch(response, rawUrl, method, started) {
+            if (!capturePage()) return;
+            const endpoint = safeEndpoint(response && response.url ? response.url : rawUrl);
+            if (!endpoint) return;
+            let contentType = '';
+            let contentLength = 0;
+            try {
+              contentType = String(response.headers.get('content-type') || '').toLowerCase();
+              contentLength = Number(response.headers.get('content-length') || 0);
+            } catch (_) {}
+            if (!contentType.includes('json')) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'non_json', {
+                kind: 'non_json', lengthBucket: lengthBucket(contentLength)
+              }));
+              return;
+            }
+            if (contentLength > MAX_BODY_CHARS) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'too_large', { kind: 'too_large' }));
+              return;
+            }
+            try {
+              const text = await response.clone().text();
+              if (text.length > MAX_BODY_CHARS) {
+                post(baseEnvelope('fetch', method, endpoint, response.status, started, 'too_large', { kind: 'too_large' }));
+                return;
+              }
+              if (!text) {
+                post(baseEnvelope('fetch', method, endpoint, response.status, started, 'empty', { kind: 'empty' }));
+                return;
+              }
+              const parsed = JSON.parse(text);
+              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed, endpoint);
+              const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
+            } catch (_) {
+              post(baseEnvelope('fetch', method, endpoint, response.status, started, 'invalid_json', { kind: 'invalid_json' }));
+            }
+          }
+
+          const originalFetch = window.fetch;
+          if (typeof originalFetch === 'function') {
+            window.fetch = function() {
+              const args = arguments;
+              const started = performance.now();
+              let rawUrl = '';
+              let method = 'GET';
+              try {
+                rawUrl = args[0] instanceof Request ? args[0].url : String(args[0] || '');
+                method = args[0] instanceof Request ? args[0].method : (args[1] && args[1].method ? args[1].method : 'GET');
+              } catch (_) {}
+              return originalFetch.apply(this, args).then(function(response) {
+                observeFetch(response, rawUrl, method, started);
+                return response;
+              });
+            };
+          }
+
+          const xhrMeta = new WeakMap();
+          const originalOpen = XMLHttpRequest.prototype.open;
+          const originalSend = XMLHttpRequest.prototype.send;
+          XMLHttpRequest.prototype.open = function(method, url) {
+            xhrMeta.set(this, { method: String(method || 'GET'), url: String(url || ''), started: 0 });
+            return originalOpen.apply(this, arguments);
+          };
+          XMLHttpRequest.prototype.send = function() {
+            const xhr = this;
+            const meta = xhrMeta.get(xhr) || { method: 'GET', url: '', started: 0 };
+            meta.started = performance.now();
+            xhr.addEventListener('loadend', function() {
+              if (!capturePage()) return;
+              const endpoint = safeEndpoint(xhr.responseURL || meta.url);
+              if (!endpoint) return;
+              let contentType = '';
+              try { contentType = String(xhr.getResponseHeader('content-type') || '').toLowerCase(); } catch (_) {}
+              if (!contentType.includes('json')) {
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'non_json', { kind: 'non_json' }));
+                return;
+              }
+              try {
+                let parsed;
+                if (xhr.responseType === 'json') {
+                  parsed = xhr.response;
+                } else {
+                  const text = String(xhr.responseText || '');
+                  if (text.length > MAX_BODY_CHARS) {
+                    post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'too_large', { kind: 'too_large' }));
+                    return;
+                  }
+                  if (!text) {
+                    post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'empty', { kind: 'empty' }));
+                    return;
+                  }
+                  parsed = JSON.parse(text);
+                }
+                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed, endpoint);
+                const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
+              } catch (_) {
+                post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'invalid_json', { kind: 'invalid_json' }));
+              }
+            }, { once: true });
+            return originalSend.apply(this, arguments);
+          };
+        })();
+    """.trimIndent()
+}
+ }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 220) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+              const shares = structuredShareCandidates(value, current.path, 0, new WeakSet());
+              const unique = [];
+              shares.forEach(function(item) {
+                if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) unique.push(item);
+              });
+              if (unique.length === 1 && subtreeContainsExactScalar(value, tripId, 0, new WeakSet())) {
+                mergeTripSource(tripId, {
+                  publicTripHref: unique[0].candidate.href,
+                  publicTripHrefSource: 'network_structured',
+                  publicTripHrefBinding: 'network_authoritative',
+                  publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                  publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+                });
+                return;
+              }
+              if (current.depth >= 6) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 48).forEach(function(child, index) {
+                  if (child && typeof child === 'object') pending.push({ value: child, depth: current.depth + 1, path: current.path + '[' + index + ']' });
+                });
+              } else {
+                Object.keys(value).slice(0, 80).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') pending.push({ value: child, depth: current.depth + 1, path: current.path + '.' + key });
+                });
+              }
+            }
           }
 
           function sourceWaypoint(rawValue) {
@@ -923,7 +1400,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 return;
               }
               const parsed = JSON.parse(text);
-              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed);
+              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed, endpoint);
               const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
               post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
             } catch (_) {
@@ -986,7 +1463,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   }
                   parsed = JSON.parse(text);
                 }
-                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed);
+                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed, endpoint);
                 const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
                 post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
               } catch (_) {
