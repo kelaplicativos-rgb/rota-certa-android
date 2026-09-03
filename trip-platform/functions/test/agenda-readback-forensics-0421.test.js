@@ -11,7 +11,10 @@ test("public readback persists logical canonical revision independently from tra
   assert.match(source, /schemaVersion:\s*"public-trip-v2"/);
   assert.match(source, /canonicalRevision:\s*Math\.max\(0, Number\(data\.canonicalRevision \|\| 0\)\)/);
   assert.match(source, /publicationRevision:\s*Math\.max\(0, Number\(data\.publicationRevision \|\| 0\)\)/);
-  assert.match(source, /semanticPayload = \{ \.\.\.payload, publicationRevision: 0, blablaPublicUrl: "" \}/);
+  assert.match(source, /semanticPayload = \{ \.\.\.payload, publicationRevision: 0 \}/);
+  assert.doesNotMatch(source, /publicationRevision: 0, blablaPublicUrl: ""/);
+  assert.match(source, /publicCommittedAt0422: FieldValue\.serverTimestamp\(\)/);
+  assert.match(source, /committedAt\.toMillis/);
 });
 
 test("deterministic protected-booking conflict returns bounded correlation details", () => {
@@ -64,4 +67,25 @@ test("sync-state exposes both logical and transport revision spaces", () => {
   assert.match(syncState, /canonicalRevision:/);
   assert.match(syncState, /publicationRevision:/);
   assert.match(syncState, /canonicalStateHash:/);
+});
+
+
+test("equal transport revision only no-ops after logical state matches", () => {
+  const capacity = source.slice(
+    source.indexOf("async function reconcileDriverCapacitySnapshot"),
+    source.indexOf("async function listDriverTripSyncState0402"),
+  );
+  assert.match(capacity, /if \(sameLogicalSnapshot\)[\s\S]*logicalReplay:\s*true/);
+  assert.match(capacity, /publication_revision_repair_identity_mismatch/);
+  assert.match(capacity, /Same mutation \+ same transport revision but stale\/missing logical projection/);
+  assert.match(capacity, /\(!deterministicRequest \|\| sameLogicalSnapshot\)/);
+});
+
+test("public hash treats the observed BlaBla public URL as semantic state", () => {
+  const hash = source.slice(
+    source.indexOf("function canonicalPublicTripHash0411"),
+    source.indexOf("async function getDriverPublicTripReadback0411"),
+  );
+  assert.match(hash, /publicationRevision: 0/);
+  assert.doesNotMatch(hash, /blablaPublicUrl:\s*""/);
 });
