@@ -70,7 +70,7 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
-    fun cardVerifyUsesCanonicalMirrorWithoutBrowserOrAutomaticRetry() {
+    fun cardVerifyUsesCanonicalMirrorAndOnlyAcquiresMissingPublicUrlWithoutRetry() {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_reverify"))
         assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_reverify"))
         assertTrue(AgendaBackgroundSync0392.staleDurableOneShot0435("trip_reverify", 0L, 1_000_000L))
@@ -96,10 +96,53 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("reverifyCanonicalMirror0435"))
         assertTrue(source.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
         assertTrue(source.contains("PublicMirrorAttestationCoordinator0411.attest"))
-        assertFalse(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(source.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
+        assertTrue(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(source.contains("origin = \"card_verify_missing_public_url_0442\""))
+        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
         assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
         assertTrue(source.contains("val targetedRetryable = false"))
     }
+    @Test
+    fun targetedCollectorPublicUrlAcceptsOnlyExactStrongTripAndAuthoritativeBinding() {
+        val target = BlaBlaTripTarget0407(
+            tenantId = "tenant-0442",
+            accountId = "account-0442",
+            profileUuid = "11111111-1111-4111-8111-111111111111",
+            tripId = "admin-trip-0442",
+            tripHref = "https://www.blablacar.com.br/rides/offer/admin-trip-0442",
+        )
+        val publicToken = "AaA1PublicToken0442DifferentFromAdmin"
+        val exact = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2030-09-10",
+            trip_href = target.tripHref,
+            public_trip_href = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&search_uuid=temp",
+            public_trip_href_source = "network_structured",
+            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+            trip_id = target.tripId,
+        )
+        val unrelated = exact.copy(
+            trip_id = "other-admin-trip-0442",
+            trip_href = "https://www.blablacar.com.br/rides/offer/other-admin-trip-0442",
+        )
+
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken",
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(trips = listOf(exact)),
+                target,
+            ),
+        )
+        assertEquals(
+            null,
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(trips = listOf(unrelated)),
+                target,
+            ),
+        )
+    }
+
     @Test
     fun canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector() {
         assertEquals(

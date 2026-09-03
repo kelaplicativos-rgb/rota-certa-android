@@ -955,6 +955,23 @@ internal fun targetedCollectorResponse0407(
     )
 }
 
+internal fun targetedCollectorPublicUrl0442(
+    response: BlaBlaCollectorMonthResponse?,
+    target: BlaBlaTripTarget0407,
+): String? {
+    val exact = targetedCollectorResponse0407(response, target)
+        ?.trips
+        .orEmpty()
+        .singleOrNull()
+        ?: return null
+    return canonicalBlaBlaPublicUrl0409(
+        existingUrl = null,
+        observedUrl = exact.public_trip_href,
+        expectedTripId = target.tripId,
+        observedBinding = exact.public_trip_href_binding,
+    )
+}
+
 internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
@@ -1090,8 +1107,13 @@ internal object AgendaBackgroundSync0392 {
         )
     }
     /**
-     * Verifies the Agenda mirror from the canonical Timeline snapshot only.
-     * This path must never navigate BlaBlaCar or start a collector session.
+     * Verifies the Agenda mirror from the canonical Timeline snapshot.
+     *
+     * A valid canonical BlaBlaCar public URL never triggers source navigation. When that
+     * single field is still unresolved, an explicit card verification may perform exactly
+     * one targeted headless read through the existing collector. The collector circuit
+     * breaker, single-flight lock and timeout remain authoritative; no automatic retry or
+     * whole-account collection is introduced here.
      */
     internal suspend fun reverifyCanonicalMirror0435(
         context: Context,
@@ -1120,7 +1142,50 @@ internal object AgendaBackgroundSync0392 {
                 finishedAtMillis = System.currentTimeMillis(),
             )
         }
-        val canonical = matches.single()
+        var canonical = matches.single()
+        if (canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()) {
+            val acquisition = BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                context = appContext,
+                target = target,
+                commandId = work.commandId,
+                origin = "card_verify_missing_public_url_0442",
+            )
+            if (acquisition.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
+                return acquisition
+            }
+            val resolvedPublicUrl = targetedCollectorPublicUrl0442(
+                response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+                target = target,
+            )
+            if (resolvedPublicUrl.isNullOrBlank()) {
+                return BlaBlaCommandResult0407(
+                    commandId = work.commandId,
+                    target = target,
+                    capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                    transportUsed = BlaBlaTransport0407.HYBRID,
+                    status = BlaBlaCommandStatus0407.UNVERIFIED,
+                    errorCode = "BLABLACAR_PUBLIC_URL_UNRESOLVED",
+                    verification = "targeted_collector_completed_without_bound_public_permalink",
+                    startedAtMillis = startedAt,
+                    finishedAtMillis = System.currentTimeMillis(),
+                )
+            }
+            canonical = store.saveTrip(
+                canonical.copy(
+                    blablaPublicUrl = resolvedPublicUrl,
+                    lastObservedAtMillis = maxOf(canonical.lastObservedAtMillis, System.currentTimeMillis()),
+                ),
+            )
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_PUBLIC_URL_CANONICALIZED_0442",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonical.id) +
+                    " tripIdPresent=true profileUuidPresent=true" +
+                    " canonicalRevision=" + canonical.canonicalRevision +
+                    " source=targeted_headless networkFirst=true" +
+                    " publicUrlFingerprint=" + sha256TripPublication0387(resolvedPublicUrl).take(16),
+            )
+        }
         val source = canonical.externalSnapshot
             ?: return BlaBlaCommandResult0407(
                 commandId = work.commandId,
