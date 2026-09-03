@@ -154,6 +154,7 @@ data class Trip(
     val publicMirrorDifferentByteRanges0421: List<String> = emptyList(),
     val publicMirrorHttpStatus0421: Int = 0,
     val publicMirrorBackendErrorCode0421: String = "",
+    val publicMirrorFailedStage0421: String = "",
     /** Collector execution that last observed this trip. Metadata only; it never defines identity. */
     val lastCollectionRunId: String = "",
     /** Monotonic collector generation used to reject delayed results from older executions. */
