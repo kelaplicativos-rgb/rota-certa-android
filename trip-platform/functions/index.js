@@ -5954,13 +5954,34 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       const currentEventId = cleanText(previous.publicationEventId, 120);
       const deterministicRequest = entityRevision > 0;
       const staleByRevision = deterministicRequest && entityRevision < currentEntityRevision;
+      const incomingLogicalRevision = Math.max(0, Math.floor(Number(rawTrip && rawTrip.canonicalRevision || 0)));
+      const currentLogicalRevision = Math.max(0, Math.floor(Number(previous.canonicalRevision || 0)));
+      const incomingCanonicalStateHash = cleanText(rawTrip && rawTrip.canonicalStateHash, 160);
+      const currentCanonicalStateHash = cleanText(previous.canonicalStateHash, 160);
+      const sameLogicalSnapshot = deterministicRequest &&
+        incomingLogicalRevision > 0 &&
+        incomingLogicalRevision === currentLogicalRevision &&
+        Boolean(incomingCanonicalStateHash) &&
+        incomingCanonicalStateHash === currentCanonicalStateHash;
       const legacyAfterVersioned = !deterministicRequest && currentEntityRevision > 0;
       const tombstoneBlocksLegacy = previous.publicationTombstone === true && !deterministicRequest;
+      if (staleByRevision && sameLogicalSnapshot) {
+        const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+        return {
+          changed: false,
+          stale: false,
+          logicalReplay: true,
+          range,
+          entityRevision: currentEntityRevision,
+          occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+        };
+      }
       if (staleByRevision || legacyAfterVersioned || tombstoneBlocksLegacy) {
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
         return {
           changed: false,
           stale: true,
+          logicalReplay: false,
           range,
           entityRevision: currentEntityRevision,
           occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
