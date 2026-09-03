@@ -159,6 +159,14 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun duplicatePublicProjectionIsExplicitlyDeniedMatchBeforeReadback() {
+        val source = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
+        assertTrue(source.contains("PUBLIC_PROJECTION_DUPLICATE"))
+        assertTrue(source.contains("duplicateProjection"))
+        assertTrue(source.contains("PublicMirrorAttestationState0411.DIVERGENT"))
+    }
+
+    @Test
     fun projectionRepairCannotCreateANewRevisionForTheSameLogicalSnapshot() {
         val trip = Trip(
             id = "trip-0421",
