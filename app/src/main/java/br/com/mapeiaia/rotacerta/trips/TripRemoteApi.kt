@@ -1102,6 +1102,13 @@ class TripRemoteApi(
             append('-')
             append(sha256Hex("$method|$path".toByteArray(Charsets.UTF_8)).take(10))
         }
+        recordRemotePublicationEvidence0421(
+            evidence0421,
+            stage = "REQUEST_BUILD",
+            status = "OK",
+            reason = "REQUEST_SERIALIZED",
+            extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} charset=UTF-8 contentType=application/json previousStage=OUTBOX_DEQUEUE nextStage=HTTP_SEND",
+        )
         var phase = "validate_configuration"
         var connection: HttpURLConnection? = null
         var status = 0
@@ -1138,6 +1145,13 @@ class TripRemoteApi(
                 opened.doOutput = true
                 opened.outputStream.use { output -> output.write(requestPayloadBytes) }
             }
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "HTTP_SEND",
+                status = "OK",
+                reason = "REQUEST_BYTES_SENT",
+                extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} previousStage=REQUEST_BUILD nextStage=HTTP_RESPONSE",
+            )
 
             phase = "response_status"
             status = opened.responseCode
@@ -1150,8 +1164,22 @@ class TripRemoteApi(
                 ?.use { input -> input.readBytes() }
                 ?: ByteArray(0)
             responseText = responsePayloadBytes.toString(Charsets.UTF_8)
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "HTTP_RESPONSE",
+                status = if (status in 200..299) "OK" else "FAILED",
+                reason = if (status in 200..299) "HTTP_2XX" else backendErrorCode(responseText).ifBlank { "HTTP_$status" },
+                extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} responseContentType=${UnifiedDebugEventStore.sanitizeForExport(responseContentType).take(80)} requestId=$requestId correlationId=$correlationId durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_SEND nextStage=SERVER_ACK",
+            )
 
             if (status !in 200..299) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "DENIED",
+                    reason = backendErrorCode(responseText).ifBlank { "HTTP_$status" },
+                    extra = "networkCallId=$networkCallId httpStatus=$status previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
                 remoteException(
                     method = method,
                     path = path,
