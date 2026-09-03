@@ -633,12 +633,13 @@ internal class TripMutationCoordinator0387(
                 trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                 trip.blablaTripId?.trim() == tripId
         }
-        val canonicalTripId = strongExternalCanonicalTripId0387(
-            outbox.tenantId,
-            accountId,
-            profileUuid,
-            tripId,
-        )
+        val canonicalTripId = canonicalExternalTrip?.tripKey?.takeIf(String::isNotBlank)
+            ?: strongExternalCanonicalTripId0387(
+                outbox.tenantId,
+                accountId,
+                profileUuid,
+                tripId,
+            )
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
@@ -710,6 +711,7 @@ internal class TripMutationCoordinator0387(
         }
         if (accounts.size != 1) return null
         val canonicalTripId = outboxCanonicalTripId?.takeIf(String::isNotBlank)
+            ?: store.getTrip(binding.bookingTripId)?.tripKey?.takeIf(String::isNotBlank)
             ?: binding.bookingTripId.takeIf(String::isNotBlank)
             ?: strongExternalCanonicalTripId0387(
                 outbox.tenantId,
@@ -868,6 +870,9 @@ internal class TripMutationCoordinator0387(
                         require(strongExternalIdentityMatches(event, sourceTrip)) {
                             "Identidade externa forte divergiu do snapshot persistido."
                         }
+                        val publicationCanonicalTripId0434 = event.snapshot.trip?.tripKey
+                            ?.takeIf(String::isNotBlank)
+                            ?: event.canonicalTripId
                         PublicAgendaAutoSync0300.syncExternalTripIncremental(
                             context = appContext,
                             store = store,
@@ -878,7 +883,7 @@ internal class TripMutationCoordinator0387(
                             mutationId0421 = event.resolvedMutationId0421(),
                             idempotencyKey0421 = event.resolvedIdempotencyKey0421(),
                             externalAccountId = event.snapshot.externalAccountId,
-                            canonicalTripId = event.canonicalTripId,
+                            canonicalTripId = publicationCanonicalTripId0434,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
                             canonicalTripSnapshot = event.snapshot.trip,
                         )
