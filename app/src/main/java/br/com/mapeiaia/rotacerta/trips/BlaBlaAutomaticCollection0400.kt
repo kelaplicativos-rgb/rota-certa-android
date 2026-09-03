@@ -93,6 +93,26 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             )
         }
 
+        if (BlaBlaDynamicSessionStore(appContext).isSourceCircuitOpen0426(account)) {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_TARGET_REVERIFY_CIRCUIT_OPEN_0426",
+                appContext.packageName,
+                "targetKey=" + seatSyncDiagnosticKey(target.strongIdentityKey) +
+                    " action=skip_external_navigation previousSnapshotPreserved=true",
+            )
+            return BlaBlaCommandResult0407(
+                commandId = commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                transportUsed = BlaBlaTransport0407.HYBRID,
+                status = BlaBlaCommandStatus0407.TEMPORARILY_RESTRICTED,
+                errorCode = "TEMPORARILY_RESTRICTED",
+                verification = "source_circuit_open",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+
         val singleFlightKey = target.strongIdentityKey + "|REVERIFY_TRIP"
         val mutex = targetedTripMutexes0407.computeIfAbsent(singleFlightKey) { Mutex() }
         return mutex.withLock {
@@ -135,6 +155,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 val status = when (failure) {
                     "AUTH_REQUIRED" -> BlaBlaCommandStatus0407.AUTH_REQUIRED
                     "BROKEN_FOR_VERSION" -> BlaBlaCommandStatus0407.BROKEN_FOR_VERSION
+                    "TEMPORARILY_RESTRICTED" -> BlaBlaCommandStatus0407.TEMPORARILY_RESTRICTED
                     else -> BlaBlaCommandStatus0407.UNVERIFIED
                 }
                 return@withLock BlaBlaCommandResult0407(
@@ -236,6 +257,29 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, state.generation, accountId, "FAILED", "configured_account_missing")
                 continue
             }
+            val sessionStore = BlaBlaDynamicSessionStore(appContext)
+            if (sessionStore.isSourceCircuitOpen0426(account)) {
+                state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+                    appContext,
+                    state.generation,
+                    accountId,
+                    "RESTRICTED",
+                    "TEMPORARILY_RESTRICTED:circuit_open_skip",
+                )
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_AUTOMATIC_CIRCUIT_OPEN_SKIP_0426",
+                    appContext.packageName,
+                    "generation=" + state.generation +
+                        " accountKey=" + seatSyncDiagnosticKey(accountId) +
+                        " action=stop_batch externalNavigationStarted=false previousSnapshotPreserved=true",
+                )
+                return AgendaBackgroundSyncConfig0392.finishCollectorRun0400(
+                    appContext,
+                    state.generation,
+                    "TEMPORARILY_RESTRICTED",
+                    "source_circuit_open",
+                )
+            }
             UnifiedDebugEventStore.record(
                 "BLABLACAR_AUTOMATIC_COLLECTION_HEADLESS_START_0401", appContext.packageName,
                 "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} origin=${origin.take(80)} collector=existing_dynamic_session executionHost=worker_headless_webview activityLaunch=false windowAttached=false browserOpened=false",
@@ -263,6 +307,14 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 )
             }
             state = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
+            if (BlaBlaDynamicSessionStore(appContext).isSourceCircuitOpen0426(account)) {
+                return AgendaBackgroundSyncConfig0392.finishCollectorRun0400(
+                    appContext,
+                    state.generation,
+                    "TEMPORARILY_RESTRICTED",
+                    "restriction_detected_stop_batch",
+                )
+            }
             if (state.activeAccountId == accountId) {
                 state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, state.generation, accountId, "FAILED", "headless_host_finished_without_terminal_state")
             }
@@ -327,6 +379,54 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_ACCOUNT_END_0400", appContext.packageName,
             "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
+        )
+    }
+
+    fun onAccountTemporarilyRestricted0426(
+        context: Context,
+        generation: Long,
+        accountId: String,
+        reason: String,
+    ) {
+        if (generation <= 0L) return
+        val appContext = context.applicationContext
+        AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+            appContext,
+            generation,
+            accountId,
+            "RESTRICTED",
+            "TEMPORARILY_RESTRICTED:" + reason.take(180),
+        )
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_RESTRICTED_TERMINAL_0426",
+            appContext.packageName,
+            "generation=" + generation +
+                " accountKey=" + seatSyncDiagnosticKey(accountId) +
+                " action=stop_without_publication previousSnapshotPreserved=true retryScheduled=false",
+        )
+    }
+
+    fun onAccountTransientFailure0426(
+        context: Context,
+        generation: Long,
+        accountId: String,
+        reason: String,
+    ) {
+        if (generation <= 0L) return
+        val appContext = context.applicationContext
+        AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+            appContext,
+            generation,
+            accountId,
+            "FAILED",
+            reason.take(180),
+        )
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_TRANSIENT_FAILURE_0426",
+            appContext.packageName,
+            "generation=" + generation +
+                " accountKey=" + seatSyncDiagnosticKey(accountId) +
+                " action=stop_without_immediate_retry previousSnapshotPreserved=true",
         )
     }
 
