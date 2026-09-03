@@ -758,6 +758,13 @@ function normalizeDriverTrip(raw, previous = null) {
   const publicationRevision = Number.isSafeInteger(requestedPublicationRevision)
     ? requestedPublicationRevision
     : previousPublicationRevision;
+  const previousCanonicalRevision = Math.max(0, Math.floor(Number(previous && previous.canonicalRevision || 0)));
+  const requestedCanonicalRevision = raw.canonicalRevision == null
+    ? previousCanonicalRevision
+    : Math.max(0, Math.floor(Number(raw.canonicalRevision || 0)));
+  const canonicalRevision = Number.isSafeInteger(requestedCanonicalRevision)
+    ? requestedCanonicalRevision
+    : previousCanonicalRevision;
   const publicationTombstone = raw.publicationTombstone == null
     ? (previous && previous.publicationTombstone === true)
     : raw.publicationTombstone === true;
@@ -790,6 +797,7 @@ function normalizeDriverTrip(raw, previous = null) {
     rotaCertaSeatAllocation,
     capacityReliable: raw.capacityReliable !== false,
     publicationRevision,
+    canonicalRevision,
     publicationTombstone,
     publicationEventId,
     canonicalStateHash,
@@ -955,8 +963,9 @@ function canonicalPublicTripPayload0411(token, data) {
   const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
   const blablaTripId = cleanText(data.blablaTripId, 160);
   return {
-    schemaVersion: "public-trip-v1",
+    schemaVersion: "public-trip-v2",
     canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180),
+    canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
     blablaProfileUuid: profileUuid,
     blablaTripId,
     title: cleanText(publicTrip.title, 220),
@@ -987,7 +996,8 @@ function canonicalPublicTripPayload0411(token, data) {
 }
 
 function canonicalPublicTripHash0411(payload) {
-  return "public-v1:" + sha256Hex(JSON.stringify(payload));
+  const semanticPayload = { ...payload, publicationRevision: 0 };
+  return "public-v2:" + sha256Hex(JSON.stringify(semanticPayload));
 }
 
 async function getDriverPublicTripReadback0411(req, res, token) {
@@ -1459,7 +1469,16 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
 
 function normalizeProtectedSnapshotBooking(raw, trip, previous) {
   if (!previous || !(cleanText(previous.source, 24) === "ROTA_CERTA" || previous.cancellationHash)) {
-    throw Object.assign(new Error("Snapshot protegido referencia reserva inválida."), { httpStatus: 409, code: "protected_booking_required" });
+    const bookingId = cleanText(raw && raw.id, 120);
+    throw Object.assign(new Error("Snapshot protegido referencia reserva inválida."), {
+      httpStatus: 409,
+      code: "protected_booking_required",
+      details: {
+        protectedBookingRefHash: sha256Hex(`protected-booking:${bookingId}`).slice(0, 24),
+        protectedBookingPresent: Boolean(previous),
+        protectedBookingSource: cleanText(previous && previous.source, 24) || "missing",
+      },
+    });
   }
   const status = cleanText(raw && raw.status, 24).toUpperCase() || cleanText(previous.status, 24).toUpperCase();
   const operationalStatus = cleanText(raw && raw.operationalStatus, 32).toUpperCase() ||
@@ -6136,7 +6155,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       snapshotOverbooked: result.snapshotOverbooked === true,
     });
   } catch (error) {
-    return fail(res, error.httpStatus || 400, error.code || "capacity_snapshot_failed", error.message || "Falha ao publicar snapshot de capacidade.");
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "capacity_snapshot_failed",
+      error.message || "Falha ao publicar snapshot de capacidade.",
+      error.details || null,
+    );
   }
 }
 
@@ -6165,6 +6190,7 @@ async function listDriverTripSyncState0402(req, res) {
           capacityReliable: data.capacityReliable === true,
           capacitySnapshotRevision: cleanText(data.capacitySnapshotRevision, 128),
           publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
+          canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
           canonicalTripId: cleanText(data.canonicalTripId, 180),
           canonicalStateHash: cleanText(data.canonicalStateHash, 160),
           tripKey: cleanText(data.tripKey, 180),
