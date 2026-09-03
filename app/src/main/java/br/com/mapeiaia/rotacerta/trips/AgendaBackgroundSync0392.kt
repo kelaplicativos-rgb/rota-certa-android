@@ -1121,6 +1121,35 @@ internal object AgendaBackgroundSync0392 {
         return true
     }
 
+    fun enqueueCollectorDelta0431(
+        context: Context,
+        source: String,
+    ) {
+        val appContext = context.applicationContext
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
+            .setConstraints(networkConstraints())
+            .setInputData(
+                workDataOf(
+                    INPUT_REASON to "blablacar_collection_result",
+                    INPUT_TENANT_ID to tenantId,
+                ),
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            tenantScopedWorkName(tenantId, CARD_DELTA_WORK_0431 + "-collector"),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request,
+        )
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_CARD_DELTA_ENQUEUED_0431",
+            appContext.packageName,
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} source=${source.take(80)} workId=${request.id} expedited=true fullSyncRequested=false",
+        )
+    }
+
     internal fun targetedBookingRemoteTripId0431(workerParameters: WorkerParameters): String {
         val reason = reason(workerParameters)
         if (!reason.startsWith("booking_push:")) return ""
