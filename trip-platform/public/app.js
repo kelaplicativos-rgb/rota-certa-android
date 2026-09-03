@@ -70,6 +70,21 @@ let testerSessionContext = (() => {
 let passengerSessionContact = (() => {
   try { return localStorage.getItem("rotacerta-passenger-contact") || ""; } catch (_) { return ""; }
 })();
+const passengerSessionContextId0427 = (() => {
+  const key = "rotacerta-passenger-session-context-0427";
+  try {
+    let value = (localStorage.getItem(key) || "").trim();
+    if (!/^[A-Za-z0-9_-]{16,120}$/.test(value)) {
+      value = (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function")
+        ? globalThis.crypto.randomUUID()
+        : "ctx_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 18);
+      localStorage.setItem(key, value);
+    }
+    return value;
+  } catch (_) {
+    return "";
+  }
+})();
 let agendaTripsCache = [];
 let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agenda");
 let calendarPickerTarget = "departure";
@@ -621,7 +636,7 @@ async function submitPrivateAuthentication() {
       headers: activating
         ? agendaViewHeaders({ "Content-Type": "application/json", Accept: "application/json" })
         : { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, password, driverUsername }),
+      body: JSON.stringify({ passengerContact, password, driverUsername, sessionContextId: passengerSessionContextId0427 }),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -2997,7 +3012,7 @@ async function loginPassengerPortal() {
     const response = await fetch("/v1/passenger/session", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ passengerContact, password, driverUsername }),
+      body: JSON.stringify({ passengerContact, password, driverUsername, sessionContextId: passengerSessionContextId0427 }),
     });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Não foi possível entrar.");
