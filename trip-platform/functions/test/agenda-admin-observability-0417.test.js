@@ -106,3 +106,14 @@ test("admin role is tenant scoped on passenger access rather than global account
   assert.match(source, /driverPassengerAccess/);
   assert.doesNotMatch(source, /passengerAccounts[\s\S]{0,180}agendaAdmin/);
 });
+
+
+test("passenger session validation defines activity timestamp before using it", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const start = source.indexOf("async function requirePassengerSession");
+  const end = source.indexOf("async function logoutPassengerAccount", start);
+  assert.ok(start >= 0 && end > start);
+  const block = source.slice(start, end);
+  assert.match(block, /const now = Date\.now\(\)/);
+  assert.match(block, /lastActivityAtMillis: Math\.max\([^\n]*now\)/);
+});

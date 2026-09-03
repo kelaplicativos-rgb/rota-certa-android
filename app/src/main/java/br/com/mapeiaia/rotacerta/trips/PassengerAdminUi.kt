@@ -81,6 +81,7 @@ fun PassengerAdminScreen(
     var temporaryPasswordFor by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
+    var selectedCandidateKey0419 by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(historyProfileId) {
         onHierarchyChanged(historyProfileId != null)
     }
@@ -249,9 +250,14 @@ fun PassengerAdminScreen(
     }
 
     fun openCandidateHistory(candidate: PassengerAdminCandidate) {
-        val profile = canonicalProfile(candidate)
-        if (profile == null) onChanged("Não foi possível criar a identidade canônica deste passageiro.")
-        else historyProfileId = profile.id
+        scope.launch {
+            val profile = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+            if (profile == null) {
+                onChanged("Não foi possível criar a identidade canônica deste passageiro.")
+            } else {
+                historyProfileId = profile.id
+            }
+        }
     }
 
     if (showHeader) {
@@ -448,6 +454,11 @@ fun PassengerAdminScreen(
 
     if (candidates.isEmpty()) {
         Text("Nenhum passageiro encontrado.")
+    } else {
+        Text(
+            "Toque em um passageiro para abrir as opções. A permissão de administrador fica dentro do passageiro selecionado.",
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 
     candidates.forEach { candidate ->
@@ -455,8 +466,11 @@ fun PassengerAdminScreen(
         val activeAccessWhatsapp = access?.passengerContact?.takeIf(String::isNotBlank)
             ?: candidate.agendaAccessWhatsapp.ifBlank { candidate.whatsapp }
         val accessWhatsappDraft = accessWhatsappDrafts[candidate.key] ?: activeAccessWhatsapp
+        val expanded0419 = selectedCandidateKey0419 == candidate.key
         Card(
-            onClick = { openCandidateHistory(candidate) },
+            onClick = {
+                selectedCandidateKey0419 = if (expanded0419) null else candidate.key
+            },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
@@ -500,7 +514,77 @@ fun PassengerAdminScreen(
                     Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
                 }
                 if (candidate.source.isNotBlank()) Text(candidate.source, style = MaterialTheme.typography.bodySmall)
-                access?.referredByContact?.takeIf(String::isNotBlank)?.let {
+                Text(
+                    if (expanded0419) "▲ Toque para recolher" else "▼ Toque para administrar este passageiro",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (expanded0419) {
+                    HorizontalDivider()
+                    Text("Gerenciar passageiro", style = MaterialTheme.typography.titleSmall)
+                    OutlinedButton(
+                        onClick = { openCandidateHistory(candidate) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Abrir histórico do passageiro") }
+
+                    val accessAuthorized0419 = access?.status in setOf("AUTHORIZED", "ACTIVE")
+                    Text("Administração da Agenda", style = MaterialTheme.typography.titleSmall)
+                    OutlinedButton(
+                        enabled = settings.configured &&
+                            !loading &&
+                            access != null &&
+                            accessAuthorized0419 &&
+                            (access.accountActivated || access.agendaAdmin),
+                        onClick = {
+                            loading = true
+                            scope.launch {
+                                val canonical = withContext(Dispatchers.IO) { canonicalProfile(candidate) }
+                                if (canonical == null) {
+                                    onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
+                                    loading = false
+                                    return@launch
+                                }
+                                runCatching {
+                                    TripRemoteApi(settings).setPassengerAgendaAdmin0418(
+                                        passengerContact = activeAccessWhatsapp,
+                                        passengerId = canonical.id,
+                                        agendaAdmin = !(access?.agendaAdmin == true),
+                                    )
+                                }.onSuccess { response ->
+                                    revision++
+                                    selectedCandidateKey0419 = candidate.key
+                                    onChanged(
+                                        if (response.passenger.agendaAdmin) {
+                                            "${candidate.displayName} foi salvo como administrador e verá Administração da Agenda dentro de Minhas Viagens."
+                                        } else {
+                                            "Permissão de administrador removida de ${candidate.displayName}."
+                                        },
+                                    )
+                                }.onFailure { error ->
+                                    onChanged("Falha ao alterar administrador da Agenda: ${error.message ?: "erro de conexão"}")
+                                }
+                                loading = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(if (access?.agendaAdmin == true) "Remover administrador" else "Definir como administrador")
+                    }
+                    when {
+                        access == null -> Text(
+                            "Este passageiro ainda não possui acesso online a Minhas Viagens. Libere/sincronize o acesso antes de torná-lo administrador.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        !accessAuthorized0419 -> Text(
+                            "O acesso deste passageiro não está autorizado nesta Agenda.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        !access.accountActivated && !access.agendaAdmin -> Text(
+                            "Este passageiro precisa primeiro ativar Minhas Viagens; depois o botão acima será habilitado.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    access?.referredByContact?.takeIf(String::isNotBlank)?.let {
                     Text("Indicado por: ${maskPassengerAdminContact(it)}", style = MaterialTheme.typography.bodySmall)
                 }
                 if (access != null) {
@@ -604,54 +688,6 @@ fun PassengerAdminScreen(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    val accessAuthorized0418 = access?.status in setOf("AUTHORIZED", "ACTIVE")
-                    if (access != null) {
-                        OutlinedButton(
-                            enabled = settings.configured &&
-                                !loading &&
-                                accessAuthorized0418 &&
-                                (access.accountActivated || access.agendaAdmin),
-                            onClick = {
-                                val canonical = canonicalProfile(candidate)
-                                if (canonical == null) {
-                                    onChanged("Não foi possível vincular a identidade canônica deste passageiro.")
-                                } else {
-                                    loading = true
-                                    scope.launch {
-                                        runCatching {
-                                            TripRemoteApi(settings).setPassengerAgendaAdmin0418(
-                                                passengerContact = activeAccessWhatsapp,
-                                                passengerId = canonical.id,
-                                                agendaAdmin = !access.agendaAdmin,
-                                            )
-                                        }.onSuccess { response ->
-                                            revision++
-                                            onChanged(
-                                                if (response.passenger.agendaAdmin) {
-                                                    "${candidate.displayName} agora verá Administração da Agenda dentro de Minhas Viagens."
-                                                } else {
-                                                    "Permissão de administrador removida de ${candidate.displayName}."
-                                                },
-                                            )
-                                        }.onFailure { error ->
-                                            onChanged("Falha ao alterar administrador da Agenda: ${error.message ?: "erro de conexão"}")
-                                        }
-                                        loading = false
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(if (access.agendaAdmin) "Remover administrador" else "Definir como administrador")
-                        }
-                        if (!access.accountActivated && !access.agendaAdmin) {
-                            Text(
-                                "Para virar administrador, este passageiro precisa primeiro ativar Minhas Viagens.",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-
                     if (access?.accountActivated == true) {
                         OutlinedButton(
                             enabled = settings.configured && !loading,
@@ -676,6 +712,7 @@ fun PassengerAdminScreen(
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("Redefinir senha") }
                     }
+                }
                 }
             }
         }
