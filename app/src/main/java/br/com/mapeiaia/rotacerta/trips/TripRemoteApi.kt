@@ -448,6 +448,8 @@ data class DriverCapacitySnapshotRequest(
     val entityRevision: Long = 0L,
     val canonicalTripId: String = "",
     val outboxEventId: String = "",
+    val mutationId0421: String = "",
+    val idempotencyKey0421: String = "",
 )
 
 @Serializable
@@ -505,6 +507,7 @@ data class DriverCapacitySnapshotResponse(
     val changed: Boolean = false,
     val entityRevision: Long = 0L,
     val stale: Boolean = false,
+    val logicalReplay: Boolean = false,
 )
 
 internal class TripRemoteApiException(
@@ -745,6 +748,8 @@ class TripRemoteApi(
         entityRevision: Long = 0L,
         canonicalTripId: String = "",
         outboxEventId: String = "",
+        mutationId0421: String = "",
+        idempotencyKey0421: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -790,6 +795,8 @@ class TripRemoteApi(
                 entityRevision = entityRevision,
                 canonicalTripId = canonicalTripId,
                 outboxEventId = outboxEventId,
+                mutationId0421 = mutationId0421,
+                idempotencyKey0421 = idempotencyKey0421,
             ),
         ),
         requireDriverToken = true,
