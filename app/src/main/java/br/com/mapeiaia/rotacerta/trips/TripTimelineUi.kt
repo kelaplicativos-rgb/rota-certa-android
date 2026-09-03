@@ -1,6 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -68,6 +70,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -930,7 +933,7 @@ private fun publicMirrorDiagnosticTitle0417(trip: Trip?): String = when {
 
 private fun publicMirrorMismatchLabel0417(field: String): String = when (field) {
     "identity" -> "identidade"
-    "revision" -> "revisão"
+    "revision", "canonicalRevision" -> "revisão canônica"
     "canonicalStateHash" -> "estado canônico"
     "title" -> "título"
     "departureAtMillis", "timezoneId" -> "data/hora"
@@ -951,6 +954,10 @@ private fun publicMirrorMismatchLabel0417(field: String): String = when (field) 
 private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
     if (trip == null) return "Este card ainda não possui uma viagem canônica vinculada."
     val mismatches = trip.publicMirrorMismatchFields0411.map(::publicMirrorMismatchLabel0417).distinct()
+    val agendaFound = trip.publicMirrorPublicIdentity0421.isNotBlank() && trip.publicMirrorLastReadbackAtMillis0421 > 0L
+    val identityMatches = "identity" !in trip.publicMirrorMismatchFields0411 && agendaFound
+    val contentMatches = trip.publicMirrorAttestationCurrent0411()
+    val specificBlaBla = BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId)
     return buildString {
         appendLine("Estado: " + when {
             trip.publicMirrorAttestationCurrent0411() -> "MATCH"
@@ -958,14 +965,66 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
             trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "DIVERGENTE / ERRO"
             else -> "NÃO VERIFICADO"
         })
-        appendLine("Identidade da viagem: " + (trip.blablaTripId?.takeIf(String::isNotBlank) ?: trip.id))
+        appendLine("Identidade canônica: " + trip.id)
+        appendLine("Identidade pública: " + trip.publicMirrorPublicIdentity0421.ifBlank { "não comprovada" })
         appendLine("Revisão canônica: " + trip.canonicalRevision)
-        appendLine("Revisão publicada: " + trip.publicationRevision)
-        appendLine("Agenda encontrada: " + if (trip.publicMirrorReadbackHash0411.isNotBlank()) "sim" else "não comprovada")
-        appendLine("Link BlaBlaCar: " + if (trip.blablaTripId.isNullOrBlank()) "não aplicável" else if (BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).isNullOrBlank()) "pendente/inválido" else "válido")
+        appendLine("Revisão enviada (transporte): " + trip.publicationRevision)
+        appendLine("Revisão relida (canônica): " + trip.publicMirrorReadbackCanonicalRevision0421)
+        appendLine("Revisão relida (transporte): " + trip.publicMirrorReadbackPublicationRevision0421)
+        appendLine("Hash canônico: " + trip.publicMirrorExpectedHash0411.ifBlank { trip.canonicalStateHash.ifBlank { "indisponível" } })
+        appendLine("Hash público: " + trip.publicMirrorReadbackHash0411.ifBlank { "indisponível" })
+        appendLine("Agenda encontrada: " + if (agendaFound) "sim" else "não comprovada")
+        appendLine("Identidade confere: " + if (identityMatches) "sim" else "não")
+        appendLine("Conteúdo confere: " + if (contentMatches) "sim" else "não")
+        appendLine("Link BlaBlaCar presente: " + if (trip.blablaPublicUrl.isNullOrBlank()) "não" else "sim")
+        appendLine("Link BlaBlaCar validado: " + if (trip.blablaTripId.isNullOrBlank()) "não aplicável" else if (specificBlaBla == null) "não" else "sim")
+        appendLine("Último readback: " + (trip.publicMirrorLastReadbackAtMillis0421.takeIf { it > 0L }?.toString() ?: "ainda não realizado"))
         appendLine("Última atestação: " + (trip.publicMirrorAttestedAtMillis0411.takeIf { it > 0L }?.toString() ?: "ainda não atestado"))
+        appendLine("Duração do readback: " + trip.publicMirrorReadbackLatencyMillis0411 + " ms")
+        if (trip.publicMirrorHttpStatus0421 > 0) appendLine("HTTP status: " + trip.publicMirrorHttpStatus0421)
+        if (trip.publicMirrorBackendErrorCode0421.isNotBlank()) appendLine("Error code: " + trip.publicMirrorBackendErrorCode0421)
+        appendLine("Evidence ID: " + trip.publicMirrorEvidenceId0421.ifBlank { "não gerado" })
+        appendLine("Trace ID: " + trip.publicMirrorTraceId0421.ifBlank { "não gerado" })
+        if (trip.publicMirrorExpectedBytes0421 > 0 || trip.publicMirrorActualBytes0421 > 0) {
+            appendLine("Bytes canônicos/públicos: " + trip.publicMirrorExpectedBytes0421 + "/" + trip.publicMirrorActualBytes0421)
+        }
+        if (trip.publicMirrorFirstDifferentByteOffset0421 >= 0) {
+            appendLine("Primeiro byte divergente: offset " + trip.publicMirrorFirstDifferentByteOffset0421)
+        }
+        if (trip.publicMirrorDifferentByteRanges0421.isNotEmpty()) {
+            appendLine("Ranges divergentes: " + trip.publicMirrorDifferentByteRanges0421.joinToString(", "))
+        }
         if (mismatches.isNotEmpty()) appendLine("Diferenças: " + mismatches.joinToString(", "))
-        append("Motivo: " + trip.publicMirrorAttestationReason0411.ifBlank { "evidência insuficiente" })
+        append("Motivo/estágio final: " + trip.publicMirrorAttestationReason0411.ifBlank { "evidência insuficiente" })
+    }
+}
+
+private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
+    if (trip == null) return "{}"
+    fun q(value: String): String = JSONObject.quote(UnifiedDebugEventStore.sanitizeForExport(value))
+    return buildString {
+        append('{')
+        append("\"schemaVersion\":\"public-evidence-v1\",")
+        append("\"evidenceId\":").append(q(trip.publicMirrorEvidenceId0421)).append(',')
+        append("\"traceId\":").append(q(trip.publicMirrorTraceId0421)).append(',')
+        append("\"canonicalTripId\":").append(q(trip.id)).append(',')
+        append("\"publicIdentity\":").append(q(trip.publicMirrorPublicIdentity0421)).append(',')
+        append("\"logicalRevisionExpected\":").append(trip.canonicalRevision).append(',')
+        append("\"logicalRevisionActual\":").append(trip.publicMirrorReadbackCanonicalRevision0421).append(',')
+        append("\"transportRevisionSent\":").append(trip.publicationRevision).append(',')
+        append("\"transportRevisionReadback\":").append(trip.publicMirrorReadbackPublicationRevision0421).append(',')
+        append("\"expectedHash\":").append(q(trip.publicMirrorExpectedHash0411)).append(',')
+        append("\"actualHash\":").append(q(trip.publicMirrorReadbackHash0411)).append(',')
+        append("\"expectedLength\":").append(trip.publicMirrorExpectedBytes0421).append(',')
+        append("\"actualLength\":").append(trip.publicMirrorActualBytes0421).append(',')
+        append("\"firstDifferentByteOffset\":").append(trip.publicMirrorFirstDifferentByteOffset0421).append(',')
+        append("\"differentByteRanges\":").append(q(trip.publicMirrorDifferentByteRanges0421.joinToString(","))).append(',')
+        append("\"httpStatus\":").append(trip.publicMirrorHttpStatus0421).append(',')
+        append("\"errorCode\":").append(q(trip.publicMirrorBackendErrorCode0421)).append(',')
+        append("\"reasonCode\":").append(q(trip.publicMirrorAttestationReason0411)).append(',')
+        append("\"readbackAtMillis\":").append(trip.publicMirrorLastReadbackAtMillis0421).append(',')
+        append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411)
+        append('}')
     }
 }
 
@@ -1086,6 +1145,19 @@ private fun TimelineEntryCard(
             confirmButton = {
                 TextButton(onClick = { showMirrorDiagnostic0417 = false }) {
                     Text("Fechar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(
+                            ClipData.newPlainText("Rota Certa Evidence Bundle", publicMirrorEvidenceJson0421(trip)),
+                        )
+                        Toast.makeText(context, "Evidence Bundle JSON copiado.", Toast.LENGTH_SHORT).show()
+                    },
+                ) {
+                    Text("Copiar evidência JSON")
                 }
             },
         )
