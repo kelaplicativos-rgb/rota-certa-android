@@ -162,6 +162,35 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
+    fun publicProjectionOrphanCleanupUsesCanonicalTripStoreWithoutCollectorCoverageGate() {
+        val background = source("AgendaBackgroundSync0392.kt")
+        val orphanBlock = background.substring(
+            background.indexOf("val orphanStates = remoteStates.filter"),
+            background.indexOf("val report = ProjectionIntegrity0406"),
+        )
+        assertTrue(orphanBlock.contains("authority=CANONICAL_TRIP_STORE"))
+        assertTrue(orphanBlock.contains("mutationType = \"CANONICAL_PUBLIC_ORPHAN\""))
+        assertFalse(orphanBlock.contains("remoteProjectionWithinCompleteScope0408("))
+    }
+
+    @Test
+    fun publicPublisherNeverCollapsesDistinctCanonicalTripsByRouteOrTime() {
+        val publisher = source("PublicAgendaAutoSync0300.kt")
+        assertFalse(publisher.contains("samePhysicalTrip("))
+        assertFalse(publisher.contains("localTrips.any { local ->"))
+        assertTrue(publisher.contains(".distinctBy { it.trip.tripKey.ifBlank { it.trip.id } }"))
+    }
+
+    @Test
+    fun deliveredIncrementalPublicationUsesExistingReadbackAttestation() {
+        val outbox = source("TripPublicationOutbox0387.kt")
+        assertTrue(outbox.contains("deliveredCanonicalIds0429"))
+        assertTrue(outbox.contains("api.listDriverTripSyncStates0402().trips"))
+        assertTrue(outbox.contains("PublicMirrorAttestationCoordinator0411.attest("))
+        assertTrue(outbox.contains("force = true"))
+    }
+
+    @Test
     fun realBarbosaRegressionTripIdsAllRemainDistinctFixtures() {
         // Real reproduction values are fixtures only. No production rule may depend on this profile or these IDs.
         val profile = "175a7068-50d8-40c3-a27a-214b9c6e0461"
