@@ -140,7 +140,7 @@
       <label>WhatsApp
         <input id="privateAuthContact" autocomplete="tel" inputmode="tel" maxlength="16" readonly>
       </label>
-      <label>Senha
+      <label id="privateAuthPasswordWrap0428">Senha
         <input id="privateAuthPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
       </label>
       <label id="privateAuthConfirmWrap" class="hidden">Confirme a senha
@@ -259,11 +259,16 @@
         <label>Seu WhatsApp
           <input id="portalContact" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="(11) 99999-9999">
         </label>
-        <label>Sua senha
+        <label id="portalPasswordWrap0428">Sua senha
           <input id="portalPassword" type="password" autocomplete="current-password" minlength="8" maxlength="72">
         </label>
         <p id="portalMessage" class="muted"></p>
         <button id="portalLogin" class="primary" type="button">Entrar</button>
+      </div>
+      <div id="portalAgendaAdminCard0418" class="card hidden">
+        <h2>Administração da Agenda</h2>
+        <p class="muted">Quando a autenticação estiver desligada, esta área pode ser aberta sem login. Quando estiver ligada, exige um passageiro administrador.</p>
+        <button id="openAgendaAdmin0418" class="primary" type="button">Abrir Administração da Agenda</button>
       </div>
       <div id="portalAuthenticated" class="hidden">
         <div id="portalNotificationsCard" class="card">
@@ -272,11 +277,6 @@
             <button id="portalMarkAllNotificationsRead" class="secondary hidden" type="button" style="width:auto;min-height:48px;font-size:16px">Marcar todas como lidas</button>
           </div>
           <div id="portalNotifications" class="notificationList"><p class="muted">Nenhuma notificação.</p></div>
-        </div>
-        <div id="portalAgendaAdminCard0418" class="card hidden">
-          <h2>Administração da Agenda</h2>
-          <p class="muted">Você foi autorizado pelo proprietário desta Agenda.</p>
-          <button id="openAgendaAdmin0418" class="primary" type="button">Abrir Administração da Agenda</button>
         </div>
         <div class="card">
           <h2>Meus créditos</h2>
@@ -290,7 +290,7 @@
           <button id="portalReferralShare" class="secondary" type="button">Compartilhar convite</button>
           <p id="portalReferralMessage" class="muted"></p>
         </div>
-        <div class="card">
+        <div id="portalPasswordCard0428" class="card">
           <h2>Senha</h2>
           <label>Nova senha
             <input id="portalNewPassword" type="password" autocomplete="new-password" minlength="8" maxlength="72">
@@ -378,6 +378,13 @@
 
       <div class="card">
         <h2>Segurança e sessões</h2>
+        <label class="adminCheck0417">
+          <input id="adminAuthenticationRequired0428" type="checkbox">
+          <span>Exigir autenticação na Agenda</span>
+        </label>
+        <p class="muted">Ligado: a Agenda exige o acesso configurado e senha nas áreas privadas. Desligado: a Agenda e a Administração ficam abertas; o WhatsApp é usado apenas para identificar viagens e reservas, sem senha.</p>
+        <button id="adminSaveAuthentication0428" class="primary" type="button">Salvar exigência de autenticação</button>
+        <div class="adminDivider0417"></div>
         <p class="muted">“Última atividade” não é tratada como logout. Logout explícito e expiração são auditados separadamente.</p>
         <div id="adminSessions0417"></div>
         <button id="adminBackToTrips0418" class="secondary" type="button">Voltar para Minhas Viagens</button>
@@ -494,7 +501,7 @@
   </section>
 </main>
 <script src="/date-selection.js" defer></script>
-<script src="/app.js?v=0.1.427" defer></script>
-<script src="/admin-0417.js?v=0.1.427" defer></script>
+<script src="/app.js?v=0.1.428" defer></script>
+<script src="/admin-0417.js?v=0.1.428" defer></script>
 </body>
 </html>

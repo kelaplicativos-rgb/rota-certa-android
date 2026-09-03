@@ -59,6 +59,10 @@ function sameSyncPolicy0417(left, right) {
   return a.automatic === b.automatic && a.intervalMinutes === b.intervalMinutes;
 }
 
+function authenticationRequired0417(driver) {
+  return !(driver && driver.agendaAuthenticationRequired0428 === false);
+}
+
 function adminOperationId0417(req) {
   const supplied = clean0417(req && req.get && req.get("X-Rota-Certa-Operation-Id"), 100);
   return /^[A-Za-z0-9_-]{8,100}$/.test(supplied) ? supplied : crypto.randomUUID();
@@ -220,6 +224,22 @@ function createAgendaAdmin0417({
       fail0417(res, 400, "admin_driver_required", "Agenda não identificada.");
       return null;
     }
+    const driver = resolved.driverSnap && resolved.driverSnap.exists ? resolved.driverSnap.data() : {};
+    if (!authenticationRequired0417(driver)) {
+      return {
+        driverUsername: resolved.canonicalUsername,
+        actorId: "agenda-open-0428",
+        passengerId: "",
+        passengerContact: "",
+        contactHash: "",
+        sessionContextHash: "",
+        sessionRefId: "",
+        createdAtMillis: 0,
+        lastActivityAtMillis: 0,
+        expiresAtMillis: 0,
+        openAccess: true,
+      };
+    }
     const passengerSession = await requirePassengerSession(req, res);
     if (!passengerSession) return null;
     const access = await passengerAccessForIdentity(
@@ -261,6 +281,8 @@ function createAgendaAdmin0417({
       actorId: session.actorId,
       sessionStartedAtMillis: session.createdAtMillis,
       expiresAtMillis: session.expiresAtMillis,
+      openAccess: session.openAccess === true,
+      authenticationRequired: authenticationRequired0417(driver),
     });
   }
 
@@ -373,6 +395,7 @@ function createAgendaAdmin0417({
       publicProfileUuids: normalizeProfileScope0417(driver.publicTripProfileUuids0417),
       knownProfiles,
       syncPolicy: normalizeSyncPolicy0417(driver.adminSyncPolicy0417),
+      authenticationRequired: authenticationRequired0417(driver),
     });
   }
 
@@ -385,9 +408,13 @@ function createAgendaAdmin0417({
     const before = snap.data();
     const visibility = safeVisibility0417(req.body && req.body.publicVisibility);
     const profiles = normalizeProfileScope0417(req.body && req.body.publicProfileUuids);
+    const authenticationRequired = typeof (req.body && req.body.authenticationRequired) === "boolean"
+      ? req.body.authenticationRequired
+      : authenticationRequired0417(before);
     await ref.set({
       publicVisibility0417: visibility,
       publicTripProfileUuids0417: profiles,
+      agendaAuthenticationRequired0428: authenticationRequired,
       updatedAtMillis: Date.now(),
     }, { merge: true });
     await touchAdminSession0417(session);
@@ -398,9 +425,14 @@ function createAgendaAdmin0417({
       changes: [
         { field: "publicVisibility", before: JSON.stringify(safeVisibility0417(before.publicVisibility0417)), after: JSON.stringify(visibility) },
         { field: "publicProfileUuids", before: JSON.stringify(normalizeProfileScope0417(before.publicTripProfileUuids0417)), after: JSON.stringify(profiles) },
+        { field: "authenticationRequired", before: String(authenticationRequired0417(before)), after: String(authenticationRequired) },
       ],
     });
-    return json0417(res, 200, { publicVisibility: visibility, publicProfileUuids: profiles });
+    return json0417(res, 200, {
+      publicVisibility: visibility,
+      publicProfileUuids: profiles,
+      authenticationRequired,
+    });
   }
 
   async function updateAdminSyncSettings0417(req, res) {
@@ -723,6 +755,7 @@ module.exports = {
   normalizeProfileScope0417,
   normalizeSyncPolicy0417,
   sameSyncPolicy0417,
+  authenticationRequired0417,
   safeVisibility0417,
   redact0417,
   activeAdminTrips0417,
