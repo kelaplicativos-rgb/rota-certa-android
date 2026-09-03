@@ -55,6 +55,23 @@ test("server verifies the candidate bytes before committing a repair", () => {
   assert.match(capacity, /canonicalPublicTripPayload0411\(token, nextProjectionData0425\)/);
 });
 
+test("canonical public stop normalization preserves explicit null optional timestamps", () => {
+  const stop = source.slice(
+    source.indexOf("function canonicalPublicStop0411"),
+    source.indexOf("function canonicalPublicTripPayloadFromStored0434"),
+  );
+  assert.match(stop, /stop\.plannedArrivalMillis == null[\s\S]*\? null/);
+  assert.match(stop, /stop\.plannedDepartureMillis == null[\s\S]*\? null/);
+  assert.doesNotMatch(
+    stop,
+    /plannedArrivalMillis:\s*Number\.isFinite\(Number\(stop\.plannedArrivalMillis\)\)/,
+  );
+  assert.doesNotMatch(
+    stop,
+    /plannedDepartureMillis:\s*Number\.isFinite\(Number\(stop\.plannedDepartureMillis\)\)/,
+  );
+});
+
 test("public profile scope remains intact and independent from projection repair", () => {
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
