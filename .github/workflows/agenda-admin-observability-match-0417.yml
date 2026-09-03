@@ -1,7 +1,10 @@
-name: Rota Certa passenger admin session performance 0.1.420
+name: Rota Certa Agenda readback forensics 0.1.421
 
 on:
   push:
+    branches:
+      - agent/agenda-readback-forensics-0.1.421
+  pull_request:
     branches:
       - agent/passenger-admin-session-performance-0.1.420
   workflow_dispatch:
@@ -10,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: passenger-admin-session-performance-0420-${{ github.ref }}
+  group: agenda-readback-forensics-0421-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0420_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0421_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -36,11 +39,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          grep -Fq 'versionCode = 5713' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.420"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5714' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.421"' app/build.gradle.kts
           printf '%s\n' "${{ github.sha }}" > source_head.txt
           printf '%s\n' "${{ github.ref_name }}" > source_branch.txt
-          git diff --name-only ff994a80d3fc9ea8dc1470619604c4b67041bba2...HEAD > changed-files.txt
+          git diff --name-only 649a2cde17ebd40a0e348fa18cf0f963f7f2a936...HEAD > changed-files.txt
           if grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol' changed-files.txt; then
             echo "Protected FAROL scope changed unexpectedly."
             cat changed-files.txt
@@ -61,6 +64,7 @@ jobs:
           node --check trip-platform/public/app.js
           node --check trip-platform/public/admin-0417.js
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
+          node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
           node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
           node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
 
@@ -111,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile all debug unit tests
         run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -189,7 +193,7 @@ jobs:
       - name: Upload exact SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.420-passenger-admin-session-${{ github.sha }}
+          name: rota-certa-0.1.421-agenda-readback-forensics-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |

@@ -43,6 +43,10 @@ internal data class TripPublicationOutboxEvent0387(
     val source: String,
     val destination: String = "PUBLIC_AGENDA",
     val snapshot: TripPublicationSnapshot0387,
+    /** Stable logical mutation identity. Survives transport rebase/retry. */
+    val mutationId0421: String = "",
+    /** Stable idempotency key for the same logical snapshot. Never contains credentials. */
+    val idempotencyKey0421: String = "",
     val status: TripPublicationStatus0387 = TripPublicationStatus0387.PENDING,
     val attempts: Int = 0,
     val createdAtMillis: Long = System.currentTimeMillis(),
@@ -55,13 +59,15 @@ internal fun shouldDeduplicatePublicationEvent0410(
     latest: TripPublicationOutboxEvent0387?,
     operation: TripPublicationOperation0387,
     snapshot: TripPublicationSnapshot0387,
-    remoteProjectionDivergenceObserved: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") remoteProjectionDivergenceObserved: Boolean = false,
 ): Boolean {
     if (latest == null || latest.operation != operation) return false
     if (latest.snapshot.semanticSignature != snapshot.semanticSignature) return false
     if (latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion) return false
-    if (latest.status == TripPublicationStatus0387.FAILED_FINAL) return false
-    return !(remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED)
+    // Same logical snapshot never creates a new revision. Projection repair replays the
+    // delivered event in enqueue(); deterministic final failures stay final until the
+    // canonical snapshot itself changes.
+    return true
 }
 
 internal class TripPublicationOutbox0387(context: Context) {
@@ -100,6 +106,27 @@ internal class TripPublicationOutbox0387(context: Context) {
         synchronized(LOCK) {
             val events = recoverInterrupted(readEvents()).toMutableList()
             val latest = events.filter { it.canonicalTripId == canonicalTripId }.maxByOrNull { it.revision }
+            val sameLogicalSnapshot = latest != null &&
+                latest.operation == operation &&
+                latest.snapshot.semanticSignature == snapshot.semanticSignature &&
+                latest.snapshot.seatAllocationVersion == snapshot.seatAllocationVersion
+            if (
+                remoteProjectionDivergenceObserved &&
+                sameLogicalSnapshot &&
+                latest?.status == TripPublicationStatus0387.DELIVERED
+            ) {
+                val now = System.currentTimeMillis()
+                val replay = latest.copy(
+                    status = TripPublicationStatus0387.PENDING,
+                    attempts = 0,
+                    updatedAtMillis = now,
+                    lastError = "projection_replay_same_logical_revision",
+                    nextAttemptAtMillis = 0L,
+                )
+                val normalized = events.map { event -> if (event.id == replay.id) replay else event }
+                writeEvents(normalized)
+                return replay
+            }
             if (
                 shouldDeduplicatePublicationEvent0410(
                     latest = latest,
@@ -112,6 +139,7 @@ internal class TripPublicationOutbox0387(context: Context) {
             val revisions = readRevisions().toMutableMap()
             val nextRevision = maxOf(revisions[canonicalTripId] ?: 0L, latest?.revision ?: 0L) + 1L
             val now = System.currentTimeMillis()
+            val mutationIdentity = publicationMutationIdentity0421(canonicalTripId, snapshot)
             val event = TripPublicationOutboxEvent0387(
                 id = publicationEventId0387(tenantScope.tenantId, canonicalTripId, nextRevision),
                 tenantId = tenantScope.tenantId,
@@ -121,6 +149,8 @@ internal class TripPublicationOutbox0387(context: Context) {
                 mutationType = mutationType.take(80),
                 source = source.take(80),
                 snapshot = snapshot,
+                mutationId0421 = mutationIdentity.first,
+                idempotencyKey0421 = mutationIdentity.second,
                 createdAtMillis = now,
                 updatedAtMillis = now,
             )
@@ -150,6 +180,7 @@ internal class TripPublicationOutbox0387(context: Context) {
             val events = recoverInterrupted(readEvents()).toMutableList()
             val revisions = readRevisions().toMutableMap()
             val eventId = publicationEventId0387(tenantScope.tenantId, canonicalTripId, revision)
+            val mutationIdentity = publicationMutationIdentity0421(canonicalTripId, snapshot)
             val authoritative = TripPublicationOutboxEvent0387(
                 id = eventId,
                 tenantId = tenantScope.tenantId,
@@ -159,6 +190,8 @@ internal class TripPublicationOutbox0387(context: Context) {
                 mutationType = mutationType.take(80),
                 source = source.take(80),
                 snapshot = snapshot,
+                mutationId0421 = mutationIdentity.first,
+                idempotencyKey0421 = mutationIdentity.second,
                 status = TripPublicationStatus0387.DELIVERED,
                 attempts = 1,
                 createdAtMillis = events.firstOrNull { it.id == eventId }?.createdAtMillis ?: now,
@@ -392,6 +425,7 @@ internal class TripMutationCoordinator0387(
 ) {
     private val appContext = context.applicationContext
     private val outbox = TripPublicationOutbox0387(appContext)
+    private val evidenceJson0421 = Json { encodeDefaults = true }
 
     fun recordLocalMutation(
         canonicalTripId: String,
@@ -399,6 +433,7 @@ internal class TripMutationCoordinator0387(
         source: String,
         configuredRotaCertaSeatAllocation: Int? = null,
         reconcileBookingInventory: Boolean = true,
+        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? {
         if (canonicalTripId.isBlank() || !store.onlineSettings().configured) return null
         if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
@@ -431,6 +466,7 @@ internal class TripMutationCoordinator0387(
                 seatAllocationVersion = publicTrip.seatAllocationVersionUsed,
                 semanticSignature = signature,
             ),
+            remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
         )?.also { event ->
             recordEvent(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
@@ -776,6 +812,13 @@ internal class TripMutationCoordinator0387(
         outbox.pending(limit = limit).forEach { candidate ->
             val event = outbox.markProcessing(candidate.id) ?: return@forEach
             val startedNs = System.nanoTime()
+            recordEvidence0421(
+                stage = "OUTBOX_DEQUEUE",
+                status = "OK",
+                reason = "OUTBOX_EVENT_ACQUIRED",
+                event = event,
+                extra = "attempt=${event.attempts} previousStage=OUTBOX_ENQUEUE nextStage=REQUEST_BUILD",
+            )
             try {
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
@@ -803,6 +846,8 @@ internal class TripMutationCoordinator0387(
                                 snapshotBookings = event.snapshot.bookings,
                                 entityRevision = event.revision,
                                 outboxEventId = event.id,
+                                mutationId0421 = event.resolvedMutationId0421(),
+                                idempotencyKey0421 = event.resolvedIdempotencyKey0421(),
                             )
                         }
                     }
@@ -818,6 +863,8 @@ internal class TripMutationCoordinator0387(
                             configuredRotaCertaSeatAllocation = event.snapshot.configuredRotaCertaSeatAllocation,
                             entityRevision = event.revision,
                             outboxEventId = event.id,
+                            mutationId0421 = event.resolvedMutationId0421(),
+                            idempotencyKey0421 = event.resolvedIdempotencyKey0421(),
                             externalAccountId = event.snapshot.externalAccountId,
                             canonicalTripId = event.canonicalTripId,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
@@ -867,7 +914,26 @@ internal class TripMutationCoordinator0387(
                 throw cancelled
             } catch (error: Throwable) {
                 val retryable = publicationFailureRetryable0387(error)
+                val remote = generateSequence(error) { it.cause }
+                    .filterIsInstance<TripRemoteApiException>()
+                    .firstOrNull()
                 outbox.markFailure(event.id, error, retryable)
+                store.recordPublicMirrorPublicationFailure0421(
+                    canonicalTripId = event.canonicalTripId,
+                    expectedCanonicalRevision = event.snapshot.trip?.canonicalRevision ?: 0L,
+                    transportRevision = event.revision,
+                    evidenceId = publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L),
+                    traceId = event.id,
+                    retryable = retryable,
+                    httpStatus = remote?.httpStatus ?: 0,
+                    backendErrorCode = remote?.backendErrorCode.orEmpty(),
+                    networkCallId = remote?.networkCallId.orEmpty(),
+                    requestBytes = remote?.requestBytes ?: 0,
+                    responseBytes = remote?.responseBytes ?: 0,
+                    requestHash = remote?.requestSha256.orEmpty(),
+                    responseHash = remote?.responseSha256.orEmpty(),
+                    reason = error::class.java.simpleName,
+                )
                 recordEvent(
                     "TRIP_MUTATION_OUTBOX_FAILED",
                     event,
@@ -898,7 +964,59 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
+            "tenantScope=${seatSyncDiagnosticKey(event.tenantId)} evidenceId=${publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} mutationId=${event.resolvedMutationId0421()} idempotencyKey=${event.resolvedIdempotencyKey0421()} outboxEventId=${event.id} $extra",
+        )
+        if (stage == "TRIP_MUTATION_OUTBOX_ENQUEUED" || stage == "TRIP_MUTATION_TOMBSTONE_ENQUEUED") {
+            val bytes = runCatching {
+                evidenceJson0421.encodeToString(event.snapshot).toByteArray(Charsets.UTF_8)
+            }.getOrDefault(ByteArray(0))
+            val hash = if (bytes.isEmpty()) "" else MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            recordEvidence0421(
+                stage = "CANONICAL_SERIALIZATION",
+                status = "OK",
+                reason = "SNAPSHOT_SERIALIZED",
+                event = event,
+                extra = "inputHash=${event.snapshot.trip?.canonicalStateHash.orEmpty()} outputHash=$hash outputBytes=${bytes.size} charset=UTF-8 serialization=kotlinx-json canonicalization=semantic-signature previousStage=CANONICAL_READ nextStage=OUTBOX_ENQUEUE",
+            )
+            recordEvidence0421(
+                stage = "OUTBOX_ENQUEUE",
+                status = "OK",
+                reason = "OUTBOX_EVENT_PERSISTED",
+                event = event,
+                extra = "attempt=0 previousStage=CANONICAL_SERIALIZATION nextStage=OUTBOX_DEQUEUE",
+            )
+        }
+    }
+
+    private fun recordEvidence0421(
+        stage: String,
+        status: String,
+        reason: String,
+        event: TripPublicationOutboxEvent0387,
+        extra: String = "",
+    ) {
+        UnifiedDebugEventStore.record(
+            "PUBLIC_EVIDENCE_0421",
+            appContext.packageName,
+            buildString {
+                append("evidenceId=").append(publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L))
+                append(" traceId=").append(event.id)
+                append(" correlationId=").append(event.id)
+                append(" tenantScope=").append(seatSyncDiagnosticKey(event.tenantId))
+                append(" stage=").append(stage)
+                append(" status=").append(status)
+                append(" reasonCode=").append(reason)
+                append(" canonicalTripId=").append(seatSyncDiagnosticKey(event.canonicalTripId))
+                append(" logicalRevision=").append(event.snapshot.trip?.canonicalRevision ?: 0L)
+                append(" transportRevision=").append(event.revision)
+                append(" canonicalStateHash=").append(event.snapshot.trip?.canonicalStateHash.orEmpty())
+                append(" mutationId=").append(event.resolvedMutationId0421())
+                append(" idempotencyKey=").append(event.resolvedIdempotencyKey0421())
+                append(" durationMs=0")
+                if (extra.isNotBlank()) append(' ').append(extra)
+            },
         )
     }
 }
@@ -922,6 +1040,30 @@ internal fun strongExternalCanonicalTripId0387(
 internal fun publicationEventId0387(tenantId: String, canonicalTripId: String, revision: Long): String =
     "outbox_" + sha256TripPublication0387("$tenantId|$canonicalTripId|$revision").take(48)
 
+internal fun publicationEvidenceId0421(traceId: String, canonicalRevision: Long): String =
+    "ev_" + sha256TripPublication0387(traceId.trim() + "|" + canonicalRevision.coerceAtLeast(0L)).take(24)
+
+internal fun publicationMutationIdentity0421(
+    canonicalTripId: String,
+    snapshot: TripPublicationSnapshot0387,
+): Pair<String, String> {
+    val material = listOf(
+        canonicalTripId.trim(),
+        (snapshot.trip?.canonicalRevision ?: 0L).coerceAtLeast(0L).toString(),
+        snapshot.trip?.canonicalStateHash.orEmpty().trim(),
+        snapshot.semanticSignature.trim(),
+        snapshot.seatAllocationVersion.coerceAtLeast(0L).toString(),
+    ).joinToString("|")
+    val digest = sha256TripPublication0387(material)
+    return "mut_" + digest.take(48) to "idem_" + digest.take(48)
+}
+
+internal fun TripPublicationOutboxEvent0387.resolvedMutationId0421(): String =
+    mutationId0421.ifBlank { publicationMutationIdentity0421(canonicalTripId, snapshot).first }
+
+internal fun TripPublicationOutboxEvent0387.resolvedIdempotencyKey0421(): String =
+    idempotencyKey0421.ifBlank { publicationMutationIdentity0421(canonicalTripId, snapshot).second }
+
 private fun retryDelayMillis(attempt: Int): Long {
     val multiplier = 1 shl (attempt - 1).coerceIn(0, 6)
     return min(60L * 60L * 1000L, 5_000L * multiplier)
@@ -929,21 +1071,57 @@ private fun retryDelayMillis(attempt: Int): Long {
 
 internal fun publicationFailureRetryable0387(error: Throwable): Boolean {
     val remote = generateSequence(error) { it.cause }.filterIsInstance<TripRemoteApiException>().firstOrNull()
+    val deterministicConflictCodes = setOf(
+        "protected_booking_required",
+        "invalid_protected_booking_status",
+        "invalid_protected_operational_status",
+        "invalid_protected_payment_status",
+        "protected_passenger_name_required",
+        "invalid_protected_seats",
+        "invalid_protected_booking_id",
+        "protected_snapshot_requires_revision",
+        "publication_revision_conflict",
+        "protected_booking",
+        "capacity_claim_namespace_mismatch",
+        "invalid_external_capacity_claim",
+        "inventory_mismatch",
+    )
     return when {
         error is CancellationException -> true
         remote == null -> true
+        remote.backendErrorCode in deterministicConflictCodes -> false
         remote.httpStatus <= 0 -> true
-        remote.httpStatus in setOf(408, 409, 425, 429) -> true
+        remote.httpStatus in setOf(408, 425, 429) -> true
+        remote.httpStatus == 409 -> false
         remote.httpStatus >= 500 -> true
         else -> false
     }
 }
 
 internal fun failureSummary0387(error: Throwable): String {
-    val root = generateSequence(error) { it.cause }.last()
+    val chain = generateSequence(error) { it.cause }.toList()
+    val root = chain.last()
+    val remote = chain.filterIsInstance<TripRemoteApiException>().firstOrNull()
     val exceptionMessage = UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(240)
     val rootMessage = UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()).take(240)
-    return "exceptionClass=${error.javaClass.name} exceptionMessage=$exceptionMessage rootCauseClass=${root.javaClass.name} rootCauseMessage=$rootMessage"
+    return buildString {
+        append("exceptionClass=").append(error.javaClass.name)
+        append(" exceptionMessage=").append(exceptionMessage)
+        append(" rootCauseClass=").append(root.javaClass.name)
+        append(" rootCauseMessage=").append(rootMessage)
+        remote?.let { value ->
+            append(" httpStatus=").append(value.httpStatus)
+            append(" backendErrorCode=").append(value.backendErrorCode)
+            append(" networkCallId=").append(value.networkCallId)
+            append(" transportPhase=").append(value.transportPhase)
+            append(" requestBytes=").append(value.requestBytes)
+            append(" responseBytes=").append(value.responseBytes)
+            append(" requestSha256=").append(value.requestSha256)
+            append(" responseSha256=").append(value.responseSha256)
+            append(" requestId=").append(value.requestId)
+            append(" correlationId=").append(value.correlationId)
+        }
+    }
 }
 
 internal fun sha256TripPublication0387(value: String): String = MessageDigest.getInstance("SHA-256")

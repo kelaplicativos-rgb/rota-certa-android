@@ -60,12 +60,10 @@ class TripStore(context: Context) {
         }
         val nextState = if (tombstone) {
             PublicMirrorAttestationState0411.UNPROVEN
-        } else if (
-            existing.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
-            existing.publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
-            existing.publicMirrorAttestedCanonicalRevision0411 == existing.canonicalRevision
-        ) {
-            existing.publicMirrorAttestationState0411
+        } else if (existing.publicMirrorAttestationCurrent0411()) {
+            // A transport replay of the exact same logical canonical snapshot does not
+            // invalidate evidence already proven by independent public readback.
+            PublicMirrorAttestationState0411.VALIDATED
         } else {
             PublicMirrorAttestationState0411.PENDING
         }
@@ -92,15 +90,30 @@ class TripStore(context: Context) {
         reason: String,
         readbackLatencyMillis: Long,
         publicUrlFromReadback: String? = null,
+        publicIdentityFromReadback0421: String = "",
+        readbackCanonicalRevision0421: Long = 0L,
+        readbackPublicationRevision0421: Long = 0L,
+        evidenceId0421: String = "",
+        traceId0421: String = "",
+        expectedBytes0421: Int = 0,
+        actualBytes0421: Int = 0,
+        firstDifferentByteOffset0421: Int = -1,
+        differentByteRanges0421: List<String> = emptyList(),
+        httpStatus0421: Int = 0,
+        backendErrorCode0421: String = "",
+        failedStage0421: String = "",
+        networkCallId0421: String = "",
+        requestBytes0421: Int = 0,
+        responseBytes0421: Int = 0,
+        requestHash0421: String = "",
+        responseHash0421: String = "",
+        readbackAtMillis0421: Long = 0L,
         nowMillis: Long = System.currentTimeMillis(),
     ): Trip? = synchronized(CANONICAL_LOCK) {
         val current = trips()
         val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
-        if (
-            existing.canonicalRevision != expectedCanonicalRevision ||
-            existing.publicationRevision != expectedPublicationRevision
-        ) {
-            val invalidated = existing.invalidatePublicMirror0411("REVISION_CHANGED_DURING_READBACK")
+        if (existing.canonicalRevision != expectedCanonicalRevision) {
+            val invalidated = existing.invalidatePublicMirror0411("CANONICAL_REVISION_CHANGED_DURING_READBACK")
             if (invalidated != existing) persistCanonicalTrip0406(invalidated, current)
             return@synchronized invalidated
         }
@@ -109,13 +122,91 @@ class TripStore(context: Context) {
                 ?: publicUrlFromReadback?.trim()?.takeIf(String::isNotBlank),
             publicMirrorAttestationState0411 = state,
             publicMirrorAttestedCanonicalRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedCanonicalRevision else 0L,
-            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) expectedPublicationRevision else 0L,
+            publicMirrorAttestedPublicationRevision0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) readbackPublicationRevision0421.coerceAtLeast(expectedPublicationRevision) else 0L,
             publicMirrorExpectedHash0411 = expectedHash.take(96),
             publicMirrorReadbackHash0411 = readbackHash.take(96),
             publicMirrorAttestedAtMillis0411 = if (state == PublicMirrorAttestationState0411.VALIDATED) nowMillis else 0L,
             publicMirrorReadbackLatencyMillis0411 = readbackLatencyMillis.coerceAtLeast(0L),
             publicMirrorAttestationReason0411 = reason.take(160),
             publicMirrorMismatchFields0411 = mismatchFields.distinct().take(24),
+            publicMirrorReadbackCanonicalRevision0421 = readbackCanonicalRevision0421.coerceAtLeast(0L),
+            publicMirrorAttemptedPublicationRevision0421 = expectedPublicationRevision.coerceAtLeast(0L),
+            publicMirrorReadbackPublicationRevision0421 = readbackPublicationRevision0421.coerceAtLeast(0L),
+            publicMirrorPublicIdentity0421 = publicIdentityFromReadback0421.take(180),
+            publicMirrorLastReadbackAtMillis0421 = readbackAtMillis0421.coerceAtLeast(0L),
+            publicMirrorEvidenceId0421 = evidenceId0421.take(80),
+            publicMirrorTraceId0421 = traceId0421.take(120),
+            publicMirrorExpectedBytes0421 = expectedBytes0421.coerceAtLeast(0),
+            publicMirrorActualBytes0421 = actualBytes0421.coerceAtLeast(0),
+            publicMirrorFirstDifferentByteOffset0421 = firstDifferentByteOffset0421,
+            publicMirrorDifferentByteRanges0421 = differentByteRanges0421.distinct().take(12),
+            publicMirrorHttpStatus0421 = httpStatus0421.coerceAtLeast(0),
+            publicMirrorBackendErrorCode0421 = backendErrorCode0421.take(80),
+            publicMirrorFailedStage0421 = failedStage0421.take(80),
+            publicMirrorNetworkCallId0421 = networkCallId0421.take(120),
+            publicMirrorRequestBytes0421 = requestBytes0421.coerceAtLeast(0),
+            publicMirrorResponseBytes0421 = responseBytes0421.coerceAtLeast(0),
+            publicMirrorRequestHash0421 = requestHash0421.take(96),
+            publicMirrorResponseHash0421 = responseHash0421.take(96),
+        )
+        if (updated != existing) persistCanonicalTrip0406(updated, current)
+        updated
+    }
+
+    internal fun recordPublicMirrorPublicationFailure0421(
+        canonicalTripId: String,
+        expectedCanonicalRevision: Long,
+        transportRevision: Long,
+        evidenceId: String,
+        traceId: String,
+        retryable: Boolean,
+        httpStatus: Int,
+        backendErrorCode: String,
+        networkCallId: String,
+        requestBytes: Int,
+        responseBytes: Int,
+        requestHash: String,
+        responseHash: String,
+        reason: String,
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val current = trips()
+        val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (existing.canonicalRevision != expectedCanonicalRevision) return@synchronized existing
+        if (existing.publicMirrorAttestationCurrent0411()) return@synchronized existing
+        val resolvedReason = backendErrorCode.ifBlank { reason.ifBlank { "PUBLICATION_FAILED" } }.take(160)
+        val updated = existing.copy(
+            publicMirrorAttestationState0411 = if (retryable) {
+                PublicMirrorAttestationState0411.PENDING
+            } else {
+                PublicMirrorAttestationState0411.DIVERGENT
+            },
+            publicMirrorAttestedCanonicalRevision0411 = 0L,
+            publicMirrorAttestedPublicationRevision0411 = 0L,
+            publicMirrorExpectedHash0411 = "",
+            publicMirrorReadbackHash0411 = "",
+            publicMirrorAttestedAtMillis0411 = 0L,
+            publicMirrorReadbackLatencyMillis0411 = 0L,
+            publicMirrorAttestationReason0411 = resolvedReason,
+            publicMirrorMismatchFields0411 = listOf("publication"),
+            publicMirrorReadbackCanonicalRevision0421 = 0L,
+            publicMirrorAttemptedPublicationRevision0421 = transportRevision.coerceAtLeast(0L),
+            publicMirrorReadbackPublicationRevision0421 = 0L,
+            publicMirrorPublicIdentity0421 = "",
+            publicMirrorLastReadbackAtMillis0421 = 0L,
+            publicMirrorEvidenceId0421 = evidenceId.take(80),
+            publicMirrorTraceId0421 = traceId.take(120),
+            publicMirrorExpectedBytes0421 = 0,
+            publicMirrorActualBytes0421 = 0,
+            publicMirrorFirstDifferentByteOffset0421 = -1,
+            publicMirrorDifferentByteRanges0421 = emptyList(),
+            publicMirrorHttpStatus0421 = httpStatus.coerceAtLeast(0),
+            publicMirrorBackendErrorCode0421 = backendErrorCode.take(80),
+            publicMirrorFailedStage0421 = if (httpStatus > 0) "HTTP_RESPONSE" else "HTTP_SEND",
+            publicMirrorNetworkCallId0421 = networkCallId.take(120),
+            publicMirrorRequestBytes0421 = requestBytes.coerceAtLeast(0),
+            publicMirrorResponseBytes0421 = responseBytes.coerceAtLeast(0),
+            publicMirrorRequestHash0421 = requestHash.take(96),
+            publicMirrorResponseHash0421 = responseHash.take(96),
         )
         if (updated != existing) persistCanonicalTrip0406(updated, current)
         updated
@@ -301,46 +392,97 @@ class TripStore(context: Context) {
         synchronized(CANONICAL_LOCK) {
             val originalTrips = trips()
             val keyedTrips = originalTrips.map(::canonicalizeTripIdentity0406)
-            val externalGroups = keyedTrips
-                .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isNotBlank() }
-                .groupBy(Trip::tripKey)
-            val winnersByKey = externalGroups.mapValues { (_, candidates) ->
-                candidates.maxWithOrNull(
-                    compareBy<Trip> { it.canonicalRevision }.thenBy { it.updatedAtMillis },
-                ) ?: candidates.first()
-            }
+            val strongIdentityGroups0421 = keyedTrips
+                .mapNotNull { trip ->
+                    canonicalBlaBlaTripKey0406(
+                        tenantId = tenantScope.tenantId,
+                        profileUuid = trip.blablaProfileUuid,
+                        providerTripId = trip.blablaTripId,
+                    )?.let { key -> key to trip }
+                }
+                .groupBy({ it.first }, { it.second })
+            val conflictStrongKeys0421 = strongIdentityGroups0421
+                .filterValues { candidates ->
+                    candidates.size > 1 && candidates.any { left ->
+                        candidates.any { right ->
+                            left.id != right.id && !canonicalProjectionPhysicalIdentityCompatible0421(left, right)
+                        }
+                    }
+                }
+                .keys
             val loserToWinner = mutableMapOf<String, String>()
-            externalGroups.values.forEach { group ->
-                val winner = winnersByKey[group.first().tripKey] ?: return@forEach
-                group.filterNot { it.id == winner.id }.forEach { loser -> loserToWinner[loser.id] = winner.id }
+            strongIdentityGroups0421.forEach { (key, candidates) ->
+                if (candidates.size <= 1 || key in conflictStrongKeys0421) return@forEach
+                val winner = candidates.maxWithOrNull(
+                    compareBy<Trip> { resolvedTripRecordOrigin(it) == TripRecordOrigin.LOCAL }
+                        .thenBy { it.canonicalRevision }
+                        .thenBy { it.updatedAtMillis },
+                ) ?: return@forEach
+                candidates.filterNot { it.id == winner.id }.forEach { loser ->
+                    loserToWinner[loser.id] = winner.id
+                }
+            }
+            if (conflictStrongKeys0421.isNotEmpty()) {
+                val conflictIds = strongIdentityGroups0421
+                    .filterKeys { it in conflictStrongKeys0421 }
+                    .values
+                    .flatten()
+                    .map { seatSyncDiagnosticKey(it.id) }
+                    .distinct()
+                    .take(24)
+                UnifiedDebugEventStore.record(
+                    "CANONICAL_STRONG_IDENTITY_CONFLICT_0421",
+                    appContext.packageName,
+                    "tenantId=" + tenantScope.tenantId +
+                        " conflictKeys=" + conflictStrongKeys0421.size +
+                        " affectedTrips=" + conflictIds.size +
+                        " tripKeys=" + conflictIds.joinToString(",") +
+                        " action=preserve_unproven_no_destructive_merge",
+                )
             }
             val originalBookings = bookings()
             val remappedBookings = originalBookings.map { booking ->
                 loserToWinner[booking.tripId]?.let { winnerId -> booking.copy(tripId = winnerId) } ?: booking
             }
-            val winnerIds = winnersByKey.values.map(Trip::id).toSet()
-            val retainedTrips = keyedTrips.filter { trip ->
-                resolvedTripRecordOrigin(trip) != TripRecordOrigin.EXTERNAL_BACKING ||
-                    trip.tripKey.isBlank() ||
-                    trip.id in winnerIds
-            }
+            val retainedTrips = keyedTrips.filterNot { it.id in loserToWinner }
             val bookingsByTrip = remappedBookings.groupBy(Booking::tripId)
             val activeTimezone = ZoneId.systemDefault().id
             val hashedTrips = retainedTrips.map { trip ->
-                val migrated = if (trip.publicTimezoneId0411.isBlank()) {
-                    trip.copy(
+                val identityConflict = canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = trip.blablaProfileUuid,
+                    providerTripId = trip.blablaTripId,
+                ) in conflictStrongKeys0421
+                val conflictAware = if (identityConflict) {
+                    trip.invalidatePublicMirror0411("STRONG_IDENTITY_CONFLICT_0421")
+                } else trip
+                val migrated = if (conflictAware.publicTimezoneId0411.isBlank()) {
+                    conflictAware.copy(
                         publicTimezoneId0411 = activeTimezone,
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = nowMillis,
                     ).invalidatePublicMirror0411("LEGACY_PUBLIC_TIMEZONE_MIGRATED")
                 } else {
-                    trip
+                    conflictAware
                 }
                 val stateHash = canonicalTripStateHash0406(migrated, bookingsByTrip[migrated.id].orEmpty())
                 if (migrated.canonicalStateHash == stateHash) migrated else migrated.copy(canonicalStateHash = stateHash)
             }
             val canonicalByKey = hashedTrips.filter { it.tripKey.isNotBlank() }.associateBy(Trip::tripKey)
+            val canonicalByStrongExternalKey0421 = hashedTrips
+                .mapNotNull { trip ->
+                    canonicalBlaBlaTripKey0406(
+                        tenantId = tenantScope.tenantId,
+                        profileUuid = trip.blablaProfileUuid,
+                        providerTripId = trip.blablaTripId,
+                    )?.let { key -> key to trip }
+                }
+                .groupBy({ it.first }, { it.second })
+                .filterKeys { it !in conflictStrongKeys0421 }
+                .mapNotNull { (key, candidates) -> candidates.singleOrNull()?.let { key to it } }
+                .toMap()
+            val knownStrongExternalKeys0421 = strongIdentityGroups0421.keys
             val originalBindings = publicExternalBindings()
             val normalizedBindings = originalBindings.map { binding ->
                 val key = canonicalBlaBlaTripKey0406(
@@ -348,24 +490,33 @@ class TripStore(context: Context) {
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
                 )
-                val canonical = key?.let(canonicalByKey::get)
+                val canonical = key?.let { canonicalByStrongExternalKey0421[it] ?: canonicalByKey[it] }
                 if (canonical != null && binding.bookingTripId != canonical.id) {
                     binding.copy(
                         bookingTripId = canonical.id,
-                        canonicalRevision = maxOf(binding.canonicalRevision, canonical.publicationRevision),
+                        canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
                         stateHash = canonical.canonicalStateHash,
                         updatedAtMillis = nowMillis,
                     )
-                } else if (canonical != null && binding.stateHash != canonical.canonicalStateHash) {
-                    binding.copy(stateHash = canonical.canonicalStateHash, updatedAtMillis = nowMillis)
+                } else if (
+                    canonical != null &&
+                    (binding.stateHash != canonical.canonicalStateHash ||
+                        binding.canonicalRevision != canonical.canonicalRevision)
+                ) {
+                    binding.copy(
+                        canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
+                        stateHash = canonical.canonicalStateHash,
+                        updatedAtMillis = nowMillis,
+                    )
                 } else binding
             }
             val groupedBindings = normalizedBindings.groupBy { binding ->
-                canonicalBlaBlaTripKey0406(
+                val key = canonicalBlaBlaTripKey0406(
                     tenantId = tenantScope.tenantId,
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
-                ) ?: "remote:" + binding.remoteTripId
+                )
+                if (key != null && key !in conflictStrongKeys0421) key else "remote:" + binding.remoteTripId
             }
             val orderedBindingGroups = groupedBindings.values.map { candidates ->
                 candidates.sortedWith(
@@ -385,7 +536,7 @@ class TripStore(context: Context) {
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
                 )
-                key != null && key !in canonicalByKey
+                key != null && key !in knownStrongExternalKeys0421
             }
             val changed = hashedTrips != originalTrips ||
                 remappedBookings != originalBookings ||
@@ -408,6 +559,8 @@ class TripStore(context: Context) {
                 unresolvedExternalIdentity = hashedTrips.count {
                     resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isBlank()
                 },
+                consolidatedStrongIdentityTrips0421 = loserToWinner.size,
+                strongIdentityConflicts0421 = conflictStrongKeys0421.size,
                 duplicateAgendaBindingsForCleanup = duplicateBindingsForCleanup,
                 orphanAgendaBindingsForCleanup = orphanBindingsForCleanup,
             )
@@ -777,6 +930,8 @@ internal data class CanonicalIntegrityReport0406(
     val duplicateAgendaBindings: Int = 0,
     val orphanAgendaBindings: Int = 0,
     val unresolvedExternalIdentity: Int = 0,
+    val consolidatedStrongIdentityTrips0421: Int = 0,
+    val strongIdentityConflicts0421: Int = 0,
     val duplicateAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
     val orphanAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
 )
@@ -814,9 +969,9 @@ data class PublicExternalTripBinding(
             entryProfile == profileUuid.trim().lowercase() && leftHref == rightHref
         ) return true
 
-        return kotlin.math.abs(entry.departureAtMillis - departureAtMillis) <= 45L * 60L * 1000L &&
-            normalizeBindingPlace(entry.origin) == normalizeBindingPlace(stops.minByOrNull(TripStop::order)?.name.orEmpty()) &&
-            normalizeBindingPlace(entry.destination) == normalizeBindingPlace(stops.maxByOrNull(TripStop::order)?.name.orEmpty())
+        // Route/time similarity is diagnostic only. A public projection binding must
+        // never be selected by presentation fields when strong identity is absent.
+        return false
     }
 
     fun asTrip(): Trip = Trip(
@@ -837,6 +992,15 @@ data class PublicExternalTripBinding(
         seatAllocationVersionUsed = seatAllocationVersionUsed,
         canonicalStateHash = stateHash,
     )
+}
+
+internal fun canonicalProjectionPhysicalIdentityCompatible0421(left: Trip, right: Trip): Boolean {
+    if (kotlin.math.abs(left.departureAtMillis - right.departureAtMillis) > 45L * 60L * 1000L) return false
+    val leftStops = left.stops.sortedBy(TripStop::order)
+    val rightStops = right.stops.sortedBy(TripStop::order)
+    if (leftStops.size < 2 || rightStops.size < 2) return false
+    return normalizeBindingPlace(leftStops.first().name) == normalizeBindingPlace(rightStops.first().name) &&
+        normalizeBindingPlace(leftStops.last().name) == normalizeBindingPlace(rightStops.last().name)
 }
 
 private fun normalizeBindingPlace(value: String): String = java.text.Normalizer

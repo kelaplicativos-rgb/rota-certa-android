@@ -448,6 +448,8 @@ data class DriverCapacitySnapshotRequest(
     val entityRevision: Long = 0L,
     val canonicalTripId: String = "",
     val outboxEventId: String = "",
+    val mutationId0421: String = "",
+    val idempotencyKey0421: String = "",
 )
 
 @Serializable
@@ -471,7 +473,10 @@ data class DriverTripSyncState0402(
     val stops: List<TripStop> = emptyList(),
     val capacityReliable: Boolean = false,
     val capacitySnapshotRevision: String = "",
+    /** Transport/entity sequence. Not the logical canonical state revision. */
     val publicationRevision: Long = 0L,
+    /** Logical canonical snapshot revision persisted in the public projection. */
+    val canonicalRevision: Long = 0L,
     val canonicalTripId: String = "",
     val canonicalStateHash: String = "",
     val tripKey: String = "",
@@ -502,8 +507,18 @@ data class DriverCapacitySnapshotResponse(
     val changed: Boolean = false,
     val entityRevision: Long = 0L,
     val stale: Boolean = false,
+    val logicalReplay: Boolean = false,
 )
 
+internal data class RemotePublicationEvidenceContext0421(
+    val evidenceId: String,
+    val traceId: String,
+    val canonicalTripId: String,
+    val logicalRevision: Long,
+    val transportRevision: Long,
+    val mutationId: String,
+    val idempotencyKey: String,
+)
 internal class TripRemoteApiException(
     val httpMethod: String,
     val endpoint: String,
@@ -742,6 +757,8 @@ class TripRemoteApi(
         entityRevision: Long = 0L,
         canonicalTripId: String = "",
         outboxEventId: String = "",
+        mutationId0421: String = "",
+        idempotencyKey0421: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -787,9 +804,22 @@ class TripRemoteApi(
                 entityRevision = entityRevision,
                 canonicalTripId = canonicalTripId,
                 outboxEventId = outboxEventId,
+                mutationId0421 = mutationId0421,
+                idempotencyKey0421 = idempotencyKey0421,
             ),
         ),
         requireDriverToken = true,
+        evidence0421 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+            RemotePublicationEvidenceContext0421(
+                evidenceId = publicationEvidenceId0421(traceId, trip.canonicalRevision),
+                traceId = traceId,
+                canonicalTripId = canonicalTripId.ifBlank { trip.id },
+                logicalRevision = trip.canonicalRevision,
+                transportRevision = entityRevision,
+                mutationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+            )
+        },
     )
 
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
@@ -1072,6 +1102,7 @@ class TripRemoteApi(
         path: String,
         body: String? = null,
         requireDriverToken: Boolean,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
     ): T = withContext(Dispatchers.IO) {
         val requestPayload = body.orEmpty()
         val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
@@ -1082,6 +1113,13 @@ class TripRemoteApi(
             append('-')
             append(sha256Hex("$method|$path".toByteArray(Charsets.UTF_8)).take(10))
         }
+        recordRemotePublicationEvidence0421(
+            evidence0421,
+            stage = "REQUEST_BUILD",
+            status = "OK",
+            reason = "REQUEST_SERIALIZED",
+            extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} charset=UTF-8 contentType=application/json previousStage=OUTBOX_DEQUEUE nextStage=HTTP_SEND",
+        )
         var phase = "validate_configuration"
         var connection: HttpURLConnection? = null
         var status = 0
@@ -1118,6 +1156,13 @@ class TripRemoteApi(
                 opened.doOutput = true
                 opened.outputStream.use { output -> output.write(requestPayloadBytes) }
             }
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "HTTP_SEND",
+                status = "OK",
+                reason = "REQUEST_BYTES_SENT",
+                extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} previousStage=REQUEST_BUILD nextStage=HTTP_RESPONSE",
+            )
 
             phase = "response_status"
             status = opened.responseCode
@@ -1130,8 +1175,22 @@ class TripRemoteApi(
                 ?.use { input -> input.readBytes() }
                 ?: ByteArray(0)
             responseText = responsePayloadBytes.toString(Charsets.UTF_8)
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "HTTP_RESPONSE",
+                status = if (status in 200..299) "OK" else "FAILED",
+                reason = if (status in 200..299) "HTTP_2XX" else backendErrorCode(responseText).ifBlank { "HTTP_$status" },
+                extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} responseContentType=${UnifiedDebugEventStore.sanitizeForExport(responseContentType).take(80)} requestId=$requestId correlationId=$correlationId durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_SEND nextStage=SERVER_ACK",
+            )
 
             if (status !in 200..299) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "DENIED",
+                    reason = backendErrorCode(responseText).ifBlank { "HTTP_$status" },
+                    extra = "networkCallId=$networkCallId httpStatus=$status previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
                 remoteException(
                     method = method,
                     path = path,
@@ -1152,10 +1211,25 @@ class TripRemoteApi(
 
             phase = "decode_json"
             try {
-                json.decodeFromString<T>(responseText)
+                val decoded = json.decodeFromString<T>(responseText)
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "OK",
+                    reason = "WRITE_ACCEPTED",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
+                decoded
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "FAILED",
+                    reason = "RESPONSE_DECODE_FAILED",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
                 remoteException(
                     method = method,
                     path = path,
@@ -1179,6 +1253,15 @@ class TripRemoteApi(
         } catch (remote: TripRemoteApiException) {
             throw remote
         } catch (error: Throwable) {
+            if (status <= 0) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "HTTP_RESPONSE",
+                    status = "FAILED",
+                    reason = "TRANSPORT_" + phase.uppercase(),
+                    extra = "networkCallId=$networkCallId httpStatus=0 responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_SEND nextStage=SERVER_ACK",
+                )
+            }
             remoteException(
                 method = method,
                 path = path,
@@ -1240,6 +1323,33 @@ class TripRemoteApi(
         )
     }
 
+    private fun recordRemotePublicationEvidence0421(
+        evidence: RemotePublicationEvidenceContext0421?,
+        stage: String,
+        status: String,
+        reason: String,
+        extra: String = "",
+    ) {
+        evidence ?: return
+        UnifiedDebugEventStore.record(
+            "PUBLIC_EVIDENCE_0421",
+            "br.com.mapeiaia.rotacerta.trips",
+            buildString {
+                append("evidenceId=").append(evidence.evidenceId)
+                append(" traceId=").append(evidence.traceId)
+                append(" correlationId=").append(evidence.traceId)
+                append(" stage=").append(stage)
+                append(" status=").append(status)
+                append(" reasonCode=").append(reason)
+                append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
+                append(" logicalRevision=").append(evidence.logicalRevision)
+                append(" transportRevision=").append(evidence.transportRevision)
+                append(" mutationId=").append(evidence.mutationId)
+                append(" idempotencyKey=").append(evidence.idempotencyKey)
+                if (extra.isNotBlank()) append(' ').append(extra)
+            },
+        )
+    }
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
             .digest(bytes)

@@ -10,6 +10,8 @@ const {
   normalizeSyncPolicy0417,
   safeVisibility0417,
   redact0417,
+  activeAdminTrips0417,
+  validatedBlaBlaPublicUrl0417,
 } = require("../agenda-admin-0417");
 
 test("sync policy clamps to Android WorkManager-safe bounds", () => {
@@ -50,6 +52,44 @@ test("exports redact credentials recursively", () => {
   assert.equal(sanitized.nested.sessionToken, "[REDACTED]");
   assert.equal(sanitized.nested.value, "kept");
   assert.equal(sanitized.list[0].apiKey, "[REDACTED]");
+});
+
+test("admin aggregates and technical list share the same active public scope", () => {
+  const now = 2_000_000;
+  const trips = [
+    { departureAtMillis: now + 1_000, status: "PUBLISHED" },
+    { departureAtMillis: now + 2_000, status: "FULL" },
+    { departureAtMillis: now - 1, status: "PUBLISHED" },
+    { departureAtMillis: now + 3_000, status: "CANCELLED" },
+  ];
+  assert.equal(activeAdminTrips0417(trips, now).length, 2);
+});
+
+test("BlaBla link is valid only for concrete public trip URL matching strong trip id", () => {
+  const valid = validatedBlaBlaPublicUrl0417(
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123",
+    "trip-123",
+  );
+  assert.match(valid, /^https:\/\/www\.blablacar\.com\.br\/trip/);
+  assert.equal(validatedBlaBlaPublicUrl0417("https://www.blablacar.com.br/trip?id=other", "trip-123"), "");
+  assert.equal(validatedBlaBlaPublicUrl0417("https://example.com/trip?id=trip-123", "trip-123"), "");
+  assert.equal(validatedBlaBlaPublicUrl0417("", "trip-123"), "");
+});
+
+test("admin sync request is REQUESTED and SUCCESS health is guarded by attestation metrics", () => {
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
+  assert.match(admin, /eventType: full \? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED"[\s\S]{0,160}result: "REQUESTED"/);
+  assert.match(admin, /requestedResult === "SUCCESS" && \(failures \|\| pending \|\| divergent \|\| readbackFailures\)/);
+  assert.match(browser, /ignorados comprovados/);
+  assert.doesNotMatch(browser, /trip\.blablaPublicUrl \|\| trip\.publicUrl/);
+});
+
+test("server MATCH requires current canonical revision as well as transport revision", () => {
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  assert.match(admin, /requestedCanonicalRevision === currentCanonicalRevision/);
+  assert.match(admin, /requestedRevision === currentRevision/);
+  assert.match(admin, /readbackHash === expectedHash/);
 });
 
 test("protected administration reuses scoped passenger session and role", () => {

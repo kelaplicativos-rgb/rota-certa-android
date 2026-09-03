@@ -105,7 +105,7 @@
       "Última sincronização: " + fmt0417(sync.finishedAtMillis) +
       " • " + (sync.result || "UNKNOWN") +
       " • alterados " + Number(sync.changed || 0) +
-      " • ignorados " + Number(sync.skipped || 0) +
+      " • ignorados comprovados " + Number(sync.skipped || 0) +
       " • falhas " + Number(sync.failures || 0) +
       (sync.correlationId ? " • operação " + sync.correlationId : "");
   }
@@ -119,13 +119,14 @@
     }
     host.innerHTML = currentTrips.map((trip) => {
       const identity = trip.blablaTripId || trip.canonicalTripId || trip.remoteTripId;
-      const link = trip.blablaPublicUrl || trip.publicUrl || "";
+      const blablaLinkValid = Boolean(trip.blablaPublicUrl);
       return '<button class="adminTrip0417" type="button" data-trip="'+encodeURIComponent(trip.remoteTripId)+'">' +
         '<span class="adminStateDot0417 '+stateClass0417(trip.attestationState)+'">●</span>' +
         '<span><strong>'+escapeHtml0417(trip.title || identity)+'</strong>' +
         '<small>'+escapeHtml0417(identity)+' • '+fmt0417(trip.departureAtMillis)+'</small>' +
         '<small>'+escapeHtml0417(trip.attestationState || "UNPROVEN")+
-          (link ? " • link disponível" : " • link pendente")+'</small></span></button>';
+          (trip.blablaTripId ? (blablaLinkValid ? " • link BlaBlaCar válido" : " • link BlaBlaCar pendente") : "")+
+          '</small></span></button>';
     }).join("");
     host.querySelectorAll("[data-trip]").forEach((button) => {
       button.addEventListener("click", () => loadHistory0417(decodeURIComponent(button.dataset.trip || "")));

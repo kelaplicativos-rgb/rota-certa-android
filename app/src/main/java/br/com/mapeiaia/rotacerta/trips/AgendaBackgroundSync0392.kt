@@ -728,7 +728,6 @@ internal data class ProjectionIntegrity0406(
             attestationPending0411 == 0 &&
             attestationDivergent0411 == 0 &&
             attestationInvalidIdentity0411 == 0 &&
-            attestationInvalidLink0411 == 0 &&
             attestationStaleRevision0411 == 0 &&
             attestationReadbackFailures0411 == 0 &&
             attestationValidated0411 == canonicalActive
@@ -756,6 +755,7 @@ internal fun chooseProjectionWinner0408(
     compareBy<DriverTripSyncState0402> {
         canonical.canonicalStateHash.isNotBlank() && it.canonicalStateHash == canonical.canonicalStateHash
     }
+        .thenBy { canonical.canonicalRevision > 0L && it.canonicalRevision == canonical.canonicalRevision }
         .thenBy { it.publicationRevision }
         .thenBy { it.occupancyRevision }
         .thenBy { it.canonicalTripId == canonical.id }
@@ -1554,6 +1554,7 @@ internal object AgendaBackgroundSync0392 {
                     source = "CANONICAL_VERIFY",
                     configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
                         ?: rotaCertaSeatAllocation,
+                    remoteProjectionDivergenceObserved = true,
                 ) != null
             }
         }
@@ -1619,12 +1620,20 @@ internal object AgendaBackgroundSync0392 {
                     hashMismatch++
                     needsRepair = true
                 }
-                val expectedRevision = binding?.canonicalRevision?.takeIf { it > 0L }
-                    ?: trip.publicationRevision.takeIf { it > 0L }
-                if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
+                val expectedLogicalRevision = trip.canonicalRevision.takeIf { it > 0L }
+                if (expectedLogicalRevision != null && remote.canonicalRevision != expectedLogicalRevision) {
                     revisionMismatch++
-                    if (remote.publicationRevision < expectedRevision) revisionRegression++
+                    if (remote.canonicalRevision < expectedLogicalRevision) revisionRegression++
                     needsRepair = true
+                    UnifiedDebugEventStore.record(
+                        "PROJECTION_LOGICAL_REVISION_MISMATCH_0421",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                            " logicalRevisionExpected=" + expectedLogicalRevision +
+                            " logicalRevisionActual=" + remote.canonicalRevision +
+                            " transportRevisionLocal=" + trip.publicationRevision +
+                            " transportRevisionRemote=" + remote.publicationRevision,
+                    )
                 }
                 if (!projectionCapacityMatches0408(trip, bookings, remote, nowMillis)) {
                     val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
@@ -1648,24 +1657,41 @@ internal object AgendaBackgroundSync0392 {
                     needsRepair = true
                 }
 
-                val attestation = PublicMirrorAttestationCoordinator0411.attest(
-                    context = context,
-                    store = store,
-                    api = api,
-                    trip = trip,
-                    remote = remote,
-                    force = needsRepair,
-                    nowMillis = nowMillis,
-                )
+                val attestation = if (duplicateRemotes.isNotEmpty()) {
+                    val current = store.getTrip(trip.id) ?: trip
+                    store.recordPublicMirrorAttestation0411(
+                        canonicalTripId = current.id,
+                        expectedCanonicalRevision = current.canonicalRevision,
+                        expectedPublicationRevision = current.publicationRevision,
+                        state = PublicMirrorAttestationState0411.DIVERGENT,
+                        expectedHash = current.publicMirrorExpectedHash0411,
+                        readbackHash = "",
+                        mismatchFields = listOf("duplicateProjection"),
+                        reason = "PUBLIC_PROJECTION_DUPLICATE",
+                        readbackLatencyMillis = 0L,
+                    )
+                    PublicMirrorAttestationBatch0411(expected = 1, divergent = 1)
+                } else {
+                    PublicMirrorAttestationCoordinator0411.attest(
+                        context = context,
+                        store = store,
+                        api = api,
+                        trip = trip,
+                        remote = remote,
+                        force = needsRepair,
+                        nowMillis = nowMillis,
+                    )
+                }
                 accumulateAttestation0411(attestation)
                 if (
                     attestation.divergent > 0 ||
                     attestation.invalidIdentity > 0 ||
-                    attestation.invalidLink > 0 ||
                     attestation.staleRevision > 0
                 ) {
                     needsRepair = true
                 }
+                // BlaBla public-link proof is intentionally independent from Agenda MATCH.
+                // Link failure must not create a projection repair storm for a correct Agenda card.
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
@@ -1781,6 +1807,8 @@ internal object AgendaBackgroundSync0392 {
                 " migratedBookings=" + integrityMigration.migratedBookings +
                 " duplicateAgendaBindings=" + integrityMigration.duplicateAgendaBindings +
                 " orphanAgendaBindings=" + integrityMigration.orphanAgendaBindings +
+                " consolidatedStrongIdentity0421=" + integrityMigration.consolidatedStrongIdentityTrips0421 +
+                " strongIdentityConflicts0421=" + integrityMigration.strongIdentityConflicts0421 +
                 " unresolvedIdentity=" + integrityMigration.unresolvedExternalIdentity,
         )
         val migrationCoordinator = TripMutationCoordinator0387(appContext, store)
@@ -2254,13 +2282,7 @@ class AgendaBackgroundSyncWorker0392(
                     collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
                 else -> false
             }
-            val resultLabel = when {
-                targetedAuthRequired -> "PENDING_AUTH"
-                retryPending -> "RETRY"
-                cycle.collectorPending -> "COLLECTOR_PENDING"
-                collectorAuthRequired -> "PENDING_AUTH"
-                collectorTerminalProblem -> "PARTIAL"
-                cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+            val scopeFullyAttested0421 =
                 (fullReconcileComplete || targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) &&
                     cycle.projectionMissingAgenda == 0 &&
                     cycle.projectionDuplicates == 0 &&
@@ -2274,11 +2296,30 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionInvalidIdentity0411 == 0 &&
-                    cycle.projectionInvalidLink0411 == 0 &&
                     cycle.projectionStaleRevision0411 == 0 &&
                     cycle.projectionReadbackFailures0411 == 0 &&
-                    cycle.projectionValidated0411 == cycle.projectionExpected0411 -> "VERIFIED"
-                else -> "SUCCESS"
+                    cycle.projectionValidated0411 == cycle.projectionExpected0411
+            val resultLabel = when {
+                targetedAuthRequired -> "PENDING_AUTH"
+                retryPending -> "RETRY"
+                cycle.collectorPending -> "COLLECTOR_PENDING"
+                collectorAuthRequired -> "PENDING_AUTH"
+                collectorTerminalProblem -> "PARTIAL"
+                cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+                cycle.projectionDivergent0411 > 0 ||
+                    cycle.projectionDuplicates > 0 ||
+                    cycle.projectionOrphans > 0 ||
+                    cycle.projectionInvalidIdentity0411 > 0 ||
+                    cycle.projectionRevisionMismatch > 0 ||
+                    cycle.projectionHashMismatch > 0 ||
+                    cycle.projectionCapacityMismatch > 0 ||
+                    cycle.projectionStatusMismatch > 0 -> "DIVERGENT"
+                cycle.projectionPending0411 > 0 ||
+                    cycle.projectionReadbackFailures0411 > 0 ||
+                    cycle.projectionMissingAgenda > 0 ||
+                    cycle.projectionValidated0411 < cycle.projectionExpected0411 -> "READBACK_PENDING"
+                scopeFullyAttested0421 -> "SUCCESS"
+                else -> "INCOMPLETE"
             }
             runCatching {
                 val store0417 = TripStore(applicationContext)
@@ -2293,7 +2334,7 @@ class AgendaBackgroundSyncWorker0392(
                             correlationId = reason.substringAfter(':', "").takeIf { reason.startsWith("admin_") }.orEmpty(),
                             failures = reportedFailures,
                             changed = cycle.collectorChangedTrips + cycle.publicLocalPublished + cycle.publicExternalPublished,
-                            skipped = cycle.collectorSkippedTrips,
+                            skipped = if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0,
                             pending = cycle.projectionPending0411,
                             divergent = cycle.projectionDivergent0411,
                             readbackFailures = cycle.projectionReadbackFailures0411,
@@ -2328,7 +2369,7 @@ class AgendaBackgroundSyncWorker0392(
             UnifiedDebugEventStore.record(
                 "AGENDA_BACKGROUND_SYNC_WORK_0397",
                 applicationContext.packageName,
-                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"}",
+                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"} scopeFullyAttested=$scopeFullyAttested0421 ignoredProven=${if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0}",
             )
             if (retryPending) Result.retry() else Result.success()
         } catch (cancelled: CancellationException) {

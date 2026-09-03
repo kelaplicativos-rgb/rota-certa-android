@@ -26,8 +26,9 @@ internal data class CanonicalPublicStop0411(
 
 @Serializable
 internal data class CanonicalPublicTripPayload0411(
-    val schemaVersion: String = "public-trip-v1",
+    val schemaVersion: String = "public-trip-v2",
     val canonicalTripId: String,
+    val canonicalRevision: Long,
     val blablaProfileUuid: String,
     val blablaTripId: String,
     val title: String,
@@ -92,6 +93,7 @@ internal fun canonicalPublicProjectionPayload0411(
     val available = if (reliable) summary.availableSeats.coerceAtLeast(0) else 0
     return CanonicalPublicTripPayload0411(
         canonicalTripId = trip.id,
+        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L),
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
         title = trip.title.trim(),
@@ -134,9 +136,61 @@ internal fun canonicalPublicProjectionJson0411(payload: CanonicalPublicTripPaylo
     publicProjectionJson0411.encodeToString(payload)
 
 internal fun canonicalPublicProjectionHash0411(payload: CanonicalPublicTripPayload0411): String =
-    "public-v1:" + MessageDigest.getInstance("SHA-256")
-        .digest(canonicalPublicProjectionJson0411(payload).toByteArray(Charsets.UTF_8))
+    "public-v2:" + MessageDigest.getInstance("SHA-256")
+        .digest(
+            canonicalPublicProjectionJson0411(
+                payload.copy(publicationRevision = 0L, blablaPublicUrl = ""),
+            ).toByteArray(Charsets.UTF_8),
+        )
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+internal data class PublicProjectionByteDiff0421(
+    val expectedLength: Int,
+    val actualLength: Int,
+    val expectedSha256: String,
+    val actualSha256: String,
+    val firstDifferentByteOffset: Int,
+    val differentByteRanges: List<String>,
+)
+
+internal fun compareCanonicalPublicBytes0421(
+    expected: CanonicalPublicTripPayload0411,
+    actual: CanonicalPublicTripPayload0411,
+): PublicProjectionByteDiff0421 {
+    val expectedBytes = canonicalPublicProjectionJson0411(expected.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
+    val actualBytes = canonicalPublicProjectionJson0411(actual.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
+    val limit = minOf(expectedBytes.size, actualBytes.size)
+    var first = -1
+    val ranges = mutableListOf<String>()
+    var rangeStart = -1
+    for (index in 0 until limit) {
+        val differs = expectedBytes[index] != actualBytes[index]
+        if (differs && first < 0) first = index
+        if (differs && rangeStart < 0) rangeStart = index
+        if (!differs && rangeStart >= 0) {
+            ranges += "$rangeStart-${index - 1}"
+            rangeStart = -1
+            if (ranges.size >= 12) break
+        }
+    }
+    if (ranges.size < 12 && rangeStart >= 0) ranges += "$rangeStart-${limit - 1}"
+    if (expectedBytes.size != actualBytes.size && ranges.size < 12) {
+        val start = limit
+        if (first < 0) first = start
+        ranges += "$start-${maxOf(expectedBytes.size, actualBytes.size) - 1}"
+    }
+    fun sha(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+        .digest(bytes)
+        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    return PublicProjectionByteDiff0421(
+        expectedLength = expectedBytes.size,
+        actualLength = actualBytes.size,
+        expectedSha256 = sha(expectedBytes),
+        actualSha256 = sha(actualBytes),
+        firstDifferentByteOffset = first,
+        differentByteRanges = ranges,
+    )
+}
 
 internal fun evaluatePublicMirrorReadback0411(
     expected: CanonicalPublicTripPayload0411,
@@ -151,9 +205,9 @@ internal fun evaluatePublicMirrorReadback0411(
             actual.blablaTripId == expected.blablaTripId
     if (!identityValid) mismatch += "identity"
 
-    val revisionValid = actual.publicationRevision == expected.publicationRevision &&
-        actual.publicationRevision > 0L
-    if (!revisionValid) mismatch += "revision"
+    val revisionValid = actual.canonicalRevision == expected.canonicalRevision &&
+        actual.canonicalRevision > 0L
+    if (!revisionValid) mismatch += "canonicalRevision"
 
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
@@ -190,7 +244,8 @@ internal fun evaluatePublicMirrorReadback0411(
     if (readbackHash != expectedHash) mismatch += "publicHash"
 
     val uniqueMismatch = mismatch.distinct()
-    val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
+    val agendaMismatch = uniqueMismatch.filterNot { it == "blablaPublicUrl" }
+    val validated = identityValid && revisionValid && agendaMismatch.isEmpty()
     return PublicMirrorAttestationDecision0411(
         state = if (validated) PublicMirrorAttestationState0411.VALIDATED else PublicMirrorAttestationState0411.DIVERGENT,
         expectedHash = expectedHash,
@@ -206,7 +261,9 @@ internal fun evaluatePublicMirrorReadback0411(
 internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
-        publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
+        publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+        publicMirrorLastReadbackAtMillis0421 > 0L &&
+        publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&
         publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
 
@@ -224,4 +281,23 @@ internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorReadbackLatencyMillis0411 = 0L,
     publicMirrorAttestationReason0411 = reason.take(160),
     publicMirrorMismatchFields0411 = emptyList(),
+    publicMirrorReadbackCanonicalRevision0421 = 0L,
+    publicMirrorAttemptedPublicationRevision0421 = 0L,
+    publicMirrorReadbackPublicationRevision0421 = 0L,
+    publicMirrorPublicIdentity0421 = "",
+    publicMirrorLastReadbackAtMillis0421 = 0L,
+    publicMirrorEvidenceId0421 = "",
+    publicMirrorTraceId0421 = "",
+    publicMirrorExpectedBytes0421 = 0,
+    publicMirrorActualBytes0421 = 0,
+    publicMirrorFirstDifferentByteOffset0421 = -1,
+    publicMirrorDifferentByteRanges0421 = emptyList(),
+    publicMirrorHttpStatus0421 = 0,
+    publicMirrorBackendErrorCode0421 = "",
+    publicMirrorFailedStage0421 = "",
+    publicMirrorNetworkCallId0421 = "",
+    publicMirrorRequestBytes0421 = 0,
+    publicMirrorResponseBytes0421 = 0,
+    publicMirrorRequestHash0421 = "",
+    publicMirrorResponseHash0421 = "",
 )
