@@ -69,6 +69,7 @@ jobs:
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
           node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
           node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
+          node --test trip-platform/functions/test/agenda-private-mirror-0434.test.js
 
       - name: Configure Firebase Android app
         shell: bash
@@ -124,6 +125,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector' \
@@ -217,6 +219,8 @@ jobs:
           grep -Fq 'private-agenda-mirror-v1' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt
           grep -Fq 'tripPrivateMirrors0434' trip-platform/functions/index.js
           grep -Fq 'expectedPublicProjectionJson0434' trip-platform/functions/index.js
+          grep -Fq 'applyPublicTripVisibility0434' trip-platform/functions/index.js
+          grep -Fq 'visibilityPolicyRevision0434' trip-platform/functions/agenda-admin-0417.js
           echo "LIVE_AGENDA_CANONICAL_B2B_0434=PASS"
 
       - name: Stage exact SHA artifact
