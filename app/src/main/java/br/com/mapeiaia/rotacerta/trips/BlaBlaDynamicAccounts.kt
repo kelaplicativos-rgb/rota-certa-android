@@ -1525,7 +1525,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 candidateTripId,
                 identityAcceptedResult.networkSource,
             )?.let { resolved ->
-                val relation = if (resolved.publicTripId.equals(candidateTripId, ignoreCase = true)) "same" else "different"
+                val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
                     packageName,
@@ -2482,7 +2482,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val canonical = TripStore(this).trips().firstOrNull { trip ->
             !trip.deleted &&
                 trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim()?.equals(tripId, ignoreCase = true) == true
+                trip.blablaTripId?.trim() == tripId
         } ?: return null
         val raw = canonical.blablaPublicUrl?.trim()?.takeIf(String::isNotEmpty) ?: return null
         BlaBlaCollectorUrlModule.publicTrip(raw, tripId)?.let { href ->
