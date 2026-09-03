@@ -67,6 +67,31 @@ function redact0417(value) {
   return out;
 }
 
+function activeAdminTrips0417(trips, nowMillis = Date.now()) {
+  return (Array.isArray(trips) ? trips : []).filter((trip) =>
+    Number(trip.departureAtMillis || 0) > nowMillis &&
+    ["PUBLISHED", "FULL", "STARTING", "ACTIVE"].includes(clean0417(trip.status, 24))
+  );
+}
+
+function validatedBlaBlaPublicUrl0417(raw, expectedTripId) {
+  const value = clean0417(raw, 1200);
+  const expected = clean0417(expectedTripId, 160);
+  if (!value || !expected) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:") return "";
+    if (!/(^|\.)blablacar\.[a-z.]+$/i.test(url.hostname)) return "";
+    const path = url.pathname.replace(/\/+$/, "");
+    if (path !== "/trip" && !path.startsWith("/trip/")) return "";
+    const pathId = path.startsWith("/trip/") ? decodeURIComponent(path.slice("/trip/".length)).split("/")[0] : "";
+    const actual = clean0417(url.searchParams.get("id") || pathId, 160);
+    return actual === expected ? value : "";
+  } catch (_) {
+    return "";
+  }
+}
+
 function createAgendaAdmin0417({
   db,
   resolveDriverUsername,
@@ -185,11 +210,13 @@ function createAgendaAdmin0417({
 
   function safeTripAdminSummary0417(trip) {
     const state = clean0417(trip.publicAttestationState0417, 24) || "UNPROVEN";
+    const blablaTripId = clean0417(trip.blablaTripId, 160);
+    const blablaPublicUrl = validatedBlaBlaPublicUrl0417(trip.blablaPublicUrl, blablaTripId);
     return {
       remoteTripId: trip.id,
       canonicalTripId: clean0417(trip.canonicalTripId || trip.localTripId, 180),
       blablaProfileUuid: clean0417(trip.blablaProfileUuid, 160),
-      blablaTripId: clean0417(trip.blablaTripId, 160),
+      blablaTripId,
       title: clean0417(trip.title, 220),
       departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
       status: clean0417(trip.status, 24),
@@ -202,7 +229,7 @@ function createAgendaAdmin0417({
         ? trip.publicAttestationMismatchFields0417.map((v) => clean0417(v, 80)).slice(0, 24)
         : [],
       publicUrl: clean0417(trip.publicUrl, 1200),
-      blablaPublicUrl: clean0417(trip.blablaPublicUrl, 1200),
+      blablaPublicUrl,
       capacityReliable: trip.capacityReliable === true,
       availableSeatsMinimum: Math.max(0, Number(trip.availableSeatsMinimum || 0)),
       availableSeatsMaximum: Math.max(0, Number(trip.availableSeatsMaximum || 0)),
@@ -215,11 +242,7 @@ function createAgendaAdmin0417({
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
     const { driver, trips } = await readDriverAndTrips0417(session.driverUsername);
-    const now = Date.now();
-    const active = trips.filter((trip) =>
-      Number(trip.departureAtMillis || 0) > now &&
-      ["PUBLISHED", "FULL", "STARTING", "ACTIVE"].includes(clean0417(trip.status, 24)),
-    );
+    const active = activeAdminTrips0417(trips);
     const counts = { verified: 0, pending: 0, divergent: 0, unproven: 0, linksValid: 0, linksPending: 0 };
     active.forEach((trip) => {
       const state = clean0417(trip.publicAttestationState0417, 24);
@@ -227,8 +250,9 @@ function createAgendaAdmin0417({
       else if (state === "PENDING") counts.pending++;
       else if (state === "DIVERGENT" || state === "ERROR") counts.divergent++;
       else counts.unproven++;
-      if (!clean0417(trip.blablaTripId, 160)) return;
-      if (/^https:\/\//i.test(clean0417(trip.blablaPublicUrl, 1200))) counts.linksValid++;
+      const blablaTripId = clean0417(trip.blablaTripId, 160);
+      if (!blablaTripId) return;
+      if (validatedBlaBlaPublicUrl0417(trip.blablaPublicUrl, blablaTripId)) counts.linksValid++;
       else counts.linksPending++;
     });
     const health = driver.adminSyncHealth0417 && typeof driver.adminSyncHealth0417 === "object"
@@ -259,8 +283,11 @@ function createAgendaAdmin0417({
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
     const { trips } = await readDriverAndTrips0417(session.driverUsername);
+    const active = activeAdminTrips0417(trips);
     return json0417(res, 200, {
-      trips: trips
+      scope: "ACTIVE_PUBLIC_TRIPS",
+      total: active.length,
+      trips: active
         .map(safeTripAdminSummary0417)
         .sort((a, b) => a.departureAtMillis - b.departureAtMillis),
     });
@@ -347,6 +374,7 @@ function createAgendaAdmin0417({
       actorId: session.actorId,
       eventType: full ? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED",
       correlationId,
+      result: "REQUESTED",
     });
     await sendDriverBookingPush({
       driverUsername: session.driverUsername,
@@ -370,18 +398,26 @@ function createAgendaAdmin0417({
     const driver = await requireDriver(req, res);
     if (!driver || !driver.username) return;
     const body = req.body && typeof req.body === "object" ? req.body : {};
+    const failures = Math.max(0, Number(body.failures || 0));
+    const pending = Math.max(0, Number(body.pending || 0));
+    const divergent = Math.max(0, Number(body.divergent || 0));
+    const readbackFailures = Math.max(0, Number(body.readbackFailures || 0));
+    const requestedResult = clean0417(body.result, 40);
+    const safeResult = requestedResult === "SUCCESS" && (failures || pending || divergent || readbackFailures)
+      ? "INCOMPLETE"
+      : requestedResult;
     const health = {
       startedAtMillis: Math.max(0, Number(body.startedAtMillis || 0)),
       finishedAtMillis: Math.max(0, Number(body.finishedAtMillis || Date.now())),
-      result: clean0417(body.result, 40),
+      result: safeResult,
       trigger: clean0417(body.trigger, 80),
       correlationId: clean0417(body.correlationId, 100),
-      failures: Math.max(0, Number(body.failures || 0)),
+      failures,
       changed: Math.max(0, Number(body.changed || 0)),
       skipped: Math.max(0, Number(body.skipped || 0)),
-      pending: Math.max(0, Number(body.pending || 0)),
-      divergent: Math.max(0, Number(body.divergent || 0)),
-      readbackFailures: Math.max(0, Number(body.readbackFailures || 0)),
+      pending,
+      divergent,
+      readbackFailures,
       appVersion: clean0417(body.appVersion, 40),
       updatedAtMillis: Date.now(),
     };
