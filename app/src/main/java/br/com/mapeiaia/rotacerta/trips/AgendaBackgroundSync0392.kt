@@ -629,6 +629,7 @@ internal data class ExternalCollectorCanonicalBatch0403(
     val tombstonedTrips: Int = 0,
     val orphanProjectionTombstones: Int = 0,
     val staleResultsRejected: Int = 0,
+    val publicationCanonicalTripIds0431: Set<String> = emptySet(),
 )
 
 internal fun syncRunIsStalled0406(
