@@ -110,6 +110,9 @@ internal fun agendaBackgroundSyncIntervalMinutes0392(requestedMinutes: Long? = n
 
 internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
 
+internal fun agendaBackgroundSyncRequestsCollector0430(reason: String): Boolean =
+    reason == "periodic" || reason.startsWith("admin_update_now:")
+
 internal fun agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason: String): Boolean =
     reason == "periodic" ||
         reason == "blablacar_collection_result" ||
@@ -1932,10 +1935,10 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        val collectorRequested =
-            reason == "periodic" ||
-                reason.startsWith("admin_update_now:") ||
-                mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+        // Canonical/public reconciliation must never wait for BlaBlaCar navigation.
+        // FULL_RECONCILE projects the already-authoritative Timeline snapshot immediately;
+        // "Atualizar agora" and periodic work remain the explicit collector refresh paths.
+        val collectorRequested = agendaBackgroundSyncRequestsCollector0430(reason)
         if (collectorRequested) {
             AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
             val configuredAccounts = BlaBlaDynamicAccountRegistry(appContext).list()
@@ -2155,9 +2158,9 @@ internal object AgendaBackgroundSync0392 {
             publicLocalPublished = publicLocalPublished,
             publicExternalPublished = publicExternalPublished,
             failures = failures,
-            collectorGeneration = collectorState.generation,
-            collectorStatus = collectorState.status,
-            collectorPending = collectorState.pending,
+            collectorGeneration = if (collectorRequested) collectorState.generation else 0L,
+            collectorStatus = if (collectorRequested) collectorState.status else "NOT_REQUESTED",
+            collectorPending = collectorRequested && collectorState.pending,
             collectorChangedTrips = collectorCanonical.changedTrips,
             collectorSkippedTrips = collectorCanonical.skippedTrips,
             collectorPublicationQueued = collectorCanonical.publicationQueued,
@@ -2306,14 +2309,11 @@ class AgendaBackgroundSyncWorker0392(
                 )
             }
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
-            val collectorWasRequested =
-                reason == "periodic" ||
-                    reason.startsWith("admin_update_now:") ||
-                    agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
+            val collectorWasRequested = agendaBackgroundSyncRequestsCollector0430(reason)
             val collectorTerminalProblem =
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
-            val collectorAuthRequired = collectorState.status == "PENDING_AUTH"
+            val collectorAuthRequired = collectorWasRequested && collectorState.status == "PENDING_AUTH"
             val targetedRetryable = targetedResult?.status in setOf(
                 BlaBlaCommandStatus0407.UNVERIFIED,
                 BlaBlaCommandStatus0407.FAILED,
@@ -2327,6 +2327,7 @@ class AgendaBackgroundSyncWorker0392(
                 0
             } + if (targetedFailure) 1 else 0
             val fullReconcileComplete = when {
+                agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE -> true
                 cycle.collectorPending -> false
                 reason == "blablacar_collection_result" -> collectorState.status == "COMPLETE"
                 collectorWasRequested ->
