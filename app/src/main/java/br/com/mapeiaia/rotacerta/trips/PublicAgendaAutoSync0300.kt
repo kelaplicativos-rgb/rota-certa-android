@@ -1002,7 +1002,8 @@ internal object PublicAgendaAutoSync0300 {
                 departureAtMillis = effectiveTrip.departureAtMillis,
                 capacity = effectiveTrip.capacity,
                 stops = effectiveTrip.stops,
-                canonicalRevision = maxOf(existing?.canonicalRevision ?: 0L, entityRevision),
+                canonicalRevision = effectiveTrip.canonicalRevision.coerceAtLeast(0L)
+                    .takeIf { it > 0L } ?: (existing?.canonicalRevision ?: 0L),
                 seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
                 externalFingerprint = synthesized.snapshotRevision,
                 stateHash = effectiveTrip.canonicalStateHash,
