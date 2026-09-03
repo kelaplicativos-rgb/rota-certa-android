@@ -1,16 +1,16 @@
-name: Rota Certa passenger admin detail performance 0.1.419
+name: Rota Certa passenger admin session performance 0.1.420
 
 on:
   push:
     branches:
-      - agent/passenger-admin-detail-performance-0.1.419
+      - agent/passenger-admin-session-performance-0.1.420
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: passenger-admin-detail-performance-0419-${{ github.ref }}
+  group: passenger-admin-session-performance-0420-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0419_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0420_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -36,11 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          grep -Fq 'versionCode = 5712' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.419"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5713' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.420"' app/build.gradle.kts
           printf '%s\n' "${{ github.sha }}" > source_head.txt
           printf '%s\n' "${{ github.ref_name }}" > source_branch.txt
-          git diff --name-only 11b448a4a677960ae1b37767d80d9bae3ce37aed...HEAD > changed-files.txt
+          git diff --name-only ff994a80d3fc9ea8dc1470619604c4b67041bba2...HEAD > changed-files.txt
           if grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol' changed-files.txt; then
             echo "Protected FAROL scope changed unexpectedly."
             cat changed-files.txt
@@ -180,6 +180,7 @@ jobs:
           grep -Fq 'portalAgendaAdminCard0418' /tmp/live-index.html
           grep -Fq 'openAgendaAdmin0418' /tmp/live-index.html
           grep -Fq 'PASSENGER_AGENDA_ADMIN_CHANGED' trip-platform/functions/index.js
+          grep -Fq 'const now = Date.now();' trip-platform/functions/index.js
           grep -Fq 'admin_update_now' trip-platform/functions/agenda-admin-0417.js
           grep -Fq 'public-attestation' trip-platform/functions/index.js
           echo "LIVE_PASSENGER_ADMIN_MATCH_CONTRACT=PASS"
@@ -188,7 +189,7 @@ jobs:
       - name: Upload exact SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.419-passenger-admin-detail-${{ github.sha }}
+          name: rota-certa-0.1.420-passenger-admin-session-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
