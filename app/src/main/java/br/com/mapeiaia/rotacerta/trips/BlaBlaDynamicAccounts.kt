@@ -599,8 +599,16 @@ internal class BlaBlaDynamicAccountSessionController0401(
         when (mode) {
             BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
             BlaBlaDynamicSessionIntents.MODE_PROFILE -> beginProfileSync()
-            BlaBlaDynamicSessionIntents.MODE_MANAGE -> loadTrackedUrl(manageTargetUrl() ?: RIDES_URL)
-            else -> loadTrackedUrl(HOME_URL)
+            BlaBlaDynamicSessionIntents.MODE_MANAGE -> {
+                if (acquireExternalFlight0426("manage_browser")) {
+                    loadTrackedUrl(manageTargetUrl() ?: RIDES_URL)
+                }
+            }
+            else -> {
+                if (acquireExternalFlight0426("interactive_browser")) {
+                    loadTrackedUrl(HOME_URL)
+                }
+            }
         }
     }
 
@@ -924,7 +932,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun acquireExternalFlight0426(operation: String): Boolean {
-        if (phase != Phase.IDLE || externalFlightLease0426 != null) {
+        if (externalFlightLease0426 != null) {
+            return true
+        }
+        if (phase != Phase.IDLE) {
             statusView.text = account.displayLabel + " • já existe uma operação BlaBlaCar em andamento nesta sessão."
             return false
         }
