@@ -11,5 +11,5 @@
   else if(/\/rides(?:\?|$|\/)/i.test(url)) state=/arquivad|archived/i.test(body)?'ARCHIVED_RIDES':'RIDE_LIST';
   else if(/search|searchcarpool|blablacar/i.test(url)&&document.querySelector('[data-testid="e2e-srp-card"]')) state='PUBLIC_RESULTS';
   const error=/Ocorreu um erro|Tente novamente|Something went wrong/i.test(body);
-  return JSON.stringify({state,url,title,bodyText:body});
+  return JSON.stringify({state,url,title,error,bodyText:body});
 })();
