@@ -104,6 +104,61 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun strongIdentityConsolidationRequiresCompatiblePhysicalTrip() {
+        val profile = "11111111-1111-4111-8111-111111111111"
+        fun trip(id: String, departure: Long, origin: String = "Três Corações", destination: String = "Santo André") = Trip(
+            id = id,
+            title = "$origin → $destination",
+            departureAtMillis = departure,
+            capacity = 3,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "$id-a", order = 0, name = origin),
+                TripStop(id = "$id-b", order = 1, name = destination),
+            ),
+            blablaProfileUuid = profile,
+            blablaTripId = "provider-trip",
+        )
+        val canonical = trip("canonical", 1_800_000_000_000L)
+        val legacyBacking = trip("timeline-ext-legacy", 1_800_000_060_000L)
+        val reusedIdentityNextYear = trip("other-year", 1_831_536_000_000L)
+
+        assertTrue(canonicalProjectionPhysicalIdentityCompatible0421(canonical, legacyBacking))
+        assertFalse(canonicalProjectionPhysicalIdentityCompatible0421(canonical, reusedIdentityNextYear))
+    }
+
+    @Test
+    fun publicBindingNeverFallsBackToRouteAndTimeSimilarity() {
+        val binding = PublicExternalTripBinding(
+            remoteTripId = "public-1",
+            publicToken = "public-token",
+            bookingTripId = "canonical-1",
+            title = "A → B",
+            departureAtMillis = 1_900_000_000_000L,
+            capacity = 2,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A"),
+                TripStop(id = "b", order = 1, name = "B"),
+            ),
+        )
+        val visuallySimilar = TripTimelineEntry(
+            tripId = "timeline-card",
+            profileId = "",
+            profileLabel = "",
+            departureAtMillis = 1_900_000_000_000L,
+            arrivalAtMillis = null,
+            origin = "A",
+            destination = "B",
+            status = TripStatus.PUBLISHED,
+            capacity = 2,
+            minimumOccupiedSeats = 0,
+            maximumOccupiedSeats = 0,
+            sourcePassengerSeats = emptyMap(),
+        )
+        assertFalse(binding.matches(visuallySimilar))
+    }
+
+    @Test
     fun projectionRepairCannotCreateANewRevisionForTheSameLogicalSnapshot() {
         val trip = Trip(
             id = "trip-0421",
