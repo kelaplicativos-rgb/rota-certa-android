@@ -139,6 +139,21 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun invalidFreshCollectorPermalinkPreservesPreviousValidatedPermalinkAndBinding() {
+        val previous = source(adminA, href(publicA))
+        val invalidFresh = source(adminA, "https://example.com/trip?id=forged-0423").copy(
+            public_trip_href_source = "network_structured",
+            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+        )
+
+        val merged = BlaBlaCollectorPassengerModule.mergeMonotonic(previous, invalidFresh)
+
+        assertEquals(previous.public_trip_href, merged.public_trip_href)
+        assertEquals(previous.public_trip_href_source, merged.public_trip_href_source)
+        assertEquals(previous.public_trip_href_binding, merged.public_trip_href_binding)
+    }
+
+    @Test
     fun canonicalStatePreservesAuthoritativelyBoundPermalinkWhenFreshObservationIsEmpty() {
         val existing = "https://www.blablacar.com.br/trip?id=$publicA"
         assertEquals(
