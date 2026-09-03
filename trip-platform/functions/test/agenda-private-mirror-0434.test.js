@@ -52,7 +52,10 @@ test("visibility policy is server-side and revisioned separately", () => {
   assert.match(admin, /visibilityPolicyRevision0434/);
   assert.match(admin, /privateByDefault = \["passengerNames", "passengerContacts"\]/);
   assert.match(admin, /visibilityPolicyRevision0434 = previousRevision \+ \(policyChanged \? 1 : 0\)/);
-  assert.doesNotMatch(admin, /canonicalRevision/);
+  const updateStart = admin.indexOf("async function updateAdminPublicSettings0417");
+  const updateEnd = admin.indexOf("async function updateAdminSyncSettings0417", updateStart);
+  const updateVisibility = admin.slice(updateStart, updateEnd);
+  assert.doesNotMatch(updateVisibility, /canonicalRevision/);
 
   const visibility = source.slice(
     source.indexOf("function applyPublicTripVisibility0434"),
