@@ -2642,6 +2642,24 @@ function safePublicDriverProfile(data, username = "") {
   return profile;
 }
 
+function publicProjectionAttestedCurrent0429(token, data) {
+  if (!data || data.publicationTombstone === true) return false;
+  const canonicalTripId = cleanText(data.canonicalTripId || data.localTripId, 180);
+  if (!canonicalTripId) return false;
+  if (cleanText(data.publicAttestationState0417, 24) !== "VERIFIED") return false;
+  const publicationRevision = Math.max(0, Number(data.publicationRevision || 0));
+  const canonicalRevision = Math.max(0, Number(data.canonicalRevision || 0));
+  if (!publicationRevision || !canonicalRevision) return false;
+  if (Math.max(0, Number(data.publicAttestedPublicationRevision0417 || 0)) !== publicationRevision) return false;
+  if (Math.max(0, Number(data.publicAttestedCanonicalRevision0417 || 0)) !== canonicalRevision) return false;
+  const attestedHash = cleanText(data.publicAttestedHash0417, 160).toLowerCase();
+  if (!attestedHash) return false;
+  const actualHash = canonicalPublicTripHash0411(
+    canonicalPublicTripPayload0411(token, data),
+  ).toLowerCase();
+  return attestedHash === actualHash;
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -2679,7 +2697,11 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
       .filter(Boolean),
   );
   const sourceDocs = snapshot.docs
-    .filter((doc) => PUBLIC_STATUSES.has(doc.data().status) && Number(doc.data().departureAtMillis) > Date.now())
+    .filter((doc) =>
+      PUBLIC_STATUSES.has(doc.data().status) &&
+      Number(doc.data().departureAtMillis) > Date.now() &&
+      publicProjectionAttestedCurrent0429(doc.id, doc.data())
+    )
     .filter((doc) => {
       if (!publicProfileScope0417.size) return true;
       const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
