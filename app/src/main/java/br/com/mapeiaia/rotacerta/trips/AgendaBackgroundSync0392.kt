@@ -728,7 +728,6 @@ internal data class ProjectionIntegrity0406(
             attestationPending0411 == 0 &&
             attestationDivergent0411 == 0 &&
             attestationInvalidIdentity0411 == 0 &&
-            attestationInvalidLink0411 == 0 &&
             attestationStaleRevision0411 == 0 &&
             attestationReadbackFailures0411 == 0 &&
             attestationValidated0411 == canonicalActive
@@ -756,6 +755,7 @@ internal fun chooseProjectionWinner0408(
     compareBy<DriverTripSyncState0402> {
         canonical.canonicalStateHash.isNotBlank() && it.canonicalStateHash == canonical.canonicalStateHash
     }
+        .thenBy { canonical.canonicalRevision > 0L && it.canonicalRevision == canonical.canonicalRevision }
         .thenBy { it.publicationRevision }
         .thenBy { it.occupancyRevision }
         .thenBy { it.canonicalTripId == canonical.id }
