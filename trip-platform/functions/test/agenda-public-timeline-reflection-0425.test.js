@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const vm = require("node:vm");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -70,6 +72,91 @@ test("canonical public stop normalization preserves explicit null optional times
     stop,
     /plannedDepartureMillis:\s*Number\.isFinite\(Number\(stop\.plannedDepartureMillis\)\)/,
   );
+});
+
+test("server canonical normalizer hashes explicit null stop timestamps byte for byte", () => {
+  const stopStart = source.indexOf("function canonicalPublicStop0411");
+  const payloadStart = source.indexOf("function canonicalPublicTripPayloadFromStored0434");
+  const payloadEnd = source.indexOf("function canonicalPublicTripPayload0411");
+  const hashStart = source.indexOf("function canonicalPublicTripHash0411");
+  const hashEnd = source.indexOf("function privateMirrorDocumentId0434");
+  assert.ok(stopStart >= 0 && payloadStart > stopStart && payloadEnd > payloadStart);
+  assert.ok(hashStart >= 0 && hashEnd > hashStart);
+
+  const context = {
+    cleanText(value, max = 240) {
+      return String(value || "").trim().slice(0, max);
+    },
+    normalizeBlaBlaPublicUrl(raw) {
+      return String(raw || "");
+    },
+    sha256Hex(value) {
+      return crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source.slice(stopStart, payloadEnd) +
+      source.slice(hashStart, hashEnd) +
+      ";this.normalizeProjection=canonicalPublicTripPayloadFromStored0434;" +
+      "this.hashProjection=canonicalPublicTripHash0411;",
+    context,
+  );
+
+  const payload = {
+    schemaVersion: "public-trip-v2",
+    canonicalTripId: "trip-key-0438",
+    canonicalRevision: 8,
+    blablaProfileUuid: "profile",
+    blablaTripId: "trip",
+    title: "São Paulo → São Tomé das Letras",
+    departureAtMillis: 1788528600000,
+    timezoneId: "America/Sao_Paulo",
+    status: "PUBLISHED",
+    capacity: 4,
+    stops: [
+      {
+        id: "stop-0",
+        order: 0,
+        name: "São Paulo",
+        address: "São Paulo",
+        plannedArrivalMillis: null,
+        plannedDepartureMillis: 1788528600000,
+      },
+      {
+        id: "stop-1",
+        order: 1,
+        name: "São Tomé das Letras",
+        address: "São Tomé das Letras",
+        plannedArrivalMillis: 1788541200000,
+        plannedDepartureMillis: null,
+      },
+    ],
+    segmentLoads: [0],
+    segmentPassengerLoads: [0],
+    segmentBlockedLoads: [0],
+    availableSeatsMinimum: 4,
+    availableSeatsMaximum: 4,
+    operationalAvailableSeats: 4,
+    publishedSeats: 4,
+    rotaCertaSeatAllocation: 0,
+    publicBookingEnabled: true,
+    capacityReliable: true,
+    itineraryAuthoritative: true,
+    publicUrl: "",
+    blablaPublicUrl: "",
+    publicationRevision: 8,
+    canonicalStateHash: "tripstate-v1:test",
+  };
+
+  const normalized = context.normalizeProjection(payload);
+  assert.equal(normalized.stops[0].plannedArrivalMillis, null);
+  assert.equal(normalized.stops[1].plannedDepartureMillis, null);
+
+  const semantic = { ...payload, publicationRevision: 0 };
+  const expectedHash = "public-v2:" +
+    crypto.createHash("sha256").update(JSON.stringify(semantic), "utf8").digest("hex");
+  assert.equal(context.hashProjection(normalized), expectedHash);
 });
 
 test("public profile scope remains intact and independent from projection repair", () => {
