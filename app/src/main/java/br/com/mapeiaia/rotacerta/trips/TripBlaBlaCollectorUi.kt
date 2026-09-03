@@ -294,6 +294,8 @@ fun BlaBlaCollectorPanel(
             val snapshot = account?.let(sessionStore::read)
             message = when {
                 account == null -> "Conta não encontrada."
+                snapshot?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED ->
+                    "BlaBlaCar restringiu temporariamente esta sessão. Os últimos dados válidos continuam preservados."
                 snapshot?.identityVerified == true -> "${account.displayLabel}: UUID confirmado ✅"
                 else -> "${account.displayLabel}: sessão salva; o UUID será confirmado pelo perfil ou por uma viagem."
             }
