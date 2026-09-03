@@ -425,6 +425,7 @@ internal class TripMutationCoordinator0387(
 ) {
     private val appContext = context.applicationContext
     private val outbox = TripPublicationOutbox0387(appContext)
+    private val evidenceJson0421 = Json { encodeDefaults = true }
 
     fun recordLocalMutation(
         canonicalTripId: String,
@@ -811,6 +812,13 @@ internal class TripMutationCoordinator0387(
         outbox.pending(limit = limit).forEach { candidate ->
             val event = outbox.markProcessing(candidate.id) ?: return@forEach
             val startedNs = System.nanoTime()
+            recordEvidence0421(
+                stage = "OUTBOX_DEQUEUE",
+                status = "OK",
+                reason = "OUTBOX_EVENT_ACQUIRED",
+                event = event,
+                extra = "attempt=${event.attempts} previousStage=OUTBOX_ENQUEUE nextStage=REQUEST_BUILD",
+            )
             try {
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
