@@ -348,8 +348,25 @@ fun TripTimelineScreen(
             publicCards = publicTimelineCards,
         )
     }
-    val registeredProfileUuids = remember(entries, canonicalCollectorResponse0403) {
-        BlaBlaDynamicAccountRegistry(context).list().mapNotNull { it.profileUuid }
+    val registeredAccounts0432 = remember(entries, canonicalCollectorResponse0403) {
+        BlaBlaDynamicAccountRegistry(context).list()
+    }
+    val registeredProfileUuids = remember(registeredAccounts0432) {
+        registeredAccounts0432.mapNotNull { it.profileUuid }
+    }
+    val commandRevision0407 by BlaBlaTripControlEvents0407.revision.collectAsState()
+    val tripTargetsByCard0432 = remember(entries, registeredAccounts0432) {
+        entries.associate { entry ->
+            timelineLazyItemKey0380(entry) to resolveBlaBlaTripTarget0407(
+                context = context,
+                entry = entry,
+                accounts = registeredAccounts0432,
+            )
+        }
+    }
+    val commandAuditsByCard0432 = remember(tripTargetsByCard0432, commandRevision0407) {
+        val statusStore = BlaBlaTripCommandStatusStore0407(context)
+        tripTargetsByCard0432.mapValues { (_, target) -> target?.let(statusStore::get) }
     }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
         timelineProfileColorSlots(
@@ -490,6 +507,12 @@ fun TripTimelineScreen(
                         referenceRadiusKm = directionReference.radiusKm,
                         directionGeo = directionGeo,
                         currentCoordinate = currentCoordinate,
+                        bookingsSnapshot0432 = bookings,
+                        passiveTripTarget0407 = tripTargetsByCard0432[timelineLazyItemKey0380(entry)],
+                        passiveSeatCapabilityState0407 = seatSyncStates[
+                            entry.blablaProfileUuid?.trim()?.lowercase().orEmpty() + "|" + entry.blablaTripId?.trim().orEmpty()
+                        ],
+                        passiveCommandAudit0407 = commandAuditsByCard0432[timelineLazyItemKey0380(entry)],
                         focusedBookingId = focusedBookingId,
                     ) {
                         archiveStore.setArchived(entry, !archived)
@@ -1153,6 +1176,10 @@ private fun TimelineEntryCard(
     referenceRadiusKm: Double,
     directionGeo: Map<String, TimelineGeoPoint>,
     currentCoordinate: Coordinate?,
+    bookingsSnapshot0432: List<Booking>,
+    passiveTripTarget0407: BlaBlaTripTarget0407?,
+    passiveSeatCapabilityState0407: BlaBlaPublicationSeatSyncState?,
+    passiveCommandAudit0407: BlaBlaCommandAuditSnapshot0407?,
     focusedBookingId: String? = null,
     onArchive: () -> Unit,
 ) {
@@ -1168,7 +1195,9 @@ private fun TimelineEntryCard(
     val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
-    val seatPlan = remember(entry, trip) { timelineDesiredSeatSyncPlan(entry, trip, store) }
+    val seatPlan = remember(entry, trip, bookingsSnapshot0432) {
+        timelineDesiredSeatSyncPlan(entry, trip, bookingsSnapshot0432)
+    }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
     var showMirrorDiagnostic0417 by remember(
@@ -1177,15 +1206,8 @@ private fun TimelineEntryCard(
         trip?.publicationRevision,
         trip?.publicMirrorAttestationState0411,
     ) { mutableStateOf(false) }
-    val tripTarget0407 = remember(entry.blablaProfileUuid, entry.blablaTripId, entry.blablaTripHref) {
-        resolveBlaBlaTripTarget0407(context, entry)
-    }
-    val seatCapabilityState0407 = remember(entry.blablaProfileUuid, entry.blablaTripId) {
-        val profileUuid = entry.blablaProfileUuid?.trim().orEmpty()
-        val tripId = entry.blablaTripId?.trim().orEmpty()
-        if (profileUuid.isBlank() || tripId.isBlank()) null
-        else BlaBlaPublicationSeatSyncStateStore(context).get(profileUuid, tripId)
-    }
+    val tripTarget0407 = passiveTripTarget0407
+    val seatCapabilityState0407 = passiveSeatCapabilityState0407
     val capabilitySnapshot0407 = remember(tripTarget0407, seatCapabilityState0407, trip?.lastObservedAtMillis) {
         BlaBlaCapabilityRegistry0407.snapshot(
             target = tripTarget0407,
@@ -1200,10 +1222,7 @@ private fun TimelineEntryCard(
         )
     }
     var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
-    val commandRevision0407 by BlaBlaTripControlEvents0407.revision.collectAsState()
-    val commandAudit0407 = remember(tripTarget0407, commandRevision0407) {
-        tripTarget0407?.let { BlaBlaTripCommandStatusStore0407(context).get(it) }
-    }
+    val commandAudit0407 = passiveCommandAudit0407
     val reverifyPending0407 = commandAudit0407?.pending == true
     val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
     val queueReverify0407: () -> Unit = {
