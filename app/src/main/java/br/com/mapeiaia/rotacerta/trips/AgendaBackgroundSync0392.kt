@@ -1944,17 +1944,16 @@ internal object AgendaBackgroundSync0392 {
             val configuredAccounts = BlaBlaDynamicAccountRegistry(appContext).list()
             val dynamicSessionStore = BlaBlaDynamicSessionStore(appContext)
             val circuitOpenAccounts = configuredAccounts.filter(dynamicSessionStore::isSourceCircuitOpen0426)
-            val accountIds = configuredAccounts
-                .filterNot(dynamicSessionStore::isSourceCircuitOpen0426)
-                .map { it.id }
+            val accountIds = configuredAccounts.map { it.id }
             if (circuitOpenAccounts.isNotEmpty()) {
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_BACKGROUND_CIRCUIT_FILTER_0426",
                     appContext.packageName,
                     "configured=" + configuredAccounts.size +
                         " circuitOpen=" + circuitOpenAccounts.size +
-                        " eligible=" + accountIds.size +
-                        " externalNavigationForOpenCircuit=false previousSnapshotPreserved=true",
+                        " eligibleForNavigation=" + (configuredAccounts.size - circuitOpenAccounts.size).coerceAtLeast(0) +
+                        " logicalTargets=" + accountIds.size +
+                        " gate=runPendingHeadless externalNavigationForOpenCircuit=false previousSnapshotPreserved=true",
                 )
             }
             collectorState = AgendaBackgroundSyncConfig0392.requestAutomaticCollector0400(
