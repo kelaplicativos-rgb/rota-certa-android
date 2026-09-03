@@ -130,14 +130,14 @@ class AgendaBackgroundSync0392Test {
         assertEquals(
             "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken",
             targetedCollectorPublicUrl0442(
-                BlaBlaCollectorMonthResponse(trips = listOf(exact)),
+                BlaBlaCollectorMonthResponse(status = "validated", trips = listOf(exact)),
                 target,
             ),
         )
         assertEquals(
             null,
             targetedCollectorPublicUrl0442(
-                BlaBlaCollectorMonthResponse(trips = listOf(unrelated)),
+                BlaBlaCollectorMonthResponse(status = "validated", trips = listOf(unrelated)),
                 target,
             ),
         )
