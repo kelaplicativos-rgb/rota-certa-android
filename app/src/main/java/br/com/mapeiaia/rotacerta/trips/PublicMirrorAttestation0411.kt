@@ -102,13 +102,9 @@ internal fun canonicalPublicProjectionPayload0411(
     publicationRevision: Long,
     nowMillis: Long = System.currentTimeMillis(),
     canonicalTripId: String = trip.id,
+    operationalSnapshot: CanonicalOperationalSnapshot0434 = canonicalOperationalSnapshot0434(trip, bookings, nowMillis),
 ): CanonicalPublicTripPayload0411 {
-    val capacity = operationalInventoryCapacity(trip, bookings)
-    val projectedTrip = trip.copy(capacity = capacity)
-    val loads = SeatAvailabilityEngine.segmentLoads(projectedTrip, bookings, nowMillis)
-    val summary = operationalSeatSummary(projectedTrip, bookings, nowMillis)
     val reliable = trip.capacityReliable
-    val available = if (reliable) summary.availableSeats.coerceAtLeast(0) else 0
     return CanonicalPublicTripPayload0411(
         canonicalTripId = canonicalTripId.trim().ifBlank { trip.id },
         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L),
@@ -118,7 +114,7 @@ internal fun canonicalPublicProjectionPayload0411(
         departureAtMillis = trip.departureAtMillis,
         timezoneId = trip.publicTimezoneId0411.trim(),
         status = trip.status.name,
-        capacity = capacity,
+        capacity = operationalSnapshot.capacity,
         stops = trip.stops.sortedBy(TripStop::order).mapIndexed { index, stop ->
             CanonicalPublicStop0411(
                 id = stop.id.trim(),
@@ -129,12 +125,12 @@ internal fun canonicalPublicProjectionPayload0411(
                 plannedDepartureMillis = stop.plannedDepartureMillis,
             )
         },
-        segmentLoads = loads.map { it.occupiedSeats.coerceAtLeast(0) },
-        segmentPassengerLoads = loads.map { it.passengerSeats.coerceAtLeast(0) },
-        segmentBlockedLoads = loads.map { it.blockedSeats.coerceAtLeast(0) },
-        availableSeatsMinimum = available,
-        availableSeatsMaximum = available,
-        operationalAvailableSeats = available,
+        segmentLoads = operationalSnapshot.segmentLoads,
+        segmentPassengerLoads = operationalSnapshot.segmentPassengerLoads,
+        segmentBlockedLoads = operationalSnapshot.segmentBlockedLoads,
+        availableSeatsMinimum = operationalSnapshot.availableSeatsMinimum,
+        availableSeatsMaximum = operationalSnapshot.availableSeatsMaximum,
+        operationalAvailableSeats = operationalSnapshot.operationalAvailableSeats,
         publishedSeats = trip.publishedSeats?.coerceAtLeast(0),
         rotaCertaSeatAllocation = (trip.rotaCertaSeatAllocation ?: 0).coerceAtLeast(0),
         publicBookingEnabled = trip.publicBookingEnabled,
