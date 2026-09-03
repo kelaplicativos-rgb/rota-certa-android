@@ -3,7 +3,7 @@ name: Rota Certa 0.1.424 BlaBlaCar sync menu restore
 on:
   push:
     branches:
-      - agent/blablacar-network-public-link-0.1.424
+      - agent/restore-blablacar-sync-menu-0.1.424
   pull_request:
     branches:
       - agent/blablacar-network-public-link-0.1.423
@@ -172,7 +172,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.424-blablacar-sync-menu-${{ github.sha }}
+          name: rota-certa-0.1.424-blablacar-sync-menu-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0424
