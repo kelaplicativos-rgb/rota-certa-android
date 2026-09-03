@@ -5986,6 +5986,16 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
   const mutationId0421 = cleanText(req.body && req.body.mutationId0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const idempotencyKey0421 = cleanText(req.body && req.body.idempotencyKey0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const expectedPublicProjectionHash0425 = cleanText(
+    req.body && req.body.expectedPublicProjectionHash0425,
+    160,
+  ).toLowerCase();
+  if (
+    expectedPublicProjectionHash0425 &&
+    !/^public-v2:[0-9a-f]{64}$/.test(expectedPublicProjectionHash0425)
+  ) {
+    return fail(res, 400, "invalid_public_projection_hash", "Hash da projeção pública inválido.");
+  }
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
@@ -6013,12 +6023,37 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       const currentLogicalRevision = Math.max(0, Math.floor(Number(previous.canonicalRevision || 0)));
       const incomingCanonicalStateHash = cleanText(rawTrip && rawTrip.canonicalStateHash, 160);
       const currentCanonicalStateHash = cleanText(previous.canonicalStateHash, 160);
-      const sameLogicalSnapshot = deterministicRequest &&
+      const logicalMetadataMatches0425 =
         incomingLogicalRevision > 0 &&
         incomingLogicalRevision === currentLogicalRevision &&
         Boolean(incomingCanonicalStateHash) &&
         incomingCanonicalStateHash === currentCanonicalStateHash;
-      const legacyAfterVersioned = !deterministicRequest && currentEntityRevision > 0;
+      const currentPublicProjectionHash0425 = canonicalPublicTripHash0411(
+        canonicalPublicTripPayload0411(token, previous),
+      ).toLowerCase();
+      const publicProjectionHashMatches0425 =
+        Boolean(expectedPublicProjectionHash0425) &&
+        expectedPublicProjectionHash0425 === currentPublicProjectionHash0425;
+      const sameLogicalSnapshot = deterministicRequest &&
+        logicalMetadataMatches0425 &&
+        (!expectedPublicProjectionHash0425 || publicProjectionHashMatches0425);
+      const sameRevisionProjectionRepair0425 =
+        deterministicRequest &&
+        entityRevision === currentEntityRevision &&
+        currentEntityRevision > 0 &&
+        logicalMetadataMatches0425 &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        !publicProjectionHashMatches0425;
+      const legacyProjectionRepair0425 =
+        !deterministicRequest &&
+        currentEntityRevision > 0 &&
+        logicalMetadataMatches0425 &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        !publicProjectionHashMatches0425;
+      const legacyAfterVersioned =
+        !deterministicRequest &&
+        currentEntityRevision > 0 &&
+        !legacyProjectionRepair0425;
       const tombstoneBlocksLegacy = previous.publicationTombstone === true && !deterministicRequest;
       if (staleByRevision && sameLogicalSnapshot) {
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
@@ -6056,7 +6091,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           currentMutationId0421 &&
           mutationId0421 === currentMutationId0421
         );
-        if (currentEventId && outboxEventId && currentEventId !== outboxEventId && !sameIdempotentMutation) {
+        if (
+          currentEventId &&
+          outboxEventId &&
+          currentEventId !== outboxEventId &&
+          !sameIdempotentMutation &&
+          !sameRevisionProjectionRepair0425
+        ) {
           throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
         }
         if (sameLogicalSnapshot) {
@@ -6070,7 +6111,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
             occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
           };
         }
-        if (!sameIdempotentMutation) {
+        if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425) {
           throw Object.assign(
             new Error("Reparo de mesma revisão exige a identidade idempotente original."),
             { httpStatus: 409, code: "publication_revision_repair_identity_mismatch" },
@@ -6079,10 +6120,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         // Same mutation + same transport revision but stale/missing logical projection:
         // intentionally fall through and re-apply the canonical snapshot atomically.
       }
+      const capacityNoOpProven0425 = expectedPublicProjectionHash0425
+        ? publicProjectionHashMatches0425
+        : (!deterministicRequest || sameLogicalSnapshot);
       if (
         previous.capacityReliable === true &&
         cleanText(previous.capacitySnapshotRevision, 128) === snapshotRevision &&
-        (!deterministicRequest || sameLogicalSnapshot)
+        capacityNoOpProven0425
       ) {
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
         return {
@@ -6166,6 +6210,42 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         Number(persistence.operationalOverbookingSeats || 0) > 0;
       const status = snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads);
       const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+      const nextProjectionData0425 = {
+        ...previous,
+        ...normalized,
+        ...persistence,
+        capacityReliable: true,
+        status,
+        capacitySnapshotRevision: snapshotRevision,
+        publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
+        publicationTombstone: false,
+        publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
+        publicationMutationId0421: deterministicRequest ? mutationId0421 : currentMutationId0421,
+        publicationIdempotencyKey0421: deterministicRequest ? idempotencyKey0421 : currentIdempotencyKey0421,
+        canonicalTripId: deterministicRequest && canonicalTripId
+          ? canonicalTripId
+          : cleanText(previous.canonicalTripId, 180),
+        occupancyRevision,
+        bookingsCount: candidateRecords.length + staleManaged.length,
+      };
+      if (expectedPublicProjectionHash0425) {
+        const nextPublicProjectionHash0425 = canonicalPublicTripHash0411(
+          canonicalPublicTripPayload0411(token, nextProjectionData0425),
+        ).toLowerCase();
+        if (nextPublicProjectionHash0425 !== expectedPublicProjectionHash0425) {
+          throw Object.assign(
+            new Error("A projeção calculada pelo servidor diverge da projeção canônica enviada."),
+            {
+              httpStatus: 409,
+              code: "public_projection_hash_mismatch",
+              details: {
+                expectedPublicProjectionHash: expectedPublicProjectionHash0425,
+                actualPublicProjectionHash: nextPublicProjectionHash0425,
+              },
+            },
+          );
+        }
+      }
 
       const protectedEventIds = [];
       const protectedRefundIds = [];
@@ -6303,6 +6383,10 @@ async function listDriverTripSyncState0402(req, res) {
           canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
           canonicalTripId: cleanText(data.canonicalTripId, 180),
           canonicalStateHash: cleanText(data.canonicalStateHash, 160),
+          publicProjectionHash: canonicalPublicTripHash0411(
+            canonicalPublicTripPayload0411(doc.id, data),
+          ),
+          bookingsCount: Math.max(0, Number(data.bookingsCount || 0)),
           tripKey: cleanText(data.tripKey, 180),
           blablaProfileUuid: cleanText(data.blablaProfileUuid, 160),
           blablaTripId: cleanText(data.blablaTripId, 160),

@@ -40,6 +40,18 @@ private data class ExternalCapacitySnapshotSyncResult(
     val shapePreserved: Boolean = false,
 )
 
+internal fun remotePublicProjectionMatches0425(
+    remote: DriverTripSyncState0402?,
+    expectedPublicProjectionHash: String,
+    snapshotRevision: String,
+): Boolean {
+    val expected = expectedPublicProjectionHash.trim()
+    return remote?.capacityReliable == true &&
+        remote.capacitySnapshotRevision == snapshotRevision &&
+        expected.isNotBlank() &&
+        remote.publicProjectionHash == expected
+}
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -502,6 +514,7 @@ internal object PublicAgendaAutoSync0300 {
         var publicTrip = withAllocation.copy(
             capacity = operationalInventoryCapacity(withAllocation, localBookings),
             capacityReliable = true,
+            publicTimezoneId0411 = withAllocation.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
         )
         val mirrors = localCapacityMirrors(publicTrip, localBookings)
         val revision = localCapacitySnapshotRevision(publicTrip, localBookings, allocation)
@@ -517,6 +530,16 @@ internal object PublicAgendaAutoSync0300 {
         var remoteTripId = publicTrip.remoteId?.takeIf(String::isNotBlank) ?: publicTrip.publicToken
         var created = false
         val startedAt = System.nanoTime()
+
+        fun expectedPublicProjectionHash0425(): String =
+            canonicalPublicProjectionHash0411(
+                canonicalPublicProjectionPayload0411(
+                    trip = publicTrip,
+                    bookings = localBookings,
+                    publicationRevision = entityRevision.takeIf { it > 0L } ?: publicTrip.publicationRevision,
+                    nowMillis = nowMillis,
+                ),
+            )
 
         suspend fun reconcile(): DriverCapacitySnapshotResponse = api.reconcileCapacitySnapshot(
             remoteTripId = remoteTripId,
@@ -534,6 +557,7 @@ internal object PublicAgendaAutoSync0300 {
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
             idempotencyKey0421 = idempotencyKey0421,
+            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425(),
         )
 
         val response = try {
@@ -580,7 +604,7 @@ internal object PublicAgendaAutoSync0300 {
             throw error
         }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
-        if (entityRevision > 0L && response.stale) {
+        if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
         UnifiedDebugEventStore.record(
@@ -870,10 +894,28 @@ internal object PublicAgendaAutoSync0300 {
             )
         }
 
-        if (
-            remoteStateHint0402?.capacityReliable == true &&
-            remoteStateHint0402.capacitySnapshotRevision == synthesized.snapshotRevision
-        ) {
+        fun expectedPublicProjectionHash0425(): String {
+            val expectedBookings = (store.bookingsFor(publicTrip.id) + effectiveClaims)
+                .associateBy(Booking::id)
+                .values
+                .toList()
+            return canonicalPublicProjectionHash0411(
+                canonicalPublicProjectionPayload0411(
+                    trip = effectiveTrip,
+                    bookings = expectedBookings,
+                    publicationRevision = entityRevision.takeIf { it > 0L }
+                        ?: remoteStateHint0402?.publicationRevision
+                        ?: effectiveTrip.publicationRevision,
+                ),
+            )
+        }
+        val remoteProjectionMatches0425 = remotePublicProjectionMatches0425(
+            remote = remoteStateHint0402,
+            expectedPublicProjectionHash = expectedPublicProjectionHash0425(),
+            snapshotRevision = synthesized.snapshotRevision,
+        )
+
+        if (remoteProjectionMatches0425) {
             saveExternalBinding(
                 store = store,
                 remoteTripId = remoteTripId,
@@ -881,17 +923,28 @@ internal object PublicAgendaAutoSync0300 {
                 synthesized = synthesized,
                 effectiveTrip = effectiveTrip,
                 canonicalTripId = canonicalTripId,
-                entityRevision = maxOf(entityRevision, remoteStateHint0402.publicationRevision),
+                entityRevision = maxOf(entityRevision, remoteStateHint0402?.publicationRevision ?: 0L),
                 seatAllocationVersion = seatAllocationVersion,
             )
             UnifiedDebugEventStore.record(
                 "PUBLIC_CAPACITY_REMOTE_REVISION_NO_OP_0402", context.packageName,
-                "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} serverCanonical=true putSkipped=true",
+                "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} publicHashMatch=true putSkipped=true",
             )
             return ExternalCapacitySnapshotSyncResult(
                 published = true,
                 changed = false,
                 shapePreserved = shapePreserved,
+            )
+        }
+
+        if (
+            remoteStateHint0402?.capacityReliable == true &&
+            remoteStateHint0402.capacitySnapshotRevision == synthesized.snapshotRevision
+        ) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_CAPACITY_REMOTE_REVISION_REPAIR_REQUIRED_0425",
+                context.packageName,
+                "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} publicHashPresent=${remoteStateHint0402.publicProjectionHash.isNotBlank()} publicHashMatch=false action=put_not_skipped",
             )
         }
 
@@ -906,6 +959,7 @@ internal object PublicAgendaAutoSync0300 {
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
             idempotencyKey0421 = idempotencyKey0421,
+            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425(),
         )
 
         val response = try {
@@ -939,7 +993,7 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
-        if (entityRevision > 0L && response.stale) {
+        if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
         saveExternalBinding(
@@ -1221,6 +1275,7 @@ internal object PublicAgendaAutoSync0300 {
             publicationEventId = canonical.publicationEventId,
             tripKey = canonical.tripKey,
             canonicalStateHash = canonical.canonicalStateHash,
+            publicTimezoneId0411 = canonical.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
             lastCollectionRunId = canonical.lastCollectionRunId,
             lastCollectionGeneration = canonical.lastCollectionGeneration,
             lastObservedAtMillis = canonical.lastObservedAtMillis,
@@ -1308,6 +1363,8 @@ internal object PublicAgendaAutoSync0300 {
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
+            publicTimezoneId0411 = zoneId.id,
+
             capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()
