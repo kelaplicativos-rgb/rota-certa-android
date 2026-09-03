@@ -1089,6 +1089,15 @@ internal object PublicAgendaAutoSync0300 {
         if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
+        if (response.stopShapeMigrationCount0439 > 0) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_CAPACITY_CANONICAL_SHAPE_MIGRATED_0440",
+                context.packageName,
+                "tripKey=$diagnosticTripKey migratedBookings=${response.stopShapeMigrationCount0439} " +
+                    "canonicalStops=${effectiveTrip.stops.size} transportRevision=$entityRevision " +
+                    "logicalRevision=${effectiveTrip.canonicalRevision} strongIdentity=true",
+            )
+        }
         saveExternalBinding(
             store = store,
             remoteTripId = remoteTripId,
