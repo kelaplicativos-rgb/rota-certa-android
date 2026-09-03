@@ -1791,6 +1791,8 @@ internal object AgendaBackgroundSync0392 {
                 " migratedBookings=" + integrityMigration.migratedBookings +
                 " duplicateAgendaBindings=" + integrityMigration.duplicateAgendaBindings +
                 " orphanAgendaBindings=" + integrityMigration.orphanAgendaBindings +
+                " consolidatedStrongIdentity0421=" + integrityMigration.consolidatedStrongIdentityTrips0421 +
+                " strongIdentityConflicts0421=" + integrityMigration.strongIdentityConflicts0421 +
                 " unresolvedIdentity=" + integrityMigration.unresolvedExternalIdentity,
         )
         val migrationCoordinator = TripMutationCoordinator0387(appContext, store)
@@ -2264,13 +2266,7 @@ class AgendaBackgroundSyncWorker0392(
                     collectorState.status in setOf("COMPLETE", "NO_ACCOUNTS")
                 else -> false
             }
-            val resultLabel = when {
-                targetedAuthRequired -> "PENDING_AUTH"
-                retryPending -> "RETRY"
-                cycle.collectorPending -> "COLLECTOR_PENDING"
-                collectorAuthRequired -> "PENDING_AUTH"
-                collectorTerminalProblem -> "PARTIAL"
-                cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+            val scopeFullyAttested0421 =
                 (fullReconcileComplete || targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) &&
                     cycle.projectionMissingAgenda == 0 &&
                     cycle.projectionDuplicates == 0 &&
@@ -2284,11 +2280,30 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionInvalidIdentity0411 == 0 &&
-                    cycle.projectionInvalidLink0411 == 0 &&
                     cycle.projectionStaleRevision0411 == 0 &&
                     cycle.projectionReadbackFailures0411 == 0 &&
-                    cycle.projectionValidated0411 == cycle.projectionExpected0411 -> "VERIFIED"
-                else -> "SUCCESS"
+                    cycle.projectionValidated0411 == cycle.projectionExpected0411
+            val resultLabel = when {
+                targetedAuthRequired -> "PENDING_AUTH"
+                retryPending -> "RETRY"
+                cycle.collectorPending -> "COLLECTOR_PENDING"
+                collectorAuthRequired -> "PENDING_AUTH"
+                collectorTerminalProblem -> "PARTIAL"
+                cycle.failures > 0 -> "PARTIAL_AFTER_MAX_RETRIES"
+                cycle.projectionDivergent0411 > 0 ||
+                    cycle.projectionDuplicates > 0 ||
+                    cycle.projectionOrphans > 0 ||
+                    cycle.projectionInvalidIdentity0411 > 0 ||
+                    cycle.projectionRevisionMismatch > 0 ||
+                    cycle.projectionHashMismatch > 0 ||
+                    cycle.projectionCapacityMismatch > 0 ||
+                    cycle.projectionStatusMismatch > 0 -> "DIVERGENT"
+                cycle.projectionPending0411 > 0 ||
+                    cycle.projectionReadbackFailures0411 > 0 ||
+                    cycle.projectionMissingAgenda > 0 ||
+                    cycle.projectionValidated0411 < cycle.projectionExpected0411 -> "READBACK_PENDING"
+                scopeFullyAttested0421 -> "SUCCESS"
+                else -> "INCOMPLETE"
             }
             runCatching {
                 val store0417 = TripStore(applicationContext)
@@ -2303,7 +2318,7 @@ class AgendaBackgroundSyncWorker0392(
                             correlationId = reason.substringAfter(':', "").takeIf { reason.startsWith("admin_") }.orEmpty(),
                             failures = reportedFailures,
                             changed = cycle.collectorChangedTrips + cycle.publicLocalPublished + cycle.publicExternalPublished,
-                            skipped = cycle.collectorSkippedTrips,
+                            skipped = if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0,
                             pending = cycle.projectionPending0411,
                             divergent = cycle.projectionDivergent0411,
                             readbackFailures = cycle.projectionReadbackFailures0411,
@@ -2338,7 +2353,7 @@ class AgendaBackgroundSyncWorker0392(
             UnifiedDebugEventStore.record(
                 "AGENDA_BACKGROUND_SYNC_WORK_0397",
                 applicationContext.packageName,
-                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"}",
+                "phase=END workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} result=$resultLabel durationMs=${android.os.SystemClock.elapsedRealtime() - startedElapsed} failures=$reportedFailures retry=$retryPending attempt=$runAttemptCount collectorGeneration=${collectorState.generation} collectorStatus=${collectorState.status} collectorPending=${collectorState.pending} targetedStatus=${targetedResult?.status?.name ?: "NONE"} scopeFullyAttested=$scopeFullyAttested0421 ignoredProven=${if (scopeFullyAttested0421) cycle.collectorSkippedTrips else 0}",
             )
             if (retryPending) Result.retry() else Result.success()
         } catch (cancelled: CancellationException) {
