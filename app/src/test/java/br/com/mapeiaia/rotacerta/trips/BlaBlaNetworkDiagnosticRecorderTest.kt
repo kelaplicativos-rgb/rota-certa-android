@@ -132,6 +132,8 @@ class BlaBlaNetworkDiagnosticRecorderTest {
  }];"))
         assertTrue(script.contains("objectHasDirectAdministrativeTripId(value, tripId)"))
         assertTrue(script.contains("if (unique.length === 1)"))
+        assertFalse(script.contains("String(rawTripId || '').trim().toLowerCase()"))
+        assertFalse(script.contains("expected.toLowerCase()"))
         assertFalse(script.contains("path: '          function sourceWaypoint"))
         assertEquals(1, script.windowCount("function rememberStructuredShareForCurrentTrip(parsed, endpoint)"))
         assertEquals(1, script.windowCount("function sourceWaypoint(rawValue)"))
