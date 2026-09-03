@@ -4332,20 +4332,57 @@ function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-async function createPassengerSession(passengerContact, passengerId = "") {
+function passengerSessionContextHash0427(raw) {
+  const value = cleanText(raw, 120);
+  return /^[A-Za-z0-9_-]{16,120}$/.test(value) ? sha256Hex(value) : "";
+}
+
+async function createPassengerSession(passengerContact, passengerId = "", sessionContextId = "") {
   const token = passengerSessionToken();
   const tokenHash = sha256Hex(token);
   const now = Date.now();
   const expiresAtMillis = now + 30 * 24 * 60 * 60 * 1000;
+  const contactHash = sha256Hex(passengerContact);
+  const sessionContextHash = passengerSessionContextHash0427(sessionContextId);
+
+  const existing = await db.collection("passengerSessions")
+    .where("contactHash", "==", contactHash)
+    .limit(200)
+    .get();
+  const replaceable = existing.docs.filter((doc) => {
+    const data = doc.data();
+    const expired = Number(data.expiresAtMillis || 0) <= now;
+    const sameContext = Boolean(
+      sessionContextHash &&
+      cleanText(data.sessionContextHash, 80) === sessionContextHash
+    );
+    return expired || sameContext;
+  });
+  if (replaceable.length) {
+    const batch = db.batch();
+    replaceable.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+  }
+
   await db.collection("passengerSessions").doc(tokenHash).set({
-    contactHash: sha256Hex(passengerContact),
+    contactHash,
     passengerContact,
     passengerId: cleanText(passengerId, 120),
+    sessionContextHash,
     createdAtMillis: now,
     lastActivityAtMillis: now,
     expiresAtMillis,
   });
   return { token, expiresAtMillis };
+}
+
+async function touchPassengerSessionActivity0427(sessionRefId, atMillis = Date.now()) {
+  const refId = cleanText(sessionRefId, 80).toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(refId)) return 0;
+  const now = Math.max(0, Number(atMillis || Date.now()));
+  await db.collection("passengerSessions").doc(refId)
+    .set({ lastActivityAtMillis: now }, { merge: true });
+  return now;
 }
 
 async function requirePassengerSession(req, res) {
@@ -4372,16 +4409,19 @@ async function requirePassengerSession(req, res) {
     fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
     return null;
   }
-  if (now - Number(data.lastActivityAtMillis || data.createdAtMillis || 0) > 60 * 1000) {
+  let lastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
+  if (now - lastActivityAtMillis > 60 * 1000) {
     await sessionRef.set({ lastActivityAtMillis: now }, { merge: true }).catch(() => {});
+    lastActivityAtMillis = now;
   }
   return {
     passengerContact: cleanText(data.passengerContact, 40),
     passengerId: cleanText(data.passengerId, 120),
     contactHash: cleanText(data.contactHash, 80),
+    sessionContextHash: cleanText(data.sessionContextHash, 80),
     sessionRefId: sessionRef.id,
     createdAtMillis: Number(data.createdAtMillis || 0),
-    lastActivityAtMillis: Math.max(Number(data.lastActivityAtMillis || 0), now),
+    lastActivityAtMillis,
     expiresAtMillis: Number(data.expiresAtMillis || 0),
   };
 }
@@ -4506,7 +4546,7 @@ async function activatePassengerAccount(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_activation_failed", error.message || "Não foi possível criar sua senha.");
   }
-  const session = await createPassengerSession(passengerContact, passengerId);
+  const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId);
   return json(res, 201, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
@@ -4547,7 +4587,7 @@ async function loginPassengerAccount(req, res) {
   if (passengerId && !account.passengerId) {
     await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).set({ passengerId, updatedAtMillis: Date.now() }, { merge: true });
   }
-  const session = await createPassengerSession(passengerContact, passengerId);
+  const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId);
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
