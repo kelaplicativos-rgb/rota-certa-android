@@ -1083,6 +1083,49 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    fun enqueueCardDelta0431(
+        context: Context,
+        reason: String,
+        remoteTripId: String,
+    ): Boolean {
+        val targetRemoteTripId = remoteTripId.trim()
+        if (targetRemoteTripId.isBlank()) return false
+        val appContext = context.applicationContext
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
+            .setConstraints(networkConstraints())
+            .setInputData(
+                workDataOf(
+                    INPUT_REASON to reason.take(80),
+                    INPUT_TENANT_ID to tenantId,
+                    INPUT_REMOTE_TRIP_ID_0431 to targetRemoteTripId.take(160),
+                ),
+            )
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            tenantScopedWorkName(
+                tenantId,
+                CARD_DELTA_WORK_0431 + "-" + sha256TripPublication0387(targetRemoteTripId).take(16),
+            ),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            request,
+        )
+        UnifiedDebugEventStore.record(
+            "AGENDA_CARD_DELTA_ENQUEUED_0431",
+            appContext.packageName,
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} remoteTripKey=${seatSyncDiagnosticKey(targetRemoteTripId)} workId=${request.id} expedited=true fullSyncRequested=false",
+        )
+        return true
+    }
+
+    internal fun targetedBookingRemoteTripId0431(workerParameters: WorkerParameters): String {
+        val reason = reason(workerParameters)
+        if (!reason.startsWith("booking_push:")) return ""
+        return workerParameters.inputData.getString(INPUT_REMOTE_TRIP_ID_0431)?.trim().orEmpty()
+    }
+
     internal suspend fun reconcileTenantSeatAllocation0395(
         context: Context,
         rotaCertaSeatAllocation: Int,
