@@ -65,24 +65,32 @@ test("public profile scope remains intact and independent from projection repair
 });
 
 
-test("public agenda renders only the current attested canonical projection", () => {
-  const helper = source.slice(
-    source.indexOf("function publicProjectionAttestedCurrent0429"),
+test("public agenda renders committed canonical projection without falsely granting blue attestation", () => {
+  const committed = source.slice(
+    source.indexOf("function publicProjectionCommittedCurrent0434"),
     source.indexOf("async function getPublicDriverAgenda"),
   );
-  assert.match(helper, /publicationTombstone === true/);
-  assert.match(helper, /canonicalTripId/);
-  assert.match(helper, /publicAttestationState0417[^\n]+VERIFIED/);
-  assert.match(helper, /publicAttestedPublicationRevision0417[^\n]+publicationRevision/);
-  assert.match(helper, /publicAttestedCanonicalRevision0417[^\n]+canonicalRevision/);
-  assert.match(helper, /canonicalPublicTripHash0411/);
-  assert.match(helper, /publicAttestedHash0417/);
+  assert.match(committed, /publicationTombstone === true/);
+  assert.match(committed, /canonicalTripId/);
+  assert.match(committed, /canonicalPublicProjection0434/);
+  assert.match(committed, /publicProjectionHash0434/);
+  assert.match(committed, /publicCommittedAt0422/);
+  assert.match(committed, /canonicalPublicTripHash0411/);
+  assert.doesNotMatch(committed, /publicAttestationState0417/);
+
+  const attested = source.slice(
+    source.indexOf("function publicProjectionAttestedCurrent0429"),
+    source.indexOf("function publicProjectionCommittedCurrent0434"),
+  );
+  assert.match(attested, /publicAttestationState0417[^\n]+VERIFIED/);
+  assert.match(attested, /publicAttestedHash0417/);
 
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
     source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
+  assert.match(agenda, /publicProjectionCommittedCurrent0434\(doc\.id, doc\.data\(\)\)/);
+  assert.doesNotMatch(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
 });
 
 test("public adoption never uses route or time similarity as canonical identity", () => {
