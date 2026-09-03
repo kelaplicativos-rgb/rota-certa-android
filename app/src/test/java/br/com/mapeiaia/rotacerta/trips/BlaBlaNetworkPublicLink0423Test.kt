@@ -48,6 +48,25 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun structuredNetworkBindingIsCaseExactForAdministrativeTripIdentity() {
+        assertNull(
+            BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
+                adminA,
+                evidence(adminA.uppercase(), href(publicA)),
+            ),
+        )
+    }
+
+    @Test
+    fun downstreamTimelineAndAgendaHashKeepAuthoritativeCollectorPermalink() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt").readText()
+        val agenda = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
+        assertTrue(timeline.contains("BlaBlaCollectorUrlModule.publicTripForCollectorState("))
+        assertTrue(timeline.contains("trip.public_trip_href_binding"))
+        assertTrue(agenda.contains("canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId)"))
+    }
+
+    @Test
     fun acquisitionOrderIsNetworkThenDomThenPersisted() {
         val network = link("network")
         val dom = link("dom")
