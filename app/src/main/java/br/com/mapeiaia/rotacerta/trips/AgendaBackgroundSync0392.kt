@@ -1554,6 +1554,7 @@ internal object AgendaBackgroundSync0392 {
                     source = "CANONICAL_VERIFY",
                     configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation
                         ?: rotaCertaSeatAllocation,
+                    remoteProjectionDivergenceObserved = true,
                 ) != null
             }
         }
@@ -1619,12 +1620,20 @@ internal object AgendaBackgroundSync0392 {
                     hashMismatch++
                     needsRepair = true
                 }
-                val expectedRevision = binding?.canonicalRevision?.takeIf { it > 0L }
-                    ?: trip.publicationRevision.takeIf { it > 0L }
-                if (expectedRevision != null && remote.publicationRevision != expectedRevision) {
+                val expectedLogicalRevision = trip.canonicalRevision.takeIf { it > 0L }
+                if (expectedLogicalRevision != null && remote.canonicalRevision != expectedLogicalRevision) {
                     revisionMismatch++
-                    if (remote.publicationRevision < expectedRevision) revisionRegression++
+                    if (remote.canonicalRevision < expectedLogicalRevision) revisionRegression++
                     needsRepair = true
+                    UnifiedDebugEventStore.record(
+                        "PROJECTION_LOGICAL_REVISION_MISMATCH_0421",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                            " logicalRevisionExpected=" + expectedLogicalRevision +
+                            " logicalRevisionActual=" + remote.canonicalRevision +
+                            " transportRevisionLocal=" + trip.publicationRevision +
+                            " transportRevisionRemote=" + remote.publicationRevision,
+                    )
                 }
                 if (!projectionCapacityMatches0408(trip, bookings, remote, nowMillis)) {
                     val expectedRange = canonicalProjectionAvailabilityRange0408(trip, bookings, nowMillis)
