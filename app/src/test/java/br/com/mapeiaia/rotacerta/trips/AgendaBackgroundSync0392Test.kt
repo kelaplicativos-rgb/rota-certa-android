@@ -31,6 +31,37 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
+    fun cardVerifyUsesCanonicalMirrorWithoutBrowserOrAutomaticRetry() {
+        assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_reverify"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_reverify"))
+        assertTrue(AgendaBackgroundSync0392.staleDurableOneShot0435("trip_reverify", 0L, 1_000_000L))
+        assertTrue(AgendaBackgroundSync0392.staleDurableOneShot0435("admin_update_now:old", 0L, 1_000_000L))
+        assertFalse(
+            AgendaBackgroundSync0392.staleDurableOneShot0435(
+                reason = "trip_reverify",
+                requestedAtMillis = 900_000L,
+                nowMillis = 1_000_000L,
+            ),
+        )
+        assertTrue(
+            AgendaBackgroundSync0392.staleDurableOneShot0435(
+                reason = "admin_update_now:old",
+                requestedAtMillis = 1L,
+                nowMillis = AgendaBackgroundSync0392.ONE_SHOT_MAX_AGE_MILLIS_0435 + 2L,
+            ),
+        )
+
+        val source = backgroundSource()
+        assertTrue(source.contains("INPUT_REQUESTED_AT_0435 to requestedAtMillis"))
+        assertTrue(source.contains("STALE_DURABLE_WORK_0435"))
+        assertTrue(source.contains("reverifyCanonicalMirror0435"))
+        assertTrue(source.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
+        assertTrue(source.contains("PublicMirrorAttestationCoordinator0411.attest"))
+        assertFalse(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
+        assertTrue(source.contains("val targetedRetryable = false"))
+    }
+    @Test
     fun canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector() {
         assertEquals(
             AgendaBackgroundSyncMode0392.FULL_RECONCILE,
