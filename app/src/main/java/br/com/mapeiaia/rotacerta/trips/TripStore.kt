@@ -373,12 +373,20 @@ class TripStore(context: Context) {
                 if (canonical != null && binding.bookingTripId != canonical.id) {
                     binding.copy(
                         bookingTripId = canonical.id,
-                        canonicalRevision = maxOf(binding.canonicalRevision, canonical.publicationRevision),
+                        canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
                         stateHash = canonical.canonicalStateHash,
                         updatedAtMillis = nowMillis,
                     )
-                } else if (canonical != null && binding.stateHash != canonical.canonicalStateHash) {
-                    binding.copy(stateHash = canonical.canonicalStateHash, updatedAtMillis = nowMillis)
+                } else if (
+                    canonical != null &&
+                    (binding.stateHash != canonical.canonicalStateHash ||
+                        binding.canonicalRevision != canonical.canonicalRevision)
+                ) {
+                    binding.copy(
+                        canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
+                        stateHash = canonical.canonicalStateHash,
+                        updatedAtMillis = nowMillis,
+                    )
                 } else binding
             }
             val groupedBindings = normalizedBindings.groupBy { binding ->
