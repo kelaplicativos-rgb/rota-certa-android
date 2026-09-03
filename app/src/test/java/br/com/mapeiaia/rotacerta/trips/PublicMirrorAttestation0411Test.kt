@@ -41,6 +41,47 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
+    fun staleLogicalCanonicalRevisionPreventsBlue() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val stale = expected.copy(canonicalRevision = expected.canonicalRevision - 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = stale,
+                publicProjectionHash = canonicalPublicProjectionHash0411(stale),
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
+        assertTrue("canonicalRevision" in decision.mismatchFields)
+    }
+
+    @Test
+    fun canonicalByteDiffIgnoresTransportRevisionButLocatesRealPayloadChange() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(trip, emptyList(), trip.publicationRevision, now)
+        val transportOnly = expected.copy(publicationRevision = expected.publicationRevision + 100)
+        val transportDiff = compareCanonicalPublicBytes0421(expected, transportOnly)
+        assertEquals(-1, transportDiff.firstDifferentByteOffset)
+        assertTrue(transportDiff.differentByteRanges.isEmpty())
+        assertEquals(transportDiff.expectedSha256, transportDiff.actualSha256)
+
+        val changed = expected.copy(title = expected.title + " alterado")
+        val changedDiff = compareCanonicalPublicBytes0421(expected, changed)
+        assertTrue(changedDiff.firstDifferentByteOffset >= 0)
+        assertTrue(changedDiff.differentByteRanges.isNotEmpty())
+        assertNotEquals(changedDiff.expectedSha256, changedDiff.actualSha256)
+    }
+
+    @Test
     fun onePublicFieldDifferencePreventsBlue() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
@@ -65,7 +106,7 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
-    fun stalePublicRevisionPreventsBlueEvenWhenContentOtherwiseMatches() {
+    fun transportRevisionDifferenceDoesNotReplaceLogicalRevision() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -83,13 +124,13 @@ class PublicMirrorAttestation0411Test {
             ),
         )
 
-        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
-        assertFalse(decision.revisionValid)
-        assertTrue("revision" in decision.mismatchFields)
+        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
+        assertTrue(decision.revisionValid)
+        assertFalse("canonicalRevision" in decision.mismatchFields)
     }
 
     @Test
-    fun BlaBlaLinkForAnotherTripPreventsBlue() {
+    fun BlaBlaLinkForAnotherTripDoesNotForgeOrBlockAgendaMatch() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -109,7 +150,7 @@ class PublicMirrorAttestation0411Test {
             ),
         )
 
-        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
         assertFalse(decision.linkValid)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
     }
@@ -128,7 +169,7 @@ class PublicMirrorAttestation0411Test {
             DriverPublicTripReadback0411(
                 remoteTripId = "remote-0411",
                 payload = expected,
-                publicProjectionHash = "public-v1:not-the-readback-hash",
+                publicProjectionHash = "public-v2:not-the-readback-hash",
             ),
         )
 
@@ -208,7 +249,7 @@ class PublicMirrorAttestation0411Test {
         assertTrue(complete.verified)
         assertFalse(complete.copy(attestationValidated0411 = 2, attestationPending0411 = 1).verified)
         assertFalse(complete.copy(attestationDivergent0411 = 1).verified)
-        assertFalse(complete.copy(attestationInvalidLink0411 = 1).verified)
+        assertTrue(complete.copy(attestationInvalidLink0411 = 1).verified)
         assertFalse(complete.copy(attestationReadbackFailures0411 = 1, failures = 1).verified)
     }
 
