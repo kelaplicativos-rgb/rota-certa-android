@@ -85,6 +85,13 @@ test("admin sync request is REQUESTED and SUCCESS health is guarded by attestati
   assert.doesNotMatch(browser, /trip\.blablaPublicUrl \|\| trip\.publicUrl/);
 });
 
+test("server MATCH requires current canonical revision as well as transport revision", () => {
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  assert.match(admin, /requestedCanonicalRevision === currentCanonicalRevision/);
+  assert.match(admin, /requestedRevision === currentRevision/);
+  assert.match(admin, /readbackHash === expectedHash/);
+});
+
 test("protected administration reuses scoped passenger session and role", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
   const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
