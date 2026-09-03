@@ -4447,6 +4447,16 @@ async function requirePassengerSession(req, res) {
         return null;
       }
     }
+    const requestPath = cleanText((req.path || req.url || "").split("?")[0], 320);
+    const tripPathMatch = /\/trips\/([A-Za-z0-9_-]{16,180})(?:\/|$)/.exec(requestPath);
+    if (tripPathMatch) {
+      const tripSnap = await db.collection("trips").doc(tripPathMatch[1]).get();
+      const tripDriver = tripSnap.exists ? normalizeUsername(tripSnap.data().driverUsername || "") : "";
+      if (tripDriver && tripDriver !== driverScope0428) {
+        fail(res, 403, "passenger_session_scope_mismatch", "Este acesso pertence somente à Agenda em que foi criado.");
+        return null;
+      }
+    }
   }
   let lastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
   if (now - lastActivityAtMillis > 60 * 1000) {
