@@ -47,14 +47,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             .ifBlank { current.lastCollectionRunId }
             .ifBlank { "trip-" + seatSyncDiagnosticKey(current.id) }
             .take(120)
-        val evidenceId = "ev_" + sha256TripPublication0387(
-            listOf(
-                current.id,
-                current.canonicalRevision.toString(),
-                current.canonicalStateHash,
-                traceId,
-            ).joinToString("|"),
-        ).take(24)
+        val evidenceId = publicationEvidenceId0421(traceId, current.canonicalRevision)
 
         fun evidence(stage: String, status: String, reason: String, extra: String = "") {
             UnifiedDebugEventStore.record(
