@@ -6665,6 +6665,7 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   passengerAccessForIdentity,
   passengerAccessIsAuthorized,
   sendDriverBookingPush,
+  touchPassengerSessionActivity0427,
 });
 
 exports.assistantApi = onRequest(
