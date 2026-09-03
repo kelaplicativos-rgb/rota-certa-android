@@ -206,7 +206,8 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " actualLength=" + diff.actualLength +
                 " firstDifferentByteOffset=" + diff.firstDifferentByteOffset +
                 " differentByteRanges=" + diff.differentByteRanges.joinToString(",") +
-                " mismatchFields=" + decision.mismatchFields.joinToString(",").take(240),
+                " mismatchFields=" + decision.mismatchFields.joinToString(",").take(240) +
+                " fieldDiffPaths=" + diff.fieldDiffs.joinToString(",") { it.fieldPath }.take(240),
         )
 
         store.recordPublicMirrorAttestation0411(
@@ -229,6 +230,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             actualBytes0421 = diff.actualLength,
             firstDifferentByteOffset0421 = diff.firstDifferentByteOffset,
             differentByteRanges0421 = diff.differentByteRanges,
+            fieldDiffs0422 = diff.fieldDiffs.map(::publicProjectionFieldDiffJson0422),
             failedStage0421 = when {
                 !decision.identityValid -> "IDENTITY_COMPARE"
                 !decision.revisionValid -> "REVISION_COMPARE"
