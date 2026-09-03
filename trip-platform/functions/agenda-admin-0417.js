@@ -53,6 +53,17 @@ function normalizeSyncPolicy0417(raw) {
   };
 }
 
+function sameSyncPolicy0417(left, right) {
+  const a = normalizeSyncPolicy0417(left);
+  const b = normalizeSyncPolicy0417(right);
+  return a.automatic === b.automatic && a.intervalMinutes === b.intervalMinutes;
+}
+
+function adminOperationId0417(req) {
+  const supplied = clean0417(req && req.get && req.get("X-Rota-Certa-Operation-Id"), 100);
+  return /^[A-Za-z0-9_-]{8,100}$/.test(supplied) ? supplied : crypto.randomUUID();
+}
+
 function redact0417(value) {
   if (Array.isArray(value)) return value.map(redact0417);
   if (!value || typeof value !== "object") return value;
@@ -100,12 +111,14 @@ function createAgendaAdmin0417({
   passengerAccessForIdentity,
   passengerAccessIsAuthorized,
   sendDriverBookingPush,
+  touchPassengerSessionActivity0427,
 }) {
   async function appendAdminAudit0417({
     driverUsername,
     eventType,
     actorId = "",
     correlationId = "",
+    requestId = "",
     tripId = "",
     changes = [],
     result = "SUCCESS",
@@ -134,12 +147,65 @@ function createAgendaAdmin0417({
       actorId: clean0417(actorId, 80),
       source: clean0417(source, 80),
       correlationId: clean0417(correlationId, 100),
+      requestId: clean0417(requestId, 100),
       result: clean0417(result, 24),
       createdAtMillis: now,
       expiresAtMillis: now + ADMIN_AUDIT_RETENTION_MILLIS_0417,
       changes: safeChanges,
       affectedPassengerIds: [],
     });
+  }
+
+  async function touchAdminSession0417(session) {
+    if (!session || typeof touchPassengerSessionActivity0427 !== "function") return 0;
+    const touched = await touchPassengerSessionActivity0427(session.sessionRefId);
+    if (touched) session.lastActivityAtMillis = touched;
+    return touched;
+  }
+
+  async function claimAdminCommand0417({ session, eventType, operationId }) {
+    const requestId = clean0417(operationId, 100);
+    const id = "adminop_" + sha256Hex0417([
+      session.driverUsername,
+      session.sessionRefId,
+      eventType,
+      requestId,
+    ].join("|")).slice(0, 56);
+    const ref = db.collection("tripChangeEvents").doc(id);
+    const claim = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists) {
+        const data = snap.data();
+        return {
+          created: false,
+          correlationId: clean0417(data.correlationId, 100),
+          result: clean0417(data.result, 24),
+        };
+      }
+      const now = Date.now();
+      const correlationId = crypto.randomUUID();
+      tx.set(ref, {
+        eventId: id,
+        eventType: clean0417(eventType, 80),
+        tripId: "",
+        publicToken: "",
+        bookingId: "",
+        passengerId: clean0417(session.passengerId, 120),
+        driverUsername: clean0417(session.driverUsername, 40),
+        actor: "ADMIN",
+        actorId: clean0417(session.actorId, 80),
+        source: "AGENDA_ADMIN_PANEL",
+        correlationId,
+        requestId,
+        result: "DISPATCHING",
+        createdAtMillis: now,
+        expiresAtMillis: now + ADMIN_AUDIT_RETENTION_MILLIS_0417,
+        changes: [],
+        affectedPassengerIds: [],
+      });
+      return { created: true, correlationId, result: "DISPATCHING" };
+    });
+    return { ...claim, ref, requestId };
   }
 
   async function requireAdminSession0417(req, res) {
@@ -176,6 +242,7 @@ function createAgendaAdmin0417({
       passengerId: clean0417(passengerSession.passengerId || access.passengerId, 120),
       passengerContact: clean0417(passengerSession.passengerContact, 40),
       contactHash: clean0417(passengerSession.contactHash, 80),
+      sessionContextHash: clean0417(passengerSession.sessionContextHash, 80),
       sessionRefId: clean0417(passengerSession.sessionRefId, 100),
       createdAtMillis: Number(passengerSession.createdAtMillis || 0),
       lastActivityAtMillis: Number(passengerSession.lastActivityAtMillis || passengerSession.createdAtMillis || 0),
@@ -323,6 +390,7 @@ function createAgendaAdmin0417({
       publicTripProfileUuids0417: profiles,
       updatedAtMillis: Date.now(),
     }, { merge: true });
+    await touchAdminSession0417(session);
     await appendAdminAudit0417({
       driverUsername: session.driverUsername,
       actorId: session.actorId,
@@ -339,20 +407,39 @@ function createAgendaAdmin0417({
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
     const ref = db.collection("tripDrivers").doc(session.driverUsername);
-    const snap = await ref.get();
-    if (!snap.exists) return fail0417(res, 404, "driver_not_found", "Agenda não encontrada.");
-    const before = normalizeSyncPolicy0417(snap.data().adminSyncPolicy0417);
-    const policy = normalizeSyncPolicy0417(req.body);
+    const requested = normalizeSyncPolicy0417(req.body);
+    const requestId = adminOperationId0417(req);
+    const outcome = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return { missing: true, changed: false, before: requested };
+      const before = normalizeSyncPolicy0417(snap.data().adminSyncPolicy0417);
+      if (sameSyncPolicy0417(before, requested)) return { missing: false, changed: false, before };
+      tx.set(ref, {
+        adminSyncPolicy0417: requested,
+        updatedAtMillis: Date.now(),
+      }, { merge: true });
+      return { missing: false, changed: true, before };
+    });
+    if (outcome.missing) return fail0417(res, 404, "driver_not_found", "Agenda não encontrada.");
+    await touchAdminSession0417(session);
+    if (!outcome.changed) {
+      return json0417(res, 200, {
+        syncPolicy: outcome.before,
+        changed: false,
+        correlationId: "",
+        requestId,
+      });
+    }
     const correlationId = crypto.randomUUID();
-    await ref.set({ adminSyncPolicy0417: policy, updatedAtMillis: Date.now() }, { merge: true });
     await appendAdminAudit0417({
       driverUsername: session.driverUsername,
       actorId: session.actorId,
       eventType: "SYNC_POLICY_CHANGED",
       correlationId,
+      requestId,
       changes: [
-        { field: "automatic", before: String(before.automatic), after: String(policy.automatic) },
-        { field: "intervalMinutes", before: String(before.intervalMinutes), after: String(policy.intervalMinutes) },
+        { field: "automatic", before: String(outcome.before.automatic), after: String(requested.automatic) },
+        { field: "intervalMinutes", before: String(outcome.before.intervalMinutes), after: String(requested.intervalMinutes) },
       ],
     });
     await sendDriverBookingPush({
@@ -361,28 +448,60 @@ function createAgendaAdmin0417({
       tripToken: "",
       correlationId,
     });
-    return json0417(res, 200, { syncPolicy: policy, correlationId });
+    return json0417(res, 200, {
+      syncPolicy: requested,
+      changed: true,
+      correlationId,
+      requestId,
+    });
   }
 
   async function requestAdminSync0417(req, res, full) {
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
-    const correlationId = crypto.randomUUID();
     const event = full ? "admin_full_reconcile" : "admin_update_now";
-    await appendAdminAudit0417({
-      driverUsername: session.driverUsername,
-      actorId: session.actorId,
-      eventType: full ? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED",
-      correlationId,
-      result: "REQUESTED",
+    const eventType = full ? "ADMIN_FULL_RECONCILE_REQUESTED" : "ADMIN_UPDATE_NOW_REQUESTED";
+    const operationId = adminOperationId0417(req);
+    const claim = await claimAdminCommand0417({
+      session,
+      eventType,
+      operationId,
     });
-    await sendDriverBookingPush({
-      driverUsername: session.driverUsername,
-      event,
-      tripToken: "",
-      correlationId,
+    await touchAdminSession0417(session);
+    if (!claim.created) {
+      return json0417(res, 202, {
+        accepted: true,
+        replayed: true,
+        correlationId: claim.correlationId,
+        operation: event,
+        requestId: claim.requestId,
+      });
+    }
+    try {
+      await sendDriverBookingPush({
+        driverUsername: session.driverUsername,
+        event,
+        tripToken: "",
+        correlationId: claim.correlationId,
+      });
+      await claim.ref.set({
+        result: "REQUESTED",
+        dispatchedAtMillis: Date.now(),
+      }, { merge: true });
+    } catch (error) {
+      await claim.ref.set({
+        result: "ERROR",
+        dispatchFailedAtMillis: Date.now(),
+      }, { merge: true }).catch(() => {});
+      throw error;
+    }
+    return json0417(res, 202, {
+      accepted: true,
+      replayed: false,
+      correlationId: claim.correlationId,
+      operation: event,
+      requestId: claim.requestId,
     });
-    return json0417(res, 202, { accepted: true, correlationId, operation: event });
   }
 
   async function getDriverAdminSyncPolicy0417(req, res) {
@@ -554,9 +673,18 @@ function createAgendaAdmin0417({
       ? db.collection("passengerSessions").where("passengerId", "==", session.passengerId).limit(100)
       : db.collection("passengerSessions").where("contactHash", "==", session.contactHash).limit(100);
     const snap = await query.get();
+    const now = Date.now();
+    const expired = snap.docs.filter((doc) => Number(doc.data().expiresAtMillis || 0) <= now);
+    if (expired.length) {
+      const batch = db.batch();
+      expired.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+    }
+    const active = snap.docs.filter((doc) => Number(doc.data().expiresAtMillis || 0) > now);
     return json0417(res, 200, {
-      sessions: snap.docs.map((doc) => {
+      sessions: active.map((doc) => {
         const data = doc.data();
+        const contextHash = clean0417(data.sessionContextHash, 80);
         return {
           id: sha256Hex0417(doc.id).slice(0, 16),
           actorId: session.actorId,
@@ -564,6 +692,8 @@ function createAgendaAdmin0417({
           lastActivityAtMillis: Number(data.lastActivityAtMillis || data.createdAtMillis || 0),
           expiresAtMillis: Number(data.expiresAtMillis || 0),
           current: doc.id === session.sessionRefId,
+          sameContext: Boolean(session.sessionContextHash && contextHash === session.sessionContextHash),
+          legacyContext: !contextHash,
         };
       }).sort((a, b) => b.lastActivityAtMillis - a.lastActivityAtMillis),
     });
@@ -592,6 +722,7 @@ module.exports = {
   createAgendaAdmin0417,
   normalizeProfileScope0417,
   normalizeSyncPolicy0417,
+  sameSyncPolicy0417,
   safeVisibility0417,
   redact0417,
   activeAdminTrips0417,
