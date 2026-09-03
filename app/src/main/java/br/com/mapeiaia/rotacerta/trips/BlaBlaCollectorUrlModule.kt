@@ -120,7 +120,7 @@ internal object BlaBlaCollectorUrlModule {
     ): String? {
         val expected = expectedAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
         val bound = boundAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
-        if (!expected.equals(bound, ignoreCase = true)) return null
+        if (expected != bound) return null
         val value = canonicalPublicTripPromotingOfficialHttp(raw) ?: return null
         val actualPublicId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
         if (!STABLE_EXTERNAL_ID.matches(actualPublicId)) return null
@@ -164,19 +164,28 @@ internal object BlaBlaCollectorUrlModule {
         return promoted.takeIf { publicTrip(it, null) != null }
     }
 
-    private fun parseOfficialHttpOrHttps(raw: String?): URI? = runCatching {
-        URI(absolute(raw))
-    }.getOrNull()?.takeIf { uri ->
-        val https = uri.scheme.equals("https", ignoreCase = true)
-        val http = uri.scheme.equals("http", ignoreCase = true)
-        (https || http) &&
-            isOfficialBlaBlaHost(uri.host) &&
-            uri.rawUserInfo == null &&
-            when {
-                https -> uri.port in setOf(-1, 443)
-                http -> uri.port in setOf(-1, 80)
-                else -> false
-            }
+    private fun parseOfficialHttpOrHttps(raw: String?): URI? {
+        val value = raw?.trim().orEmpty()
+        val absoluteValue = when {
+            value.startsWith("//") -> "https:$value"
+            value.startsWith("https://", ignoreCase = true) -> value
+            value.startsWith("http://", ignoreCase = true) -> value
+            else -> return null
+        }
+        return runCatching {
+            URI(absoluteValue)
+        }.getOrNull()?.takeIf { uri ->
+            val https = uri.scheme.equals("https", ignoreCase = true)
+            val http = uri.scheme.equals("http", ignoreCase = true)
+            (https || http) &&
+                isOfficialBlaBlaHost(uri.host) &&
+                uri.rawUserInfo == null &&
+                when {
+                    https -> uri.port in setOf(-1, 443)
+                    http -> uri.port in setOf(-1, 80)
+                    else -> false
+                }
+        }
     }
 
     const val PUBLIC_TRIP_BINDING_SAME_ID = "same_trip_id"
