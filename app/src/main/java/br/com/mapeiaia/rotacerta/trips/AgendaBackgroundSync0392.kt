@@ -1996,6 +1996,15 @@ internal object AgendaBackgroundSync0392 {
     ): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        if (reason == "blablacar_collection_result") {
+            val collectorMutex = collectorDeltaMutexes0431.computeIfAbsent(tenantId) { Mutex() }
+            return collectorMutex.withLock {
+                runCollectorCardDelta0431(
+                    appContext = appContext,
+                    tenantId = tenantId,
+                )
+            }
+        }
         val targetRemoteTripId = bookingTargetRemoteTripId0431.trim()
         if (
             agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.BOOKING_EVENT &&
