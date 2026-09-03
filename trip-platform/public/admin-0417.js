@@ -213,7 +213,9 @@
   function renderSessions0417(sessions) {
     const list = Array.isArray(sessions) ? sessions : [];
     byId("adminSessions0417").innerHTML = list.length
-      ? list.map((item) => '<div class="adminLogItem0417"><strong>'+(item.current ? "Esta sessão" : "Sessão administrativa")+
+      ? list.map((item) => '<div class="adminLogItem0417"><strong>'+(
+          item.current ? "Esta sessão" : (item.legacyContext ? "Sessão anterior (legada)" : "Outra sessão")
+        )+
           '</strong><small>Início '+fmt0417(item.createdAtMillis)+' • última atividade '+fmt0417(item.lastActivityAtMillis)+
           ' • expira '+fmt0417(item.expiresAtMillis)+'</small></div>').join("")
       : '<p class="muted">Nenhuma sessão ativa.</p>';
