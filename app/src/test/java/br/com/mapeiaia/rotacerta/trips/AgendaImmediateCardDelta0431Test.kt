@@ -51,8 +51,8 @@ class AgendaImmediateCardDelta0431Test {
         assertTrue(background.contains("canonicalTripIds = batch.publicationCanonicalTripIds0431"))
         assertTrue(background.contains("collectorDeltaMutexes0431"))
         assertTrue(collector.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431"))
-        assertTrue(collector.contains("account_${normalizedResult.lowercase()}"))
-        assertTrue(collector.contains("run_terminal:$result"))
+        assertTrue(collector.contains("account_\\${normalizedResult.lowercase()}"))
+        assertTrue(collector.contains("run_terminal:\\$result"))
     }
 
     @Test
