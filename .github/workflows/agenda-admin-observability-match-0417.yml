@@ -1,19 +1,19 @@
-name: Rota Certa Agenda admin session determinism 0.1.427
+name: Rota Certa Agenda authentication toggle 0.1.427
 
 on:
   push:
     branches:
-      - agent/agenda-admin-session-determinism-0.1.427-r2
+      - agent/agenda-authentication-toggle-0.1.428
   pull_request:
     branches:
-      - agent/blablacar-temporary-restriction-0.1.426
+      - agent/agenda-admin-session-determinism-0.1.427-r2
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-admin-session-0427-${{ github.ref }}
+  group: agenda-authentication-toggle-0428-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 80
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0427_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0428_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=61dccc4878f37b6c95e29986ee6e13db2ce4da7b
+          BASE=08247d31b17962544cc2e98c2547821a21f07284
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
@@ -180,7 +180,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke live admin session determinism
+      - name: Smoke live Agenda authentication toggle
         shell: bash
         run: |
           set -euo pipefail
@@ -190,29 +190,33 @@ jobs:
           BUST="$(date +%s%N)"
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=$BUST" -o /tmp/live-admin.js
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
           grep -Fq '__rotaCertaAgendaAdminBound0427' /tmp/live-admin.js
           grep -Fq 'X-Rota-Certa-Operation-Id' /tmp/live-admin.js
           grep -Fq 'rotacerta-passenger-session-context-0427' /tmp/live-app.js
+          grep -Fq 'adminAuthenticationRequired0428' /tmp/live-admin.js
+          grep -Fq 'agendaAuthenticationRequired0428' /tmp/live-app.js
+          grep -Fq 'Exigir autenticação na Agenda' /tmp/live-index.html
           CODE="$(curl --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
           test "$CODE" = "401" -o "$CODE" = "400"
-          echo "LIVE_ADMIN_SESSION_0427=PASS"
+          echo "LIVE_AGENDA_AUTH_TOGGLE_0428=PASS"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0427
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0427/rota-certa-0.1.427-admin-session-determinism.apk
-          cp /tmp/source-head.txt /tmp/0427/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0427/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0427/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0427/apk.sha256
-          cp /tmp/aapt.txt /tmp/0427/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0427/apksigner.txt
+          mkdir -p /tmp/0428
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0428/rota-certa-0.1.427-agenda-authentication-toggle.apk
+          cp /tmp/source-head.txt /tmp/0428/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0428/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0428/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0428/apk.sha256
+          cp /tmp/aapt.txt /tmp/0428/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0428/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.427-admin-session-determinism-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.427-agenda-authentication-toggle-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0427
+          path: /tmp/0428
