@@ -10,9 +10,10 @@ import org.junit.Test
 
 class BlaBlaNetworkDiagnosticRecorderTest {
     @Test
-    fun bridgeAcceptsOnlyTheExactBlaBlaCarPageOrigin() {
+    fun bridgeAcceptsOfficialRegionalBlaBlaCarOriginsAndRejectsForgedHosts() {
         assertTrue(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://www.blablacar.com.br"))
-        assertTrue(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://www.blablacar.com.br/"))
+        assertTrue(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://www.blablacar.fr/"))
+        assertTrue(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://www.blablacar.co.uk"))
         assertFalse(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("http://www.blablacar.com.br"))
         assertFalse(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://evil.blablacar.com.br"))
         assertFalse(BlaBlaNetworkDiagnosticPolicy.isAllowedPageOrigin("https://www.blablacar.com.br.evil.test"))
@@ -101,7 +102,13 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("XMLHttpRequest.prototype.send"))
         assertTrue(script.contains("bridge.postMessage"))
         assertTrue(script.contains("__rotaCertaNetworkTripSource"))
-        assertTrue(script.contains("rememberNetworkTripSources(parsed)"))
+        assertTrue(script.contains("rememberNetworkTripSources(parsed, endpoint)"))
+        assertTrue(script.contains("structuredShareCandidates"))
+        assertTrue(script.contains("publicTripHref"))
+        assertTrue(script.contains("publicTripHrefBinding: 'network_authoritative'"))
+        assertTrue(script.contains("publicTripHrefJsonPath"))
+        assertTrue(script.contains("subtreeContainsExactScalar"))
+        assertFalse(script.contains("navigator.share"))
         assertTrue(script.contains("trip_offer_encrypted_id"))
         assertTrue(script.contains("root.waypoints"))
         assertTrue(script.contains("waypointsComplete"))
