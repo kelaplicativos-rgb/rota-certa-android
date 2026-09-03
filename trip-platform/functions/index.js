@@ -718,7 +718,83 @@ function normalizeStops(rawStops) {
   return stops;
 }
 
-function normalizeDriverTrip(raw, previous = null) {
+function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw, recordsRaw) {
+  const previousStops = Array.isArray(previousStopsRaw) ? previousStopsRaw : [];
+  const nextStops = Array.isArray(nextStopsRaw) ? nextStopsRaw : [];
+  const records = Array.isArray(recordsRaw) ? recordsRaw : [];
+  const previousIds = previousStops.map((stop) => cleanText(stop && stop.id, 80));
+  const nextIds = nextStops.map((stop) => cleanText(stop && stop.id, 80));
+  if (previousIds.join("|") === nextIds.join("|")) {
+    return { changed: false, records, changes: [] };
+  }
+  if (
+    previousStops.length !== 2 ||
+    nextStops.length < 2 ||
+    previousIds.some((id) => !id) ||
+    nextIds.some((id) => !id)
+  ) {
+    throw Object.assign(
+      new Error("A migração canônica de paradas não é segura para esta estrutura."),
+      { httpStatus: 409, code: "canonical_stop_shape_migration_unsafe" },
+    );
+  }
+  const oldFirst = previousIds[0];
+  const oldLast = previousIds[1];
+  const newFirst = nextIds[0];
+  const newLast = nextIds[nextIds.length - 1];
+  const nextIdSet = new Set(nextIds);
+
+  const mapStopId = (rawId) => {
+    const id = cleanText(rawId, 80);
+    if (!id) return "";
+    if (nextIdSet.has(id)) return id;
+    if (id === oldFirst) return newFirst;
+    if (id === oldLast) return newLast;
+    throw Object.assign(
+      new Error("Reserva existente referencia uma parada que não pode ser migrada com segurança."),
+      { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+    );
+  };
+
+  const changes = [];
+  const migrated = records.map((record) => {
+    if (!record) return record;
+    const oldBoarding = cleanText(record.boardingStopId, 80);
+    const oldDropoff = cleanText(record.dropoffStopId, 80);
+    if (!oldBoarding && !oldDropoff) return record;
+    if (!oldBoarding || !oldDropoff) {
+      throw Object.assign(
+        new Error("Reserva existente possui trecho incompleto e não pode ser migrada automaticamente."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+    const boardingStopId = mapStopId(oldBoarding);
+    const dropoffStopId = mapStopId(oldDropoff);
+    const fromIndex = nextIds.indexOf(boardingStopId);
+    const toIndex = nextIds.indexOf(dropoffStopId);
+    if (fromIndex < 0 || toIndex <= fromIndex) {
+      throw Object.assign(
+        new Error("A migração canônica alteraria o sentido do trecho de uma reserva existente."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+    if (boardingStopId === oldBoarding && dropoffStopId === oldDropoff) return record;
+    const updated = {
+      ...record,
+      boardingStopId,
+      dropoffStopId,
+    };
+    changes.push({
+      id: cleanText(record.id, 120),
+      boardingStopId,
+      dropoffStopId,
+    });
+    return updated;
+  });
+  return { changed: true, records: migrated, changes };
+}
+
+function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false) {
   const capacity = Number(raw.capacity);
   if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
   const departureAtMillis = Number(raw.departureAtMillis);
@@ -729,7 +805,7 @@ function normalizeDriverTrip(raw, previous = null) {
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
-    if (oldStopIds !== newStopIds) {
+    if (oldStopIds !== newStopIds && !allowBookedStopShapeMigration0439) {
       throw new Error("A estrutura de paradas não pode mudar depois da primeira reserva.");
     }
   }
@@ -6665,10 +6741,31 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         };
       }
 
+      const previousStopIds0439 = (previous.stops || []).map((stop) => cleanText(stop && stop.id, 80)).join("|");
+      const incomingStops0439 = normalizeStops(rawTrip.stops);
+      const incomingStopIds0439 = incomingStops0439.map((stop) => stop.id).join("|");
+      const previousBlaBlaTripId0439 = cleanText(previous.blablaTripId, 160);
+      const incomingBlaBlaTripId0439 = cleanText(rawTrip && rawTrip.blablaTripId, 160);
+      const previousProfileUuid0439 = cleanText(previous.blablaProfileUuid, 160);
+      const incomingProfileUuid0439 = cleanText(rawTrip && rawTrip.blablaProfileUuid, 160);
+      const sameStrongExternalIdentity0439 =
+        Boolean(previousBlaBlaTripId0439) &&
+        previousBlaBlaTripId0439 === incomingBlaBlaTripId0439 &&
+        (!previousProfileUuid0439 || previousProfileUuid0439 === incomingProfileUuid0439);
+      const bookedStopShapeMigrationAuthorized0439 =
+        Number(previous.bookingsCount || 0) > 0 &&
+        previousStopIds0439 !== incomingStopIds0439 &&
+        deterministicRequest &&
+        sameStrongExternalIdentity0439 &&
+        Boolean(incomingPublicProjection0434) &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        Boolean(canonicalTripId) &&
+        cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId;
+
       const normalized = normalizeDriverTrip({
         ...rawTrip,
         capacityReliable: preserveManagedClaims0436 ? rawTrip.capacityReliable === true : true,
-      }, previous);
+      }, previous, bookedStopShapeMigrationAuthorized0439);
       const candidateTrip = {
         ...previous,
         ...normalized,
@@ -6684,6 +6781,10 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
 
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const stopShapeMigration0439 = bookedStopShapeMigrationAuthorized0439
+        ? canonicalEndpointStopShapeMigration0439(previous.stops, candidateTrip.stops, records)
+        : { changed: false, records, changes: [] };
+      const migratedRecords0439 = stopShapeMigration0439.records;
       const now = Date.now();
       const protectedIds = new Set();
       const protectedChanges = [];
@@ -6692,7 +6793,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         const id = cleanText(raw && raw.id, 120).replace(/[^A-Za-z0-9_-]/g, "");
         if (!id || protectedIds.has(id)) throw Object.assign(new Error("Identificador de reserva protegida inválido ou duplicado."), { httpStatus: 409, code: "invalid_protected_booking_id" });
         protectedIds.add(id);
-        const previousBooking = records.find((record) => record.id === id) || null;
+        const previousBooking = migratedRecords0439.find((record) => record.id === id) || null;
         const normalizedProtected = normalizeProtectedSnapshotBooking(raw || {}, candidateTrip, previousBooking);
         const changes = [
           ...bookingRelevantChanges(previousBooking, normalizedProtected),
@@ -6709,7 +6810,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         protectedById.set(id, updatedProtected);
         if (changes.length) protectedChanges.push({ id, previous: previousBooking, updated: updatedProtected, changes });
       });
-      const recordsWithProtected = records.map((record) => protectedById.get(record.id) || record);
+      const recordsWithProtected = migratedRecords0439.map((record) => protectedById.get(record.id) || record);
 
       const desiredIds = new Set();
       const desiredClaims = preserveManagedClaims0436 ? [] : rawClaims.map((raw) => {
@@ -6832,6 +6933,18 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
 
       const protectedEventIds = [];
       const protectedRefundIds = [];
+      stopShapeMigration0439.changes.forEach((migration) => {
+        if (!migration.id) return;
+        tx.set(
+          tripRef.collection("bookings").doc(migration.id),
+          {
+            boardingStopId: migration.boardingStopId,
+            dropoffStopId: migration.dropoffStopId,
+            updatedAtMillis: now,
+          },
+          { merge: true },
+        );
+      });
       protectedChanges.forEach(({ id, previous: previousBooking, updated: updatedProtected, changes }) => {
         const persisted = { ...updatedProtected };
         delete persisted.id;
@@ -6900,6 +7013,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         canonicalTripId: deterministicRequest && canonicalTripId ? canonicalTripId : cleanText(previous.canonicalTripId, 180),
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
+        canonicalStopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
+        canonicalStopShapeMigratedAtMillis0439: stopShapeMigration0439.changed ? now : Number(previous.canonicalStopShapeMigratedAtMillis0439 || 0),
         updatedAtMillis: now,
         publicCommittedAt0422: FieldValue.serverTimestamp(),
       });
@@ -6917,6 +7032,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         occupancyRevision,
         snapshotOverbooked,
         refundBookingIds: protectedRefundIds,
+        stopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
       };
     });
     for (const bookingId of (result.refundBookingIds || [])) {
@@ -6935,6 +7051,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       stale: result.stale === true,
       logicalReplay: result.logicalReplay === true,
       snapshotOverbooked: result.snapshotOverbooked === true,
+      stopShapeMigrationCount0439: Math.max(0, Number(result.stopShapeMigrationCount0439 || 0)),
     });
   } catch (error) {
     return fail(
