@@ -261,6 +261,9 @@ internal fun evaluatePublicMirrorReadback0411(
 internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
+        publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+        publicMirrorLastReadbackAtMillis0421 > 0L &&
+        publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&
         publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
 
