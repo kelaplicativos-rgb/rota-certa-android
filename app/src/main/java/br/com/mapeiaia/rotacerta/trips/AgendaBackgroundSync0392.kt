@@ -1743,27 +1743,24 @@ internal object AgendaBackgroundSync0392 {
             attributable && canonical.none { trip -> remoteMatchesCanonicalProjection0408(trip, remote) }
         }
         orphanStates.forEach { orphan ->
-            val destructiveAllowed = remoteProjectionWithinCompleteScope0408(
-                orphan,
-                completeCoverage,
-                completeProfileUuids,
-            )
+            // The public mirror converges against the same TripStore snapshot that feeds the
+            // Timeline. Collector coverage may decide whether an external trip is removed
+            // from TripStore, but it must not keep a public projection alive after that.
             UnifiedDebugEventStore.record(
-                "PROJECTION_ORPHAN_DETECTED_0408",
+                "PROJECTION_ORPHAN_DETECTED_0429",
                 context.applicationContext.packageName,
                 "remoteTripId=" + orphan.remoteTripId +
                     " canonicalTripId=" + orphan.canonicalTripId +
                     " profileUuid=" + orphan.blablaProfileUuid +
                     " blablaTripId=" + orphan.blablaTripId +
-                    " coverage=" + (completeCoverage?.status ?: "UNKNOWN") +
-                    " destructiveAllowed=" + destructiveAllowed,
+                    " authority=CANONICAL_TRIP_STORE" +
+                    " destructiveAllowed=true",
             )
             if (
                 repair &&
-                destructiveAllowed &&
                 coordinator.recordProjectionTombstone0408(
                     remote = orphan,
-                    mutationType = "COMPLETE_SCOPE_ORPHAN_PROJECTION",
+                    mutationType = "CANONICAL_PUBLIC_ORPHAN",
                 ) != null
             ) repairQueued++
         }
