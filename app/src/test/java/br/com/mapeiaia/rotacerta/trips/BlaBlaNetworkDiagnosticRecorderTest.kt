@@ -108,6 +108,33 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("publicTripHrefBinding: 'network_authoritative'"))
         assertTrue(script.contains("publicTripHrefJsonPath"))
         assertTrue(script.contains("objectHasDirectAdministrativeTripId"))
+        assertTrue(script.contains("const pending = [{ value: parsed, depth: 0, path: '
+        assertTrue(script.contains("trip_offer_encrypted_id"))
+        assertTrue(script.contains("root.waypoints"))
+        assertTrue(script.contains("waypointsComplete"))
+        assertTrue(script.contains("pickup_waypoint"))
+        assertTrue(script.contains("dropoff_waypoint"))
+        assertEquals(1, script.windowCount("window.fetch = function"))
+        assertEquals(1, script.windowCount("XMLHttpRequest.prototype.send = function"))
+        assertFalse(script.contains("document."))
+        assertFalse(script.contains("querySelector"))
+        assertFalse(script.contains("localStorage"))
+        assertFalse(script.contains("sessionStorage"))
+        assertFalse(script.contains("document.cookie"))
+        assertFalse(script.contains("getAllResponseHeaders"))
+        assertFalse(script.contains("request.headers"))
+        assertFalse(script.contains("args[1].body"))
+    }
+
+    private fun String.windowCount(needle: String): Int = windowed(needle.length)
+        .count { value -> value == needle }
+}
+ }];"))
+        assertTrue(script.contains("objectHasDirectAdministrativeTripId(value, tripId)"))
+        assertTrue(script.contains("if (unique.length === 1)"))
+        assertFalse(script.contains("path: '          function sourceWaypoint"))
+        assertEquals(1, script.windowCount("function rememberStructuredShareForCurrentTrip(parsed, endpoint)"))
+        assertEquals(1, script.windowCount("function sourceWaypoint(rawValue)"))
         assertFalse(script.contains("navigator.share"))
         assertTrue(script.contains("trip_offer_encrypted_id"))
         assertTrue(script.contains("root.waypoints"))
