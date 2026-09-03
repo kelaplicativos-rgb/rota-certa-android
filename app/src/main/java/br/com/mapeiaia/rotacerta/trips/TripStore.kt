@@ -92,6 +92,18 @@ class TripStore(context: Context) {
         reason: String,
         readbackLatencyMillis: Long,
         publicUrlFromReadback: String? = null,
+        publicIdentityFromReadback0421: String = "",
+        readbackCanonicalRevision0421: Long = 0L,
+        readbackPublicationRevision0421: Long = 0L,
+        evidenceId0421: String = "",
+        traceId0421: String = "",
+        expectedBytes0421: Int = 0,
+        actualBytes0421: Int = 0,
+        firstDifferentByteOffset0421: Int = -1,
+        differentByteRanges0421: List<String> = emptyList(),
+        httpStatus0421: Int = 0,
+        backendErrorCode0421: String = "",
+        readbackAtMillis0421: Long = 0L,
         nowMillis: Long = System.currentTimeMillis(),
     ): Trip? = synchronized(CANONICAL_LOCK) {
         val current = trips()
@@ -116,6 +128,18 @@ class TripStore(context: Context) {
             publicMirrorReadbackLatencyMillis0411 = readbackLatencyMillis.coerceAtLeast(0L),
             publicMirrorAttestationReason0411 = reason.take(160),
             publicMirrorMismatchFields0411 = mismatchFields.distinct().take(24),
+            publicMirrorReadbackCanonicalRevision0421 = readbackCanonicalRevision0421.coerceAtLeast(0L),
+            publicMirrorReadbackPublicationRevision0421 = readbackPublicationRevision0421.coerceAtLeast(0L),
+            publicMirrorPublicIdentity0421 = publicIdentityFromReadback0421.take(180),
+            publicMirrorLastReadbackAtMillis0421 = readbackAtMillis0421.coerceAtLeast(0L),
+            publicMirrorEvidenceId0421 = evidenceId0421.take(80),
+            publicMirrorTraceId0421 = traceId0421.take(120),
+            publicMirrorExpectedBytes0421 = expectedBytes0421.coerceAtLeast(0),
+            publicMirrorActualBytes0421 = actualBytes0421.coerceAtLeast(0),
+            publicMirrorFirstDifferentByteOffset0421 = firstDifferentByteOffset0421,
+            publicMirrorDifferentByteRanges0421 = differentByteRanges0421.distinct().take(12),
+            publicMirrorHttpStatus0421 = httpStatus0421.coerceAtLeast(0),
+            publicMirrorBackendErrorCode0421 = backendErrorCode0421.take(80),
         )
         if (updated != existing) persistCanonicalTrip0406(updated, current)
         updated
