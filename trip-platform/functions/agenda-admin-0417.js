@@ -590,4 +590,6 @@ module.exports = {
   normalizeSyncPolicy0417,
   safeVisibility0417,
   redact0417,
+  activeAdminTrips0417,
+  validatedBlaBlaPublicUrl0417,
 };
