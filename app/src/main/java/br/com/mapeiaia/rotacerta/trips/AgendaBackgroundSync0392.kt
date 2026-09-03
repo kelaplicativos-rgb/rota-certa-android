@@ -200,6 +200,8 @@ internal fun targetedReverifyRemoteLogicalAhead0439(
 ): Boolean =
     remoteCanonicalRevision > canonicalRevision.coerceAtLeast(0L)
 
+internal const val CARD_PUBLIC_URL_TARGET_TIMEOUT_MS_0442 = 45_000L
+
 internal data class AgendaBackgroundSyncStatus0397(
     val enabled: Boolean,
     val intervalMinutes: Long,
@@ -1149,6 +1151,7 @@ internal object AgendaBackgroundSync0392 {
                 target = target,
                 commandId = work.commandId,
                 origin = "card_verify_missing_public_url_0442",
+                timeoutMillis = CARD_PUBLIC_URL_TARGET_TIMEOUT_MS_0442,
             )
             if (acquisition.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
                 return acquisition

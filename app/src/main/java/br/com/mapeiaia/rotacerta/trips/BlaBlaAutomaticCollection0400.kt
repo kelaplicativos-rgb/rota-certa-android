@@ -58,6 +58,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         target: BlaBlaTripTarget0407,
         commandId: String,
         origin: String,
+        timeoutMillis: Long = HEADLESS_TARGET_TIMEOUT_MS_0407,
     ): BlaBlaCommandResult0407 {
         val appContext = context.applicationContext
         val startedAt = System.currentTimeMillis()
@@ -127,15 +128,16 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 appContext.packageName,
                 "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} found=${before != null} transport=HYBRID",
             )
+            val effectiveTimeoutMillis = timeoutMillis.coerceIn(5_000L, HEADLESS_TARGET_TIMEOUT_MS_0407)
             val hostResult = try {
-                withTimeout(HEADLESS_TARGET_TIMEOUT_MS_0407) {
+                withTimeout(effectiveTimeoutMillis) {
                     runTargetTripHeadless0407(appContext, account, target, origin)
                 }
             } catch (timeout: TimeoutCancellationException) {
                 UnifiedDebugEventStore.record(
                     "FAILED",
                     appContext.packageName,
-                    "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP error=TIMEOUT timeoutMs=$HEADLESS_TARGET_TIMEOUT_MS_0407",
+                    "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP error=TIMEOUT timeoutMs=$effectiveTimeoutMillis",
                 )
                 return@withLock BlaBlaCommandResult0407(
                     commandId = commandId,

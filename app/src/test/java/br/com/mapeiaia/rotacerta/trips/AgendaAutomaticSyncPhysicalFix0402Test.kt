@@ -47,10 +47,13 @@ class AgendaAutomaticSyncPhysicalFix0402Test {
     }
 
     @Test
-    fun cardVerifyCannotOwnFiveMinuteBlablacarHeadlessSession() {
+    fun cardVerifyAcquiresOnlyMissingPublicUrlWithBoundedHeadlessSession() {
         assertTrue(background.contains("reverifyCanonicalMirror0435"))
         assertTrue(background.contains("PublicMirrorAttestationCoordinator0411.attest"))
-        assertFalse(background.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(background.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
+        assertTrue(background.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(background.contains("timeoutMillis = CARD_PUBLIC_URL_TARGET_TIMEOUT_MS_0442"))
+        assertTrue(CARD_PUBLIC_URL_TARGET_TIMEOUT_MS_0442 <= 45_000L)
         assertTrue(background.contains("STALE_DURABLE_WORK_0435"))
         assertTrue(background.contains("val targetedRetryable = false"))
     }
