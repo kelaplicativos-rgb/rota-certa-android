@@ -135,7 +135,10 @@ class AgendaCanonicalProjectionConvergence0408Test {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
         assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
-        assertTrue(outbox.contains("remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED"))
+        assertTrue(outbox.contains("remoteProjectionDivergenceObserved &&"))
+        assertTrue(outbox.contains("sameLogicalSnapshot &&"))
+        assertTrue(outbox.contains("latest?.status == TripPublicationStatus0387.DELIVERED"))
+        assertTrue(outbox.contains("return replay"))
         assertFalse(outbox.contains("class ProjectionPublicationOutbox0410"))
     }
 
