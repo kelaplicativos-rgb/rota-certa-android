@@ -4631,7 +4631,12 @@ async function loginPassengerAccount(req, res) {
     }, { merge: true });
   }
 
-  const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId);
+  const session = await createPassengerSession(
+    passengerContact,
+    passengerId,
+    req.body && req.body.sessionContextId,
+    authenticationRequired ? "" : driverUsername,
+  );
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
