@@ -477,6 +477,20 @@ internal object BlaBlaCapabilityRegistry0407 {
 internal fun resolveBlaBlaTripTarget0407(
     context: Context,
     entry: TripTimelineEntry,
+): BlaBlaTripTarget0407? = resolveBlaBlaTripTarget0407(
+    context = context,
+    entry = entry,
+    accounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list(),
+)
+
+/**
+ * Composition-safe overload. The caller may preload the dynamic-account registry once
+ * for the whole Timeline instead of decoding it again for every LazyColumn card.
+ */
+internal fun resolveBlaBlaTripTarget0407(
+    context: Context,
+    entry: TripTimelineEntry,
+    accounts: List<BlaBlaDynamicAccount>,
 ): BlaBlaTripTarget0407? {
     val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId.trim()
     val profileUuid = canonicalTimelineProfileUuid(entry)?.trim()?.lowercase().orEmpty()
@@ -484,7 +498,7 @@ internal fun resolveBlaBlaTripTarget0407(
     val tripHref = entry.blablaTripHref?.trim().orEmpty()
     if (tenantId.isBlank() || profileUuid.isBlank() || tripId.isBlank() || tripHref.isBlank()) return null
     if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return null
-    val matchingAccounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list().filter { account ->
+    val matchingAccounts = accounts.filter { account ->
         account.profileUuid?.trim()?.lowercase() == profileUuid
     }
     if (matchingAccounts.size != 1) return null
