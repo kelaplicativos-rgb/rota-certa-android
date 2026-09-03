@@ -116,6 +116,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 traceId0421 = traceId,
                 httpStatus0421 = remoteError?.httpStatus ?: 0,
                 backendErrorCode0421 = remoteError?.backendErrorCode.orEmpty(),
+                failedStage0421 = "PUBLIC_READBACK_RESPONSE",
                 readbackAtMillis0421 = nowMillis,
             )
             evidence(
@@ -230,6 +231,12 @@ internal object PublicMirrorAttestationCoordinator0411 {
             actualBytes0421 = diff.actualLength,
             firstDifferentByteOffset0421 = diff.firstDifferentByteOffset,
             differentByteRanges0421 = diff.differentByteRanges,
+            failedStage0421 = when {
+                !decision.identityValid -> "IDENTITY_COMPARE"
+                !decision.revisionValid -> "REVISION_COMPARE"
+                decision.state != PublicMirrorAttestationState0411.VALIDATED -> "STATE_COMPARE"
+                else -> ""
+            },
             readbackAtMillis0421 = nowMillis,
             nowMillis = nowMillis,
         )
