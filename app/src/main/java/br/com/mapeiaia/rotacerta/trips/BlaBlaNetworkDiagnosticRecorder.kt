@@ -796,7 +796,56 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           function rememberStructuredShareForCurrentTrip(parsed, endpoint) {
             const tripId = currentAdministrativeTripId();
             if (!tripId || !parsed || typeof parsed !== 'object') return;
-            const pending = [{ value: parsed, depth: 0, path: '          function sourceWaypoint(rawValue) {
+            const pending = [{ value: parsed, depth: 0, path: '$' }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 160) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+
+              if (!Array.isArray(value) && objectHasDirectAdministrativeTripId(value, tripId)) {
+                const shares = structuredShareCandidates(value, current.path, 0, new WeakSet());
+                const unique = [];
+                shares.forEach(function(item) {
+                  if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) {
+                    unique.push(item);
+                  }
+                });
+                if (unique.length === 1) {
+                  mergeTripSource(tripId, {
+                    publicTripHref: unique[0].candidate.href,
+                    publicTripHrefSource: 'network_structured',
+                    publicTripHrefBinding: 'network_authoritative',
+                    publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                    publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+                  });
+                  return;
+                }
+              }
+
+              if (current.depth >= 5) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 32).forEach(function(child, index) {
+                  if (child && typeof child === 'object') {
+                    pending.push({ value: child, depth: current.depth + 1, path: current.path + '[' + index + ']' });
+                  }
+                });
+              } else {
+                Object.keys(value).slice(0, 64).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') {
+                    pending.push({ value: child, depth: current.depth + 1, path: current.path + '.' + key });
+                  }
+                });
+              }
+            }
+          }
+
+          function sourceWaypoint(rawValue) {
             const waypoint = sourceObject(rawValue);
             const place = sourceObject(waypoint.place);
             const address = sourceText(place.address || waypoint.address || waypoint.secondary_text, 500);
