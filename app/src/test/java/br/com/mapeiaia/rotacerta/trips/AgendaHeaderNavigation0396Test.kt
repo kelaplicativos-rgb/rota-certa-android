@@ -87,7 +87,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(publicSearch.contains("if (showTitle)"))
         assertTrue(activity.contains("showTitle = false"))
         assertTrue(activity.contains("TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410("))
-        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()"))
+        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
         assertTrue(activity.contains("TripScreen.NOTIFICATIONS -> {"))
     }
 
