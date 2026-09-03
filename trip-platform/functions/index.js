@@ -1017,8 +1017,12 @@ function canonicalPublicStop0411(raw, index) {
     order: Number.isInteger(Number(stop.order)) ? Number(stop.order) : index,
     name: cleanText(stop.name, 160),
     address: cleanText(stop.address, 300),
-    plannedArrivalMillis: Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null,
-    plannedDepartureMillis: Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null,
+    plannedArrivalMillis: stop.plannedArrivalMillis == null
+      ? null
+      : (Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null),
+    plannedDepartureMillis: stop.plannedDepartureMillis == null
+      ? null
+      : (Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null),
   };
 }
 
