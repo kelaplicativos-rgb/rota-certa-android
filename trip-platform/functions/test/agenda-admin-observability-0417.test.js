@@ -9,6 +9,7 @@ const {
   normalizeProfileScope0417,
   normalizeSyncPolicy0417,
   sameSyncPolicy0417,
+  authenticationRequired0417,
   safeVisibility0417,
   redact0417,
   activeAdminTrips0417,
@@ -204,4 +205,33 @@ test("admin browser binds once and keeps each mutating control single-flight", (
   assert.match(browser, /operationId = newAdminOperationId0427\("update_now"\)/);
   assert.match(browser, /operationId = newAdminOperationId0427\("reconcile"\)/);
   assert.match(browser, /result\.changed === false/);
+});
+
+
+test("Agenda authentication requirement defaults on and can be explicitly disabled per driver", () => {
+  assert.equal(authenticationRequired0417({}), true);
+  assert.equal(authenticationRequired0417({ agendaAuthenticationRequired0428: true }), true);
+  assert.equal(authenticationRequired0417({ agendaAuthenticationRequired0428: false }), false);
+});
+
+test("0.1.428 open mode removes public and admin login gates without creating a second session store", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
+  const app = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
+
+  assert.match(source, /function agendaAuthenticationRequired0428/);
+  assert.match(source, /passwordBypassed: !authenticationRequired/);
+  assert.match(source, /sessionType: tester \? "TESTER" : \(authenticationRequired \? "PASSENGER" : "OPEN"\)/);
+  assert.match(admin, /agendaAuthenticationRequired0428/);
+  assert.match(admin, /actorId: "agenda-open-0428"/);
+  assert.match(browser, /adminAuthenticationRequired0428/);
+  assert.match(browser, /token \? \{ "Authorization": "Bearer " \+ token \} : \{\}/);
+  assert.match(app, /Continuar sem senha/);
+  assert.match(app, /authentication_disabled/);
+  assert.match(html, /Exigir autenticação na Agenda/);
+
+  assert.equal((source.match(/db\.collection\("passengerSessions"\)/g) || []).length > 0, true);
+  assert.doesNotMatch(source, /openPassengerSessions|noAuthSessions|bypassSessions/);
 });
