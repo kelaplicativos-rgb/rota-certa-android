@@ -110,7 +110,7 @@ class BlaBlaNetworkPublicLink0423Test {
         publicTripHrefSource = "network_structured",
         publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
         publicTripHrefEndpoint = "https://api.blablacar.com/ride/v3",
-        publicTripHrefJsonPath = "$.tripConditions[0].tripActions.actions[0].share.url",
+        publicTripHrefJsonPath = "\$.tripConditions[0].tripActions.actions[0].share.url",
     )
 
     private fun source(adminId: String, publicHref: String) = BlaBlaCollectorTrip(
