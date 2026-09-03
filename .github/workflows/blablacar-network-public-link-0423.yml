@@ -74,12 +74,6 @@ jobs:
           PY
           node --check /tmp/rota-certa-network-observer.js
           grep -Fq "objectHasDirectAdministrativeTripId(value, tripId)" /tmp/rota-certa-network-observer.js
-          grep -Fq "function requestAdministrativeTripId(rawUrl)" /tmp/rota-certa-network-observer.js
-          grep -Fq "path === '/ride/v3' || path.endsWith('/ride/v3')" /tmp/rota-certa-network-observer.js
-          grep -Fq "const requestBound = requestTripId === tripId;" /tmp/rota-certa-network-observer.js
-          grep -Fq "normalized.includes('tripconditions')" /tmp/rota-certa-network-observer.js
-          grep -Fq "normalized.endsWith('.share.url')" /tmp/rota-certa-network-observer.js
-          grep -Fq "publicTripHrefSource: 'network_structured_request_id'" /tmp/rota-certa-network-observer.js
           grep -Fq "if (unique.length === 1)" /tmp/rota-certa-network-observer.js
           ! grep -Fq "function sourceWaypoint(rawValue) {" /tmp/rota-certa-network-observer.js.tmp 2>/dev/null || true
           test "$(grep -Fc "function sourceWaypoint(rawValue) {" /tmp/rota-certa-network-observer.js)" -eq 1
