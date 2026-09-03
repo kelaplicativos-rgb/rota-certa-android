@@ -205,7 +205,6 @@ class TripStore(context: Context) {
             publicMirrorResponseBytes0421 = responseBytes.coerceAtLeast(0),
             publicMirrorRequestHash0421 = requestHash.take(96),
             publicMirrorResponseHash0421 = responseHash.take(96),
-            publicationRevision = maxOf(existing.publicationRevision, transportRevision.coerceAtLeast(0L)),
         )
         if (updated != existing) persistCanonicalTrip0406(updated, current)
         updated
