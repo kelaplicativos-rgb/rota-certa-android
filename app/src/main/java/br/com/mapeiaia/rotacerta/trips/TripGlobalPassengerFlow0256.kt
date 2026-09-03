@@ -316,6 +316,20 @@ internal fun timelineDesiredSeatSyncPlan(
     entry: TripTimelineEntry,
     trip: Trip?,
     store: TripStore,
+): TimelineSeatSyncPlan? = timelineDesiredSeatSyncPlan(
+    entry = entry,
+    trip = trip,
+    bookingsSnapshot = trip?.let { store.bookingsFor(it.id) }.orEmpty(),
+)
+
+/**
+ * UI-safe overload: callers that already own the canonical booking snapshot must not
+ * deserialize TripStore again while a LazyColumn item is entering the viewport.
+ */
+internal fun timelineDesiredSeatSyncPlan(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+    bookingsSnapshot: List<Booking>,
 ): TimelineSeatSyncPlan? {
     if (timelineStrongExternalTripKey(entry) == null || entry.capacity !in 1..999) return null
     if (entry.blablaPassengerRosterComplete != true) return null
@@ -325,7 +339,7 @@ internal fun timelineDesiredSeatSyncPlan(
         else -> buildTimelineExternalBackingTrip(entry, entry.capacity)
     }
     val working = augmentExternalBackingStops(base, entry).copy(capacity = entry.capacity)
-    val existing = trip?.let { store.bookingsFor(it.id) }.orEmpty()
+    val existing = trip?.let { target -> bookingsSnapshot.filter { it.tripId == target.id } }.orEmpty()
     val localClaims = existing.filterNot(::isTimelineExternalCapacityClaim)
     val externalClaims = planTimelineExternalCapacityClaims(entry, working, localClaims)
     val loads = SeatAvailabilityEngine.segmentLoads(working, localClaims + externalClaims)
