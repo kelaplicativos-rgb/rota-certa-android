@@ -282,6 +282,7 @@ internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorAttestationReason0411 = reason.take(160),
     publicMirrorMismatchFields0411 = emptyList(),
     publicMirrorReadbackCanonicalRevision0421 = 0L,
+    publicMirrorAttemptedPublicationRevision0421 = 0L,
     publicMirrorReadbackPublicationRevision0421 = 0L,
     publicMirrorPublicIdentity0421 = "",
     publicMirrorLastReadbackAtMillis0421 = 0L,
