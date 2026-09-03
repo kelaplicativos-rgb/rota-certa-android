@@ -1909,10 +1909,8 @@ internal object AgendaBackgroundSync0392 {
         )
 
         var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
-        val reconcileCollectorSnapshot = mode in setOf(
-            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
-            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
-        )
+        val reconcileCollectorSnapshot =
+            mode == AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
         fun collectorResponseForThisCycle0407(): BlaBlaCollectorMonthResponse? =
             targetedCollectorResponse0407(
                 response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
