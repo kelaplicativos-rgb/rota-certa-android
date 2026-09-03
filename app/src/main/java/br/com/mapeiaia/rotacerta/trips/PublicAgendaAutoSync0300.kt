@@ -530,14 +530,15 @@ internal object PublicAgendaAutoSync0300 {
         var created = false
         val startedAt = System.nanoTime()
 
-        val expectedPublicProjectionHash0425 = canonicalPublicProjectionHash0411(
-            canonicalPublicProjectionPayload0411(
-                trip = publicTrip,
-                bookings = localBookings,
-                publicationRevision = entityRevision.takeIf { it > 0L } ?: publicTrip.publicationRevision,
-                nowMillis = nowMillis,
-            ),
-        )
+        fun expectedPublicProjectionHash0425(): String =
+            canonicalPublicProjectionHash0411(
+                canonicalPublicProjectionPayload0411(
+                    trip = publicTrip,
+                    bookings = localBookings,
+                    publicationRevision = entityRevision.takeIf { it > 0L } ?: publicTrip.publicationRevision,
+                    nowMillis = nowMillis,
+                ),
+            )
 
         suspend fun reconcile(): DriverCapacitySnapshotResponse = api.reconcileCapacitySnapshot(
             remoteTripId = remoteTripId,
@@ -555,7 +556,7 @@ internal object PublicAgendaAutoSync0300 {
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
             idempotencyKey0421 = idempotencyKey0421,
-            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
+            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425(),
         )
 
         val response = try {
