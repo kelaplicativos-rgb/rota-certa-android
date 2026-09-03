@@ -482,6 +482,7 @@ data class DriverCapacitySnapshotRequest(
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
+    val preserveManagedClaims0436: Boolean = false,
     val entityRevision: Long = 0L,
     val canonicalTripId: String = "",
     val outboxEventId: String = "",
@@ -820,12 +821,17 @@ class TripRemoteApi(
         idempotencyKey0421: String = "",
         expectedPublicProjectionHash0425: String = "",
         expectedPublicProjectionJson0434: String = "",
+        sourceComplete: Boolean = true,
+        preserveManagedClaims0436: Boolean = false,
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
         body = json.encodeToString(
             DriverCapacitySnapshotRequest(
-                trip = trip.copy(remoteId = remoteTripId, capacityReliable = true),
+                trip = trip.copy(
+                    remoteId = remoteTripId,
+                    capacityReliable = if (sourceComplete) true else trip.capacityReliable,
+                ),
                 claims = claims.map { booking ->
                     DriverCapacitySnapshotClaim(
                         id = booking.id,
@@ -861,7 +867,8 @@ class TripRemoteApi(
                 },
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
-                sourceComplete = true,
+                sourceComplete = sourceComplete,
+                preserveManagedClaims0436 = preserveManagedClaims0436,
                 entityRevision = entityRevision,
                 canonicalTripId = canonicalTripId,
                 outboxEventId = outboxEventId,
