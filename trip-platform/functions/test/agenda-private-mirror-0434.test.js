@@ -8,7 +8,7 @@ const test = require("node:test");
 const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
 
-test("private Agenda mirror is authenticated tenant scoped and revision gated", () => {
+test("private Agenda mirror is authenticated tenant scoped and independently revisioned", () => {
   const write = source.slice(
     source.indexOf("async function putDriverPrivateMirror0434"),
     source.indexOf("async function readDriverPrivateMirror0434"),
@@ -16,10 +16,27 @@ test("private Agenda mirror is authenticated tenant scoped and revision gated", 
   assert.match(write, /requireDriver\(req, res\)/);
   assert.match(write, /tripPrivateMirrors0434/);
   assert.match(write, /private_mirror_stale_revision/);
+  assert.match(write, /private_mirror_stale_private_state/);
   assert.match(write, /private_mirror_revision_hash_conflict/);
+  assert.match(write, /incomingPrivateSourceUpdatedAt0437 < previousPrivateSourceUpdatedAt0437/);
+  assert.match(write, /incomingPrivateSourceUpdatedAt0437 === previousPrivateSourceUpdatedAt0437/);
   assert.match(write, /mirrorRevision = previousMirrorRevision \+ 1/);
+  assert.match(write, /privateSourceUpdatedAtMillis0437/);
   assert.match(write, /canonicalRevision,/);
   assert.doesNotMatch(write, /canonicalRevision\s*\+\s*1/);
+});
+
+test("private mirror freshness is derived only from mirrored source timestamps", () => {
+  const start = source.indexOf("function privateMirrorSourceUpdatedAt0437");
+  const end = source.indexOf("function parsePrivateMirror0434", start);
+  const helper = source.slice(start, end);
+  assert.match(helper, /payload\.createdAtMillis/);
+  assert.match(helper, /payload\.updatedAtMillis/);
+  assert.match(helper, /payload\.deletedAtMillis/);
+  assert.match(helper, /booking\.createdAtMillis/);
+  assert.match(helper, /booking\.updatedAtMillis/);
+  assert.doesNotMatch(helper, /Date\.now/);
+  assert.doesNotMatch(helper, /mirrorRevision/);
 });
 
 test("private mirror readback is independent and owner protected", () => {
@@ -28,6 +45,7 @@ test("private mirror readback is independent and owner protected", () => {
   assert.match(read, /requireDriver\(req, res\)/);
   assert.match(read, /private_mirror_owner_mismatch/);
   assert.match(read, /privateStateHash/);
+  assert.match(read, /privateSourceUpdatedAtMillis0437/);
   assert.match(read, /canonicalJson/);
   assert.match(read, /persistedAtMillis/);
 });
