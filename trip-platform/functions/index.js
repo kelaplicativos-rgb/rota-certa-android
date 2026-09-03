@@ -9,7 +9,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
-const { createAgendaAdmin0417 } = require("./agenda-admin-0417");
+const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
 const {
   initialTesterCredits,
   normalizeTesterCredits,
@@ -2817,22 +2817,57 @@ function safePublicDriverReviews(value) {
 }
 
 function publicVisibilityPolicy0417(data) {
-  const raw = data && data.publicVisibility0417 && typeof data.publicVisibility0417 === "object"
-    ? data.publicVisibility0417
-    : {};
-  const visible = (field) => raw[field] !== false;
+  return safeVisibility0417(data && data.publicVisibility0417);
+}
+
+function applyPublicTripVisibility0434(publicTrip, sourceData, driverData) {
+  const visibility = publicVisibilityPolicy0417(driverData || {});
+  const out = { ...(publicTrip || {}) };
+  if (!visibility.tripTitle) delete out.title;
+  if (!visibility.tripDateTime) delete out.departureAtMillis;
+  if (!visibility.tripStatus) delete out.status;
+  if (!visibility.tripBlaBlaLink) delete out.blablaPublicUrl;
+  if (!visibility.tripStops) {
+    out.stops = [];
+  } else if (!visibility.tripStopAddresses && Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const filtered = { ...stop };
+      delete filtered.address;
+      return filtered;
+    });
+  }
+  if (!visibility.tripPrices && Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const filtered = { ...stop };
+      delete filtered.priceToNextCents;
+      return filtered;
+    });
+  }
+  if (!visibility.tripCapacity) {
+    delete out.capacity;
+    delete out.publishedSeats;
+    delete out.rotaCertaSeatAllocation;
+    delete out.blablaAvailableSeats;
+    delete out.rotaCertaAllocatedSeats;
+  }
+  if (!visibility.tripAvailability) {
+    [
+      "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads",
+      "availableSeatsMinimum", "availableSeatsMaximum", "operationalAvailableSeats",
+      "physicalAvailableSeatsMinimum", "physicalAvailableSeatsMaximum",
+      "confirmedPassengerSeats", "blockedSeats", "operationalOverbookingSeats",
+      "rotaCertaAvailableSeats", "totalAvailableSeats", "totalConsideredSeats",
+      "isFull", "canReserve", "operationalBreakdownReliable",
+    ].forEach((field) => delete out[field]);
+  }
+  const visibilityPolicyRevision0434 = Math.max(0, Number(driverData && driverData.visibilityPolicyRevision0434 || 0));
+  const publicProjectionRevision0434 = Math.max(0, Number(sourceData && sourceData.publicProjectionRevision0434 || 0));
+  const hashMaterial = { ...out, visibilityPolicyRevision0434, publicProjectionRevision0434 };
   return {
-    name: visible("name"),
-    whatsapp: visible("whatsapp"),
-    photo: visible("photo"),
-    about: visible("about"),
-    rating: visible("rating"),
-    reviews: visible("reviews"),
-    badge: visible("badge"),
-    vehicle: visible("vehicle"),
-    amenities: visible("amenities"),
-    preferences: visible("preferences"),
-    paymentInstructions: visible("paymentInstructions"),
+    ...out,
+    visibilityPolicyRevision0434,
+    publicProjectionRevision0434,
+    publicProjectionHash0434: "public-visible-v1:" + sha256Hex(JSON.stringify(hashMaterial)),
   };
 }
 
