@@ -178,7 +178,7 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
-    fun attestationIsRevokedByAnyNewCanonicalOrPublicationRevision() {
+    fun attestationIsRevokedByNewLogicalRevisionButNotTransportSequenceOnly() {
         val trip = canonicalTrip()
         val payload = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -197,7 +197,7 @@ class PublicMirrorAttestation0411Test {
 
         assertTrue(validated.publicMirrorAttestationCurrent0411())
         assertFalse(validated.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorAttestationCurrent0411())
-        assertFalse(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
+        assertTrue(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
         assertFalse(validated.invalidatePublicMirror0411("TEST_MUTATION").publicMirrorAttestationCurrent0411())
     }
 
