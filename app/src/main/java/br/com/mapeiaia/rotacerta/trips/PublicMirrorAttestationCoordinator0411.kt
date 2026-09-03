@@ -210,38 +210,8 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " fieldDiffPaths=" + diff.fieldDiffs.joinToString(",") { it.fieldPath }.take(240),
         )
 
-        store.recordPublicMirrorAttestation0411(
-            canonicalTripId = current.id,
-            expectedCanonicalRevision = current.canonicalRevision,
-            expectedPublicationRevision = current.publicationRevision,
-            state = decision.state,
-            expectedHash = decision.expectedHash,
-            readbackHash = decision.readbackHash,
-            mismatchFields = decision.mismatchFields,
-            reason = decision.reason,
-            readbackLatencyMillis = elapsed,
-            publicUrlFromReadback = readbackPublicUrl,
-            publicIdentityFromReadback0421 = readback.remoteTripId,
-            readbackCanonicalRevision0421 = readback.payload.canonicalRevision,
-            readbackPublicationRevision0421 = readback.payload.publicationRevision,
-            evidenceId0421 = evidenceId,
-            traceId0421 = traceId,
-            expectedBytes0421 = diff.expectedLength,
-            actualBytes0421 = diff.actualLength,
-            firstDifferentByteOffset0421 = diff.firstDifferentByteOffset,
-            differentByteRanges0421 = diff.differentByteRanges,
-            fieldDiffs0422 = diff.fieldDiffs.map(::publicProjectionFieldDiffJson0422),
-            failedStage0421 = when {
-                !decision.identityValid -> "IDENTITY_COMPARE"
-                !decision.revisionValid -> "REVISION_COMPARE"
-                decision.state != PublicMirrorAttestationState0411.VALIDATED -> "STATE_COMPARE"
-                else -> ""
-            },
-            readbackAtMillis0421 = nowMillis,
-            nowMillis = nowMillis,
-        )
-
-        try {
+        var reportError: Throwable? = null
+        val serverReport = try {
             api.reportPublicTripAttestation0417(
                 remoteTripId = remote.remoteTripId,
                 request = DriverPublicAttestationRequest0417(
@@ -259,6 +229,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
+            reportError = error
             UnifiedDebugEventStore.record(
                 "PUBLIC_MIRROR_ATTESTATION_REPORT_FAILED_0417",
                 context.applicationContext.packageName,
@@ -268,14 +239,105 @@ internal object PublicMirrorAttestationCoordinator0411 {
                     " error=" + error::class.java.simpleName +
                     " message=" + error.message.orEmpty().take(180),
             )
+            null
+        }
+        val serverConfirmed = decision.state == PublicMirrorAttestationState0411.VALIDATED &&
+            serverPublicAttestationConfirmed0433(
+                expectedCanonicalRevision = current.canonicalRevision,
+                expectedPublicationRevision = current.publicationRevision,
+                response = serverReport,
+            )
+        val finalDecision = if (
+            decision.state == PublicMirrorAttestationState0411.VALIDATED &&
+            !serverConfirmed
+        ) {
+            decision.copy(
+                state = PublicMirrorAttestationState0411.PENDING,
+                mismatchFields = (decision.mismatchFields + "serverAttestationCommit").distinct(),
+                reason = if (reportError != null) {
+                    "PUBLIC_ATTESTATION_REPORT_FAILED"
+                } else {
+                    "PUBLIC_ATTESTATION_NOT_COMMITTED"
+                },
+            )
+        } else {
+            decision
         }
 
         evidence(
+            stage = "ATTESTATION_REPORT",
+            status = when {
+                decision.state != PublicMirrorAttestationState0411.VALIDATED -> "REPORTED"
+                serverConfirmed -> "CONFIRMED"
+                else -> "DENIED"
+            },
+            reason = finalDecision.reason,
+            extra = "serverVerified=" + (serverReport?.verified == true) +
+                " serverState=" + serverReport?.state.orEmpty() +
+                " canonicalRevisionExpected=" + current.canonicalRevision +
+                " canonicalRevisionServer=" + (serverReport?.canonicalRevision ?: 0L) +
+                " transportRevisionExpected=" + current.publicationRevision +
+                " transportRevisionServer=" + (serverReport?.publicationRevision ?: 0L) +
+                " serverAckRequired=true",
+        )
+        if (
+            decision.state == PublicMirrorAttestationState0411.VALIDATED &&
+            !serverConfirmed
+        ) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_ATTESTATION_NOT_COMMITTED_0433",
+                context.applicationContext.packageName,
+                "evidenceId=$evidenceId traceId=$traceId canonicalTripId=" +
+                    seatSyncDiagnosticKey(current.id) +
+                    " canonicalRevisionExpected=" + current.canonicalRevision +
+                    " canonicalRevisionServer=" + (serverReport?.canonicalRevision ?: 0L) +
+                    " transportRevisionExpected=" + current.publicationRevision +
+                    " transportRevisionServer=" + (serverReport?.publicationRevision ?: 0L) +
+                    " serverVerified=" + (serverReport?.verified == true) +
+                    " reportFailed=" + (reportError != null) +
+                    " publicVisibilityBlocked=true",
+            )
+        }
+
+        store.recordPublicMirrorAttestation0411(
+            canonicalTripId = current.id,
+            expectedCanonicalRevision = current.canonicalRevision,
+            expectedPublicationRevision = current.publicationRevision,
+            state = finalDecision.state,
+            expectedHash = finalDecision.expectedHash,
+            readbackHash = finalDecision.readbackHash,
+            mismatchFields = finalDecision.mismatchFields,
+            reason = finalDecision.reason,
+            readbackLatencyMillis = elapsed,
+            publicUrlFromReadback = readbackPublicUrl,
+            publicIdentityFromReadback0421 = readback.remoteTripId,
+            readbackCanonicalRevision0421 = readback.payload.canonicalRevision,
+            readbackPublicationRevision0421 = readback.payload.publicationRevision,
+            evidenceId0421 = evidenceId,
+            traceId0421 = traceId,
+            expectedBytes0421 = diff.expectedLength,
+            actualBytes0421 = diff.actualLength,
+            firstDifferentByteOffset0421 = diff.firstDifferentByteOffset,
+            differentByteRanges0421 = diff.differentByteRanges,
+            fieldDiffs0422 = diff.fieldDiffs.map(::publicProjectionFieldDiffJson0422),
+            failedStage0421 = when {
+                !finalDecision.identityValid -> "IDENTITY_COMPARE"
+                !finalDecision.revisionValid -> "REVISION_COMPARE"
+                finalDecision.state == PublicMirrorAttestationState0411.PENDING -> "ATTESTATION_REPORT"
+                finalDecision.state != PublicMirrorAttestationState0411.VALIDATED -> "STATE_COMPARE"
+                else -> ""
+            },
+            readbackAtMillis0421 = nowMillis,
+            nowMillis = nowMillis,
+        )
+
+        evidence(
             stage = "ATTESTATION",
-            status = if (decision.state == PublicMirrorAttestationState0411.VALIDATED) "CONFIRMED" else "DENIED",
-            reason = decision.reason,
-            extra = "agendaMatch=" + (decision.state == PublicMirrorAttestationState0411.VALIDATED) +
-                " linkValid=" + decision.linkValid +
+            status = if (finalDecision.state == PublicMirrorAttestationState0411.VALIDATED) "CONFIRMED" else "DENIED",
+            reason = finalDecision.reason,
+            extra = "agendaMatch=" + (finalDecision.state == PublicMirrorAttestationState0411.VALIDATED) +
+                " linkValid=" + finalDecision.linkValid +
+                " serverAck=" + serverConfirmed +
                 " attestationFresh=true durationMs=" + elapsed,
         )
         UnifiedDebugEventStore.record(
@@ -288,30 +350,35 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " publicCanonicalRevision=" + readback.payload.canonicalRevision +
                 " transportRevisionLocal=" + current.publicationRevision +
                 " transportRevisionPublic=" + readback.payload.publicationRevision +
-                " canonicalHash=" + decision.expectedHash.takeLast(24) +
-                " publicHash=" + decision.readbackHash.takeLast(24) +
-                " identity=" + decision.identityValid +
-                " link=" + decision.linkValid +
-                " revision=" + decision.revisionValid +
-                " result=" + decision.state.name +
-                " mismatch=" + decision.mismatchFields.joinToString(",").take(240) +
+                " canonicalHash=" + finalDecision.expectedHash.takeLast(24) +
+                " publicHash=" + finalDecision.readbackHash.takeLast(24) +
+                " identity=" + finalDecision.identityValid +
+                " link=" + finalDecision.linkValid +
+                " revision=" + finalDecision.revisionValid +
+                " serverAck=" + serverConfirmed +
+                " result=" + finalDecision.state.name +
+                " mismatch=" + finalDecision.mismatchFields.joinToString(",").take(240) +
                 " readback=true durationMs=" + elapsed,
         )
 
-        return if (decision.state == PublicMirrorAttestationState0411.VALIDATED) {
-            PublicMirrorAttestationBatch0411(
+        return when (finalDecision.state) {
+            PublicMirrorAttestationState0411.VALIDATED -> PublicMirrorAttestationBatch0411(
                 expected = 1,
                 validated = 1,
-                invalidLink = if (decision.linkValid) 0 else 1,
+                invalidLink = if (finalDecision.linkValid) 0 else 1,
                 readbackLatencyMillis = elapsed,
             )
-        } else {
-            PublicMirrorAttestationBatch0411(
+            PublicMirrorAttestationState0411.PENDING -> PublicMirrorAttestationBatch0411(
+                expected = 1,
+                pending = 1,
+                readbackLatencyMillis = elapsed,
+            )
+            else -> PublicMirrorAttestationBatch0411(
                 expected = 1,
                 divergent = 1,
-                invalidIdentity = if (decision.identityValid) 0 else 1,
-                invalidLink = if (decision.linkValid) 0 else 1,
-                staleRevision = if (decision.revisionValid) 0 else 1,
+                invalidIdentity = if (finalDecision.identityValid) 0 else 1,
+                invalidLink = if (finalDecision.linkValid) 0 else 1,
+                staleRevision = if (finalDecision.revisionValid) 0 else 1,
                 readbackLatencyMillis = elapsed,
             )
         }

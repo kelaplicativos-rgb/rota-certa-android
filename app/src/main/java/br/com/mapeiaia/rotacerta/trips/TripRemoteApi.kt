@@ -405,6 +405,7 @@ data class DriverPublicAttestationResponse0417(
     val state: String = "",
     val verified: Boolean = false,
     val publicationRevision: Long = 0L,
+    val canonicalRevision: Long = 0L,
 )
 
 @Serializable

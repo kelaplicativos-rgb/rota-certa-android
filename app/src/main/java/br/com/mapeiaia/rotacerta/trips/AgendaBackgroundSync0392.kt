@@ -739,6 +739,31 @@ internal data class ProjectionIntegrity0406(
             attestationValidated0411 == canonicalActive
 }
 
+internal fun collectorCardAttestationIntegrity0433(
+    trips: List<Trip>,
+    canonicalTripIds: Set<String>,
+): ProjectionIntegrity0406 {
+    val ids = canonicalTripIds.map(String::trim).filter(String::isNotBlank).toSet()
+    var validated = 0
+    var pending = 0
+    var divergent = 0
+    ids.forEach { canonicalTripId ->
+        val trip = trips.firstOrNull { it.id == canonicalTripId }
+        when {
+            trip == null -> pending++
+            trip.publicMirrorAttestationCurrent0411() -> validated++
+            trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> divergent++
+            else -> pending++
+        }
+    }
+    return ProjectionIntegrity0406(
+        canonicalActive = ids.size,
+        attestationValidated0411 = validated,
+        attestationPending0411 = pending,
+        attestationDivergent0411 = divergent,
+    )
+}
+
 internal fun remoteMatchesCanonicalProjection0408(
     canonical: Trip,
     remote: DriverTripSyncState0402,
@@ -1921,11 +1946,19 @@ internal object AgendaBackgroundSync0392 {
         val delivered = TripMutationCoordinator0387(appContext, store).drainPending(
             canonicalTripIds = batch.publicationCanonicalTripIds0431,
         )
+        val attestation = collectorCardAttestationIntegrity0433(
+            trips = store.trips(),
+            canonicalTripIds = batch.publicationCanonicalTripIds0431,
+        )
+        val publicUpdated =
+            attestation.attestationValidated0411 == attestation.canonicalActive &&
+                attestation.attestationPending0411 == 0 &&
+                attestation.attestationDivergent0411 == 0
         TripWidgetProvider.updateAll(appContext)
         UnifiedDebugEventStore.record(
-            "BLABLACAR_CARD_DELTA_APPLIED_0431",
+            "BLABLACAR_CARD_DELTA_APPLIED_0433",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} changed=${batch.changedTrips} tombstoned=${batch.tombstonedTrips} targetedCards=${batch.publicationCanonicalTripIds0431.size} delivered=$delivered timelineUpdated=true publicUpdated=true fullSyncRequested=false",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} changed=${batch.changedTrips} tombstoned=${batch.tombstonedTrips} targetedCards=${batch.publicationCanonicalTripIds0431.size} delivered=$delivered timelineUpdated=true publicUpdated=$publicUpdated validated=${attestation.attestationValidated0411} pending=${attestation.attestationPending0411} divergent=${attestation.attestationDivergent0411} serverAckRequired=true fullSyncRequested=false",
         )
         return AgendaBackgroundSyncRun0392(
             outboxDelivered = delivered,
@@ -1939,6 +1972,10 @@ internal object AgendaBackgroundSync0392 {
             collectorTombstonedTrips = batch.tombstonedTrips,
             collectorOrphanProjectionTombstones = batch.orphanProjectionTombstones,
             collectorStaleResultsRejected = batch.staleResultsRejected,
+            projectionExpected0411 = attestation.canonicalActive,
+            projectionValidated0411 = attestation.attestationValidated0411,
+            projectionPending0411 = attestation.attestationPending0411,
+            projectionDivergent0411 = attestation.attestationDivergent0411,
         )
     }
 
@@ -2534,7 +2571,12 @@ class AgendaBackgroundSyncWorker0392(
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
             val bookingCardDeltaSuccess0431 = bookingTargetRemoteTripId0431.isNotBlank() && cycle.failures == 0
-            val collectorCardDeltaSuccess0431 = reason == "blablacar_collection_result" && cycle.failures == 0
+            val collectorCardDeltaSuccess0431 =
+                reason == "blablacar_collection_result" &&
+                    cycle.failures == 0 &&
+                    cycle.projectionPending0411 == 0 &&
+                    cycle.projectionDivergent0411 == 0 &&
+                    cycle.projectionValidated0411 == cycle.projectionExpected0411
             val retryPending = (cycle.failures > 0 && runAttemptCount < 5) || (targetedRetryable && runAttemptCount < 3)
             val reportedFailures = cycle.failures + if (collectorTerminalProblem) {
                 maxOf(1, collectorState.failedAccountIds.size + collectorState.pendingAuthAccountIds.size)

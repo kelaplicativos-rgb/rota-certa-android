@@ -40,6 +40,23 @@ class PublicMirrorAttestation0411Test {
         assertEquals(hash, decision.readbackHash)
     }
 
+
+    @Test
+    fun matchingReadbackIsNotPubliclyValidatedUntilServerCommitsSameRevisions() {
+        val committed = DriverPublicAttestationResponse0417(
+            state = "VERIFIED",
+            verified = true,
+            publicationRevision = 18,
+            canonicalRevision = 12,
+        )
+        assertTrue(serverPublicAttestationConfirmed0433(12, 18, committed))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(verified = false)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(state = "PENDING")))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(publicationRevision = 19)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(canonicalRevision = 13)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, null))
+    }
+
     @Test
     fun staleLogicalCanonicalRevisionPreventsBlue() {
         val trip = canonicalTrip()

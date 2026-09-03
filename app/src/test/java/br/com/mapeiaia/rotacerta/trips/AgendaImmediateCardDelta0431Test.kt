@@ -53,6 +53,10 @@ class AgendaImmediateCardDelta0431Test {
         assertTrue(collector.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431"))
         assertTrue(collector.contains("account_" + '$' + "{normalizedResult.lowercase()}"))
         assertTrue(collector.contains("run_terminal:" + '$' + "result"))
+        assertTrue(background.contains("collectorCardAttestationIntegrity0433"))
+        assertTrue(background.contains("serverAckRequired=true"))
+        assertTrue(background.contains("cycle.projectionValidated0411 == cycle.projectionExpected0411"))
+        assertTrue(background.contains("publicUpdated=\$publicUpdated"))
     }
 
     @Test

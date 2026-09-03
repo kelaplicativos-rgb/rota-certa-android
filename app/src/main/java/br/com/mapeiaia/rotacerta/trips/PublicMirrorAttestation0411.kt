@@ -84,6 +84,19 @@ private val publicProjectionJson0411 = Json {
     explicitNulls = true
 }
 
+internal fun serverPublicAttestationConfirmed0433(
+    expectedCanonicalRevision: Long,
+    expectedPublicationRevision: Long,
+    response: DriverPublicAttestationResponse0417?,
+): Boolean =
+    response != null &&
+        response.verified &&
+        response.state.equals("VERIFIED", ignoreCase = true) &&
+        expectedCanonicalRevision > 0L &&
+        expectedPublicationRevision > 0L &&
+        response.canonicalRevision == expectedCanonicalRevision &&
+        response.publicationRevision == expectedPublicationRevision
+
 internal fun canonicalPublicProjectionPayload0411(
     trip: Trip,
     bookings: List<Booking>,
