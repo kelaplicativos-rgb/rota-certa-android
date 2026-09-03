@@ -550,6 +550,7 @@ data class DriverCapacitySnapshotResponse(
     val entityRevision: Long = 0L,
     val stale: Boolean = false,
     val logicalReplay: Boolean = false,
+    val stopShapeMigrationCount0439: Int = 0,
 )
 
 internal data class RemotePublicationEvidenceContext0421(
