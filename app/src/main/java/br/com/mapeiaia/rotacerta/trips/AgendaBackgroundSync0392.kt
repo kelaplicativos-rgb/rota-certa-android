@@ -917,6 +917,7 @@ internal fun targetedCollectorResponse0407(
 internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
+    private const val CARD_DELTA_WORK_0431 = "agenda-background-sync-0431-card-delta"
     private const val TRIP_REVERIFY_WORK_0407 = "agenda-background-sync-0407-trip-reverify"
     private const val INPUT_REASON = "reason"
     private const val INPUT_TENANT_ID = "tenant_id_0397"
@@ -925,8 +926,10 @@ internal object AgendaBackgroundSync0392 {
     private const val INPUT_PROFILE_UUID_0407 = "profile_uuid_0407"
     private const val INPUT_TRIP_ID_0407 = "trip_id_0407"
     private const val INPUT_TRIP_HREF_0407 = "trip_href_0407"
+    private const val INPUT_REMOTE_TRIP_ID_0431 = "remote_trip_id_0431"
     private const val WORK_BACKOFF_SECONDS = 30L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
+    private val cardDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
