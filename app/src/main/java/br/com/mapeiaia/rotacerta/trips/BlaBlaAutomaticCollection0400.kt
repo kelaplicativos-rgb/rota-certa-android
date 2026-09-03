@@ -271,14 +271,9 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                     appContext.packageName,
                     "generation=" + state.generation +
                         " accountKey=" + seatSyncDiagnosticKey(accountId) +
-                        " action=stop_batch externalNavigationStarted=false previousSnapshotPreserved=true",
+                        " action=stop_profile_continue_batch externalNavigationStarted=false previousSnapshotPreserved=true",
                 )
-                return AgendaBackgroundSyncConfig0392.finishCollectorRun0400(
-                    appContext,
-                    state.generation,
-                    "TEMPORARILY_RESTRICTED",
-                    "source_circuit_open",
-                )
+                continue
             }
             UnifiedDebugEventStore.record(
                 "BLABLACAR_AUTOMATIC_COLLECTION_HEADLESS_START_0401", appContext.packageName,
@@ -308,12 +303,14 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             }
             state = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
             if (BlaBlaDynamicSessionStore(appContext).isSourceCircuitOpen0426(account)) {
-                return AgendaBackgroundSyncConfig0392.finishCollectorRun0400(
-                    appContext,
-                    state.generation,
-                    "TEMPORARILY_RESTRICTED",
-                    "restriction_detected_stop_batch",
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_AUTOMATIC_RESTRICTION_ISOLATED_0426",
+                    appContext.packageName,
+                    "generation=" + state.generation +
+                        " accountKey=" + seatSyncDiagnosticKey(accountId) +
+                        " action=continue_other_profiles externalNavigationStopped=true previousSnapshotPreserved=true",
                 )
+                continue
             }
             if (state.activeAccountId == accountId) {
                 state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, state.generation, accountId, "FAILED", "headless_host_finished_without_terminal_state")
