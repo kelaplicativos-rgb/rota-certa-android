@@ -206,7 +206,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
     fun isSourceCircuitOpen0426(account: BlaBlaDynamicAccount): Boolean =
         read(account)?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED
 
-    fun markTemporarilyRestricted0426(
+    internal fun markTemporarilyRestricted0426(
         account: BlaBlaDynamicAccount,
         lastUrl: String,
         detection: BlaBlaSourceAccessDetection0426,
@@ -257,7 +257,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         replacement
     }
 
-    fun tryAcquireExternalFlight0426(
+    internal fun tryAcquireExternalFlight0426(
         account: BlaBlaDynamicAccount,
         token: String,
     ): BlaBlaExternalFlightLease0426? {
@@ -274,7 +274,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         }
     }
 
-    fun releaseExternalFlight0426(lease: BlaBlaExternalFlightLease0426?) {
+    internal fun releaseExternalFlight0426(lease: BlaBlaExternalFlightLease0426?) {
         lease ?: return
         externalFlightOwners0426.remove(lease.key, lease.token)
     }
