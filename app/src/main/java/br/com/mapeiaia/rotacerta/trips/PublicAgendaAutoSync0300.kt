@@ -1040,7 +1040,11 @@ internal object PublicAgendaAutoSync0300 {
                     val created = api.publish(publicTrip.copy(capacityReliable = false))
                     createdPlaceholder = true
                     remoteTripId = created.tripId
-                    effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
+                    effectiveTrip = publicTrip.copy(
+                        remoteId = remoteTripId,
+                        publicToken = created.publicToken,
+                        publicUrl = created.publicUrl,
+                    )
                     effectiveClaims = synthesized.capacityClaims
                     shapePreserved = false
                     UnifiedDebugEventStore.record(
