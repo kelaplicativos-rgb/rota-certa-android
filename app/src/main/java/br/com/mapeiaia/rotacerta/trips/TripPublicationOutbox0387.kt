@@ -923,7 +923,7 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} evidenceId=ev_${sha256TripPublication0387(event.id + "|" + (event.snapshot.trip?.canonicalRevision ?: 0L)).take(24)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
+            "tenantId=${event.tenantId} evidenceId=${publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
         )
     }
 }
@@ -946,6 +946,9 @@ internal fun strongExternalCanonicalTripId0387(
 
 internal fun publicationEventId0387(tenantId: String, canonicalTripId: String, revision: Long): String =
     "outbox_" + sha256TripPublication0387("$tenantId|$canonicalTripId|$revision").take(48)
+
+internal fun publicationEvidenceId0421(traceId: String, canonicalRevision: Long): String =
+    "ev_" + sha256TripPublication0387(traceId.trim() + "|" + canonicalRevision.coerceAtLeast(0L)).take(24)
 
 private fun retryDelayMillis(attempt: Int): Long {
     val multiplier = 1 shl (attempt - 1).coerceIn(0, 6)
