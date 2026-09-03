@@ -1495,6 +1495,7 @@ internal object AgendaBackgroundSync0392 {
             tombstonedTrips = tombstonedTrips,
             orphanProjectionTombstones = orphanProjectionTombstones,
             staleResultsRejected = staleResultsRejected,
+            publicationCanonicalTripIds0431 = publicationCanonicalTripIds0431,
         )
     }
 
