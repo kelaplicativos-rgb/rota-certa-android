@@ -4300,7 +4300,8 @@ async function requirePassengerSession(req, res) {
     return null;
   }
   const data = snap.data();
-  if (Number(data.expiresAtMillis || 0) <= Date.now()) {
+  const now = Date.now();
+  if (Number(data.expiresAtMillis || 0) <= now) {
     await sessionRef.delete().catch(() => {});
     fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
     return null;
