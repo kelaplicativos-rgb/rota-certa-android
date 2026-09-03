@@ -769,7 +769,10 @@ private fun TripApp(
                     externalBackToken = passengerExternalBackToken0396,
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
                 )
-                TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()
+                TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397(
+                    trips = trips,
+                    onChanged = { text -> message = text },
+                )
                 TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
                     initial = store.onlineSettings(),
                     onSave = { saved ->

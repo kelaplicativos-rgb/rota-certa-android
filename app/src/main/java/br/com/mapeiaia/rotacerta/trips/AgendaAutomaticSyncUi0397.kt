@@ -37,12 +37,19 @@ internal fun agendaAutomaticSyncIntervalLabel0397(minutes: Long): String = when 
 }
 
 @Composable
-internal fun AgendaAutomaticSyncScreen0397() {
+internal fun AgendaAutomaticSyncScreen0397(
+    trips: List<Trip>,
+    onChanged: (String) -> Unit,
+) {
     val context = LocalContext.current
     var status by remember { mutableStateOf(AgendaBackgroundSyncConfig0392.status(context)) }
     val collectorRevision0400 by BlaBlaCollectorTimelineEvents0400.revision.collectAsState()
     val collectorState0400 = remember(status, collectorRevision0400) {
         AgendaBackgroundSyncConfig0392.collectorState0400(context)
+    }
+    val collectorStore = remember(context) { BlaBlaCollectorStateStore(context) }
+    val collectorResponse = remember(collectorRevision0400) {
+        collectorStore.lastResponseRecoveringDynamicSessions()
     }
     var intervalMenuExpanded by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -148,6 +155,15 @@ internal fun AgendaAutomaticSyncScreen0397() {
         }
 
         BlaBlaAccountsAndBrowsersScreen0399()
+
+        BlaBlaCollectorPanel(
+            trips = trips,
+            stateStore = collectorStore,
+            currentResponse = collectorResponse,
+            onResult = { /* BlaBlaCollectorPanel already persists through collectorStore. */ },
+            onChanged = onChanged,
+            showAccountManagement = false,
+        )
 
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
