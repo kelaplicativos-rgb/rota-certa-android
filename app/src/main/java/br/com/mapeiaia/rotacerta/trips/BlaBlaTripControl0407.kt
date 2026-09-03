@@ -203,6 +203,7 @@ internal enum class BlaBlaCommandStatus0407 {
     NOT_ELIGIBLE,
     TRIP_NOT_FOUND,
     AUTH_REQUIRED,
+    TEMPORARILY_RESTRICTED,
     ACCOUNT_NOT_AVAILABLE,
     UNVERIFIED_TARGET,
     CAPABILITY_NOT_VERIFIED,
@@ -336,6 +337,7 @@ internal fun blaBlaVerificationLabel0407(
 ): String = when {
     audit?.status == BlaBlaCommandStatus0407.QUEUED -> "⟳ Atualizando"
     audit?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED -> "⚠ Sessão necessária"
+    audit?.status == BlaBlaCommandStatus0407.TEMPORARILY_RESTRICTED -> "⚠ BlaBlaCar temporariamente indisponível"
     audit?.status == BlaBlaCommandStatus0407.ACCOUNT_NOT_AVAILABLE -> "⚠ Conta indisponível"
     audit?.status == BlaBlaCommandStatus0407.UNVERIFIED_TARGET -> "⚠ Identidade externa não confirmada"
     audit?.status == BlaBlaCommandStatus0407.BROKEN_FOR_VERSION ||

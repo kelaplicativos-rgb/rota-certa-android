@@ -11,7 +11,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.ContextThemeWrapper
 import android.view.ViewGroup
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -143,6 +145,7 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
     const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
+    const val EXTRA_SOURCE_ACCESS_STATUS_0426 = "blablacar_source_access_status_0426"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_PROFILE = "profile"
@@ -173,6 +176,43 @@ object BlaBlaDynamicSessionIntents {
             .putExtra(EXTRA_ACCOUNT_ID, account.id)
             .putExtra(EXTRA_MODE, mode)
 }
+
+@Serializable
+private data class DynamicPageState0426(
+    val state: String = "UNKNOWN",
+    val url: String = "",
+    val title: String = "",
+    val error: Boolean = false,
+    val bodyText: String = "",
+)
+
+@Serializable
+private data class BlaBlaRestrictionDiagnosticEvidence0426(
+    val schemaVersion: String = "blablacar-source-access-v1",
+    val timestampMillis: Long,
+    val profileKey: String,
+    val sessionId: String,
+    val traceId: String,
+    val stage: String,
+    val requestedUrl: String,
+    val finalUrl: String,
+    val httpStatus: Int,
+    val errorType: String,
+    val detector: String,
+    val incidentReference: String,
+    val previousRestrictionCount: Int,
+    val millisSincePreviousNavigation: Long,
+    val concurrentEquivalentOperation: Boolean,
+    val circuitWasOpen: Boolean,
+    val circuitIsOpen: Boolean,
+    val javaScriptEnabled: Boolean,
+    val domStorageEnabled: Boolean,
+    val cookieProfileIsolated: Boolean,
+    val rawCookieLogged: Boolean = false,
+    val exceptionClass: String = "",
+    val exceptionMessage: String = "",
+    val rootCause: String = "",
+)
 
 @Serializable
 private data class DynamicIdentityEvidence(
@@ -456,6 +496,15 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var automaticCollectionReported = false
     private var headlessPageFinishedNavigationGeneration0404 = -1L
     private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())
+    private val internalSessionId0426 = UUID.randomUUID().toString()
+    private var externalFlightLease0426: BlaBlaExternalFlightLease0426? = null
+    private var lastMainFrameHttpStatus0426 = 0
+    private var lastRequestedUrl0426 = ""
+    private var lastExternalNavigationAtMillis0426 = 0L
+    private var lastNavigationIntervalMillis0426 = -1L
+    private var pageAccessInspectionInFlight0426 = false
+    private var restrictionHandledGeneration0426 = Long.MIN_VALUE
+
 
     fun start() {
         registry = BlaBlaDynamicAccountRegistry(this)
@@ -550,8 +599,16 @@ internal class BlaBlaDynamicAccountSessionController0401(
         when (mode) {
             BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
             BlaBlaDynamicSessionIntents.MODE_PROFILE -> beginProfileSync()
-            BlaBlaDynamicSessionIntents.MODE_MANAGE -> webView.loadUrl(manageTargetUrl() ?: RIDES_URL)
-            else -> webView.loadUrl(HOME_URL)
+            BlaBlaDynamicSessionIntents.MODE_MANAGE -> {
+                if (acquireExternalFlight0426("manage_browser")) {
+                    loadTrackedUrl(manageTargetUrl() ?: RIDES_URL)
+                }
+            }
+            else -> {
+                if (acquireExternalFlight0426("interactive_browser")) {
+                    loadTrackedUrl(HOME_URL)
+                }
+            }
         }
     }
 
@@ -573,8 +630,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 setOnClickListener { onClick() }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        action("Perfil") { webView.loadUrl(PROFILE_URL) }
-        action("Suas viagens") { webView.loadUrl(RIDES_URL) }
+        action("Perfil") {
+            if (acquireExternalFlight0426("interactive_profile")) loadTrackedUrl(PROFILE_URL)
+        }
+        action("Suas viagens") {
+            if (acquireExternalFlight0426("interactive_rides")) loadTrackedUrl(RIDES_URL)
+        }
         action("Sincronizar") { beginSync() }
         action("Voltar") { finishSeen() }
         root.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -624,6 +685,53 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, url)
             }
 
+            override fun onReceivedError(
+                view: WebView,
+                request: WebResourceRequest,
+                error: WebResourceError,
+            ) {
+                super.onReceivedError(view, request, error)
+                if (!request.isForMainFrame) return
+                val target = request.url?.toString().orEmpty()
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_MAIN_FRAME_NETWORK_ERROR_0426",
+                    packageName,
+                    "accountKey=" + seatSyncDiagnosticKey(account.id) +
+                        " phase=" + phase.name +
+                        " code=" + error.errorCode +
+                        " url=" + BlaBlaCollectorUrlModule.sanitizeForLog(target) +
+                        " retryScheduled=false exceptionClass=WebResourceError exceptionMessage=" +
+                        error.description?.toString().orEmpty().replace(Regex("\\s+"), " ").take(180) +
+                        " rootCause=main_frame_transport_error",
+                )
+                handleMainFrameTransportFailure0426(error.errorCode, target)
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView,
+                request: WebResourceRequest,
+                errorResponse: WebResourceResponse,
+            ) {
+                super.onReceivedHttpError(view, request, errorResponse)
+                if (!request.isForMainFrame) return
+                lastMainFrameHttpStatus0426 = errorResponse.statusCode
+                if (errorResponse.statusCode == 429) {
+                    val detection = BlaBlaSourceAccessDetector0426.detect(
+                        BlaBlaSourceAccessProbe0426(
+                            finalUrl = request.url?.toString().orEmpty(),
+                            httpStatus = errorResponse.statusCode,
+                        ),
+                    )
+                    if (detection.temporarilyRestricted) {
+                        handleTemporaryRestriction0426(
+                            detection = detection,
+                            finalUrl = request.url?.toString().orEmpty(),
+                            stage = phase.name,
+                        )
+                    }
+                }
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 if (isAutomaticHeadless0404()) {
@@ -631,40 +739,276 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     UnifiedDebugEventStore.record(
                         "BLABLACAR_HEADLESS_PAGE_FINISHED_0404",
                         packageName,
-                        "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$navigationGeneration phase=${phase.name} allowed=${BlaBlaCollectorUrlModule.isAllowed(url)} browserOpened=false",
+                        "accountKey=" + seatSyncDiagnosticKey(account.id) +
+                            " generation=" + automaticCollectionGeneration +
+                            " navigation=" + navigationGeneration +
+                            " phase=" + phase.name +
+                            " allowed=" + BlaBlaCollectorUrlModule.isAllowed(url) +
+                            " browserOpened=false",
                     )
                 }
-                if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
-                    statusView.text = "${account.displayLabel} • ${url.take(110)}"
-                }
-                when (phase) {
-                    Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureIdentityForSync() }, 650)
-                    Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ capturePublicProfilePage() }, 850)
-                    Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureProfileReviewsPage() }, 850)
-                    Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureRideList() }, 900)
-                    Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
-                    Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
-                        val expectedSync = syncGeneration
-                        val expectedNavigation = navigationGeneration
-                        val expectedCandidate = candidateIndex
-                        postSessionDelayed0405({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
-                    }
-                    Phase.PUBLIC_SEARCH_LINK -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
-                        val expectedSync = syncGeneration
-                        val expectedNavigation = navigationGeneration
-                        val expectedCandidate = candidateIndex
-                        postSessionDelayed0405({ capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate) }, PUBLIC_TRIP_SEARCH_SETTLE_MS)
-                    }
-                    Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
-                    Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
-                    Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
-                    Phase.OPTIONS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleOptionsCapture(view)
-                    Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ probeIdentity() }, 500)
+                inspectSourceAccess0426(view, url) {
+                    dispatchPageFinished0426(view, url)
                 }
             }
         }
         root.addView(webView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+    }
+
+    private fun dispatchPageFinished0426(view: WebView, url: String) {
+        if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC) {
+            statusView.text = account.displayLabel + " • " + url.take(110)
+        }
+        when (phase) {
+            Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureIdentityForSync() }, 650)
+            Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ capturePublicProfilePage() }, 850)
+            Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureProfileReviewsPage() }, 850)
+            Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureRideList() }, 900)
+            Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
+            Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
+                val expectedSync = syncGeneration
+                val expectedNavigation = navigationGeneration
+                val expectedCandidate = candidateIndex
+                postSessionDelayed0405({ capturePublicTripShare(expectedSync, expectedNavigation, expectedCandidate) }, 350)
+            }
+            Phase.PUBLIC_SEARCH_LINK -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
+                val expectedSync = syncGeneration
+                val expectedNavigation = navigationGeneration
+                val expectedCandidate = candidateIndex
+                postSessionDelayed0405({ capturePublicTripFromExactSearch(expectedSync, expectedNavigation, expectedCandidate) }, PUBLIC_TRIP_SEARCH_SETTLE_MS)
+            }
+            Phase.PASSENGER_CARD -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerCardOpen(view)
+            Phase.PASSENGER_CONTACT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) schedulePassengerContactCapture(view)
+            Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
+            Phase.OPTIONS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleOptionsCapture(view)
+            Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ probeIdentity() }, 500)
+        }
+    }
+
+    private fun inspectSourceAccess0426(view: WebView, url: String, onAvailable: () -> Unit) {
+        if (destroyed || pageAccessInspectionInFlight0426) return
+        pageAccessInspectionInFlight0426 = true
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = view,
+            request = BlaBlaBrowserRequest.PAGE_STATE,
+            executionContext = browserExecutionContext(),
+            currentContext = ::browserExecutionContext,
+            deserializer = serializer<DynamicPageState0426>(),
+            reason = "source_access_probe_0426",
+        ) { page ->
+            pageAccessInspectionInFlight0426 = false
+            if (destroyed) return@executeCollectionStep
+            val detection = BlaBlaSourceAccessDetector0426.detect(
+                BlaBlaSourceAccessProbe0426(
+                    finalUrl = page?.url?.takeIf(String::isNotBlank) ?: url,
+                    title = page?.title.orEmpty(),
+                    bodyText = page?.bodyText.orEmpty(),
+                    httpStatus = lastMainFrameHttpStatus0426,
+                ),
+            )
+            if (detection.temporarilyRestricted) {
+                handleTemporaryRestriction0426(
+                    detection = detection,
+                    finalUrl = page?.url?.takeIf(String::isNotBlank) ?: url,
+                    stage = phase.name,
+                )
+                return@executeCollectionStep
+            }
+            if (
+                page != null &&
+                automaticCollectionGeneration <= 0L &&
+                store.isSourceCircuitOpen0426(account)
+            ) {
+                store.markSourceAvailable0426(account, page?.url?.takeIf(String::isNotBlank) ?: url)
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_SOURCE_ACCESS_RECOVERED_0426",
+                    packageName,
+                    "accountKey=" + seatSyncDiagnosticKey(account.profileUuid ?: account.id) +
+                        " sessionId=" + internalSessionId0426 +
+                        " recovery=user_controlled circuitClosed=true automaticRetry=false",
+                )
+            }
+            onAvailable()
+        }
+    }
+
+    private fun handleTemporaryRestriction0426(
+        detection: BlaBlaSourceAccessDetection0426,
+        finalUrl: String,
+        stage: String,
+    ) {
+        if (
+            restrictionHandledGeneration0426 == syncGeneration &&
+            phase == Phase.IDLE &&
+            store.isSourceCircuitOpen0426(account)
+        ) return
+        restrictionHandledGeneration0426 = syncGeneration
+        val previous = store.read(account)
+        val circuitWasOpen = previous?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED
+        val previousCount = previous?.sourceRestrictionCount0426 ?: 0
+        if (::webView.isInitialized) webView.stopLoading()
+        enterBrowserPhase(Phase.IDLE, null, "temporarily_restricted_0426")
+        val saved = store.markTemporarilyRestricted0426(account, finalUrl, detection)
+        val evidence = BlaBlaRestrictionDiagnosticEvidence0426(
+            timestampMillis = System.currentTimeMillis(),
+            profileKey = seatSyncDiagnosticKey(account.profileUuid ?: account.id),
+            sessionId = internalSessionId0426,
+            traceId = internalSessionId0426 + ":" + syncGeneration,
+            stage = stage.take(80),
+            requestedUrl = BlaBlaCollectorUrlModule.sanitizeForLog(lastRequestedUrl0426),
+            finalUrl = BlaBlaCollectorUrlModule.sanitizeForLog(finalUrl),
+            httpStatus = detection.httpStatus,
+            errorType = "TEMPORARILY_RESTRICTED",
+            detector = detection.detector,
+            incidentReference = detection.incidentReference,
+            previousRestrictionCount = previousCount,
+            millisSincePreviousNavigation = lastNavigationIntervalMillis0426,
+            concurrentEquivalentOperation = false,
+            circuitWasOpen = circuitWasOpen,
+            circuitIsOpen = saved.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED,
+            javaScriptEnabled = webView.settings.javaScriptEnabled,
+            domStorageEnabled = webView.settings.domStorageEnabled,
+            cookieProfileIsolated = true,
+        )
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_SOURCE_ACCESS_RESTRICTED_0426",
+            packageName,
+            json.encodeToString(evidence),
+        )
+        statusView.text =
+            "BlaBlaCar restringiu temporariamente esta sessão. Seus últimos dados válidos foram preservados. " +
+                "A sincronização será retomada após a sessão voltar a ficar disponível."
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountTemporarilyRestricted0426(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                reason = detection.detector,
+            )
+        }
+        releaseExternalFlight0426()
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "TEMPORARILY_RESTRICTED")
+                .putExtra(
+                    BlaBlaDynamicSessionIntents.EXTRA_SOURCE_ACCESS_STATUS_0426,
+                    BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED.name,
+                ),
+        )
+        if (mode != BlaBlaDynamicSessionIntents.MODE_LOGIN && mode != BlaBlaDynamicSessionIntents.MODE_MANAGE) {
+            finish()
+        }
+    }
+
+    private fun handleMainFrameTransportFailure0426(errorCode: Int, targetUrl: String) {
+        if (phase == Phase.IDLE) {
+            statusView.text =
+                account.displayLabel + " • BlaBlaCar não carregou. Use a navegação novamente quando a conexão estiver disponível."
+            return
+        }
+        if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC && mode != BlaBlaDynamicSessionIntents.MODE_PROFILE) return
+        enterBrowserPhase(Phase.IDLE, null, "main_frame_transport_failure_0426")
+        statusView.text = account.displayLabel + " • falha temporária de conexão; dados anteriores preservados."
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountTransientFailure0426(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                reason = "main_frame_error_" + errorCode,
+            )
+        }
+        releaseExternalFlight0426()
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "NETWORK_ERROR"),
+        )
+        if (mode != BlaBlaDynamicSessionIntents.MODE_LOGIN && mode != BlaBlaDynamicSessionIntents.MODE_MANAGE) {
+            finish()
+        }
+    }
+
+    private fun acquireExternalFlight0426(operation: String): Boolean {
+        if (phase != Phase.IDLE) {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_PROFILE_SINGLE_FLIGHT_DEDUPED_0426",
+                packageName,
+                "accountKey=" + seatSyncDiagnosticKey(account.profileUuid ?: account.id) +
+                    " operation=" + operation.take(80) +
+                    " phase=" + phase.name +
+                    " owner=current_session action=ignore_duplicate_trigger",
+            )
+            statusView.text = account.displayLabel + " • já existe uma operação BlaBlaCar em andamento nesta sessão."
+            return false
+        }
+        if (externalFlightLease0426 != null) {
+            return true
+        }
+        val token = internalSessionId0426 + ":" + operation + ":" + (syncGeneration + 1L)
+        val lease = store.tryAcquireExternalFlight0426(account, token)
+        if (lease != null) {
+            externalFlightLease0426 = lease
+            return true
+        }
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_PROFILE_SINGLE_FLIGHT_DEDUPED_0426",
+            packageName,
+            "accountKey=" + seatSyncDiagnosticKey(account.profileUuid ?: account.id) +
+                " operation=" + operation.take(80) +
+                " action=no_second_external_chain",
+        )
+        statusView.text = account.displayLabel + " • já existe uma sincronização desta conta em andamento."
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "SINGLE_FLIGHT_BUSY"),
+        )
+        if (mode == BlaBlaDynamicSessionIntents.MODE_SYNC || mode == BlaBlaDynamicSessionIntents.MODE_PROFILE) finish()
+        return false
+    }
+
+    private fun releaseExternalFlight0426() {
+        store.releaseExternalFlight0426(externalFlightLease0426)
+        externalFlightLease0426 = null
+    }
+
+    private fun completeAutomaticCircuitOpen0426() {
+        val snapshot = store.read(account)
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_SOURCE_CIRCUIT_OPEN_SKIP_0426",
+            packageName,
+            "accountKey=" + seatSyncDiagnosticKey(account.profileUuid ?: account.id) +
+                " restrictionCount=" + (snapshot?.sourceRestrictionCount0426 ?: 0) +
+                " automatic=true externalNavigationStarted=false previousSnapshotPreserved=true",
+        )
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountTemporarilyRestricted0426(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+                reason = "circuit_open_skip",
+            )
+        }
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407, "TEMPORARILY_RESTRICTED")
+                .putExtra(
+                    BlaBlaDynamicSessionIntents.EXTRA_SOURCE_ACCESS_STATUS_0426,
+                    BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED.name,
+                ),
+        )
+        finish()
     }
 
     private fun interceptPhoneNavigation(rawUrl: String?): Boolean {
@@ -715,6 +1059,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun beginProfileSync() {
+        if (!acquireExternalFlight0426("profile_sync")) return
         syncGeneration++
         identityConfirmedThisSync = false
         profileBaseEvidence = null
@@ -733,6 +1078,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun beginSync() {
+        if (isAutomaticHeadless0404() && store.isSourceCircuitOpen0426(account)) {
+            completeAutomaticCircuitOpen0426()
+            return
+        }
+        if (!acquireExternalFlight0426("trip_sync")) return
         syncGeneration++
         networkDiagnosticRecorder?.startSync(syncGeneration)
         navigationGeneration = 0L
@@ -791,6 +1141,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun loadTrackedUrl(url: String) {
+        val now = System.currentTimeMillis()
+        lastNavigationIntervalMillis0426 =
+            if (lastExternalNavigationAtMillis0426 > 0L) now - lastExternalNavigationAtMillis0426 else -1L
+        lastExternalNavigationAtMillis0426 = now
+        lastRequestedUrl0426 = url
+        lastMainFrameHttpStatus0426 = 0
         navigationGeneration++
         val expectedNavigation = navigationGeneration
         webView.loadUrl(url)
@@ -833,17 +1189,19 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 packageName,
                 "accountKey=${seatSyncDiagnosticKey(account.id)} generation=$automaticCollectionGeneration navigation=$expectedNavigation phase=${expectedPhase.name} progress=${webView.progress} urlAllowed=${BlaBlaCollectorUrlModule.isAllowed(webView.url.orEmpty())} action=phase_probe browserOpened=false",
             )
-            when (expectedPhase) {
-                Phase.IDENTITY -> captureIdentityForSync()
-                Phase.RIDES -> captureRideList()
-                Phase.DETAIL -> scheduleTripDetailCapture(webView)
-                Phase.PUBLIC_SHARE -> capturePublicTripShare(expectedSync, expectedNavigation, candidateIndex)
-                Phase.PUBLIC_SEARCH_LINK -> capturePublicTripFromExactSearch(expectedSync, expectedNavigation, candidateIndex)
-                Phase.PASSENGER_CARD -> schedulePassengerCardOpen(webView)
-                Phase.PASSENGER_CONTACT -> schedulePassengerContactCapture(webView)
-                Phase.EDIT -> scheduleEditCapture(webView)
-                Phase.OPTIONS -> scheduleOptionsCapture(webView)
-                else -> Unit
+            inspectSourceAccess0426(webView, webView.url.orEmpty()) {
+                when (expectedPhase) {
+                    Phase.IDENTITY -> captureIdentityForSync()
+                    Phase.RIDES -> captureRideList()
+                    Phase.DETAIL -> scheduleTripDetailCapture(webView)
+                    Phase.PUBLIC_SHARE -> capturePublicTripShare(expectedSync, expectedNavigation, candidateIndex)
+                    Phase.PUBLIC_SEARCH_LINK -> capturePublicTripFromExactSearch(expectedSync, expectedNavigation, candidateIndex)
+                    Phase.PASSENGER_CARD -> schedulePassengerCardOpen(webView)
+                    Phase.PASSENGER_CONTACT -> schedulePassengerContactCapture(webView)
+                    Phase.EDIT -> scheduleEditCapture(webView)
+                    Phase.OPTIONS -> scheduleOptionsCapture(webView)
+                    else -> Unit
+                }
             }
         }, HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404)
     }
@@ -1073,6 +1431,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun finishPublicProfileSync(success: Boolean) {
+        releaseExternalFlight0426()
         enterBrowserPhase(Phase.IDLE, null, "profile_sync_finished")
         UnifiedDebugEventStore.record(
             "PUBLIC_PROFILE_SYNC_FINISHED",
@@ -2846,6 +3205,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
     private fun completeAutomaticAuthenticationRequired(reason: String) {
         if (!completionGate.claimCompletion(syncGeneration)) return
+        releaseExternalFlight0426()
         enterBrowserPhase(Phase.IDLE, null, "pending_auth")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_PENDING_AUTH_0401", packageName,
@@ -2873,6 +3233,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             )
             return
         }
+        releaseExternalFlight0426()
         enterBrowserPhase(Phase.IDLE, null, "sync_complete")
         val targeted = targetTripId.isNotBlank()
         val exactTargetFresh = !targeted || (
@@ -2929,6 +3290,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun finishSeen() {
+        releaseExternalFlight0426()
         store.markSeen(account, webView.url.orEmpty())
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
@@ -2959,6 +3321,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 reason = reason.take(120),
             )
         }
+        releaseExternalFlight0426()
         networkDiagnosticRecorder?.finishFirstCard("host_closed")
         networkDiagnosticRecorder?.close()
         headlessDelayedHandler0405.removeCallbacksAndMessages(null)
@@ -3015,7 +3378,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
-        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 4
+        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 0
         private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
         private const val MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS = 3
         private const val PUBLIC_TRIP_SEARCH_SETTLE_MS = 2_500L

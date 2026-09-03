@@ -665,7 +665,8 @@ internal fun completeCollectorProfileUuids0408(
         if (
             snapshot.identityVerified &&
             snapshot.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-            snapshot.skippedTrips == 0
+            snapshot.skippedTrips == 0 &&
+            snapshot.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.AVAILABLE
         ) profileUuid.lowercase() else null
     }.toSet()
 }
@@ -1940,7 +1941,21 @@ internal object AgendaBackgroundSync0392 {
                 mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         if (collectorRequested) {
             AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
-            val accountIds = BlaBlaDynamicAccountRegistry(appContext).list().map { it.id }
+            val configuredAccounts = BlaBlaDynamicAccountRegistry(appContext).list()
+            val dynamicSessionStore = BlaBlaDynamicSessionStore(appContext)
+            val circuitOpenAccounts = configuredAccounts.filter(dynamicSessionStore::isSourceCircuitOpen0426)
+            val accountIds = configuredAccounts.map { it.id }
+            if (circuitOpenAccounts.isNotEmpty()) {
+                UnifiedDebugEventStore.record(
+                    "BLABLACAR_BACKGROUND_CIRCUIT_FILTER_0426",
+                    appContext.packageName,
+                    "configured=" + configuredAccounts.size +
+                        " circuitOpen=" + circuitOpenAccounts.size +
+                        " eligibleForNavigation=" + (configuredAccounts.size - circuitOpenAccounts.size).coerceAtLeast(0) +
+                        " logicalTargets=" + accountIds.size +
+                        " gate=runPendingHeadless externalNavigationForOpenCircuit=false previousSnapshotPreserved=true",
+                )
+            }
             collectorState = AgendaBackgroundSyncConfig0392.requestAutomaticCollector0400(
                 context = appContext,
                 accountIds = accountIds,
