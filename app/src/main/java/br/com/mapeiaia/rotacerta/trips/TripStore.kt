@@ -60,12 +60,10 @@ class TripStore(context: Context) {
         }
         val nextState = if (tombstone) {
             PublicMirrorAttestationState0411.UNPROVEN
-        } else if (
-            existing.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
-            existing.publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
-            existing.publicMirrorAttestedCanonicalRevision0411 == existing.canonicalRevision
-        ) {
-            existing.publicMirrorAttestationState0411
+        } else if (existing.publicMirrorAttestationCurrent0411()) {
+            // A transport replay of the exact same logical canonical snapshot does not
+            // invalidate evidence already proven by independent public readback.
+            PublicMirrorAttestationState0411.VALIDATED
         } else {
             PublicMirrorAttestationState0411.PENDING
         }
@@ -103,6 +101,7 @@ class TripStore(context: Context) {
         differentByteRanges0421: List<String> = emptyList(),
         httpStatus0421: Int = 0,
         backendErrorCode0421: String = "",
+        failedStage0421: String = "",
         readbackAtMillis0421: Long = 0L,
         nowMillis: Long = System.currentTimeMillis(),
     ): Trip? = synchronized(CANONICAL_LOCK) {
@@ -137,6 +136,7 @@ class TripStore(context: Context) {
             publicMirrorDifferentByteRanges0421 = differentByteRanges0421.distinct().take(12),
             publicMirrorHttpStatus0421 = httpStatus0421.coerceAtLeast(0),
             publicMirrorBackendErrorCode0421 = backendErrorCode0421.take(80),
+            publicMirrorFailedStage0421 = failedStage0421.take(80),
         )
         if (updated != existing) persistCanonicalTrip0406(updated, current)
         updated
