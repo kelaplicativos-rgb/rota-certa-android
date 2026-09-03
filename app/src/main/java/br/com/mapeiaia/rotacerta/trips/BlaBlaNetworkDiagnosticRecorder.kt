@@ -645,7 +645,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const networkTripSources = new Map();
           Object.defineProperty(window, '__rotaCertaNetworkTripSource', {
             value: function(rawTripId) {
-              const tripId = String(rawTripId || '').trim().toLowerCase();
+              const tripId = String(rawTripId || '').trim();
               const source = networkTripSources.get(tripId) || null;
               if (!source) return null;
               try { return JSON.parse(JSON.stringify(source)); } catch (_) { return null; }
@@ -710,7 +710,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 const match = current.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
                 value = sourceText(match && match[1], 160);
               }
-              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value.toLowerCase() : '';
+              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
             } catch (_) {
               return '';
             }
@@ -768,7 +768,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               let child;
               try { child = value[key]; } catch (_) { child = null; }
               if (typeof child !== 'string' && typeof child !== 'number') return false;
-              return String(child).trim().toLowerCase() === expected.toLowerCase();
+              return String(child).trim() === expected;
             });
           }
 
@@ -870,7 +870,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           function rememberTripRoot(rawRoot, endpoint) {
             const root = sourceObject(rawRoot);
             if (!Array.isArray(root.bookings)) return;
-            const tripId = sourceText(root.trip_offer_encrypted_id, 160).toLowerCase();
+            const tripId = sourceText(root.trip_offer_encrypted_id, 160);
             if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
             const rawWaypoints = Array.isArray(root.waypoints) ? root.waypoints : [];
             const waypoints = rawWaypoints.slice(0, MAX_SOURCE_WAYPOINTS).map(function(rawWaypoint) {
