@@ -127,7 +127,9 @@ class BlaBlaTemporaryRestriction0426Test {
         val terminalStart = coordinator.indexOf("fun onAccountTemporarilyRestricted0426")
         val terminalEnd = coordinator.indexOf("fun onAccountTransientFailure0426", terminalStart)
         assertFalse(coordinator.substring(terminalStart, terminalEnd).contains("publishCurrentSessions"))
-        assertTrue(background.contains("filterNot(dynamicSessionStore::isSourceCircuitOpen0426)"))
+        assertTrue(background.contains("gate=runPendingHeadless"))
+        assertTrue(background.contains("externalNavigationForOpenCircuit=false"))
+        assertFalse(background.contains("filterNot(dynamicSessionStore::isSourceCircuitOpen0426)"))
     }
 
     @Test
