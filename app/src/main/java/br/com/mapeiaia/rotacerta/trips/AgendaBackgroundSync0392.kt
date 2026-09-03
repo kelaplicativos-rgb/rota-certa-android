@@ -728,6 +728,7 @@ internal data class ProjectionIntegrity0406(
             attestationPending0411 == 0 &&
             attestationDivergent0411 == 0 &&
             attestationInvalidIdentity0411 == 0 &&
+            attestationInvalidLink0411 == 0 &&
             attestationStaleRevision0411 == 0 &&
             attestationReadbackFailures0411 == 0 &&
             attestationValidated0411 == canonicalActive
