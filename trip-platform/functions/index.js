@@ -581,7 +581,10 @@ async function listPassengerNotifications(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   const docs = await ownedPassengerNotifications(session);
-  const notifications = docs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  const scopedDocs = session.driverScope0428
+    ? docs.filter((doc) => normalizeUsername(doc.data().driverUsername || "") === session.driverScope0428)
+    : docs;
+  const notifications = scopedDocs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
   return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length });
 }
 
@@ -616,10 +619,12 @@ async function markPassengerNotificationRead(req, res, notificationIdRaw, all = 
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   const now = Date.now();
-  const owns = (data) => data.recipientType === "PASSENGER" && (
-    session.passengerId
+  const owns = (data) => (
+    (!session.driverScope0428 || normalizeUsername(data.driverUsername || "") === session.driverScope0428) &&
+    data.recipientType === "PASSENGER" &&
+    (session.passengerId
       ? cleanText(data.passengerId, 120) === session.passengerId
-      : (session.passengerContact && cleanText(data.passengerContact, 40) === session.passengerContact)
+      : (session.passengerContact && cleanText(data.passengerContact, 40) === session.passengerContact))
   );
   if (all) {
     const docs = await ownedPassengerNotifications(session);
