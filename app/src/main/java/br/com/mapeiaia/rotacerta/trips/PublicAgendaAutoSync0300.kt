@@ -603,7 +603,7 @@ internal object PublicAgendaAutoSync0300 {
             throw error
         }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
-        if (entityRevision > 0L && response.stale) {
+        if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
         UnifiedDebugEventStore.record(
@@ -893,22 +893,24 @@ internal object PublicAgendaAutoSync0300 {
             )
         }
 
-        val expectedBookings0425 = (store.bookingsFor(publicTrip.id) + effectiveClaims)
-            .associateBy(Booking::id)
-            .values
-            .toList()
-        val expectedPublicProjectionHash0425 = canonicalPublicProjectionHash0411(
-            canonicalPublicProjectionPayload0411(
-                trip = effectiveTrip,
-                bookings = expectedBookings0425,
-                publicationRevision = entityRevision.takeIf { it > 0L }
-                    ?: remoteStateHint0402?.publicationRevision
-                    ?: effectiveTrip.publicationRevision,
-            ),
-        )
+        fun expectedPublicProjectionHash0425(): String {
+            val expectedBookings = (store.bookingsFor(publicTrip.id) + effectiveClaims)
+                .associateBy(Booking::id)
+                .values
+                .toList()
+            return canonicalPublicProjectionHash0411(
+                canonicalPublicProjectionPayload0411(
+                    trip = effectiveTrip,
+                    bookings = expectedBookings,
+                    publicationRevision = entityRevision.takeIf { it > 0L }
+                        ?: remoteStateHint0402?.publicationRevision
+                        ?: effectiveTrip.publicationRevision,
+                ),
+            )
+        }
         val remoteProjectionMatches0425 = remotePublicProjectionMatches0425(
             remote = remoteStateHint0402,
-            expectedPublicProjectionHash = expectedPublicProjectionHash0425,
+            expectedPublicProjectionHash = expectedPublicProjectionHash0425(),
             snapshotRevision = synthesized.snapshotRevision,
         )
 
@@ -956,7 +958,7 @@ internal object PublicAgendaAutoSync0300 {
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
             idempotencyKey0421 = idempotencyKey0421,
-            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
+            expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425(),
         )
 
         val response = try {
@@ -990,7 +992,7 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
-        if (entityRevision > 0L && response.stale) {
+        if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
         saveExternalBinding(
