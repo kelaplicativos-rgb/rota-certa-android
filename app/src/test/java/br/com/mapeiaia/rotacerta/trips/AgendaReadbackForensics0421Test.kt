@@ -219,4 +219,16 @@ class AgendaReadbackForensics0421Test {
             ),
         )
     }
+
+    @Test
+    fun publicEvidenceHeaderAggregatesObservedStagesAndKeepsStageCountExact() {
+        val source = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("lastStageDetail"))
+        assertTrue(source.contains("\"totalStageCount\""))
+        assertTrue(source.contains("append(stages.size)"))
+        assertTrue(source.contains("\"fieldDiffs\""))
+        assertTrue(source.contains("requestSha256"))
+        assertTrue(source.contains("responseSha256"))
+    }
+
 }
