@@ -1,7 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import java.security.MessageDigest
-import java.time.ZoneId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -102,23 +101,23 @@ internal fun canonicalPublicProjectionPayload0411(
     bookings: List<Booking>,
     publicationRevision: Long,
     nowMillis: Long = System.currentTimeMillis(),
+    canonicalTripId: String = trip.id,
 ): CanonicalPublicTripPayload0411 {
     val capacity = operationalInventoryCapacity(trip, bookings)
     val projectedTrip = trip.copy(capacity = capacity)
     val loads = SeatAvailabilityEngine.segmentLoads(projectedTrip, bookings, nowMillis)
     val summary = operationalSeatSummary(projectedTrip, bookings, nowMillis)
-    val status = SeatAvailabilityEngine.suggestedStatus(projectedTrip, bookings, nowMillis)
     val reliable = trip.capacityReliable
     val available = if (reliable) summary.availableSeats.coerceAtLeast(0) else 0
     return CanonicalPublicTripPayload0411(
-        canonicalTripId = trip.id,
+        canonicalTripId = canonicalTripId.trim().ifBlank { trip.id },
         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L),
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
         title = trip.title.trim(),
         departureAtMillis = trip.departureAtMillis,
-        timezoneId = trip.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
-        status = status.name,
+        timezoneId = trip.publicTimezoneId0411.trim(),
+        status = trip.status.name,
         capacity = capacity,
         stops = trip.stops.sortedBy(TripStop::order).mapIndexed { index, stop ->
             CanonicalPublicStop0411(

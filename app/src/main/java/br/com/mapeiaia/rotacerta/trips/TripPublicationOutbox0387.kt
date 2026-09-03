@@ -633,9 +633,12 @@ internal class TripMutationCoordinator0387(
                 trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                 trip.blablaTripId?.trim() == tripId
         }
-        val canonicalTripId = existingBinding?.bookingTripId?.takeIf(String::isNotBlank)
-            ?: canonicalExternalTrip?.id?.takeIf(String::isNotBlank)
-            ?: strongExternalCanonicalTripId0387(outbox.tenantId, accountId, profileUuid, tripId)
+        val canonicalTripId = strongExternalCanonicalTripId0387(
+            outbox.tenantId,
+            accountId,
+            profileUuid,
+            tripId,
+        )
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
@@ -898,8 +901,10 @@ internal class TripMutationCoordinator0387(
                         if (response.stale) throw PublicationStaleRevision0387(response.entityRevision)
                     }
                 }
+                val localMirrorSourceId0434 = event.snapshot.trip?.id?.takeIf(String::isNotBlank)
+                    ?: event.canonicalTripId
                 store.recordPublicationCommitted0411(
-                    canonicalTripId = event.canonicalTripId,
+                    canonicalTripId = localMirrorSourceId0434,
                     publicationRevision = event.revision,
                     publicationEventId = event.id,
                     tombstone = event.operation == TripPublicationOperation0387.TOMBSTONE,
@@ -907,7 +912,7 @@ internal class TripMutationCoordinator0387(
                 outbox.markDelivered(event.id)
                 delivered++
                 if (event.operation != TripPublicationOperation0387.TOMBSTONE) {
-                    deliveredCanonicalIds0429 += event.canonicalTripId
+                    deliveredCanonicalIds0429 += localMirrorSourceId0434
                 }
                 recordEvent(
                     "TRIP_MUTATION_OUTBOX_DELIVERED",
@@ -931,7 +936,8 @@ internal class TripMutationCoordinator0387(
                     .firstOrNull()
                 outbox.markFailure(event.id, error, retryable)
                 store.recordPublicMirrorPublicationFailure0421(
-                    canonicalTripId = event.canonicalTripId,
+                    canonicalTripId = event.snapshot.trip?.id?.takeIf(String::isNotBlank)
+                        ?: event.canonicalTripId,
                     expectedCanonicalRevision = event.snapshot.trip?.canonicalRevision ?: 0L,
                     transportRevision = event.revision,
                     evidenceId = publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L),

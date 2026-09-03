@@ -409,6 +409,42 @@ data class DriverPublicAttestationResponse0417(
 )
 
 @Serializable
+data class DriverPrivateMirrorWriteRequest0434(
+    val canonicalTripId: String,
+    val canonicalRevision: Long,
+    val privateStateHash: String,
+    val canonicalJson: String,
+    val correlationId: String = "",
+    val syncOperationId: String = "",
+    val idempotencyKey: String = "",
+)
+
+@Serializable
+data class DriverPrivateMirrorWriteResponse0434(
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val mirrorRevision: Long = 0L,
+    val privateStateHash: String = "",
+    val changed: Boolean = false,
+    val replayed: Boolean = false,
+)
+
+@Serializable
+data class DriverPrivateMirrorReadRequest0434(
+    val canonicalTripId: String,
+)
+
+@Serializable
+data class DriverPrivateMirrorReadback0434(
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val mirrorRevision: Long = 0L,
+    val privateStateHash: String = "",
+    val canonicalJson: String = "",
+    val persistedAtMillis: Long = 0L,
+)
+
+@Serializable
 data class DriverAdminSyncPolicy0417(
     val automatic: Boolean = true,
     val intervalMinutes: Long = 15L,
@@ -452,6 +488,7 @@ data class DriverCapacitySnapshotRequest(
     val mutationId0421: String = "",
     val idempotencyKey0421: String = "",
     val expectedPublicProjectionHash0425: String = "",
+    val expectedPublicProjectionJson0434: String = "",
 )
 
 @Serializable
@@ -697,6 +734,24 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    internal suspend fun writePrivateAgendaMirror0434(
+        mirror: DriverPrivateMirrorWriteRequest0434,
+    ): DriverPrivateMirrorWriteResponse0434 = request(
+        method = "PUT",
+        path = "/v1/driver/private-mirror",
+        body = json.encodeToString(mirror),
+        requireDriverToken = true,
+    )
+
+    internal suspend fun readPrivateAgendaMirror0434(
+        canonicalTripId: String,
+    ): DriverPrivateMirrorReadback0434 = request(
+        method = "POST",
+        path = "/v1/driver/private-mirror/readback",
+        body = json.encodeToString(DriverPrivateMirrorReadRequest0434(canonicalTripId.trim())),
+        requireDriverToken = true,
+    )
+
     suspend fun reportPublicTripAttestation0417(
         remoteTripId: String,
         request: DriverPublicAttestationRequest0417,
@@ -764,6 +819,7 @@ class TripRemoteApi(
         mutationId0421: String = "",
         idempotencyKey0421: String = "",
         expectedPublicProjectionHash0425: String = "",
+        expectedPublicProjectionJson0434: String = "",
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
@@ -812,6 +868,7 @@ class TripRemoteApi(
                 mutationId0421 = mutationId0421,
                 idempotencyKey0421 = idempotencyKey0421,
                 expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
+                expectedPublicProjectionJson0434 = expectedPublicProjectionJson0434,
             ),
         ),
         requireDriverToken = true,
