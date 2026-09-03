@@ -67,6 +67,28 @@ internal fun remoteCanonicalProjectionMatches0436(
     }
 }
 
+/**
+ * Once a Timeline TripStore aggregate exists, its Booking set is the only occupancy
+ * input allowed to materialize the private/public Agenda mirror. Re-appending the
+ * collector's synthesized claims here duplicates the same passenger occupancy
+ * (for example 4 canonical seats becoming 8 in public readback).
+ *
+ * The synthesized claims remain valid only for the legacy/no-canonical fallback.
+ */
+internal fun canonicalMirrorBookings0441(
+    canonicalSourceAuthoritative: Boolean,
+    storedCanonicalBookings: List<Booking>,
+    synthesizedCapacityClaims: List<Booking>,
+): List<Booking> =
+    if (canonicalSourceAuthoritative) {
+        storedCanonicalBookings
+    } else {
+        (storedCanonicalBookings + synthesizedCapacityClaims)
+            .associateBy(Booking::id)
+            .values
+            .toList()
+    }
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -403,9 +425,11 @@ internal object PublicAgendaAutoSync0300 {
             )
             val canonicalSource0434 = strongIdentity0408?.let { canonicalByIdentity[it] } ?: synthesized.trip
             val canonicalTripId0434 = canonicalSource0434.tripKey.ifBlank { canonicalSource0434.id }
-            val canonicalBookings0434 = (
-                store.bookingsFor(canonicalSource0434.id) + synthesized.capacityClaims
-            ).associateBy(Booking::id).values.toList()
+            val canonicalBookings0434 = canonicalMirrorBookings0441(
+                canonicalSourceAuthoritative = true,
+                storedCanonicalBookings = store.bookingsFor(canonicalSource0434.id),
+                synthesizedCapacityClaims = synthesized.capacityClaims,
+            )
             val canonicalOperational0434 = canonicalOperationalSnapshot0434(
                 trip = canonicalSource0434,
                 bookings = canonicalBookings0434,
@@ -806,9 +830,11 @@ internal object PublicAgendaAutoSync0300 {
         )
         val api = TripRemoteApi(settings)
         val privateMirrorTrip0434 = canonical ?: synthesized.trip
-        val privateMirrorBookings0434 = (
-            store.bookingsFor(privateMirrorTrip0434.id) + synthesized.capacityClaims
-        ).associateBy(Booking::id).values.toList()
+        val privateMirrorBookings0434 = canonicalMirrorBookings0441(
+            canonicalSourceAuthoritative = canonical != null,
+            storedCanonicalBookings = store.bookingsFor(privateMirrorTrip0434.id),
+            synthesizedCapacityClaims = synthesized.capacityClaims,
+        )
         val canonicalTripId0434 = privateMirrorTrip0434.tripKey
             .ifBlank { resolvedInternalTripId }
             .ifBlank { privateMirrorTrip0434.id }

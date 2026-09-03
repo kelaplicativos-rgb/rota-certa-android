@@ -140,4 +140,74 @@ class AgendaPrivateMirror0434Test {
             timelineBookingFieldPolicies0434().getValue(protectedBookingCapabilityField),
         )
     }
+    @Test
+    fun canonicalExternalMirrorDoesNotDoubleTimelineOccupancyWithSynthesizedClaims() {
+        val trip = Trip(
+            id = "canonical-0441",
+            title = "Origem → Destino",
+            departureAtMillis = 2_000_000_000_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "stop-a-0441", order = 0, name = "Origem", address = "Origem"),
+                TripStop(id = "stop-b-0441", order = 1, name = "Destino", address = "Destino"),
+            ),
+            publishedSeats = 4,
+            rotaCertaSeatAllocation = 0,
+            capacityReliable = true,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            updatedAtMillis = 1_900_000_000_000L,
+        )
+        val canonicalPassenger = Booking(
+            id = "canonical-passenger-0441",
+            tripId = trip.id,
+            passengerName = "Passageiro canônico",
+            boardingStopId = "stop-a-0441",
+            dropoffStopId = "stop-b-0441",
+            seats = 4,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+            sourceReference = "CANONICAL:passenger-0441",
+            occupancyGroupId = "canonical-passenger-0441",
+        )
+        val synthesizedDuplicate = canonicalPassenger.copy(
+            id = "synthesized-claim-0441",
+            sourceReference = "BLABLACAR_SYNC:duplicate-0441",
+            occupancyGroupId = "synthesized-duplicate-0441",
+        )
+
+        val canonicalBookings = canonicalMirrorBookings0441(
+            canonicalSourceAuthoritative = true,
+            storedCanonicalBookings = listOf(canonicalPassenger),
+            synthesizedCapacityClaims = listOf(synthesizedDuplicate),
+        )
+        val legacyFallbackBookings = canonicalMirrorBookings0441(
+            canonicalSourceAuthoritative = false,
+            storedCanonicalBookings = listOf(canonicalPassenger),
+            synthesizedCapacityClaims = listOf(synthesizedDuplicate),
+        )
+
+        assertEquals(1, canonicalBookings.size)
+        assertEquals(
+            listOf(4),
+            canonicalOperationalSnapshot0434(
+                trip = trip,
+                bookings = canonicalBookings,
+                nowMillis = trip.updatedAtMillis,
+            ).segmentLoads,
+        )
+        // Reproduces the physical evidence: re-appending the synthesized claim would
+        // turn the canonical [4] load into [8].
+        assertEquals(
+            listOf(8),
+            canonicalOperationalSnapshot0434(
+                trip = trip,
+                bookings = legacyFallbackBookings,
+                nowMillis = trip.updatedAtMillis,
+            ).segmentLoads,
+        )
+    }
+
+
 }
