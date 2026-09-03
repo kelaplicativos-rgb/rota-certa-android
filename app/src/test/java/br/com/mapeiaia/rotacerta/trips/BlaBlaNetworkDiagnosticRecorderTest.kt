@@ -94,7 +94,7 @@ class BlaBlaNetworkDiagnosticRecorderTest {
     }
 
     @Test
-    fun documentStartObserverIsNetworkOnlyAndDoesNotInspectRequestSecrets() {
+    fun documentStartObserverBindsStructuredShareToExactRequestTripWithoutEndpointPinning() {
         val script = BlaBlaNetworkDiagnosticPolicy.DOCUMENT_START_SCRIPT
 
         assertTrue(script.contains("window.fetch"))
@@ -102,19 +102,29 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("XMLHttpRequest.prototype.send"))
         assertTrue(script.contains("bridge.postMessage"))
         assertTrue(script.contains("__rotaCertaNetworkTripSource"))
-        assertTrue(script.contains("rememberNetworkTripSources(parsed, endpoint)"))
+        assertTrue(script.contains("function requestAdministrativeTripId(rawUrl)"))
+        assertTrue(script.contains("url.searchParams.get('id')"))
+        assertTrue(script.contains("const pageTripIdAtRequest = currentAdministrativeTripId();"))
+        assertTrue(script.contains("const requestBound = requestTripId === tripId;"))
+        assertTrue(script.contains("rememberNetworkTripSources(parsed, endpoint, rawUrl, pageTripIdAtRequest)"))
+        assertTrue(script.contains("rememberNetworkTripSources(parsed, endpoint, meta.url, meta.pageTripId)"))
         assertTrue(script.contains("structuredShareCandidates"))
         assertTrue(script.contains("publicTripHref"))
         assertTrue(script.contains("publicTripHrefBinding: 'network_authoritative'"))
+        assertTrue(script.contains("publicTripHrefSource: 'network_structured_request_id'"))
+        assertTrue(script.contains("publicTripHrefSource: 'network_structured_response_id'"))
         assertTrue(script.contains("publicTripHrefEndpoint"))
         assertTrue(script.contains("publicTripHrefJsonPath"))
-        assertTrue(script.contains("objectHasDirectAdministrativeTripId"))
-        assertTrue(script.contains("const pending = [{ value: parsed, depth: 0, path: '$' }]"))
         assertTrue(script.contains("objectHasDirectAdministrativeTripId(value, tripId)"))
+        assertTrue(script.contains("const pending = [{ value: parsed, depth: 0, path: '$' }]"))
         assertTrue(script.contains("if (unique.length === 1)"))
         assertFalse(script.contains("String(rawTripId || '').trim().toLowerCase()"))
         assertFalse(script.contains("expected.toLowerCase()"))
-        assertEquals(1, script.windowCount("function rememberStructuredShareForCurrentTrip(parsed, endpoint)"))
+        assertFalse(script.contains("path === '/ride/v3'"))
+        assertEquals(
+            1,
+            script.windowCount("function rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest)"),
+        )
         assertEquals(1, script.windowCount("function sourceWaypoint(rawValue)"))
         assertFalse(script.contains("navigator.share"))
         assertTrue(script.contains("trip_offer_encrypted_id"))
