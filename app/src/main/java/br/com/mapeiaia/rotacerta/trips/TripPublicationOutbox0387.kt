@@ -232,7 +232,7 @@ internal class TripPublicationOutbox0387(context: Context) {
     fun pending(
         nowMillis: Long = System.currentTimeMillis(),
         limit: Int = 32,
-        canonicalTripIds: Set<String> = emptySet(),
+        canonicalTripIds: Set<String>? = null,
     ): List<TripPublicationOutboxEvent0387> =
         synchronized(LOCK) {
             val recovered = recoverInterrupted(readEvents())
@@ -262,7 +262,7 @@ internal class TripPublicationOutbox0387(context: Context) {
                 .filter {
                     it.status in setOf(TripPublicationStatus0387.PENDING, TripPublicationStatus0387.FAILED_RETRYABLE) &&
                         it.nextAttemptAtMillis <= nowMillis &&
-                        (canonicalTripIds.isEmpty() || it.canonicalTripId in canonicalTripIds)
+                        (canonicalTripIds == null || it.canonicalTripId in canonicalTripIds)
                 }
                 .sortedWith(compareBy(TripPublicationOutboxEvent0387::createdAtMillis, TripPublicationOutboxEvent0387::revision))
                 .take(limit.coerceIn(1, 128))
@@ -814,7 +814,7 @@ internal class TripMutationCoordinator0387(
 
     suspend fun drainPending(
         limit: Int = 32,
-        canonicalTripIds: Set<String> = emptySet(),
+        canonicalTripIds: Set<String>? = null,
     ): Int = withContext(Dispatchers.IO) {
         var delivered = 0
         val deliveredCanonicalIds0429 = linkedSetOf<String>()
