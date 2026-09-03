@@ -105,6 +105,7 @@ fun BlaBlaCollectorPanel(
     autoSyncToken: Int = 0,
     autoSyncProfileUuid: String? = null,
     autoSyncTripId: String? = null,
+    showAccountManagement: Boolean = true,
 ) {
     val context = LocalContext.current
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
@@ -560,31 +561,37 @@ fun BlaBlaCollectorPanel(
             Text("Contas BlaBlaCar")
             Text("Cada conta adicionada mantém sessão isolada. Todas as contas conectadas alimentam automaticamente a mesma Timeline e a mesma Agenda Pública; não existe filtro de perfil para as viagens.")
 
-            if (accounts.isEmpty()) {
-                Text("Nenhuma conta adicionada.")
-            } else {
-                accounts.forEach { account ->
-                    DynamicAccountRow(
-                        account = account,
-                        snapshot = sessionStore.read(account),
-                        onOpen = { sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account)) },
-                        onRemove = {
-                            registry.remove(account.id)
-                            refresh()
-                            publishCombined("Conta removida")
-                        },
-                    )
+            if (showAccountManagement) {
+                if (accounts.isEmpty()) {
+                    Text("Nenhuma conta adicionada.")
+                } else {
+                    accounts.forEach { account ->
+                        DynamicAccountRow(
+                            account = account,
+                            snapshot = sessionStore.read(account),
+                            onOpen = { sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account)) },
+                            onRemove = {
+                                registry.remove(account.id)
+                                refresh()
+                                publishCombined("Conta removida")
+                            },
+                        )
+                    }
                 }
-            }
 
-            Button(
-                onClick = {
-                    newAccountLabel = ""
-                    showAddAccount = true
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("+ Adicionar conta")
+                Button(
+                    onClick = {
+                        newAccountLabel = ""
+                        showAddAccount = true
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("+ Adicionar conta")
+                }
+            } else if (accounts.isEmpty()) {
+                Text("Nenhuma conta adicionada. Use Contas e navegadores acima para conectar uma conta antes de sincronizar.")
+            } else {
+                Text("${accounts.size} conta(s) configurada(s) acima • use os controles abaixo para executar a coleta agora.")
             }
 
             Spacer(Modifier.height(2.dp))
