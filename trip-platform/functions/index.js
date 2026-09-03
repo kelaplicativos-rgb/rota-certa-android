@@ -4453,6 +4453,10 @@ async function requirePassengerSession(req, res) {
       }
     }
     const requestPath = cleanText((req.path || req.url || "").split("?")[0], 320);
+    if (requestPath === "/v1/passenger/me/password") {
+      fail(res, 403, "password_change_unavailable", "A troca de senha fica indisponível enquanto esta Agenda estiver com autenticação desligada.");
+      return null;
+    }
     const tripPathMatch = /\/trips\/([A-Za-z0-9_-]{16,180})(?:\/|$)/.exec(requestPath);
     if (tripPathMatch) {
       const tripSnap = await db.collection("trips").doc(tripPathMatch[1]).get();
