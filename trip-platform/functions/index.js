@@ -4346,13 +4346,14 @@ function passengerSessionContextHash0427(raw) {
   return /^[A-Za-z0-9_-]{16,120}$/.test(value) ? sha256Hex(value) : "";
 }
 
-async function createPassengerSession(passengerContact, passengerId = "", sessionContextId = "") {
+async function createPassengerSession(passengerContact, passengerId = "", sessionContextId = "", driverScope0428 = "") {
   const token = passengerSessionToken();
   const tokenHash = sha256Hex(token);
   const now = Date.now();
   const expiresAtMillis = now + 30 * 24 * 60 * 60 * 1000;
   const contactHash = sha256Hex(passengerContact);
   const sessionContextHash = passengerSessionContextHash0427(sessionContextId);
+  const driverScope = normalizeUsername(driverScope0428);
 
   const existing = await db.collection("passengerSessions")
     .where("contactHash", "==", contactHash)
@@ -4378,6 +4379,7 @@ async function createPassengerSession(passengerContact, passengerId = "", sessio
     passengerContact,
     passengerId: cleanText(passengerId, 120),
     sessionContextHash,
+    driverScope0428: driverScope,
     createdAtMillis: now,
     lastActivityAtMillis: now,
     expiresAtMillis,
