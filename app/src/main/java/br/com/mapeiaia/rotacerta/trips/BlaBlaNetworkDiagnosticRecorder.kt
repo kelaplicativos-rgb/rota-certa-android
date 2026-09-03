@@ -716,17 +716,6 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             }
           }
 
-          function requestAdministrativeTripId(rawUrl) {
-            try {
-              const url = new URL(String(rawUrl || ''), location.href);
-              if (url.protocol !== 'https:' || !allowedHost(url.hostname)) return '';
-              const value = sourceText(url.searchParams.get('id'), 160);
-              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
-            } catch (_) {
-              return '';
-            }
-          }
-
           function publicTripCandidate(raw) {
             try {
               const url = new URL(String(raw || ''), location.href);
@@ -745,14 +734,6 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             }
           }
 
-          function rideDetailsShareJsonPath(path) {
-            const normalized = String(path || '').replace(/_/g, '').toLowerCase();
-            return normalized.includes('tripconditions') &&
-              normalized.includes('tripactions') &&
-              normalized.includes('.actions') &&
-              normalized.endsWith('.share.url');
-          }
-
           function structuredShareCandidates(value, path, depth, seen) {
             if (!value || typeof value !== 'object' || depth > 9 || seen.has(value)) return [];
             seen.add(value);
@@ -765,10 +746,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 if (key.toLowerCase() === 'share' && child && typeof child === 'object') {
                   const share = sourceObject(child);
                   const candidate = publicTripCandidate(share.url);
-                  const sharePath = nextPath + '.url';
-                  if (candidate && rideDetailsShareJsonPath(sharePath)) {
-                    found.push({ candidate: candidate, jsonPath: sharePath });
-                  }
+                  if (candidate) found.push({ candidate: candidate, jsonPath: nextPath + '.url' });
                 }
                 if (child && typeof child === 'object') {
                   structuredShareCandidates(child, nextPath, depth + 1, seen).forEach(function(item) { found.push(item); });
@@ -815,11 +793,9 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             networkTripSources.set(tripId, Object.assign({}, existing, patch || {}, { tripId: tripId }));
           }
 
-          function rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
-            const tripId = sourceText(pageTripIdAtRequest, 160);
-            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId) || !parsed || typeof parsed !== 'object') return;
-            const requestTripId = requestAdministrativeTripId(requestUrl);
-            const requestBound = requestTripId === tripId;
+          function rememberStructuredShareForCurrentTrip(parsed, endpoint) {
+            const tripId = currentAdministrativeTripId();
+            if (!tripId || !parsed || typeof parsed !== 'object') return;
             const pending = [{ value: parsed, depth: 0, path: '$' }];
             const seen = new WeakSet();
             let visited = 0;
@@ -864,25 +840,6 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   if (child && typeof child === 'object') {
                     pending.push({ value: child, depth: current.depth + 1, path: current.path + '.' + key });
                   }
-                });
-              }
-            }
-
-            if (requestBound) {
-              const shares = structuredShareCandidates(parsed, '$', 0, new WeakSet());
-              const unique = [];
-              shares.forEach(function(item) {
-                if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) {
-                  unique.push(item);
-                }
-              });
-              if (unique.length === 1) {
-                mergeTripSource(tripId, {
-                  publicTripHref: unique[0].candidate.href,
-                  publicTripHrefSource: 'network_structured_request_id',
-                  publicTripHrefBinding: 'network_authoritative',
-                  publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
-                  publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
                 });
               }
             }
@@ -957,9 +914,9 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             }
           }
 
-          function rememberNetworkTripSources(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
+          function rememberNetworkTripSources(parsed, endpoint) {
             if (!parsed || typeof parsed !== 'object') return;
-            rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest);
+            rememberStructuredShareForCurrentTrip(parsed, endpoint);
             const pending = [{ value: parsed, depth: 0 }];
             const seen = new WeakSet();
             let visited = 0;
@@ -1108,7 +1065,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             };
           }
 
-          async function observeFetch(response, rawUrl, method, started, pageTripIdAtRequest) {
+          async function observeFetch(response, rawUrl, method, started) {
             if (!capturePage()) return;
             const endpoint = safeEndpoint(response && response.url ? response.url : rawUrl);
             if (!endpoint) return;
@@ -1139,9 +1096,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 return;
               }
               const parsed = JSON.parse(text);
-              if (response.status >= 200 && response.status < 300) {
-                rememberNetworkTripSources(parsed, endpoint, rawUrl, pageTripIdAtRequest);
-              }
+              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed, endpoint);
               const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
               post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
             } catch (_) {
@@ -1154,7 +1109,6 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             window.fetch = function() {
               const args = arguments;
               const started = performance.now();
-              const pageTripIdAtRequest = currentAdministrativeTripId();
               let rawUrl = '';
               let method = 'GET';
               try {
@@ -1162,7 +1116,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 method = args[0] instanceof Request ? args[0].method : (args[1] && args[1].method ? args[1].method : 'GET');
               } catch (_) {}
               return originalFetch.apply(this, args).then(function(response) {
-                observeFetch(response, rawUrl, method, started, pageTripIdAtRequest);
+                observeFetch(response, rawUrl, method, started);
                 return response;
               });
             };
@@ -1172,22 +1126,12 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const originalOpen = XMLHttpRequest.prototype.open;
           const originalSend = XMLHttpRequest.prototype.send;
           XMLHttpRequest.prototype.open = function(method, url) {
-            xhrMeta.set(this, {
-              method: String(method || 'GET'),
-              url: String(url || ''),
-              started: 0,
-              pageTripId: currentAdministrativeTripId()
-            });
+            xhrMeta.set(this, { method: String(method || 'GET'), url: String(url || ''), started: 0 });
             return originalOpen.apply(this, arguments);
           };
           XMLHttpRequest.prototype.send = function() {
             const xhr = this;
-            const meta = xhrMeta.get(xhr) || {
-              method: 'GET',
-              url: '',
-              started: 0,
-              pageTripId: currentAdministrativeTripId()
-            };
+            const meta = xhrMeta.get(xhr) || { method: 'GET', url: '', started: 0 };
             meta.started = performance.now();
             xhr.addEventListener('loadend', function() {
               if (!capturePage()) return;
@@ -1215,9 +1159,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   }
                   parsed = JSON.parse(text);
                 }
-                if (xhr.status >= 200 && xhr.status < 300) {
-                  rememberNetworkTripSources(parsed, endpoint, meta.url, meta.pageTripId);
-                }
+                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed, endpoint);
                 const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
                 post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
               } catch (_) {
