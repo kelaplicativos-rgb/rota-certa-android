@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
 
 internal enum class BlaBlaDirectRosterState {
