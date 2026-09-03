@@ -107,7 +107,7 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("publicTripHref"))
         assertTrue(script.contains("publicTripHrefBinding: 'network_authoritative'"))
         assertTrue(script.contains("publicTripHrefJsonPath"))
-        assertTrue(script.contains("subtreeContainsExactScalar"))
+        assertTrue(script.contains("objectHasDirectAdministrativeTripId"))
         assertFalse(script.contains("navigator.share"))
         assertTrue(script.contains("trip_offer_encrypted_id"))
         assertTrue(script.contains("root.waypoints"))
