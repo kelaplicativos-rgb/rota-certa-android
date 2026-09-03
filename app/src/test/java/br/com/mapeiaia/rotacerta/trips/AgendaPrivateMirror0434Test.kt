@@ -107,6 +107,20 @@ class AgendaPrivateMirror0434Test {
     }
 
     @Test
+    fun privateMirrorDoesNotRecalculateCanonicalCapacityStatusOrItinerary() {
+        val source = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt",
+        ).readText()
+        assertTrue(source.contains("operationalSnapshot: CanonicalOperationalSnapshot0434"))
+        assertTrue(source.contains("segmentLoads = operationalSnapshot.segmentLoads"))
+        assertTrue(source.contains("status = trip.status.name"))
+        assertTrue(source.contains("stops = trip.stops.sortedBy"))
+        assertFalse(source.contains("SeatAvailabilityEngine.segmentLoads"))
+        assertFalse(source.contains("operationalInventoryCapacity("))
+        assertFalse(source.contains("operationalSeatSummary("))
+    }
+
+    @Test
     fun everyTripAndBookingFieldHasAnExplicitMirrorPolicy() {
         fun instanceFields(type: Class<*>): Set<String> = type.declaredFields
             .filterNot { it.isSynthetic || Modifier.isStatic(it.modifiers) }
