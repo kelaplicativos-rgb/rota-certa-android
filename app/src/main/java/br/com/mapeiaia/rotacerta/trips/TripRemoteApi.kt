@@ -1260,6 +1260,33 @@ class TripRemoteApi(
         )
     }
 
+    private fun recordRemotePublicationEvidence0421(
+        evidence: RemotePublicationEvidenceContext0421?,
+        stage: String,
+        status: String,
+        reason: String,
+        extra: String = "",
+    ) {
+        evidence ?: return
+        UnifiedDebugEventStore.record(
+            "PUBLIC_EVIDENCE_0421",
+            "br.com.mapeiaia.rotacerta.trips",
+            buildString {
+                append("evidenceId=").append(evidence.evidenceId)
+                append(" traceId=").append(evidence.traceId)
+                append(" correlationId=").append(evidence.traceId)
+                append(" stage=").append(stage)
+                append(" status=").append(status)
+                append(" reasonCode=").append(reason)
+                append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
+                append(" logicalRevision=").append(evidence.logicalRevision)
+                append(" transportRevision=").append(evidence.transportRevision)
+                append(" mutationId=").append(evidence.mutationId)
+                append(" idempotencyKey=").append(evidence.idempotencyKey)
+                if (extra.isNotBlank()) append(' ').append(extra)
+            },
+        )
+    }
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
             .digest(bytes)
