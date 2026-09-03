@@ -80,6 +80,33 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
+    fun authoritativeNetworkBindingRequiresExactAdministrativeIdAndExplicitRegionalHost() {
+        val publicToken = "PublicToken0423CaseSensitive"
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "https://www.blablacar.fr/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA.uppercase(),
+            ),
+        )
+        assertEquals(
+            "https://www.blablacar.fr/trip?id=$publicToken",
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "//www.blablacar.fr/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
+            ),
+        )
+    }
+
+    @Test
     fun staleObservationWithoutPermalinkCannotEraseCanonicalPermalink() {
         val existing = "https://www.blablacar.com.br/trip?id=$tripIdA"
         assertEquals(existing, canonicalBlaBlaPublicUrl0409(existing, null, tripIdA))
