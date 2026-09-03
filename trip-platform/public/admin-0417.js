@@ -69,15 +69,10 @@
 
   async function api0417(path, options = {}) {
     const token = passengerSessionToken0418();
-    if (!token) {
-      const error = new Error("Entre em Minhas Viagens para acessar a Administração.");
-      error.status = 401;
-      throw error;
-    }
     const { operationId, ...fetchOptions } = options;
     const headers = {
       "Content-Type": "application/json",
-      "Authorization": "Bearer " + token,
+      ...(token ? { "Authorization": "Bearer " + token } : {}),
       "X-Rota-Certa-Admin-Driver": driverUsername,
       ...(operationId ? { "X-Rota-Certa-Operation-Id": operationId } : {}),
       ...(fetchOptions.headers || {}),
@@ -173,6 +168,7 @@
     const policy = currentSettings.syncPolicy || {};
     byId("adminAutoSync0417").checked = policy.automatic !== false;
     byId("adminSyncInterval0417").value = String(policy.intervalMinutes || 15);
+    byId("adminAuthenticationRequired0428").checked = currentSettings.authenticationRequired !== false;
 
     const selected = new Set(currentSettings.publicProfileUuids || []);
     const profiles = Array.isArray(currentSettings.knownProfiles) ? currentSettings.knownProfiles : [];
@@ -274,7 +270,6 @@
   }
 
   entry.addEventListener("click", () => {
-    if (!passengerSessionToken0418()) return;
     hidePublicSections0417();
     loadDashboard0417();
   });
@@ -333,6 +328,31 @@
     } catch (error) { setMessage0417(error.message, true); }
   }));
 
+  const saveAuthenticationButton0428 = byId("adminSaveAuthentication0428");
+  saveAuthenticationButton0428.addEventListener("click", () => runAdminAction0427("save-authentication", saveAuthenticationButton0428, async () => {
+    const publicVisibility = {};
+    document.querySelectorAll("[data-public-field0417]").forEach((input) => {
+      publicVisibility[input.dataset.publicField0417] = input.checked;
+    });
+    const publicProfileUuids = [...document.querySelectorAll("[data-profile0417]:checked")]
+      .map((input) => input.dataset.profile0417);
+    const authenticationRequired = byId("adminAuthenticationRequired0428").checked;
+    try {
+      await api0417("/v1/admin/settings/public", {
+        method: "PUT",
+        body: JSON.stringify({ publicVisibility, publicProfileUuids, authenticationRequired }),
+      });
+      setMessage0417(
+        authenticationRequired
+          ? "Autenticação ativada. A Agenda voltará a exigir acesso e senha nas áreas privadas."
+          : "Autenticação desligada. A Agenda e a Administração agora podem ser abertas sem login; áreas particulares usam apenas o WhatsApp como identificação.",
+      );
+      location.reload();
+    } catch (error) {
+      setMessage0417(error.message, true);
+    }
+  }));
+
   byId("adminSavePublic0417").addEventListener("click", async () => {
     const publicVisibility = {};
     document.querySelectorAll("[data-public-field0417]").forEach((input) => {
@@ -362,7 +382,7 @@
       const token = passengerSessionToken0418();
       const response = await fetch("/v1/admin/export", {
         headers: {
-          "Authorization": "Bearer " + token,
+          ...(token ? { "Authorization": "Bearer " + token } : {}),
           "X-Rota-Certa-Admin-Driver": driverUsername,
         },
       });
