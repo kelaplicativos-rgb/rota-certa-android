@@ -55,13 +55,15 @@ internal fun shouldDeduplicatePublicationEvent0410(
     latest: TripPublicationOutboxEvent0387?,
     operation: TripPublicationOperation0387,
     snapshot: TripPublicationSnapshot0387,
-    remoteProjectionDivergenceObserved: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") remoteProjectionDivergenceObserved: Boolean = false,
 ): Boolean {
     if (latest == null || latest.operation != operation) return false
     if (latest.snapshot.semanticSignature != snapshot.semanticSignature) return false
     if (latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion) return false
-    if (latest.status == TripPublicationStatus0387.FAILED_FINAL) return false
-    return !(remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED)
+    // Same logical snapshot never creates a new revision. Projection repair replays the
+    // delivered event in enqueue(); deterministic final failures stay final until the
+    // canonical snapshot itself changes.
+    return true
 }
 
 internal class TripPublicationOutbox0387(context: Context) {
@@ -100,6 +102,27 @@ internal class TripPublicationOutbox0387(context: Context) {
         synchronized(LOCK) {
             val events = recoverInterrupted(readEvents()).toMutableList()
             val latest = events.filter { it.canonicalTripId == canonicalTripId }.maxByOrNull { it.revision }
+            val sameLogicalSnapshot = latest != null &&
+                latest.operation == operation &&
+                latest.snapshot.semanticSignature == snapshot.semanticSignature &&
+                latest.snapshot.seatAllocationVersion == snapshot.seatAllocationVersion
+            if (
+                remoteProjectionDivergenceObserved &&
+                sameLogicalSnapshot &&
+                latest?.status == TripPublicationStatus0387.DELIVERED
+            ) {
+                val now = System.currentTimeMillis()
+                val replay = latest.copy(
+                    status = TripPublicationStatus0387.PENDING,
+                    attempts = 0,
+                    updatedAtMillis = now,
+                    lastError = "projection_replay_same_logical_revision",
+                    nextAttemptAtMillis = 0L,
+                )
+                val normalized = events.map { event -> if (event.id == replay.id) replay else event }
+                writeEvents(normalized)
+                return replay
+            }
             if (
                 shouldDeduplicatePublicationEvent0410(
                     latest = latest,
@@ -399,6 +422,7 @@ internal class TripMutationCoordinator0387(
         source: String,
         configuredRotaCertaSeatAllocation: Int? = null,
         reconcileBookingInventory: Boolean = true,
+        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? {
         if (canonicalTripId.isBlank() || !store.onlineSettings().configured) return null
         if (reconcileBookingInventory) store.reconcileBookingDerivedInventory(setOf(canonicalTripId))
@@ -431,6 +455,7 @@ internal class TripMutationCoordinator0387(
                 seatAllocationVersion = publicTrip.seatAllocationVersionUsed,
                 semanticSignature = signature,
             ),
+            remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
         )?.also { event ->
             recordEvent(
                 "TRIP_MUTATION_OUTBOX_ENQUEUED",
@@ -898,7 +923,7 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
+            "tenantId=${event.tenantId} evidenceId=ev_${sha256TripPublication0387(event.id + "|" + (event.snapshot.trip?.canonicalRevision ?: 0L)).take(24)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} outboxEventId=${event.id} $extra",
         )
     }
 }
@@ -929,11 +954,28 @@ private fun retryDelayMillis(attempt: Int): Long {
 
 internal fun publicationFailureRetryable0387(error: Throwable): Boolean {
     val remote = generateSequence(error) { it.cause }.filterIsInstance<TripRemoteApiException>().firstOrNull()
+    val deterministicConflictCodes = setOf(
+        "protected_booking_required",
+        "invalid_protected_booking_status",
+        "invalid_protected_operational_status",
+        "invalid_protected_payment_status",
+        "protected_passenger_name_required",
+        "invalid_protected_seats",
+        "invalid_protected_booking_id",
+        "protected_snapshot_requires_revision",
+        "publication_revision_conflict",
+        "protected_booking",
+        "capacity_claim_namespace_mismatch",
+        "invalid_external_capacity_claim",
+        "inventory_mismatch",
+    )
     return when {
         error is CancellationException -> true
         remote == null -> true
+        remote.backendErrorCode in deterministicConflictCodes -> false
         remote.httpStatus <= 0 -> true
-        remote.httpStatus in setOf(408, 409, 425, 429) -> true
+        remote.httpStatus in setOf(408, 425, 429) -> true
+        remote.httpStatus == 409 -> false
         remote.httpStatus >= 500 -> true
         else -> false
     }
