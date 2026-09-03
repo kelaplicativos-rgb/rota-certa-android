@@ -330,9 +330,15 @@ internal fun evaluatePublicMirrorReadback0411(
             actual.blablaTripId == expected.blablaTripId
     if (!identityValid) mismatch += "identity"
 
-    val revisionValid = actual.canonicalRevision == expected.canonicalRevision &&
+    val logicalRevisionValid = actual.canonicalRevision == expected.canonicalRevision &&
         actual.canonicalRevision > 0L
-    if (!revisionValid) mismatch += "canonicalRevision"
+    if (!logicalRevisionValid) mismatch += "canonicalRevision"
+    val transportRevisionValid = expected.publicationRevision > 0L &&
+        actual.publicationRevision >= expected.publicationRevision
+    if (!transportRevisionValid) mismatch += "publicationRevision"
+    val persistedCommitValid = readback.persistedAtMillis > 0L
+    if (!persistedCommitValid) mismatch += "persistedAtMillis"
+    val revisionValid = logicalRevisionValid && transportRevisionValid && persistedCommitValid
 
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
@@ -375,7 +381,14 @@ internal fun evaluatePublicMirrorReadback0411(
         expectedHash = expectedHash,
         readbackHash = readbackHash,
         mismatchFields = uniqueMismatch,
-        reason = if (validated) "PUBLIC_READBACK_MATCH" else "PUBLIC_READBACK_MISMATCH",
+        reason = when {
+            validated -> "PUBLIC_READBACK_MATCH"
+            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_UNRESOLVED"
+            !transportRevisionValid -> "STALE_TRANSPORT_REVISION"
+            !logicalRevisionValid -> "STALE_LOGICAL_REVISION"
+            !persistedCommitValid -> "PUBLIC_COMMIT_TIMESTAMP_MISSING"
+            else -> "PUBLIC_READBACK_MISMATCH"
+        },
         identityValid = identityValid,
         revisionValid = revisionValid,
         linkValid = linkValid,
