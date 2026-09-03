@@ -27,12 +27,16 @@ function fail0417(res, status, code, message) {
 
 function safeVisibility0417(raw) {
   const source = raw && typeof raw === "object" ? raw : {};
-  const fields = [
+  const publicByDefault = [
     "name", "whatsapp", "photo", "about", "rating", "reviews",
     "badge", "vehicle", "amenities", "preferences", "paymentInstructions",
+    "tripTitle", "tripDateTime", "tripStops", "tripStopAddresses",
+    "tripCapacity", "tripAvailability", "tripStatus", "tripBlaBlaLink", "tripPrices",
   ];
+  const privateByDefault = ["passengerNames", "passengerContacts"];
   const out = {};
-  fields.forEach((field) => { out[field] = source[field] !== false; });
+  publicByDefault.forEach((field) => { out[field] = source[field] !== false; });
+  privateByDefault.forEach((field) => { out[field] = source[field] === true; });
   return out;
 }
 
@@ -363,6 +367,7 @@ function createAgendaAdmin0417({
         divergent: Math.max(0, Number(health.divergent || 0)),
       },
       publicVisibility: safeVisibility0417(driver.publicVisibility0417),
+      visibilityPolicyRevision0434: Math.max(0, Number(driver.visibilityPolicyRevision0434 || 0)),
       publicProfileUuids: normalizeProfileScope0417(driver.publicTripProfileUuids0417),
       syncPolicy: normalizeSyncPolicy0417(driver.adminSyncPolicy0417),
     });
@@ -392,6 +397,7 @@ function createAgendaAdmin0417({
       .map((uuid) => ({ uuid, label: "Perfil " + uuid.slice(-8) }));
     return json0417(res, 200, {
       publicVisibility: safeVisibility0417(driver.publicVisibility0417),
+      visibilityPolicyRevision0434: Math.max(0, Number(driver.visibilityPolicyRevision0434 || 0)),
       publicProfileUuids: normalizeProfileScope0417(driver.publicTripProfileUuids0417),
       knownProfiles,
       syncPolicy: normalizeSyncPolicy0417(driver.adminSyncPolicy0417),
@@ -403,35 +409,57 @@ function createAgendaAdmin0417({
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
     const ref = db.collection("tripDrivers").doc(session.driverUsername);
-    const snap = await ref.get();
-    if (!snap.exists) return fail0417(res, 404, "driver_not_found", "Agenda não encontrada.");
-    const before = snap.data();
-    const visibility = safeVisibility0417(req.body && req.body.publicVisibility);
-    const profiles = normalizeProfileScope0417(req.body && req.body.publicProfileUuids);
-    const authenticationRequired = typeof (req.body && req.body.authenticationRequired) === "boolean"
-      ? req.body.authenticationRequired
-      : authenticationRequired0417(before);
-    await ref.set({
-      publicVisibility0417: visibility,
-      publicTripProfileUuids0417: profiles,
-      agendaAuthenticationRequired0428: authenticationRequired,
-      updatedAtMillis: Date.now(),
-    }, { merge: true });
+    const requestedVisibility = safeVisibility0417(req.body && req.body.publicVisibility);
+    const requestedProfiles = normalizeProfileScope0417(req.body && req.body.publicProfileUuids);
+    const requestedAuthentication = req.body && req.body.authenticationRequired;
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) return { missing: true };
+      const before = snap.data();
+      const previousVisibility = safeVisibility0417(before.publicVisibility0417);
+      const previousProfiles = normalizeProfileScope0417(before.publicTripProfileUuids0417);
+      const authenticationRequired = typeof requestedAuthentication === "boolean"
+        ? requestedAuthentication
+        : authenticationRequired0417(before);
+      const policyChanged =
+        JSON.stringify(previousVisibility) !== JSON.stringify(requestedVisibility) ||
+        JSON.stringify(previousProfiles) !== JSON.stringify(requestedProfiles);
+      const previousRevision = Math.max(0, Number(before.visibilityPolicyRevision0434 || 0));
+      const visibilityPolicyRevision0434 = previousRevision + (policyChanged ? 1 : 0);
+      tx.set(ref, {
+        publicVisibility0417: requestedVisibility,
+        publicTripProfileUuids0417: requestedProfiles,
+        visibilityPolicyRevision0434,
+        agendaAuthenticationRequired0428: authenticationRequired,
+        updatedAtMillis: Date.now(),
+      }, { merge: true });
+      return {
+        missing: false,
+        before,
+        previousVisibility,
+        previousProfiles,
+        visibilityPolicyRevision0434,
+        authenticationRequired,
+      };
+    });
+    if (result.missing) return fail0417(res, 404, "driver_not_found", "Agenda não encontrada.");
     await touchAdminSession0417(session);
     await appendAdminAudit0417({
       driverUsername: session.driverUsername,
       actorId: session.actorId,
       eventType: "PUBLIC_VISIBILITY_CHANGED",
       changes: [
-        { field: "publicVisibility", before: JSON.stringify(safeVisibility0417(before.publicVisibility0417)), after: JSON.stringify(visibility) },
-        { field: "publicProfileUuids", before: JSON.stringify(normalizeProfileScope0417(before.publicTripProfileUuids0417)), after: JSON.stringify(profiles) },
-        { field: "authenticationRequired", before: String(authenticationRequired0417(before)), after: String(authenticationRequired) },
+        { field: "publicVisibility", before: JSON.stringify(result.previousVisibility), after: JSON.stringify(requestedVisibility) },
+        { field: "publicProfileUuids", before: JSON.stringify(result.previousProfiles), after: JSON.stringify(requestedProfiles) },
+        { field: "visibilityPolicyRevision", before: String(Math.max(0, Number(result.before.visibilityPolicyRevision0434 || 0))), after: String(result.visibilityPolicyRevision0434) },
+        { field: "authenticationRequired", before: String(authenticationRequired0417(result.before)), after: String(result.authenticationRequired) },
       ],
     });
     return json0417(res, 200, {
-      publicVisibility: visibility,
-      publicProfileUuids: profiles,
-      authenticationRequired,
+      publicVisibility: requestedVisibility,
+      publicProfileUuids: requestedProfiles,
+      visibilityPolicyRevision0434: result.visibilityPolicyRevision0434,
+      authenticationRequired: result.authenticationRequired,
     });
   }
 

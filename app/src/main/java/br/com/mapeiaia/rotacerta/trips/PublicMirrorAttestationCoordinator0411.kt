@@ -162,6 +162,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             bookings = store.bookingsFor(current.id),
             publicationRevision = current.publicationRevision,
             nowMillis = nowMillis,
+            canonicalTripId = remote.canonicalTripId.ifBlank { current.id },
         )
         val diff = compareCanonicalPublicBytes0421(expected, readback.payload)
         evidence(
