@@ -1514,8 +1514,16 @@ internal fun canonicalTimelineProfileUuid(entry: TripTimelineEntry): String? =
     entry.blablaProfileUuid?.takeIf(::looksCanonicalProfileUuid)
         ?: entry.profileId.takeIf(::looksCanonicalProfileUuid)
 
-internal fun findExistingTimelineBackingTrip(entry: TripTimelineEntry, trips: List<Trip>): Trip? =
-    timelinePhysicalTripMatches(entry, trips).singleOrNull()
+internal fun findExistingTimelineBackingTrip(entry: TripTimelineEntry, trips: List<Trip>): Trip? {
+    val strongKey = timelineStrongExternalTripKey(entry) ?: return null
+    return trips.filter { trip ->
+        canonicalExternalTripIdentityKey(
+            trip.blablaProfileUuid,
+            trip.blablaTripId,
+            trip.blablaManageUrl,
+        ) == strongKey
+    }.singleOrNull()
+}
 
 /** Compatibility helper kept for older source-contract tests. New external flow uses buildTimelineExternalBackingTrip. */
 internal fun buildTimelineBackingTrip(entry: TripTimelineEntry, capacity: Int): Trip {
