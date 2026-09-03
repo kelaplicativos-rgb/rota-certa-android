@@ -1367,14 +1367,13 @@ internal object AgendaBackgroundSync0392 {
                         canonicalBoundBlaBlaPublicUrl0423(canonicalTrip.blablaPublicUrl, blablaTripId)
                 )
             ) {
-                if (
-                    coordinator.recordExternalCollectionMutation(
-                        sourceTrip = source,
-                        configuredRotaCertaSeatAllocation = perTripAllocation,
-                        seatAllocationVersion = seatAllocationVersion,
-                    ) != null
-                ) {
+                coordinator.recordExternalCollectionMutation(
+                    sourceTrip = source,
+                    configuredRotaCertaSeatAllocation = perTripAllocation,
+                    seatAllocationVersion = seatAllocationVersion,
+                )?.let { event ->
                     publicationQueued++
+                    publicationCanonicalTripIds0431 += event.canonicalTripId
                 }
             } else if (decision == ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED) {
                 UnifiedDebugEventStore.record(
