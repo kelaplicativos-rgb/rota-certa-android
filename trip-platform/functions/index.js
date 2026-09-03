@@ -2657,15 +2657,16 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
       return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
     }
   }
+  const driver = driverSnap.data();
+  const authenticationRequired = agendaAuthenticationRequired0428(driver);
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
-  } else {
+  } else if (authenticationRequired) {
     const view = await requirePassengerAgendaView(req, res, username);
     if (!view) return;
   }
-  const driver = driverSnap.data();
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const publicProfileScope0417 = new Set(
     (Array.isArray(driver.publicTripProfileUuids0417) ? driver.publicTripProfileUuids0417 : [])
@@ -2697,6 +2698,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   return json(res, 200, {
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
+    authenticationRequired,
   });
 }
 
@@ -3175,11 +3177,16 @@ async function getPublicTrip(res, req, token) {
   if (!snap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const data = snap.data();
   const driverUsername = normalizeUsername(data.driverUsername || "");
+  const driverSnap = driverUsername
+    ? await db.collection("tripDrivers").doc(driverUsername).get().catch(() => null)
+    : null;
+  const driverData = driverSnap && driverSnap.exists ? driverSnap.data() : null;
+  const authenticationRequired = agendaAuthenticationRequired0428(driverData);
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
-  } else {
+  } else if (authenticationRequired) {
     const view = await requirePassengerAgendaView(req, res, driverUsername);
     if (!view) return;
   }
@@ -3216,15 +3223,13 @@ async function getPublicTrip(res, req, token) {
     statusCode: 200,
   }).catch(() => {});
   let publicDriver = safePublicDriverProfile(data, driverUsername);
-  if (driverUsername) {
-    const driverSnap = await db.collection("tripDrivers").doc(driverUsername).get().catch(() => null);
-    if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
-  }
+  if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
   const publicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : "PASSENGER",
+    sessionType: tester ? "TESTER" : (authenticationRequired ? "PASSENGER" : "OPEN"),
+    authenticationRequired,
   });
 }
 
@@ -3364,6 +3369,10 @@ function passengerAccountIsActivated(account) {
     cleanText(account.passwordSalt, 80) &&
     cleanText(account.passwordHash, 256)
   );
+}
+
+function agendaAuthenticationRequired0428(driver) {
+  return !(driver && driver.agendaAuthenticationRequired0428 === false);
 }
 
 async function requirePassengerDriverAccess(req, res, driverUsername, sessionInput = null) {
@@ -4479,6 +4488,10 @@ async function getPassengerMe(req, res) {
   const resolvedDriver = await resolveDriverUsername(req.query && req.query.driverUsername);
   const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
   let access = null;
+  const driverData = resolvedDriver && resolvedDriver.driverSnap && resolvedDriver.driverSnap.exists
+    ? resolvedDriver.driverSnap.data()
+    : null;
+  const authenticationRequired = agendaAuthenticationRequired0428(driverData);
   if (driverUsername) {
     access = await passengerAccessForIdentity(driverUsername, session.passengerId, session.passengerContact);
     if (!access || !passengerAccessIsAuthorized(access)) {
@@ -4488,9 +4501,10 @@ async function getPassengerMe(req, res) {
   return json(res, 200, {
     passengerContact: session.passengerContact,
     passengerId: cleanText(session.passengerId || (accountSnap.exists && accountSnap.data().passengerId), 120),
-    mustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
+    mustChangePassword: authenticationRequired && accountSnap.exists && accountSnap.data().mustChangePassword === true,
     agendaAdmin: Boolean(access && access.agendaAdmin === true),
     driverUsername,
+    authenticationRequired,
   });
 }
 
@@ -4560,22 +4574,19 @@ async function activatePassengerAccount(req, res) {
 async function loginPassengerAccount(req, res) {
   await enforceBookingRateLimit(req);
   let passengerContact;
-  let password;
   try {
     passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
-    password = passengerPassword(req.body && req.body.password);
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", "Telefone ou senha inválidos.");
   }
+
   const resolvedDriver = await resolveDriverUsername(req.body && req.body.driverUsername);
   const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
-  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
-  if (!accountSnap.exists) return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
-  const account = accountSnap.data();
-  const supplied = passengerPasswordDigest(password, cleanText(account.passwordSalt, 80));
-  if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
-    return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
-  }
+  const driverData = resolvedDriver && resolvedDriver.driverSnap && resolvedDriver.driverSnap.exists
+    ? resolvedDriver.driverSnap.data()
+    : null;
+  const authenticationRequired = agendaAuthenticationRequired0428(driverData);
+
   let access = null;
   if (driverUsername) {
     access = await passengerAccessFor(driverUsername, passengerContact);
@@ -4583,18 +4594,51 @@ async function loginPassengerAccount(req, res) {
       return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
     }
   }
-  const passengerId = cleanText(account.passengerId || (access && access.passengerId), 120);
-  if (passengerId && !account.passengerId) {
-    await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).set({ passengerId, updatedAtMillis: Date.now() }, { merge: true });
+
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountSnap = await accountRef.get();
+  const account = accountSnap.exists ? accountSnap.data() : {};
+
+  if (authenticationRequired) {
+    let password;
+    try {
+      password = passengerPassword(req.body && req.body.password);
+    } catch (error) {
+      return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", "Telefone ou senha inválidos.");
+    }
+    if (!accountSnap.exists || !passengerAccountIsActivated(account)) {
+      return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
+    }
+    const supplied = passengerPasswordDigest(password, cleanText(account.passwordSalt, 80));
+    if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
+      return fail(res, 401, "invalid_credentials", "Telefone ou senha inválidos.");
+    }
+  } else if (!driverUsername) {
+    return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
   }
+
+  const passengerId = cleanText(account.passengerId || (access && access.passengerId), 120);
+  if (!passengerId) {
+    return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
+  }
+  if (!accountSnap.exists || !account.passengerId) {
+    await accountRef.set({
+      passengerContact,
+      passengerId,
+      updatedAtMillis: Date.now(),
+    }, { merge: true });
+  }
+
   const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId);
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
     passengerContact,
     passengerId,
-    mustChangePassword: account.mustChangePassword === true,
+    mustChangePassword: authenticationRequired && account.mustChangePassword === true,
     agendaAdmin: Boolean(access && access.agendaAdmin === true),
+    authenticationRequired,
+    passwordBypassed: !authenticationRequired,
   });
 }
 
