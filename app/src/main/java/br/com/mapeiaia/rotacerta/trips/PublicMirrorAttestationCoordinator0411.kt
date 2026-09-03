@@ -110,6 +110,11 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 httpStatus0421 = remoteError?.httpStatus ?: 0,
                 backendErrorCode0421 = remoteError?.backendErrorCode.orEmpty(),
                 failedStage0421 = "PUBLIC_READBACK_RESPONSE",
+                networkCallId0421 = remoteError?.networkCallId.orEmpty(),
+                requestBytes0421 = remoteError?.requestBytes ?: 0,
+                responseBytes0421 = remoteError?.responseBytes ?: 0,
+                requestHash0421 = remoteError?.requestSha256.orEmpty(),
+                responseHash0421 = remoteError?.responseSha256.orEmpty(),
                 readbackAtMillis0421 = nowMillis,
             )
             evidence(
