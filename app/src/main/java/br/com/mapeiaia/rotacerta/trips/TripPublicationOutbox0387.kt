@@ -229,7 +229,11 @@ internal class TripPublicationOutbox0387(context: Context) {
         }
     }
 
-    fun pending(nowMillis: Long = System.currentTimeMillis(), limit: Int = 32): List<TripPublicationOutboxEvent0387> =
+    fun pending(
+        nowMillis: Long = System.currentTimeMillis(),
+        limit: Int = 32,
+        canonicalTripIds: Set<String> = emptySet(),
+    ): List<TripPublicationOutboxEvent0387> =
         synchronized(LOCK) {
             val recovered = recoverInterrupted(readEvents())
             val newestByTrip = recovered.groupBy(TripPublicationOutboxEvent0387::canonicalTripId)
@@ -257,7 +261,8 @@ internal class TripPublicationOutbox0387(context: Context) {
             normalized.asSequence()
                 .filter {
                     it.status in setOf(TripPublicationStatus0387.PENDING, TripPublicationStatus0387.FAILED_RETRYABLE) &&
-                        it.nextAttemptAtMillis <= nowMillis
+                        it.nextAttemptAtMillis <= nowMillis &&
+                        (canonicalTripIds.isEmpty() || it.canonicalTripId in canonicalTripIds)
                 }
                 .sortedWith(compareBy(TripPublicationOutboxEvent0387::createdAtMillis, TripPublicationOutboxEvent0387::revision))
                 .take(limit.coerceIn(1, 128))
@@ -807,10 +812,13 @@ internal class TripMutationCoordinator0387(
     fun ensureRevisionAtLeast(canonicalTripId: String, revision: Long) =
         outbox.ensureRevisionAtLeast(canonicalTripId, revision)
 
-    suspend fun drainPending(limit: Int = 32): Int = withContext(Dispatchers.IO) {
+    suspend fun drainPending(
+        limit: Int = 32,
+        canonicalTripIds: Set<String> = emptySet(),
+    ): Int = withContext(Dispatchers.IO) {
         var delivered = 0
         val deliveredCanonicalIds0429 = linkedSetOf<String>()
-        outbox.pending(limit = limit).forEach { candidate ->
+        outbox.pending(limit = limit, canonicalTripIds = canonicalTripIds).forEach { candidate ->
             val event = outbox.markProcessing(candidate.id) ?: return@forEach
             val startedNs = System.nanoTime()
             recordEvidence0421(
