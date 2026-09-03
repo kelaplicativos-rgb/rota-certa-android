@@ -1867,6 +1867,52 @@ internal object AgendaBackgroundSync0392 {
         report
     }
 
+    private suspend fun runBookingCardDelta0431(
+        appContext: Context,
+        reason: String,
+        tenantId: String,
+        remoteTripId: String,
+    ): AgendaBackgroundSyncRun0392 {
+        val store = TripStore(appContext)
+        UnifiedDebugEventStore.record(
+            "AGENDA_CARD_DELTA_START_0431",
+            appContext.packageName,
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=${reason.take(80)} remoteTripKey=${seatSyncDiagnosticKey(remoteTripId)} source=PASSENGER_PUSH timelineFirst=true fullSyncRequested=false",
+        )
+        return try {
+            val booking = PublicBookingRemoteSync0296.pullAndReconcile(
+                context = appContext,
+                store = store,
+                targetRemoteTripId = remoteTripId,
+            )
+            BookingRealtimeEvents0356.notifyChanged()
+            TripWidgetProvider.updateAll(appContext)
+            UnifiedDebugEventStore.record(
+                "AGENDA_CARD_DELTA_END_0431",
+                appContext.packageName,
+                "remoteTripKey=${seatSyncDiagnosticKey(remoteTripId)} imported=${booking.importedCount} changedCards=${booking.changedTripIds.size} timelineUpdated=true publicEchoCompleted=true fullSyncRequested=false",
+            )
+            AgendaBackgroundSyncRun0392(
+                bookingImports = booking.importedCount,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            UnifiedDebugEventStore.record(
+                "AGENDA_CARD_DELTA_FAILED_0431",
+                appContext.packageName,
+                "remoteTripKey=${seatSyncDiagnosticKey(remoteTripId)} " +
+                    AgendaFailureEvidence.describe(
+                        error = error,
+                        operation = "BOOKING_CARD_DELTA",
+                        component = "AgendaBackgroundSync0392",
+                        method = "runBookingCardDelta0431",
+                    ),
+            )
+            AgendaBackgroundSyncRun0392(failures = 1)
+        }
+    }
+
     internal suspend fun runCycle(
         context: Context,
         reason: String,
