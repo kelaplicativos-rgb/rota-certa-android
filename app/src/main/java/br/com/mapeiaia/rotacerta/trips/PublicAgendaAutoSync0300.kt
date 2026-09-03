@@ -521,7 +521,7 @@ internal object PublicAgendaAutoSync0300 {
             trip = publicTrip.copy(remoteId = remoteTripId),
             claims = mirrors,
             protectedBookings = if (entityRevision > 0L) {
-                localBookings.filter { it.source == BookingSource.ROTA_CERTA }
+                localBookings.filter { protectedBookingParticipatesInCapacitySnapshot0421(it, nowMillis) }
             } else {
                 emptyList()
             },
@@ -1087,6 +1087,23 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         return synced
+    }
+
+    internal fun protectedBookingParticipatesInCapacitySnapshot0421(
+        booking: Booking,
+        nowMillis: Long,
+    ): Boolean {
+        if (booking.source != BookingSource.ROTA_CERTA || booking.seats <= 0) return false
+        return when (booking.status) {
+            BookingStatus.CONFIRMED,
+            BookingStatus.REQUESTED,
+            -> true
+            BookingStatus.HELD -> booking.holdExpiresAtMillis == null || booking.holdExpiresAtMillis > nowMillis
+            BookingStatus.REJECTED,
+            BookingStatus.CANCELLED,
+            BookingStatus.EXPIRED,
+            -> false
+        }
     }
 
     internal fun localCapacityMirrors(
