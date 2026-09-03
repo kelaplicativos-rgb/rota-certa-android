@@ -1657,15 +1657,31 @@ internal object AgendaBackgroundSync0392 {
                     needsRepair = true
                 }
 
-                val attestation = PublicMirrorAttestationCoordinator0411.attest(
-                    context = context,
-                    store = store,
-                    api = api,
-                    trip = trip,
-                    remote = remote,
-                    force = needsRepair,
-                    nowMillis = nowMillis,
-                )
+                val attestation = if (duplicateRemotes.isNotEmpty()) {
+                    val current = store.getTrip(trip.id) ?: trip
+                    store.recordPublicMirrorAttestation0411(
+                        canonicalTripId = current.id,
+                        expectedCanonicalRevision = current.canonicalRevision,
+                        expectedPublicationRevision = current.publicationRevision,
+                        state = PublicMirrorAttestationState0411.DIVERGENT,
+                        expectedHash = current.publicMirrorExpectedHash0411,
+                        readbackHash = "",
+                        mismatchFields = listOf("duplicateProjection"),
+                        reason = "PUBLIC_PROJECTION_DUPLICATE",
+                        readbackLatencyMillis = 0L,
+                    )
+                    PublicMirrorAttestationBatch0411(expected = 1, divergent = 1)
+                } else {
+                    PublicMirrorAttestationCoordinator0411.attest(
+                        context = context,
+                        store = store,
+                        api = api,
+                        trip = trip,
+                        remote = remote,
+                        force = needsRepair,
+                        nowMillis = nowMillis,
+                    )
+                }
                 accumulateAttestation0411(attestation)
                 if (
                     attestation.divergent > 0 ||
