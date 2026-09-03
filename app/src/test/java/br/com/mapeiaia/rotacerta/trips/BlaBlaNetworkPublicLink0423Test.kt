@@ -3,9 +3,11 @@ package br.com.mapeiaia.rotacerta.trips
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class BlaBlaNetworkPublicLink0423Test {
     private val adminA = "admin-trip-0423-a"
@@ -55,6 +57,32 @@ class BlaBlaNetworkPublicLink0423Test {
         assertEquals(dom, resolvePreferredPublicTripLink0423(null, dom, persisted))
         assertEquals(persisted, resolvePreferredPublicTripLink0423(null, null, persisted))
         assertNull(resolvePreferredPublicTripLink0423(null, null, null))
+    }
+
+    @Test
+    fun browserFlowKeepsDomShareAndExactSearchAsOrderedFallbacks() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        val network = source.indexOf("val networkPublicLink =")
+        val dom = source.indexOf("val passivePublicLink =")
+        val persisted = source.indexOf("val persistedPublicLink =")
+        val share = source.indexOf("PUBLIC_TRIP_LINK_SHARE_FALLBACK")
+        val exactSearch = source.indexOf("beginExactPublicTripSearch")
+
+        assertTrue(network >= 0)
+        assertTrue(dom > network)
+        assertTrue(persisted > dom)
+        assertTrue(share > persisted)
+        assertTrue(exactSearch > share)
+    }
+
+    @Test
+    fun staleCallbacksAndCardChangesRemainFailClosed() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        assertTrue(source.contains("expectedSync != syncGeneration"))
+        assertTrue(source.contains("expectedNavigation != navigationGeneration"))
+        assertTrue(source.contains("expectedCandidate != candidateIndex"))
+        assertTrue(source.contains("!pendingTripIsCurrent(expectedSync, expectedCandidate)"))
+        assertTrue(source.contains("STALE_CALLBACK_IGNORED"))
     }
 
     @Test
