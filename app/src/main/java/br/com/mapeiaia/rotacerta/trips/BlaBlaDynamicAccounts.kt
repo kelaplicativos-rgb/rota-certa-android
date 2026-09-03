@@ -936,12 +936,20 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun acquireExternalFlight0426(operation: String): Boolean {
-        if (externalFlightLease0426 != null) {
-            return true
-        }
         if (phase != Phase.IDLE) {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_PROFILE_SINGLE_FLIGHT_DEDUPED_0426",
+                packageName,
+                "accountKey=" + seatSyncDiagnosticKey(account.profileUuid ?: account.id) +
+                    " operation=" + operation.take(80) +
+                    " phase=" + phase.name +
+                    " owner=current_session action=ignore_duplicate_trigger",
+            )
             statusView.text = account.displayLabel + " • já existe uma operação BlaBlaCar em andamento nesta sessão."
             return false
+        }
+        if (externalFlightLease0426 != null) {
+            return true
         }
         val token = internalSessionId0426 + ":" + operation + ":" + (syncGeneration + 1L)
         val lease = store.tryAcquireExternalFlight0426(account, token)
