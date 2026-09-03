@@ -805,6 +805,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@executeCollectionStep
             }
             if (
+                page != null &&
                 automaticCollectionGeneration <= 0L &&
                 store.isSourceCircuitOpen0426(account)
             ) {
