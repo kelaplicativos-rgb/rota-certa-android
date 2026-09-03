@@ -1300,7 +1300,11 @@ internal object PublicAgendaAutoSync0300 {
                 ?.takeIf(BlaBlaCollectorUrlModule::isManageTarget)
                 ?.let(BlaBlaCollectorUrlModule::canonical)
                 ?.takeIf(String::isNotBlank),
-            blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(source.public_trip_href, source.trip_id),
+            blablaPublicUrl = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                source.public_trip_href,
+                source.trip_id,
+                source.public_trip_href_binding,
+            ),
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
