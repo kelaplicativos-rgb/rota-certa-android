@@ -471,7 +471,10 @@ data class DriverTripSyncState0402(
     val stops: List<TripStop> = emptyList(),
     val capacityReliable: Boolean = false,
     val capacitySnapshotRevision: String = "",
+    /** Transport/entity sequence. Not the logical canonical state revision. */
     val publicationRevision: Long = 0L,
+    /** Logical canonical snapshot revision persisted in the public projection. */
+    val canonicalRevision: Long = 0L,
     val canonicalTripId: String = "",
     val canonicalStateHash: String = "",
     val tripKey: String = "",
