@@ -323,7 +323,7 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(apiSource.contains("stopShapeMigrationCount0439"))
         assertTrue(syncSource.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_MIGRATED_0440"))
         assertTrue(syncSource.contains("strongIdentity=true"))
-        assertTrue(syncSource.contains("canonicalStops=${effectiveTrip.stops.size}"))
+        assertTrue(syncSource.contains("canonicalStops=\${effectiveTrip.stops.size}"))
     }
 
     @Test
