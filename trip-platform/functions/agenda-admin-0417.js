@@ -438,6 +438,8 @@ function createAgendaAdmin0417({
     const body = req.body && typeof req.body === "object" ? req.body : {};
     const currentRevision = Math.max(0, Number(data.publicationRevision || 0));
     const requestedRevision = Math.max(0, Number(body.publicationRevision || 0));
+    const currentCanonicalRevision = Math.max(0, Number(data.canonicalRevision || 0));
+    const requestedCanonicalRevision = Math.max(0, Number(body.canonicalRevision || 0));
     const requestedState = clean0417(body.state, 24).toUpperCase();
     const readbackHash = clean0417(body.readbackHash, 160);
     const expectedHash = clean0417(body.expectedHash, 160);
@@ -446,6 +448,8 @@ function createAgendaAdmin0417({
     const verified = requestedState === "VERIFIED" &&
       requestedRevision > 0 &&
       requestedRevision === currentRevision &&
+      requestedCanonicalRevision > 0 &&
+      requestedCanonicalRevision === currentCanonicalRevision &&
       readbackHash &&
       expectedHash &&
       readbackHash === expectedHash &&
@@ -457,7 +461,7 @@ function createAgendaAdmin0417({
     await ref.set({
       publicAttestationState0417: state,
       publicAttestedPublicationRevision0417: verified ? currentRevision : 0,
-      publicAttestedCanonicalRevision0417: verified ? Math.max(0, Number(body.canonicalRevision || 0)) : 0,
+      publicAttestedCanonicalRevision0417: verified ? requestedCanonicalRevision : 0,
       publicAttestedHash0417: verified ? readbackHash : "",
       publicAttestedAtMillis0417: verified ? now : 0,
       publicAttestationReason0417: clean0417(body.reason, 160),
@@ -466,7 +470,7 @@ function createAgendaAdmin0417({
         : [],
       publicAttestationCorrelationId0417: clean0417(body.correlationId, 100),
     }, { merge: true });
-    return json0417(res, 200, { state, verified, publicationRevision: currentRevision });
+    return json0417(res, 200, { state, verified, publicationRevision: currentRevision, canonicalRevision: currentCanonicalRevision });
   }
 
   async function listAdminLogs0417(req, res) {
