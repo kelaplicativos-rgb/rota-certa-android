@@ -2920,6 +2920,22 @@ function publicProjectionAttestedCurrent0429(token, data) {
   return attestedHash === actualHash;
 }
 
+function publicProjectionCommittedCurrent0434(token, data) {
+  if (!data || data.publicationTombstone === true) return false;
+  const canonicalTripId = cleanText(data.canonicalTripId || data.localTripId, 180);
+  const canonicalRevision = Math.max(0, Number(data.canonicalRevision || 0));
+  if (!canonicalTripId || !canonicalRevision) return false;
+  if (!data.canonicalPublicProjection0434 || typeof data.canonicalPublicProjection0434 !== "object") return false;
+  const payload = canonicalPublicTripPayload0411(token, data);
+  if (cleanText(payload.canonicalTripId, 180) !== canonicalTripId) return false;
+  if (Math.max(0, Number(payload.canonicalRevision || 0)) !== canonicalRevision) return false;
+  const committedHash = cleanText(data.publicProjectionHash0434, 160).toLowerCase();
+  if (!committedHash) return false;
+  const actualHash = canonicalPublicTripHash0411(payload).toLowerCase();
+  if (committedHash !== actualHash) return false;
+  return Boolean(data.publicCommittedAt0422);
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -2960,7 +2976,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     .filter((doc) =>
       PUBLIC_STATUSES.has(doc.data().status) &&
       Number(doc.data().departureAtMillis) > Date.now() &&
-      publicProjectionAttestedCurrent0429(doc.id, doc.data())
+      publicProjectionCommittedCurrent0434(doc.id, doc.data())
     )
     .filter((doc) => {
       if (!publicProfileScope0417.size) return true;
@@ -3451,6 +3467,9 @@ async function getPublicTrip(res, req, token) {
   } else if (authenticationRequired) {
     const view = await requirePassengerAgendaView(req, res, driverUsername);
     if (!view) return;
+  }
+  if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
+    return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
   }
   if (!PUBLIC_STATUSES.has(data.status)) {
     await appendPublicDebugEvent({
