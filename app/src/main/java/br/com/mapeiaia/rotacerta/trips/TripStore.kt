@@ -969,9 +969,9 @@ data class PublicExternalTripBinding(
             entryProfile == profileUuid.trim().lowercase() && leftHref == rightHref
         ) return true
 
-        return kotlin.math.abs(entry.departureAtMillis - departureAtMillis) <= 45L * 60L * 1000L &&
-            normalizeBindingPlace(entry.origin) == normalizeBindingPlace(stops.minByOrNull(TripStop::order)?.name.orEmpty()) &&
-            normalizeBindingPlace(entry.destination) == normalizeBindingPlace(stops.maxByOrNull(TripStop::order)?.name.orEmpty())
+        // Route/time similarity is diagnostic only. A public projection binding must
+        // never be selected by presentation fields when strong identity is absent.
+        return false
     }
 
     fun asTrip(): Trip = Trip(
