@@ -984,6 +984,12 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
         if (trip.publicMirrorHttpStatus0421 > 0) appendLine("HTTP status: " + trip.publicMirrorHttpStatus0421)
         if (trip.publicMirrorBackendErrorCode0421.isNotBlank()) appendLine("Error code: " + trip.publicMirrorBackendErrorCode0421)
         appendLine("Estágio exato da falha: " + trip.publicMirrorFailedStage0421.ifBlank { "nenhuma falha na última comparação" })
+        if (trip.publicMirrorNetworkCallId0421.isNotBlank()) appendLine("Network call ID: " + trip.publicMirrorNetworkCallId0421)
+        if (trip.publicMirrorRequestBytes0421 > 0 || trip.publicMirrorResponseBytes0421 > 0) {
+            appendLine("Bytes HTTP request/response: " + trip.publicMirrorRequestBytes0421 + "/" + trip.publicMirrorResponseBytes0421)
+        }
+        if (trip.publicMirrorRequestHash0421.isNotBlank()) appendLine("Hash request: " + trip.publicMirrorRequestHash0421)
+        if (trip.publicMirrorResponseHash0421.isNotBlank()) appendLine("Hash response: " + trip.publicMirrorResponseHash0421)
         appendLine("Evidence ID: " + trip.publicMirrorEvidenceId0421.ifBlank { "não gerado" })
         appendLine("Trace ID: " + trip.publicMirrorTraceId0421.ifBlank { "não gerado" })
         if (trip.publicMirrorExpectedBytes0421 > 0 || trip.publicMirrorActualBytes0421 > 0) {
@@ -1034,6 +1040,11 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"httpStatus\":").append(trip.publicMirrorHttpStatus0421).append(',')
         append("\"errorCode\":").append(q(trip.publicMirrorBackendErrorCode0421)).append(',')
         append("\"failedStage\":").append(q(trip.publicMirrorFailedStage0421)).append(',')
+        append("\"networkCallId\":").append(q(trip.publicMirrorNetworkCallId0421)).append(',')
+        append("\"requestBytes\":").append(trip.publicMirrorRequestBytes0421).append(',')
+        append("\"responseBytes\":").append(trip.publicMirrorResponseBytes0421).append(',')
+        append("\"requestHash\":").append(q(trip.publicMirrorRequestHash0421)).append(',')
+        append("\"responseHash\":").append(q(trip.publicMirrorResponseHash0421)).append(',')
         append("\"reasonCode\":").append(q(trip.publicMirrorAttestationReason0411)).append(',')
         append("\"readbackAtMillis\":").append(trip.publicMirrorLastReadbackAtMillis0421).append(',')
         append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411).append(',')
