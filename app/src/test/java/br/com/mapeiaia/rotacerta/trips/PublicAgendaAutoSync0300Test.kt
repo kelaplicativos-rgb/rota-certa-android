@@ -312,6 +312,21 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun canonicalBookedStopMigrationIsObservableWithoutChangingIdentityRules() {
+        val syncSource = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val apiSource = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
+        ).readText()
+
+        assertTrue(apiSource.contains("stopShapeMigrationCount0439"))
+        assertTrue(syncSource.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_MIGRATED_0440"))
+        assertTrue(syncSource.contains("strongIdentity=true"))
+        assertTrue(syncSource.contains("canonicalStops=${effectiveTrip.stops.size}"))
+    }
+
+    @Test
     fun cancellationIsNeverCountedAsExternalPublicationFailure() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
