@@ -126,13 +126,27 @@ internal object BlaBlaCollectorPassengerModule {
     private fun preserveStableTripMetadata(
         previous: BlaBlaCollectorTrip?,
         current: BlaBlaCollectorTrip,
-    ): BlaBlaCollectorTrip = current.copy(
-        public_trip_href = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
-            ?: previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty),
-        // A partial/reloaded snapshot cannot erase the last seat-editor value
-        // confirmed for this same strong trip identity.
-        published_seats = current.published_seats ?: previous?.published_seats,
-    )
+    ): BlaBlaCollectorTrip {
+        val currentHref = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
+        val previousHref = previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
+        val keepsCurrentHref = currentHref != null
+        return current.copy(
+            public_trip_href = currentHref ?: previousHref,
+            public_trip_href_source = if (keepsCurrentHref) {
+                current.public_trip_href_source
+            } else {
+                previous?.public_trip_href_source.orEmpty()
+            },
+            public_trip_href_binding = if (keepsCurrentHref) {
+                current.public_trip_href_binding
+            } else {
+                previous?.public_trip_href_binding.orEmpty()
+            },
+            // A partial/reloaded snapshot cannot erase the last seat-editor value
+            // confirmed for this same strong trip identity.
+            published_seats = current.published_seats ?: previous?.published_seats,
+        )
+    }
 
     private fun duplicateEvidenceMatches(
         left: BlaBlaCollectorPassenger,
