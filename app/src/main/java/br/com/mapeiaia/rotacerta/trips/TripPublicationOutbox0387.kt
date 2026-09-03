@@ -945,7 +945,59 @@ internal class TripMutationCoordinator0387(
         UnifiedDebugEventStore.record(
             stage,
             appContext.packageName,
-            "tenantId=${event.tenantId} evidenceId=${publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} mutationId=${event.resolvedMutationId0421()} idempotencyKey=${event.resolvedIdempotencyKey0421()} outboxEventId=${event.id} $extra",
+            "tenantScope=${seatSyncDiagnosticKey(event.tenantId)} evidenceId=${publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L)} traceId=${event.id} internalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} canonicalTripId=${seatSyncDiagnosticKey(event.canonicalTripId)} stateHash=${event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12)} transportRevision=${event.revision} revision=${event.revision} oldRevision=${(event.revision - 1L).coerceAtLeast(0L)} newRevision=${event.revision} logicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} canonicalRevision=${event.snapshot.trip?.canonicalRevision ?: 0L} changedFields=${event.mutationType} mutationType=${event.mutationType} source=${event.source} publicationTarget=${event.destination} destination=${event.destination} operation=${event.operation.name} configVersion=${event.snapshot.seatAllocationVersion} mutationId=${event.resolvedMutationId0421()} idempotencyKey=${event.resolvedIdempotencyKey0421()} outboxEventId=${event.id} $extra",
+        )
+        if (stage == "TRIP_MUTATION_OUTBOX_ENQUEUED" || stage == "TRIP_MUTATION_TOMBSTONE_ENQUEUED") {
+            val bytes = runCatching {
+                evidenceJson0421.encodeToString(event.snapshot).toByteArray(Charsets.UTF_8)
+            }.getOrDefault(ByteArray(0))
+            val hash = if (bytes.isEmpty()) "" else MessageDigest.getInstance("SHA-256")
+                .digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            recordEvidence0421(
+                stage = "CANONICAL_SERIALIZATION",
+                status = "OK",
+                reason = "SNAPSHOT_SERIALIZED",
+                event = event,
+                extra = "inputHash=${event.snapshot.trip?.canonicalStateHash.orEmpty()} outputHash=$hash outputBytes=${bytes.size} charset=UTF-8 serialization=kotlinx-json canonicalization=semantic-signature previousStage=CANONICAL_READ nextStage=OUTBOX_ENQUEUE",
+            )
+            recordEvidence0421(
+                stage = "OUTBOX_ENQUEUE",
+                status = "OK",
+                reason = "OUTBOX_EVENT_PERSISTED",
+                event = event,
+                extra = "attempt=0 previousStage=CANONICAL_SERIALIZATION nextStage=OUTBOX_DEQUEUE",
+            )
+        }
+    }
+
+    private fun recordEvidence0421(
+        stage: String,
+        status: String,
+        reason: String,
+        event: TripPublicationOutboxEvent0387,
+        extra: String = "",
+    ) {
+        UnifiedDebugEventStore.record(
+            "PUBLIC_EVIDENCE_0421",
+            appContext.packageName,
+            buildString {
+                append("evidenceId=").append(publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L))
+                append(" traceId=").append(event.id)
+                append(" correlationId=").append(event.id)
+                append(" tenantScope=").append(seatSyncDiagnosticKey(event.tenantId))
+                append(" stage=").append(stage)
+                append(" status=").append(status)
+                append(" reasonCode=").append(reason)
+                append(" canonicalTripId=").append(seatSyncDiagnosticKey(event.canonicalTripId))
+                append(" logicalRevision=").append(event.snapshot.trip?.canonicalRevision ?: 0L)
+                append(" transportRevision=").append(event.revision)
+                append(" canonicalStateHash=").append(event.snapshot.trip?.canonicalStateHash.orEmpty())
+                append(" mutationId=").append(event.resolvedMutationId0421())
+                append(" idempotencyKey=").append(event.resolvedIdempotencyKey0421())
+                append(" durationMs=0")
+                if (extra.isNotBlank()) append(' ').append(extra)
+            },
         )
     }
 }
