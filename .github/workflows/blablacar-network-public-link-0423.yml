@@ -1,0 +1,129 @@
+name: Rota Certa 0.1.423 BlaBlaCar network permalink
+
+on:
+  push:
+    branches:
+      - agent/blablacar-network-public-link-0.1.423
+  pull_request:
+    branches:
+      - agent/agenda-public-integrity-0.1.422
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blablacar-network-public-link-0423-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove source lineage and protected FAROL isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=23bd12522696a8f0f82cd8e81264286f4116c510
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'versionCode = 5716' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.423"' app/build.gradle.kts
+          test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
+          grep -Fq 'fun publicTripFromAuthoritativeNetwork' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq 'PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq 'publicTripHrefBinding' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorNetworkSourceModule.kt
+          grep -Fq 'objectHasDirectAdministrativeTripId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
+          grep -Fq 'PUBLIC_TRIP_LINK_NETWORK_BOUND' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_TRIP_LINK_SHARE_FALLBACK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkPublicLink0423Test.kt
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol-before.sha256
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cmp -s /tmp/farol-before.sha256 <(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5716'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.423'" /tmp/aapt.txt
+
+          mkdir -p /tmp/0423
+          cp "$APK" /tmp/0423/rota-certa-0.1.423-blablacar-network-permalink.apk
+          sha256sum /tmp/0423/rota-certa-0.1.423-blablacar-network-permalink.apk | tee /tmp/0423/apk.sha256
+          cp /tmp/aapt.txt /tmp/0423/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0423/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0423/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0423/changed-files.txt
+          git rev-parse HEAD > /tmp/0423/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0423/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0423/dex-strings.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.423-blablacar-network-permalink-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0423
