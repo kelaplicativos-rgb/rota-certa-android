@@ -2969,9 +2969,12 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     })
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
-  const trips = tester
+  const rawTrips = tester
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
     : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
+  const trips = rawTrips.map((trip, index) =>
+    applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver)
+  );
   if (!tester) {
     await appendPublicDebugEvent({
       driverUsername: username,
@@ -3483,7 +3486,8 @@ async function getPublicTrip(res, req, token) {
   }).catch(() => {});
   let publicDriver = safePublicDriverProfile(data, driverUsername);
   if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
-  const publicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
+  const rawPublicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
+  const publicTrip = applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {});
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
@@ -6627,9 +6631,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         Number(persistence.operationalOverbookingSeats || 0) > 0;
       const status = snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads);
       const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+      const previousPublicProjectionHash0434 = cleanText(previous.publicProjectionHash0434, 160).toLowerCase();
+      const publicProjectionRevision0434 = Math.max(0, Math.floor(Number(previous.publicProjectionRevision0434 || 0))) +
+        (incomingPublicProjection0434 && expectedPublicProjectionHash0425 !== previousPublicProjectionHash0434 ? 1 : 0);
       const canonicalProjectionPersistence0434 = incomingPublicProjection0434 ? {
         canonicalPublicProjection0434: incomingPublicProjection0434,
         publicProjectionHash0434: expectedPublicProjectionHash0425,
+        publicProjectionRevision0434,
         canonicalTripId: incomingPublicProjection0434.canonicalTripId,
         canonicalRevision: incomingPublicProjection0434.canonicalRevision,
         canonicalStateHash: incomingPublicProjection0434.canonicalStateHash,
@@ -6659,9 +6667,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         ...previous,
         ...normalized,
         ...persistence,
-        ...canonicalProjectionPersistence0434,
         capacityReliable: true,
         status,
+        ...canonicalProjectionPersistence0434,
         capacitySnapshotRevision: snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
@@ -6749,9 +6757,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       tx.update(tripRef, {
         ...normalized,
         ...persistence,
-        ...canonicalProjectionPersistence0434,
         capacityReliable: true,
         status,
+        ...canonicalProjectionPersistence0434,
         capacitySnapshotRevision: snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
@@ -6764,10 +6772,16 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         updatedAtMillis: now,
         publicCommittedAt0422: FieldValue.serverTimestamp(),
       });
+      const committedRange0434 = incomingPublicProjection0434
+        ? {
+            minimum: incomingPublicProjection0434.availableSeatsMinimum,
+            maximum: incomingPublicProjection0434.availableSeatsMaximum,
+          }
+        : capacityAvailabilityRange(candidateTrip, loads);
       return {
         changed: true,
         stale: false,
-        range: capacityAvailabilityRange(candidateTrip, loads),
+        range: committedRange0434,
         entityRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         occupancyRevision,
         snapshotOverbooked,
