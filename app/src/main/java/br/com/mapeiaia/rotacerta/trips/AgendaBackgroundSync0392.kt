@@ -1871,9 +1871,27 @@ internal object AgendaBackgroundSync0392 {
         context: Context,
         reason: String,
         collectorTarget0407: BlaBlaTripTarget0407? = null,
+        bookingTargetRemoteTripId0431: String = "",
     ): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val targetRemoteTripId = bookingTargetRemoteTripId0431.trim()
+        if (
+            agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.BOOKING_EVENT &&
+            targetRemoteTripId.isNotBlank()
+        ) {
+            val cardMutex = cardDeltaMutexes0431.computeIfAbsent(
+                tenantId + "|" + seatSyncDiagnosticKey(targetRemoteTripId),
+            ) { Mutex() }
+            return cardMutex.withLock {
+                runBookingCardDelta0431(
+                    appContext = appContext,
+                    reason = reason,
+                    tenantId = tenantId,
+                    remoteTripId = targetRemoteTripId,
+                )
+            }
+        }
         val mutex = tenantMutexes.computeIfAbsent(tenantId) { Mutex() }
         return mutex.withLock {
             runTenantCycle(appContext, reason, tenantId, collectorTarget0407)
