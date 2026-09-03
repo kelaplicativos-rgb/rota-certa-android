@@ -235,11 +235,17 @@ private data class DynamicTripDetail(
     val domHtml: String = "",
 )
 
-private data class ResolvedPublicTripLink0423(
+internal data class ResolvedPublicTripLink0423(
     val href: String,
     val source: String,
     val binding: String,
 )
+
+internal fun resolvePreferredPublicTripLink0423(
+    network: ResolvedPublicTripLink0423?,
+    passiveDom: ResolvedPublicTripLink0423?,
+    persistedCanonical: ResolvedPublicTripLink0423?,
+): ResolvedPublicTripLink0423? = network ?: passiveDom ?: persistedCanonical
 
 @Serializable
 private data class DynamicPublicTripShareEvidence(
@@ -1551,7 +1557,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             } else {
                 null
             }
-            val resolvedPublicLink = networkPublicLink ?: passivePublicLink ?: persistedPublicLink
+            val resolvedPublicLink = resolvePreferredPublicTripLink0423(
+                network = networkPublicLink,
+                passiveDom = passivePublicLink,
+                persistedCanonical = persistedPublicLink,
+            )
             pendingTripDetail = identityAcceptedResult.copy(
                 publicTripHref = resolvedPublicLink?.href.orEmpty(),
                 publicTripHrefSource = resolvedPublicLink?.source.orEmpty(),
