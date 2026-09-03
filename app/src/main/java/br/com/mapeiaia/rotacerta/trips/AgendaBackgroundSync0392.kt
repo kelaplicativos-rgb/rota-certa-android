@@ -165,7 +165,7 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason == "timeline_pull_refresh" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
     reason == "blablacar_collection_result" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
-    reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
+    reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("admin_update_now:") -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason.startsWith("admin_full_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
@@ -952,7 +952,9 @@ internal object AgendaBackgroundSync0392 {
     private const val INPUT_TRIP_ID_0407 = "trip_id_0407"
     private const val INPUT_TRIP_HREF_0407 = "trip_href_0407"
     private const val INPUT_REMOTE_TRIP_ID_0431 = "remote_trip_id_0431"
+    private const val INPUT_REQUESTED_AT_0435 = "requested_at_0435"
     private const val WORK_BACKOFF_SECONDS = 30L
+    internal const val ONE_SHOT_MAX_AGE_MILLIS_0435 = 10L * 60L * 1000L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
     private val cardDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
     private val collectorDeltaMutexes0431 = ConcurrentHashMap<String, Mutex>()
@@ -1034,6 +1036,7 @@ internal object AgendaBackgroundSync0392 {
                 INPUT_PROFILE_UUID_0407 to target.profileUuid,
                 INPUT_TRIP_ID_0407 to target.tripId,
                 INPUT_TRIP_HREF_0407 to target.tripHref,
+                INPUT_REQUESTED_AT_0435 to requestedAtMillis,
             ))
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
@@ -1093,7 +1096,13 @@ internal object AgendaBackgroundSync0392 {
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
             .setConstraints(networkConstraints())
-            .setInputData(workDataOf(INPUT_REASON to reason.take(80), INPUT_TENANT_ID to tenantId))
+            .setInputData(
+                workDataOf(
+                    INPUT_REASON to reason.take(80),
+                    INPUT_TENANT_ID to tenantId,
+                    INPUT_REQUESTED_AT_0435 to System.currentTimeMillis(),
+                ),
+            )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
@@ -2442,6 +2451,21 @@ internal object AgendaBackgroundSync0392 {
 
     internal fun scheduledTenantId(workerParameters: WorkerParameters): String =
         workerParameters.inputData.getString(INPUT_TENANT_ID)?.trim().orEmpty()
+
+    internal fun requestedAtMillis0435(workerParameters: WorkerParameters): Long =
+        workerParameters.inputData.getLong(INPUT_REQUESTED_AT_0435, 0L)
+
+    internal fun staleDurableOneShot0435(
+        reason: String,
+        requestedAtMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val oneShot = reason == "trip_reverify" || reason.startsWith("admin_update_now:")
+        if (!oneShot) return false
+        if (requestedAtMillis <= 0L) return true
+        val age = nowMillis - requestedAtMillis
+        return age > ONE_SHOT_MAX_AGE_MILLIS_0435 || age < -60_000L
+    }
 
     internal fun currentTenantId(context: Context): String =
         RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
