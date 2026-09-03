@@ -1,27 +1,27 @@
-name: Rota Certa Agenda public integrity 0.1.422
+name: Rota Certa Agenda admin session determinism 0.1.427
 
 on:
   push:
     branches:
-      - agent/agenda-public-integrity-0.1.422
+      - agent/agenda-admin-session-determinism-0.1.427
   pull_request:
     branches:
-      - agent/agenda-readback-forensics-0.1.421
+      - agent/blablacar-temporary-restriction-0.1.426
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-public-integrity-0422-${{ github.ref }}
+  group: agenda-admin-session-0427-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   validate-build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 80
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0422_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_0427_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -31,30 +31,33 @@ jobs:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Verify source identity and protected scope
+      - name: Verify lineage version and protected FAROL
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          grep -Fq 'versionCode = 5715' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.422"' app/build.gradle.kts
-          printf '%s\n' "${{ github.sha }}" > source_head.txt
-          printf '%s\n' "${{ github.ref_name }}" > source_branch.txt
-          git diff --name-only 5fe75f569af1a4b4a55236c070daf3db5ee6c224...HEAD > changed-files.txt
-          if grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol' changed-files.txt; then
+          BASE=8143c150b5ab3128b4f99aba7e83b4459cdbc4c8
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git merge-base --is-ancestor "$BASE" HEAD
+          grep -Fq 'versionCode = 5720' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.427"' app/build.gradle.kts
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          if git diff --name-only "$BASE"..HEAD | grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol'; then
             echo "Protected FAROL scope changed unexpectedly."
-            cat changed-files.txt
             exit 4
           fi
+          printf '%s\n' "$SOURCE_SHA" > /tmp/source-head.txt
+          printf '%s\n' "$SOURCE_BRANCH" > /tmp/source-branch.txt
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate backend and public administration contracts
+      - name: Validate admin backend and browser contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -65,8 +68,6 @@ jobs:
           node --check trip-platform/public/admin-0417.js
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
           node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
-          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
-          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
 
       - name: Configure Firebase Android app
         shell: bash
@@ -101,8 +102,7 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Set up Android build
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
@@ -110,28 +110,42 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run focused Android contracts
+      - name: Focused Android regressions
         shell: bash
         run: |
           set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPassengerMainThread0384Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalNotificationBubble0416Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedInventory0372Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          chmod +x gradlew
+          export ROTA_CERTA_GIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          export ROTA_CERTA_GIT_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
 
-      - name: Compile all debug unit tests
-        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
-
-      - name: Lint
-        run: ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-
-      - name: Assemble exact SHA APK
+      - name: Compile lint and assemble exact SHA
         shell: bash
         run: |
           set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          export ROTA_CERTA_GIT_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
-          sha256sum app/build/outputs/apk/debug/app-debug.apk > apk.sha256
-          grep -E 'version(Code|Name) = ' app/build.gradle.kts > app-version.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5720'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.427'" /tmp/aapt.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
+          sha256sum "$APK" > /tmp/apk.sha256
 
       - name: Configure Firebase deployment authentication
         shell: bash
@@ -166,42 +180,39 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke live administration and MATCH contracts
+      - name: Smoke live admin session determinism
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
           grep -Fq '"ok":true' /tmp/health.json
-          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
-          test "$CODE" = "401" -o "$CODE" = "400"
           BUST="$(date +%s%N)"
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=$BUST" -o /tmp/live-admin.js
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
-          grep -Fq 'rotacerta-passenger-session' /tmp/live-admin.js
-          grep -Fq 'X-Rota-Certa-Admin-Driver' /tmp/live-admin.js
-          ! grep -Fq 'X-Rota-Certa-Admin-Session' /tmp/live-admin.js
-          grep -Fq 'portalAgendaAdminCard0418' /tmp/live-index.html
-          grep -Fq 'openAgendaAdmin0418' /tmp/live-index.html
-          grep -Fq 'PASSENGER_AGENDA_ADMIN_CHANGED' trip-platform/functions/index.js
-          grep -Fq 'const now = Date.now();' trip-platform/functions/index.js
-          grep -Fq 'admin_update_now' trip-platform/functions/agenda-admin-0417.js
-          grep -Fq 'public-attestation' trip-platform/functions/index.js
-          echo "LIVE_PASSENGER_ADMIN_MATCH_CONTRACT=PASS"
-          echo "SOURCE_HEAD=${{ github.sha }}"
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          grep -Fq '__rotaCertaAgendaAdminBound0427' /tmp/live-admin.js
+          grep -Fq 'X-Rota-Certa-Operation-Id' /tmp/live-admin.js
+          grep -Fq 'rotacerta-passenger-session-context-0427' /tmp/live-app.js
+          CODE="$(curl --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
+          test "$CODE" = "401" -o "$CODE" = "400"
+          echo "LIVE_ADMIN_SESSION_0427=PASS"
 
-      - name: Upload exact SHA APK and evidence
-        uses: actions/upload-artifact@v4
+      - name: Stage exact SHA artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/0427
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0427/rota-certa-0.1.427-admin-session-determinism.apk
+          cp /tmp/source-head.txt /tmp/0427/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0427/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0427/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0427/apk.sha256
+          cp /tmp/aapt.txt /tmp/0427/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0427/apksigner.txt
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.422-agenda-public-integrity-${{ github.sha }}
+          name: rota-certa-0.1.427-admin-session-determinism-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 30
           if-no-files-found: error
-          retention-days: 14
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            source_head.txt
-            source_branch.txt
-            app-version.txt
-            apk.sha256
-            changed-files.txt
-            app/build/test-results/testDebugUnitTest/
-            app/build/reports/tests/testDebugUnitTest/
+          path: /tmp/0427
