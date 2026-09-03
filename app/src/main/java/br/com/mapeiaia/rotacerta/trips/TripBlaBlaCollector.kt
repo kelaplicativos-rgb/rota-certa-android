@@ -645,7 +645,11 @@ object BlaBlaTimelineAdapter {
             sourcePassengerSeats = if (trip.booked_seats > 0) mapOf(BookingSource.BLABLACAR to trip.booked_seats) else emptyMap(),
             blablaTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty),
             blablaTripHref = canonicalManageHref(trip.trip_href),
-            blablaPublicHref = BlaBlaCollectorUrlModule.publicTrip(trip.public_trip_href, trip.trip_id),
+            blablaPublicHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                trip.public_trip_href,
+                trip.trip_id,
+                trip.public_trip_href_binding,
+            ),
             blablaProfileUuid = trip.profile_uuid.trim().takeIf(String::isNotEmpty),
             blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),
             blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
