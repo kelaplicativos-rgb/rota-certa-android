@@ -2053,8 +2053,15 @@ internal object AgendaBackgroundSync0392 {
         }
 
         AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "PROJECTING")
+        val collectorCardDeltaIds0431 = if (reason == "blablacar_collection_result") {
+            collectorCanonical.publicationCanonicalTripIds0431
+        } else {
+            null
+        }
         try {
-            outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending()
+            outboxDelivered = TripMutationCoordinator0387(appContext, store).drainPending(
+                canonicalTripIds = collectorCardDeltaIds0431,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
