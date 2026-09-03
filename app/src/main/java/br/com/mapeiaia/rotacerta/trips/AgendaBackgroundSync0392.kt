@@ -1179,6 +1179,7 @@ internal object AgendaBackgroundSync0392 {
         var staleResultsRejected = 0
         var tombstonedTrips = 0
         var orphanProjectionTombstones = 0
+        val publicationCanonicalTripIds0431 = linkedSetOf<String>()
 
         val observedStrongKeys = linkedSetOf<String>()
         response.trips.forEach { source ->
