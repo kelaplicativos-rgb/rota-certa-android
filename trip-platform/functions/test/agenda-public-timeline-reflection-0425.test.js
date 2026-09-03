@@ -58,8 +58,41 @@ test("server verifies the candidate bytes before committing a repair", () => {
 test("public profile scope remains intact and independent from projection repair", () => {
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
-    source.indexOf("function projectionPlaceKey0421"),
+    source.indexOf("async function createDriverTrip"),
   );
   assert.match(agenda, /publicTripProfileUuids0417/);
   assert.match(agenda, /publicProfileScope0417\.has\(profileUuid\)/);
+});
+
+
+test("public agenda renders only the current attested canonical projection", () => {
+  const helper = source.slice(
+    source.indexOf("function publicProjectionAttestedCurrent0429"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(helper, /publicationTombstone === true/);
+  assert.match(helper, /canonicalTripId/);
+  assert.match(helper, /publicAttestationState0417[^\n]+VERIFIED/);
+  assert.match(helper, /publicAttestedPublicationRevision0417[^\n]+publicationRevision/);
+  assert.match(helper, /publicAttestedCanonicalRevision0417[^\n]+canonicalRevision/);
+  assert.match(helper, /canonicalPublicTripHash0411/);
+  assert.match(helper, /publicAttestedHash0417/);
+
+  const agenda = source.slice(
+    source.indexOf("async function getPublicDriverAgenda"),
+    source.indexOf("async function createDriverTrip"),
+  );
+  assert.match(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
+});
+
+test("public adoption never uses route or time similarity as canonical identity", () => {
+  const create = source.slice(
+    source.indexOf("async function createDriverTrip"),
+    source.indexOf("async function processReferralCreditsForCompletedTrip"),
+  );
+  assert.match(create, /sameStrongIdentity/);
+  assert.match(create, /sameTripKey/);
+  assert.match(create, /sameCanonicalTrip/);
+  assert.doesNotMatch(create, /projectionPhysicalIdentityCompatible0421/);
+  assert.doesNotMatch(source, /function projectionPhysicalIdentityCompatible0421/);
 });
