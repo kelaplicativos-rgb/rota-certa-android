@@ -80,6 +80,10 @@ data class BlaBlaCollectorTrip(
     val trip_href: String? = null,
     /** Passenger-facing public /trip URL. Never synthesize this from the admin URL. */
     val public_trip_href: String? = null,
+    /** Acquisition source for audit/diagnostics; never used as a second trip identity. */
+    val public_trip_href_source: String = "",
+    /** Strong binding contract used to revalidate the URL against the canonical administrative trip id. */
+    val public_trip_href_binding: String = "",
     val trip_id: String? = null,
     val uuid_validation: String = "unknown",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
