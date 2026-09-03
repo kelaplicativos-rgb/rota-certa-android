@@ -52,6 +52,21 @@ internal fun remotePublicProjectionMatches0425(
         remote.publicProjectionHash == expected
 }
 
+internal fun remoteCanonicalProjectionMatches0436(
+    remote: DriverTripSyncState0402?,
+    expectedPublicProjectionHash: String,
+    snapshotRevision: String,
+    sourceComplete: Boolean,
+): Boolean {
+    val expected = expectedPublicProjectionHash.trim()
+    if (expected.isBlank() || remote == null) return false
+    return if (sourceComplete) {
+        remotePublicProjectionMatches0425(remote, expected, snapshotRevision)
+    } else {
+        remote.publicProjectionHash == expected
+    }
+}
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -879,12 +894,11 @@ internal object PublicAgendaAutoSync0300 {
                 UnifiedDebugEventStore.record(
                     "PUBLIC_CAPACITY_FAIL_CLOSED",
                     context.packageName,
-                    "tripKey=$diagnosticTripKey action=preserve_previous_snapshot reason=incomplete_source previousBinding=true publishedSeatsKnown=${synthesized.publishedSeats != null} fullSyncRequested=false",
+                    "tripKey=$diagnosticTripKey action=preserve_capacity_claims_project_canonical reason=incomplete_source previousBinding=true publishedSeatsKnown=${synthesized.publishedSeats != null} fullSyncRequested=false",
                 )
-                return ExternalCapacitySnapshotSyncResult(published = true, changed = false)
-            }
-            val response = try {
-                api.publish(publicTrip.copy(capacityReliable = false))
+            } else {
+                val response = try {
+                    api.publish(publicTrip.copy(capacityReliable = false))
             } catch (error: Throwable) {
                 if (error is CancellationException) throw error
                 // A missing local binding does not authorize downgrading a remote trip that may
@@ -910,30 +924,31 @@ internal object PublicAgendaAutoSync0300 {
                             ),
                         ),
                 )
-                return ExternalCapacitySnapshotSyncResult(published = false, changed = false)
+                    return ExternalCapacitySnapshotSyncResult(published = false, changed = false)
+                }
+                saveExternalBinding(
+                    store = store,
+                    remoteTripId = response.tripId,
+                    publicToken = response.publicToken,
+                    synthesized = synthesized,
+                    effectiveTrip = publicTrip,
+                    canonicalTripId = canonicalTripId,
+                    entityRevision = entityRevision,
+                    seatAllocationVersion = 0L,
+                )
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_CAPACITY_UNKNOWN_PUBLISHED",
+                    context.packageName,
+                    "tripKey=$diagnosticTripKey capacityReliable=false reason=first_snapshot_incomplete reservationBlocked=true",
+                )
+                return ExternalCapacitySnapshotSyncResult(published = true, changed = true)
             }
-            saveExternalBinding(
-                store = store,
-                remoteTripId = response.tripId,
-                publicToken = response.publicToken,
-                synthesized = synthesized,
-                effectiveTrip = publicTrip,
-                canonicalTripId = canonicalTripId,
-                entityRevision = entityRevision,
-                seatAllocationVersion = 0L,
-            )
-            UnifiedDebugEventStore.record(
-                "PUBLIC_CAPACITY_UNKNOWN_PUBLISHED",
-                context.packageName,
-                "tripKey=$diagnosticTripKey capacityReliable=false reason=first_snapshot_incomplete reservationBlocked=true",
-            )
-            return ExternalCapacitySnapshotSyncResult(published = true, changed = true)
         }
 
         var remoteTripId = remoteStateHint0402?.remoteTripId ?: existingBinding?.remoteTripId ?: publicTrip.publicToken
         val observedStopIds = publicTrip.stops.sortedBy(TripStop::order).map(TripStop::id)
         var effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
-        var effectiveClaims = synthesized.capacityClaims
+        var effectiveClaims = if (synthesized.sourceComplete) synthesized.capacityClaims else emptyList()
         var shapePreserved = false
         var createdPlaceholder = false
         val remoteStopIds0434 = remoteStateHint0402?.stops.orEmpty().sortedBy(TripStop::order).map(TripStop::id)
@@ -976,10 +991,11 @@ internal object PublicAgendaAutoSync0300 {
         fun expectedPublicProjectionHash0425(): String =
             canonicalPublicProjectionHash0411(expectedPublicProjectionPayload0434())
 
-        val remoteProjectionMatches0425 = remotePublicProjectionMatches0425(
+        val remoteProjectionMatches0425 = remoteCanonicalProjectionMatches0436(
             remote = remoteStateHint0402,
             expectedPublicProjectionHash = expectedPublicProjectionHash0425(),
             snapshotRevision = synthesized.snapshotRevision,
+            sourceComplete = synthesized.sourceComplete,
         )
 
         if (remoteProjectionMatches0425) {
@@ -1029,6 +1045,8 @@ internal object PublicAgendaAutoSync0300 {
             expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425(),
             expectedPublicProjectionJson0434 =
                 canonicalPublicProjectionJson0411(expectedPublicProjectionPayload0434()),
+            sourceComplete = synthesized.sourceComplete,
+            preserveManagedClaims0436 = !synthesized.sourceComplete && existingBinding != null,
         )
 
         val response = try {
@@ -1093,7 +1111,7 @@ internal object PublicAgendaAutoSync0300 {
         )
         return ExternalCapacitySnapshotSyncResult(
             published = true,
-            claimsApplied = if (response.changed) effectiveClaims.size else 0,
+            claimsApplied = if (response.changed && synthesized.sourceComplete) effectiveClaims.size else 0,
             changed = response.changed,
             shapePreserved = shapePreserved,
         )
@@ -1132,7 +1150,11 @@ internal object PublicAgendaAutoSync0300 {
                 canonicalRevision = effectiveTrip.canonicalRevision.coerceAtLeast(0L)
                     .takeIf { it > 0L } ?: (existing?.canonicalRevision ?: 0L),
                 seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
-                externalFingerprint = synthesized.snapshotRevision,
+                externalFingerprint = if (synthesized.sourceComplete) {
+                    synthesized.snapshotRevision
+                } else {
+                    existing?.externalFingerprint.orEmpty()
+                },
                 stateHash = effectiveTrip.canonicalStateHash,
             ),
         )
