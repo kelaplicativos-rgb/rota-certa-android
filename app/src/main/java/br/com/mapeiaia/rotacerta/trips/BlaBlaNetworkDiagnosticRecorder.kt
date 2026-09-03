@@ -420,11 +420,21 @@ internal object BlaBlaNetworkDiagnosticPolicy {
     }.getOrNull()
 
     fun isAllowedNetworkHost(rawHost: String?): Boolean {
-        val host = rawHost?.trim()?.trimEnd('.')?.lowercase(Locale.ROOT).orEmpty()
-        return host == "blablacar.com.br" ||
-            host.endsWith(".blablacar.com.br") ||
-            host == "blablacar.com" ||
-            host.endsWith(".blablacar.com")
+        val labels = rawHost.orEmpty()
+            .trim()
+            .trim('.')
+            .lowercase(Locale.ROOT)
+            .split('.')
+            .filter(String::isNotBlank)
+        val marker = labels.indexOfLast { it == "blablacar" }
+        if (marker < 0) return false
+        val root = labels.drop(marker)
+        val suffix = root.drop(1)
+        return when (suffix.size) {
+            1 -> suffix[0] == "com" || suffix[0].matches(Regex("[a-z]{2}"))
+            2 -> suffix[0] in setOf("com", "co") && suffix[1].matches(Regex("[a-z]{2}"))
+            else -> false
+        }
     }
 
     fun opaqueTag(value: String, salt: String): String {
@@ -651,9 +661,10 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const seatKey = /(^|[_.-])(seat|seats|places?|vacancies|capacity|quantity|count)([_.-]|$)/i;
 
           function allowedHost(host) {
-            const value = String(host || '').toLowerCase().replace(/\.$/, '');
-            return value === 'blablacar.com.br' || value.endsWith('.blablacar.com.br') ||
-              value === 'blablacar.com' || value.endsWith('.blablacar.com');
+            const labels = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+            const marker = labels.lastIndexOf('blablacar');
+            if (marker < 0) return false;
+            return isOfficialPageHost(labels.slice(marker).join('.'));
           }
 
           function capturePage() {
@@ -751,22 +762,13 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             return found;
           }
 
-          function subtreeContainsExactScalar(value, expected, depth, seen) {
-            if (!expected || depth > 8 || value === null || value === undefined) return false;
-            if (typeof value === 'string' || typeof value === 'number') {
-              return String(value).trim().toLowerCase() === expected.toLowerCase();
-            }
-            if (typeof value !== 'object' || seen.has(value)) return false;
-            seen.add(value);
-            if (Array.isArray(value)) {
-              return value.slice(0, 48).some(function(child) {
-                return subtreeContainsExactScalar(child, expected, depth + 1, seen);
-              });
-            }
+          function objectHasDirectAdministrativeTripId(value, expected) {
+            if (!expected || !value || typeof value !== 'object' || Array.isArray(value)) return false;
             return Object.keys(value).slice(0, 80).some(function(key) {
               let child;
               try { child = value[key]; } catch (_) { child = null; }
-              return subtreeContainsExactScalar(child, expected, depth + 1, seen);
+              if (typeof child !== 'string' && typeof child !== 'number') return false;
+              return String(child).trim().toLowerCase() === expected.toLowerCase();
             });
           }
 
