@@ -224,6 +224,22 @@ function createAgendaAdmin0417({
       fail0417(res, 400, "admin_driver_required", "Agenda não identificada.");
       return null;
     }
+    const driver = resolved.driverSnap && resolved.driverSnap.exists ? resolved.driverSnap.data() : {};
+    if (!authenticationRequired0417(driver)) {
+      return {
+        driverUsername: resolved.canonicalUsername,
+        actorId: "agenda-open-0428",
+        passengerId: "",
+        passengerContact: "",
+        contactHash: "",
+        sessionContextHash: "",
+        sessionRefId: "",
+        createdAtMillis: 0,
+        lastActivityAtMillis: 0,
+        expiresAtMillis: 0,
+        openAccess: true,
+      };
+    }
     const passengerSession = await requirePassengerSession(req, res);
     if (!passengerSession) return null;
     const access = await passengerAccessForIdentity(
