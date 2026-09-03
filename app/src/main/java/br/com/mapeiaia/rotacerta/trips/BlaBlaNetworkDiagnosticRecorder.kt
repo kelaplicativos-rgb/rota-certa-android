@@ -105,7 +105,7 @@ internal class BlaBlaNetworkDiagnosticRecorder(
             UnifiedDebugEventStore.record(
                 "BLABLACAR_NETWORK_DIAGNOSTIC_INSTALLED",
                 appPackageName,
-                "origin=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true networkSource=true diagnosticBridge=$listenerInstalled domRead=false requestHeaders=false requestBody=false",
+                "originPolicy=${BlaBlaNetworkDiagnosticPolicy.PAGE_ORIGIN} fetch=true xhr=true networkSource=true diagnosticBridge=$listenerInstalled domRead=false requestHeaders=false requestBody=false",
             )
             true
         }.getOrElse {
@@ -373,8 +373,8 @@ internal class BlaBlaNetworkDiagnosticStore(
 
 internal object BlaBlaNetworkDiagnosticPolicy {
     const val SCHEMA_VERSION = 1
-    const val PAGE_ORIGIN = "https://www.blablacar.com.br"
-    val ALLOWED_PAGE_ORIGINS: Set<String> = setOf(PAGE_ORIGIN)
+    const val PAGE_ORIGIN = "official-blablacar-https"
+    val ALLOWED_PAGE_ORIGINS: Set<String> = setOf("*")
 
     private const val MAX_BRIDGE_CHARS = 80_000
     private const val MAX_DEPTH = 9
@@ -412,19 +412,29 @@ internal object BlaBlaNetworkDiagnosticPolicy {
         val uri = URI(raw)
         if (
             !uri.scheme.equals("https", ignoreCase = true) ||
-            !uri.host.equals("www.blablacar.com.br", ignoreCase = true) ||
+            !BlaBlaCollectorUrlModule.isOfficialBlaBlaHost(uri.host) ||
             uri.userInfo != null ||
             uri.port !in setOf(-1, 443)
         ) return@runCatching null
-        PAGE_ORIGIN
+        "https://${uri.host.lowercase(Locale.ROOT)}"
     }.getOrNull()
 
     fun isAllowedNetworkHost(rawHost: String?): Boolean {
-        val host = rawHost?.trim()?.trimEnd('.')?.lowercase(Locale.ROOT).orEmpty()
-        return host == "blablacar.com.br" ||
-            host.endsWith(".blablacar.com.br") ||
-            host == "blablacar.com" ||
-            host.endsWith(".blablacar.com")
+        val labels = rawHost.orEmpty()
+            .trim()
+            .trim('.')
+            .lowercase(Locale.ROOT)
+            .split('.')
+            .filter(String::isNotBlank)
+        val marker = labels.indexOfLast { it == "blablacar" }
+        if (marker < 0) return false
+        val root = labels.drop(marker)
+        val suffix = root.drop(1)
+        return when (suffix.size) {
+            1 -> suffix[0] == "com" || suffix[0].matches(Regex("[a-z]{2}"))
+            2 -> suffix[0] in setOf("com", "co") && suffix[1].matches(Regex("[a-z]{2}"))
+            else -> false
+        }
     }
 
     fun opaqueTag(value: String, salt: String): String {
@@ -484,7 +494,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
 
     private fun sanitizePageUrl(raw: String, salt: String): String? {
         val uri = runCatching { URI(raw) }.getOrNull() ?: return null
-        if (!uri.host.equals("www.blablacar.com.br", ignoreCase = true)) return null
+        if (!BlaBlaCollectorUrlModule.isOfficialBlaBlaHost(uri.host)) return null
         return sanitizeEndpoint(raw, salt)
     }
 
@@ -610,7 +620,16 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           'use strict';
           if (window.__rotaCertaNetworkDiagnosticInstalled === true) return;
           if (window !== window.top) return;
-          if (location.protocol !== 'https:' || location.hostname.toLowerCase() !== 'www.blablacar.com.br') return;
+          const isOfficialPageHost = function(hostname) {
+            const labels = String(hostname || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+            const root = labels[0] === 'www' ? labels.slice(1) : labels;
+            if (root[0] !== 'blablacar') return false;
+            const suffix = root.slice(1);
+            if (suffix.length === 1) return suffix[0] === 'com' || /^[a-z]{2}$/.test(suffix[0]);
+            if (suffix.length === 2) return ['com', 'co'].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+            return false;
+          };
+          if (location.protocol !== 'https:' || !isOfficialPageHost(location.hostname)) return;
           const bridge = window.RotaCertaNetworkDiagnostic;
           Object.defineProperty(window, '__rotaCertaNetworkDiagnosticInstalled', { value: true });
 
@@ -626,7 +645,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const networkTripSources = new Map();
           Object.defineProperty(window, '__rotaCertaNetworkTripSource', {
             value: function(rawTripId) {
-              const tripId = String(rawTripId || '').trim().toLowerCase();
+              const tripId = String(rawTripId || '').trim();
               const source = networkTripSources.get(tripId) || null;
               if (!source) return null;
               try { return JSON.parse(JSON.stringify(source)); } catch (_) { return null; }
@@ -642,9 +661,10 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const seatKey = /(^|[_.-])(seat|seats|places?|vacancies|capacity|quantity|count)([_.-]|$)/i;
 
           function allowedHost(host) {
-            const value = String(host || '').toLowerCase().replace(/\.$/, '');
-            return value === 'blablacar.com.br' || value.endsWith('.blablacar.com.br') ||
-              value === 'blablacar.com' || value.endsWith('.blablacar.com');
+            const labels = String(host || '').trim().toLowerCase().replace(/^\.+|\.+$/g, '').split('.').filter(Boolean);
+            const marker = labels.lastIndexOf('blablacar');
+            if (marker < 0) return false;
+            return isOfficialPageHost(labels.slice(marker).join('.'));
           }
 
           function capturePage() {
@@ -682,6 +702,182 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             return value && typeof value === 'object' && !Array.isArray(value) ? value : Object.create(null);
           }
 
+          function currentAdministrativeTripId() {
+            try {
+              const current = new URL(location.href);
+              let value = sourceText(current.searchParams.get('id'), 160);
+              if (!value) {
+                const match = current.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
+                value = sourceText(match && match[1], 160);
+              }
+              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
+            } catch (_) {
+              return '';
+            }
+          }
+
+
+          function requestAdministrativeTripId(rawUrl) {
+            try {
+              const url = new URL(String(rawUrl || ''), location.href);
+              if (url.protocol !== 'https:' || !allowedHost(url.hostname)) return '';
+              const value = sourceText(url.searchParams.get('id'), 160);
+              return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
+            } catch (_) {
+              return '';
+            }
+          }
+
+          function publicTripCandidate(raw) {
+            try {
+              const url = new URL(String(raw || ''), location.href);
+              if (!['http:', 'https:'].includes(url.protocol) || !isOfficialPageHost(url.hostname)) return null;
+              const path = url.pathname.replace(/\/+$/, '').toLowerCase();
+              if (path !== '/trip' && !path.startsWith('/trip/')) return null;
+              let publicId = sourceText(url.searchParams.get('id'), 160);
+              if (!publicId) {
+                const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
+                publicId = sourceText(match && match[1], 160);
+              }
+              if (!/^[A-Za-z0-9_-]{8,160}$/.test(publicId)) return null;
+              return { href: url.href.slice(0, 2000), publicId: publicId };
+            } catch (_) {
+              return null;
+            }
+          }
+
+          function structuredShareCandidates(value, path, depth, seen) {
+            if (!value || typeof value !== 'object' || depth > 9 || seen.has(value)) return [];
+            seen.add(value);
+            const found = [];
+            if (!Array.isArray(value)) {
+              Object.keys(value).slice(0, 80).forEach(function(key) {
+                let child;
+                try { child = value[key]; } catch (_) { child = null; }
+                const nextPath = path ? path + '.' + key : key;
+                if (key.toLowerCase() === 'share' && child && typeof child === 'object') {
+                  const share = sourceObject(child);
+                  const candidate = publicTripCandidate(share.url);
+                  if (candidate) found.push({ candidate: candidate, jsonPath: nextPath + '.url' });
+                }
+                if (child && typeof child === 'object') {
+                  structuredShareCandidates(child, nextPath, depth + 1, seen).forEach(function(item) { found.push(item); });
+                }
+              });
+            } else {
+              value.slice(0, 48).forEach(function(child, index) {
+                if (child && typeof child === 'object') {
+                  structuredShareCandidates(child, path + '[' + index + ']', depth + 1, seen).forEach(function(item) { found.push(item); });
+                }
+              });
+            }
+            return found;
+          }
+
+          function objectHasDirectAdministrativeTripId(value, expected) {
+            if (!expected || !value || typeof value !== 'object' || Array.isArray(value)) return false;
+            return Object.keys(value).slice(0, 80).some(function(key) {
+              let child;
+              try { child = value[key]; } catch (_) { child = null; }
+              if (typeof child !== 'string' && typeof child !== 'number') return false;
+              return String(child).trim() === expected;
+            });
+          }
+
+          function mergeTripSource(tripId, patch) {
+            if (!tripId) return;
+            if (!networkTripSources.has(tripId) && networkTripSources.size >= MAX_SOURCE_TRIPS) {
+              const oldest = networkTripSources.keys().next();
+              if (!oldest.done) networkTripSources.delete(oldest.value);
+            }
+            const existing = networkTripSources.get(tripId) || {
+              tripId: tripId,
+              publicTripHref: '',
+              publicTripHrefSource: '',
+              publicTripHrefBinding: '',
+              publicTripHrefEndpoint: '',
+              publicTripHrefJsonPath: '',
+              bookingsComplete: false,
+              bookings: [],
+              waypointsComplete: false,
+              waypoints: []
+            };
+            networkTripSources.set(tripId, Object.assign({}, existing, patch || {}, { tripId: tripId }));
+          }
+
+          function rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
+            const tripId = sourceText(pageTripIdAtRequest, 160);
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId) || !parsed || typeof parsed !== 'object') return;
+            const requestTripId = requestAdministrativeTripId(requestUrl);
+            const requestBound = requestTripId === tripId;
+            const pending = [{ value: parsed, depth: 0, path: '$' }];
+            const seen = new WeakSet();
+            let visited = 0;
+            while (pending.length && visited < 160) {
+              const current = pending.shift();
+              const value = current.value;
+              if (!value || typeof value !== 'object' || seen.has(value)) continue;
+              seen.add(value);
+              visited += 1;
+
+              if (!Array.isArray(value) && objectHasDirectAdministrativeTripId(value, tripId)) {
+                const shares = structuredShareCandidates(value, current.path, 0, new WeakSet());
+                const unique = [];
+                shares.forEach(function(item) {
+                  if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) {
+                    unique.push(item);
+                  }
+                });
+                if (unique.length === 1) {
+                  mergeTripSource(tripId, {
+                    publicTripHref: unique[0].candidate.href,
+                    publicTripHrefSource: 'network_structured_response_id',
+                    publicTripHrefBinding: 'network_authoritative',
+                    publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                    publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+                  });
+                  return;
+                }
+              }
+
+              if (current.depth >= 5) continue;
+              if (Array.isArray(value)) {
+                value.slice(0, 32).forEach(function(child, index) {
+                  if (child && typeof child === 'object') {
+                    pending.push({ value: child, depth: current.depth + 1, path: current.path + '[' + index + ']' });
+                  }
+                });
+              } else {
+                Object.keys(value).slice(0, 64).forEach(function(key) {
+                  let child;
+                  try { child = value[key]; } catch (_) { child = null; }
+                  if (child && typeof child === 'object') {
+                    pending.push({ value: child, depth: current.depth + 1, path: current.path + '.' + key });
+                  }
+                });
+              }
+            }
+
+            if (requestBound) {
+              const shares = structuredShareCandidates(parsed, '$', 0, new WeakSet());
+              const unique = [];
+              shares.forEach(function(item) {
+                if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) {
+                  unique.push(item);
+                }
+              });
+              if (unique.length === 1) {
+                mergeTripSource(tripId, {
+                  publicTripHref: unique[0].candidate.href,
+                  publicTripHrefSource: 'network_structured_request_id',
+                  publicTripHrefBinding: 'network_authoritative',
+                  publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                  publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+                });
+              }
+            }
+          }
+
           function sourceWaypoint(rawValue) {
             const waypoint = sourceObject(rawValue);
             const place = sourceObject(waypoint.place);
@@ -704,10 +900,10 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             return '';
           }
 
-          function rememberTripRoot(rawRoot) {
+          function rememberTripRoot(rawRoot, endpoint) {
             const root = sourceObject(rawRoot);
             if (!Array.isArray(root.bookings)) return;
-            const tripId = sourceText(root.trip_offer_encrypted_id, 160).toLowerCase();
+            const tripId = sourceText(root.trip_offer_encrypted_id, 160);
             if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
             const rawWaypoints = Array.isArray(root.waypoints) ? root.waypoints : [];
             const waypoints = rawWaypoints.slice(0, MAX_SOURCE_WAYPOINTS).map(function(rawWaypoint) {
@@ -729,21 +925,31 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 dropoff: sourceWaypoint(booking.dropoff_waypoint)
               };
             });
-            if (!networkTripSources.has(tripId) && networkTripSources.size >= MAX_SOURCE_TRIPS) {
-              const oldest = networkTripSources.keys().next();
-              if (!oldest.done) networkTripSources.delete(oldest.value);
-            }
-            networkTripSources.set(tripId, {
-              tripId: tripId,
+            mergeTripSource(tripId, {
               bookingsComplete: root.bookings.length <= MAX_SOURCE_BOOKINGS,
               bookings: bookings,
               waypointsComplete: rawWaypoints.length >= 2 && rawWaypoints.length <= MAX_SOURCE_WAYPOINTS,
               waypoints: waypoints
             });
+            const shares = structuredShareCandidates(root, '$', 0, new WeakSet());
+            const unique = [];
+            shares.forEach(function(item) {
+              if (!unique.some(function(existing) { return existing.candidate.href === item.candidate.href; })) unique.push(item);
+            });
+            if (unique.length === 1) {
+              mergeTripSource(tripId, {
+                publicTripHref: unique[0].candidate.href,
+                publicTripHrefSource: 'network_structured',
+                publicTripHrefBinding: 'network_authoritative',
+                publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+                publicTripHrefJsonPath: String(unique[0].jsonPath || '').slice(0, 240)
+              });
+            }
           }
 
-          function rememberNetworkTripSources(parsed) {
+          function rememberNetworkTripSources(parsed, endpoint, requestUrl, pageTripIdAtRequest) {
             if (!parsed || typeof parsed !== 'object') return;
+            rememberStructuredShareForCurrentTrip(parsed, endpoint, requestUrl, pageTripIdAtRequest);
             const pending = [{ value: parsed, depth: 0 }];
             const seen = new WeakSet();
             let visited = 0;
@@ -754,7 +960,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               seen.add(value);
               visited += 1;
               if (!Array.isArray(value) && Array.isArray(value.bookings) && value.trip_offer_encrypted_id) {
-                rememberTripRoot(value);
+                rememberTripRoot(value, endpoint);
               }
               if (current.depth >= 5) continue;
               if (Array.isArray(value)) {
@@ -892,7 +1098,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             };
           }
 
-          async function observeFetch(response, rawUrl, method, started) {
+          async function observeFetch(response, rawUrl, method, started, pageTripIdAtRequest) {
             if (!capturePage()) return;
             const endpoint = safeEndpoint(response && response.url ? response.url : rawUrl);
             if (!endpoint) return;
@@ -923,7 +1129,9 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 return;
               }
               const parsed = JSON.parse(text);
-              if (response.status >= 200 && response.status < 300) rememberNetworkTripSources(parsed);
+              if (response.status >= 200 && response.status < 300) {
+                rememberNetworkTripSources(parsed, endpoint, rawUrl, pageTripIdAtRequest);
+              }
               const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
               post(baseEnvelope('fetch', method, endpoint, response.status, started, 'json', body));
             } catch (_) {
@@ -936,6 +1144,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             window.fetch = function() {
               const args = arguments;
               const started = performance.now();
+              const pageTripIdAtRequest = currentAdministrativeTripId();
               let rawUrl = '';
               let method = 'GET';
               try {
@@ -943,7 +1152,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 method = args[0] instanceof Request ? args[0].method : (args[1] && args[1].method ? args[1].method : 'GET');
               } catch (_) {}
               return originalFetch.apply(this, args).then(function(response) {
-                observeFetch(response, rawUrl, method, started);
+                observeFetch(response, rawUrl, method, started, pageTripIdAtRequest);
                 return response;
               });
             };
@@ -953,12 +1162,22 @@ internal object BlaBlaNetworkDiagnosticPolicy {
           const originalOpen = XMLHttpRequest.prototype.open;
           const originalSend = XMLHttpRequest.prototype.send;
           XMLHttpRequest.prototype.open = function(method, url) {
-            xhrMeta.set(this, { method: String(method || 'GET'), url: String(url || ''), started: 0 });
+            xhrMeta.set(this, {
+              method: String(method || 'GET'),
+              url: String(url || ''),
+              started: 0,
+              pageTripId: currentAdministrativeTripId()
+            });
             return originalOpen.apply(this, arguments);
           };
           XMLHttpRequest.prototype.send = function() {
             const xhr = this;
-            const meta = xhrMeta.get(xhr) || { method: 'GET', url: '', started: 0 };
+            const meta = xhrMeta.get(xhr) || {
+              method: 'GET',
+              url: '',
+              started: 0,
+              pageTripId: currentAdministrativeTripId()
+            };
             meta.started = performance.now();
             xhr.addEventListener('loadend', function() {
               if (!capturePage()) return;
@@ -986,7 +1205,9 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                   }
                   parsed = JSON.parse(text);
                 }
-                if (xhr.status >= 200 && xhr.status < 300) rememberNetworkTripSources(parsed);
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  rememberNetworkTripSources(parsed, endpoint, meta.url, meta.pageTripId);
+                }
                 const body = anonymize(parsed, 'body', 0, { nodes: 0 }, new WeakSet());
                 post(baseEnvelope('xhr', meta.method, endpoint, xhr.status, meta.started, 'json', body));
               } catch (_) {

@@ -853,9 +853,26 @@ internal fun canonicalBlaBlaPublicUrl0409(
     existingUrl: String?,
     observedUrl: String?,
     expectedTripId: String?,
+    observedBinding: String? = null,
 ): String? =
-    BlaBlaCollectorUrlModule.publicTrip(observedUrl, expectedTripId)
+    BlaBlaCollectorUrlModule.publicTripForCollectorState(observedUrl, expectedTripId, observedBinding)
         ?: BlaBlaCollectorUrlModule.publicTrip(existingUrl, expectedTripId)
+        ?: BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+            raw = existingUrl,
+            expectedAdministrativeTripId = expectedTripId,
+            boundAdministrativeTripId = expectedTripId,
+        )
+
+internal fun canonicalBoundBlaBlaPublicUrl0423(
+    raw: String?,
+    expectedTripId: String?,
+): String? =
+    BlaBlaCollectorUrlModule.publicTrip(raw, expectedTripId)
+        ?: BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+            raw = raw,
+            expectedAdministrativeTripId = expectedTripId,
+            boundAdministrativeTripId = expectedTripId,
+        )
 
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
@@ -1260,7 +1277,12 @@ internal object AgendaBackgroundSync0392 {
                                 remoteId = existing?.remoteId ?: binding?.remoteTripId,
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
-                                blablaPublicUrl = canonicalBlaBlaPublicUrl0409(existing?.blablaPublicUrl, observed.blablaPublicUrl, blablaTripId),
+                                blablaPublicUrl = canonicalBlaBlaPublicUrl0409(
+                                    existing?.blablaPublicUrl,
+                                    observed.blablaPublicUrl,
+                                    blablaTripId,
+                                    source.public_trip_href_binding,
+                                ),
                                 publicBookingEnabled = existing?.publicBookingEnabled ?: true,
                                 capacityReliable = incomingComplete,
                                 createdAtMillis = existing?.createdAtMillis ?: nowMillis,
@@ -1335,8 +1357,8 @@ internal object AgendaBackgroundSync0392 {
                 canonicalTrip.departureAtMillis > nowMillis &&
                 (
                     binding?.externalFingerprint != incomingFingerprint ||
-                        BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, blablaTripId) !=
-                        BlaBlaCollectorUrlModule.publicTrip(canonicalTrip.blablaPublicUrl, blablaTripId)
+                        canonicalBoundBlaBlaPublicUrl0423(binding.blablaPublicHref, blablaTripId) !=
+                        canonicalBoundBlaBlaPublicUrl0423(canonicalTrip.blablaPublicUrl, blablaTripId)
                 )
             ) {
                 if (
@@ -1352,7 +1374,7 @@ internal object AgendaBackgroundSync0392 {
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_SKIP_0403",
                     context.packageName,
-                    "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} tripId=$blablaTripId fingerprint=${incomingFingerprint.takeLast(12)} publicTripUrlFound=${!canonicalTrip?.blablaPublicUrl.isNullOrBlank()} result=UNCHANGED_SKIP publicationAlreadyCurrent=${binding?.externalFingerprint == incomingFingerprint && BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, blablaTripId) == BlaBlaCollectorUrlModule.publicTrip(canonicalTrip?.blablaPublicUrl, blablaTripId)}",
+                    "internalTripId=${seatSyncDiagnosticKey(canonicalTripId)} tripId=$blablaTripId fingerprint=${incomingFingerprint.takeLast(12)} publicTripUrlFound=${!canonicalTrip?.blablaPublicUrl.isNullOrBlank()} result=UNCHANGED_SKIP publicationAlreadyCurrent=${binding?.externalFingerprint == incomingFingerprint && canonicalBoundBlaBlaPublicUrl0423(binding.blablaPublicHref, blablaTripId) == canonicalBoundBlaBlaPublicUrl0423(canonicalTrip?.blablaPublicUrl, blablaTripId)}",
                 )
             }
         }

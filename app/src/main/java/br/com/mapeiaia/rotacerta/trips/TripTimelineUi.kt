@@ -758,7 +758,7 @@ internal fun applyPublicExternalBookingsToTimeline(
         blablaTripId = entry.blablaTripId ?: binding.blablaTripId.takeIf(String::isNotBlank),
         blablaTripHref = entry.blablaTripHref ?: binding.blablaTripHref.takeIf(String::isNotBlank),
         blablaPublicHref = entry.blablaPublicHref
-            ?: BlaBlaCollectorUrlModule.publicTrip(binding.blablaPublicHref, binding.blablaTripId),
+            ?: canonicalBoundBlaBlaPublicUrl0423(binding.blablaPublicHref, binding.blablaTripId),
         blablaProfileUuid = entry.blablaProfileUuid ?: binding.profileUuid.takeIf(String::isNotBlank),
     )
     val active = bookings
@@ -957,7 +957,7 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
     val agendaFound = trip.publicMirrorPublicIdentity0421.isNotBlank() && trip.publicMirrorLastReadbackAtMillis0421 > 0L
     val identityMatches = "identity" !in trip.publicMirrorMismatchFields0411 && agendaFound
     val contentMatches = trip.publicMirrorAttestationCurrent0411()
-    val specificBlaBla = BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId)
+    val specificBlaBla = canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId)
     return buildString {
         appendLine("Estado: " + when {
             trip.publicMirrorAttestationCurrent0411() -> "MATCH"

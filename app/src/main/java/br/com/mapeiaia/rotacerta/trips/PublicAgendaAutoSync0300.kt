@@ -599,7 +599,7 @@ internal object PublicAgendaAutoSync0300 {
         val semantic = buildString {
             append(trip.id).append('|').append(trip.title.trim()).append('|')
             append(trip.publicTimezoneId0411.trim()).append('|')
-            append(BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
+            append(canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
             append(trip.departureAtMillis).append('|').append(trip.status.name).append('|')
             append(trip.publicBookingEnabled).append('|').append(trip.itineraryAuthoritative).append('|')
             append(trip.capacityReliable).append('|').append(trip.publishedSeats ?: -1).append('|')
@@ -1300,7 +1300,11 @@ internal object PublicAgendaAutoSync0300 {
                 ?.takeIf(BlaBlaCollectorUrlModule::isManageTarget)
                 ?.let(BlaBlaCollectorUrlModule::canonical)
                 ?.takeIf(String::isNotBlank),
-            blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(source.public_trip_href, source.trip_id),
+            blablaPublicUrl = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                source.public_trip_href,
+                source.trip_id,
+                source.public_trip_href_binding,
+            ),
             publicBookingEnabled = true,
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,

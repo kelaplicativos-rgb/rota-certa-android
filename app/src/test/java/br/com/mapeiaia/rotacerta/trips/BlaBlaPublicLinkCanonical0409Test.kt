@@ -35,6 +35,77 @@ class BlaBlaPublicLinkCanonical0409Test {
         assertNull(BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.fr/trip?id=$tripIdB", tripIdA))
     }
 
+
+    @Test
+    fun authoritativeNetworkBindingMayMapAdministrativeIdToDifferentPublicTokenAndPromotesHttp() {
+        val publicToken = "AaA1b3otfQu_hBV-_wf_NUAE2q6YFjakQATP8vIER6w"
+        val raw = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&search_uuid=temp&p0%5Bac%5D=adult"
+        val accepted = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+            raw = raw,
+            expectedAdministrativeTripId = tripIdA,
+            boundAdministrativeTripId = tripIdA,
+        )
+
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&p0%5Bac%5D=adult",
+            accepted,
+        )
+        assertEquals(publicToken, BlaBlaCollectorUrlModule.publicTripPublicId(accepted))
+        assertNull(BlaBlaCollectorUrlModule.publicTrip(raw, tripIdA))
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = raw,
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdB,
+            ),
+        )
+    }
+
+    @Test
+    fun authoritativeNetworkBindingStillRejectsSearchAndForgedHosts() {
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                "https://www.blablacar.fr/search?id=public-0409",
+                tripIdA,
+                tripIdA,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                "https://www.blablacar.fr.evil.test/trip?id=public-0409",
+                tripIdA,
+                tripIdA,
+            ),
+        )
+    }
+
+    @Test
+    fun authoritativeNetworkBindingRequiresExactAdministrativeIdAndExplicitRegionalHost() {
+        val publicToken = "PublicToken0423CaseSensitive"
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "https://www.blablacar.fr/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA.uppercase(),
+            ),
+        )
+        assertEquals(
+            "https://www.blablacar.fr/trip?id=$publicToken",
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = "//www.blablacar.fr/trip?id=$publicToken",
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
+            ),
+        )
+    }
+
     @Test
     fun staleObservationWithoutPermalinkCannotEraseCanonicalPermalink() {
         val existing = "https://www.blablacar.com.br/trip?id=$tripIdA"

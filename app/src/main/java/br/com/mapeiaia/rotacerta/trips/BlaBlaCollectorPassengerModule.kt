@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
 
 internal enum class BlaBlaDirectRosterState {
@@ -126,13 +127,49 @@ internal object BlaBlaCollectorPassengerModule {
     private fun preserveStableTripMetadata(
         previous: BlaBlaCollectorTrip?,
         current: BlaBlaCollectorTrip,
-    ): BlaBlaCollectorTrip = current.copy(
-        public_trip_href = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
-            ?: previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty),
-        // A partial/reloaded snapshot cannot erase the last seat-editor value
-        // confirmed for this same strong trip identity.
-        published_seats = current.published_seats ?: previous?.published_seats,
-    )
+    ): BlaBlaCollectorTrip {
+        val expectedTripId = current.trip_id?.trim()?.takeIf(String::isNotEmpty)
+            ?: previous?.trip_id?.trim()?.takeIf(String::isNotEmpty)
+        val currentRawHref = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
+        val previousRawHref = previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
+        val currentHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+            currentRawHref,
+            expectedTripId,
+            current.public_trip_href_binding,
+        )
+        val previousHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+            previousRawHref,
+            expectedTripId,
+            previous?.public_trip_href_binding,
+        )
+        val keepsCurrentHref = currentHref != null
+        if (currentRawHref != null && currentHref == null) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_REJECTED",
+                "br.com.mapeiaia.rotacerta",
+                "tripId=" + expectedTripId.orEmpty() +
+                    " source=" + current.public_trip_href_source.ifBlank { "collector_snapshot" } +
+                    " reason=invalid_or_unbound_observation previousValid=" + (previousHref != null) +
+                    " action=" + if (previousHref != null) "preserve_previous" else "keep_unavailable",
+            )
+        }
+        return current.copy(
+            public_trip_href = currentHref ?: previousHref,
+            public_trip_href_source = if (keepsCurrentHref) {
+                current.public_trip_href_source
+            } else {
+                previous?.public_trip_href_source.orEmpty()
+            },
+            public_trip_href_binding = if (keepsCurrentHref) {
+                current.public_trip_href_binding
+            } else {
+                previous?.public_trip_href_binding.orEmpty()
+            },
+            // A partial/reloaded snapshot cannot erase the last seat-editor value
+            // confirmed for this same strong trip identity.
+            published_seats = current.published_seats ?: previous?.published_seats,
+        )
+    }
 
     private fun duplicateEvidenceMatches(
         left: BlaBlaCollectorPassenger,

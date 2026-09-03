@@ -227,11 +227,25 @@ private data class DynamicTripDetail(
     val rosterTerminalEvidence: Boolean = false,
     val editHref: String = "",
     val publicTripHref: String = "",
+    val publicTripHrefSource: String = "",
+    val publicTripHrefBinding: String = "",
     val itineraryStops: List<String> = emptyList(),
     val itineraryAuthoritative: Boolean = false,
     val views: Int? = null,
     val domHtml: String = "",
 )
+
+internal data class ResolvedPublicTripLink0423(
+    val href: String,
+    val source: String,
+    val binding: String,
+)
+
+internal fun resolvePreferredPublicTripLink0423(
+    network: ResolvedPublicTripLink0423?,
+    passiveDom: ResolvedPublicTripLink0423?,
+    persistedCanonical: ResolvedPublicTripLink0423?,
+): ResolvedPublicTripLink0423? = network ?: passiveDom ?: persistedCanonical
 
 @Serializable
 private data class DynamicPublicTripShareEvidence(
@@ -1507,11 +1521,52 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 )
             }
             networkResolution?.let(::saveNetworkPassengerMetadata)
-            val passivePublicHref = BlaBlaCollectorUrlModule.publicTrip(
+            val networkPublicLink = BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
+                candidateTripId,
+                identityAcceptedResult.networkSource,
+            )?.let { resolved ->
+                val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId source=${resolved.source} endpoint=${resolved.endpoint} jsonPath=${resolved.jsonPath} protocol=https publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)} piiLogged=false",
+                )
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_NETWORK_BOUND",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId binding=${resolved.binding} publicIdRelation=$relation exactAdministrativeTrip=true fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)}",
+                )
+                ResolvedPublicTripLink0423(
+                    href = resolved.publicTripHref,
+                    source = resolved.source,
+                    binding = resolved.binding,
+                )
+            }
+            val passivePublicLink = BlaBlaCollectorUrlModule.publicTrip(
                 identityAcceptedResult.publicTripHref,
                 candidateTripId,
+            )?.let { href ->
+                ResolvedPublicTripLink0423(
+                    href = href,
+                    source = "passive_dom",
+                    binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                )
+            }
+            val persistedPublicLink = if (networkPublicLink == null && passivePublicLink == null) {
+                persistedCanonicalPublicTrip0423(candidateTripId)
+            } else {
+                null
+            }
+            val resolvedPublicLink = resolvePreferredPublicTripLink0423(
+                network = networkPublicLink,
+                passiveDom = passivePublicLink,
+                persistedCanonical = persistedPublicLink,
             )
-            pendingTripDetail = identityAcceptedResult.copy(publicTripHref = passivePublicHref.orEmpty())
+            pendingTripDetail = identityAcceptedResult.copy(
+                publicTripHref = resolvedPublicLink?.href.orEmpty(),
+                publicTripHrefSource = resolvedPublicLink?.source.orEmpty(),
+                publicTripHrefBinding = resolvedPublicLink?.binding.orEmpty(),
+            )
             pendingTripPassengers = (
                 networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers
             ).toMutableList()
@@ -1526,11 +1581,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             passengerCardReadAttempts = 0
             publicTripShareReadAttempts = 0
             publicTripShareCaptureInFlight = false
-            if (passivePublicHref != null) {
+            if (resolvedPublicLink != null) {
+                val event = when (resolvedPublicLink.source) {
+                    "network_structured" -> "PUBLIC_TRIP_LINK_CAPTURED"
+                    "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
+                    "persisted_canonical" -> "PUBLIC_TRIP_LINK_PRESERVED"
+                    else -> "PUBLIC_TRIP_LINK_CAPTURED"
+                }
                 UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_CAPTURED",
+                    event,
                     packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId source=passive_dom exactTrip=true",
+                    "account=${account.displayLabel} tripId=$candidateTripId source=${resolvedPublicLink.source} binding=${resolvedPublicLink.binding} fingerprint=${publicTripHrefFingerprint0423(resolvedPublicLink.href)} networkFirst=${networkPublicLink != null}",
                 )
                 loadNextPassengerContact(expectedSync, expectedCandidate)
             } else {
@@ -1540,6 +1601,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "capture_documented_share_action",
                 )
                 statusView.text = "${account.displayLabel} • capturando link público do card…"
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_TRIP_LINK_SHARE_FALLBACK",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId reason=network_dom_persisted_unavailable",
+                )
                 capturePublicTripShare(expectedSync, navigationGeneration, expectedCandidate)
             }
         }
@@ -1583,7 +1649,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             val captured = BlaBlaCollectorUrlModule.publicTrip(evidence?.publicTripHref, tripId)
             if (captured != null) {
-                pendingTripDetail = pendingTripDetail?.copy(publicTripHref = captured)
+                pendingTripDetail = pendingTripDetail?.copy(
+                    publicTripHref = captured,
+                    publicTripHrefSource = "share_action",
+                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                )
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
@@ -1726,11 +1796,15 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     ?: BlaBlaCollectorUrlModule.origin(candidate.href),
             )
             if (captured != null) {
-                pendingTripDetail = pendingTripDetail?.copy(publicTripHref = captured)
+                pendingTripDetail = pendingTripDetail?.copy(
+                    publicTripHref = captured,
+                    publicTripHrefSource = "exact_public_search",
+                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                )
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId source=exact_public_search exactTrip=true cards=${evidence?.cards?.size ?: 0}",
+                    "account=${account.displayLabel} tripId=$tripId source=exact_public_search exactTrip=true cards=${evidence?.cards?.size ?: 0} fingerprint=${publicTripHrefFingerprint0423(captured)}",
                 )
                 loadNextPassengerContact(expectedSync, expectedCandidate)
                 return@evaluateRequest
@@ -2330,7 +2404,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 .filter(String::isNotBlank)
                 .distinct(),
             itinerary_authoritative = result.itineraryAuthoritative,
-            public_trip_href = BlaBlaCollectorUrlModule.publicTrip(result.publicTripHref, normalizedTrip.trip_id),
+            public_trip_href = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                result.publicTripHref,
+                normalizedTrip.trip_id,
+                result.publicTripHrefBinding,
+            ),
+            public_trip_href_source = result.publicTripHrefSource,
+            public_trip_href_binding = result.publicTripHrefBinding,
             published_seats = pendingPublishedSeats,
         )
         collected += trip
@@ -2396,6 +2476,39 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesRestorePending = ridesResumeScrollY > 0
         loadTrackedUrl(RIDES_URL)
     }
+
+    private fun persistedCanonicalPublicTrip0423(tripId: String): ResolvedPublicTripLink0423? {
+        val profileUuid = account.profileUuid?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val canonical = TripStore(this).trips().firstOrNull { trip ->
+            !trip.deleted &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+        } ?: return null
+        val raw = canonical.blablaPublicUrl?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        BlaBlaCollectorUrlModule.publicTrip(raw, tripId)?.let { href ->
+            return ResolvedPublicTripLink0423(
+                href = href,
+                source = "persisted_canonical",
+                binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+            )
+        }
+        val href = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+            raw = raw,
+            expectedAdministrativeTripId = tripId,
+            boundAdministrativeTripId = tripId,
+        ) ?: return null
+        return ResolvedPublicTripLink0423(
+            href = href,
+            source = "persisted_canonical",
+            binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+        )
+    }
+
+    private fun publicTripHrefFingerprint0423(raw: String): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(raw.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            .take(16)
 
     private fun persistDirectTripEvidence(tripId: String) {
         if (tripId.isBlank()) return

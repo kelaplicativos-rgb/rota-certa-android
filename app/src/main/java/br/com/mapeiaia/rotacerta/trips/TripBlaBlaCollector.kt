@@ -80,6 +80,10 @@ data class BlaBlaCollectorTrip(
     val trip_href: String? = null,
     /** Passenger-facing public /trip URL. Never synthesize this from the admin URL. */
     val public_trip_href: String? = null,
+    /** Acquisition source for audit/diagnostics; never used as a second trip identity. */
+    val public_trip_href_source: String = "",
+    /** Strong binding contract used to revalidate the URL against the canonical administrative trip id. */
+    val public_trip_href_binding: String = "",
     val trip_id: String? = null,
     val uuid_validation: String = "unknown",
     val passengers: List<BlaBlaCollectorPassenger> = emptyList(),
@@ -641,7 +645,11 @@ object BlaBlaTimelineAdapter {
             sourcePassengerSeats = if (trip.booked_seats > 0) mapOf(BookingSource.BLABLACAR to trip.booked_seats) else emptyMap(),
             blablaTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty),
             blablaTripHref = canonicalManageHref(trip.trip_href),
-            blablaPublicHref = BlaBlaCollectorUrlModule.publicTrip(trip.public_trip_href, trip.trip_id),
+            blablaPublicHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                trip.public_trip_href,
+                trip.trip_id,
+                trip.public_trip_href_binding,
+            ),
             blablaProfileUuid = trip.profile_uuid.trim().takeIf(String::isNotEmpty),
             blablaPrice = trip.price?.trim()?.takeIf(String::isNotEmpty),
             blablaAvailability = trip.availability.trim().takeIf(String::isNotEmpty),
