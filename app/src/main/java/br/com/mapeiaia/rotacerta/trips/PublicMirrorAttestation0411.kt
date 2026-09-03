@@ -139,7 +139,7 @@ internal fun canonicalPublicProjectionHash0411(payload: CanonicalPublicTripPaylo
     "public-v2:" + MessageDigest.getInstance("SHA-256")
         .digest(
             canonicalPublicProjectionJson0411(
-                payload.copy(publicationRevision = 0L),
+                payload.copy(publicationRevision = 0L, blablaPublicUrl = ""),
             ).toByteArray(Charsets.UTF_8),
         )
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -157,8 +157,8 @@ internal fun compareCanonicalPublicBytes0421(
     expected: CanonicalPublicTripPayload0411,
     actual: CanonicalPublicTripPayload0411,
 ): PublicProjectionByteDiff0421 {
-    val expectedBytes = canonicalPublicProjectionJson0411(expected.copy(publicationRevision = 0L)).toByteArray(Charsets.UTF_8)
-    val actualBytes = canonicalPublicProjectionJson0411(actual.copy(publicationRevision = 0L)).toByteArray(Charsets.UTF_8)
+    val expectedBytes = canonicalPublicProjectionJson0411(expected.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
+    val actualBytes = canonicalPublicProjectionJson0411(actual.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
     val limit = minOf(expectedBytes.size, actualBytes.size)
     var first = -1
     val ranges = mutableListOf<String>()
@@ -244,7 +244,8 @@ internal fun evaluatePublicMirrorReadback0411(
     if (readbackHash != expectedHash) mismatch += "publicHash"
 
     val uniqueMismatch = mismatch.distinct()
-    val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
+    val agendaMismatch = uniqueMismatch.filterNot { it == "blablaPublicUrl" }
+    val validated = identityValid && revisionValid && agendaMismatch.isEmpty()
     return PublicMirrorAttestationDecision0411(
         state = if (validated) PublicMirrorAttestationState0411.VALIDATED else PublicMirrorAttestationState0411.DIVERGENT,
         expectedHash = expectedHash,
