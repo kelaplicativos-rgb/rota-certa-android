@@ -786,6 +786,7 @@ function normalizeDriverTrip(raw, previous = null) {
   );
   return {
     localTripId: cleanText(raw.id, 100),
+    canonicalTripId: cleanText(raw.canonicalTripId || raw.id || (previous && previous.canonicalTripId), 180),
     title: cleanText(raw.title, 220),
     departureAtMillis,
     capacity,
@@ -2693,6 +2694,25 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   });
 }
 
+function projectionPlaceKey0421(value) {
+  return String(value || "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function projectionPhysicalIdentityCompatible0421(left, right) {
+  const leftDeparture = Math.max(0, Number(left && left.departureAtMillis || 0));
+  const rightDeparture = Math.max(0, Number(right && right.departureAtMillis || 0));
+  if (!leftDeparture || !rightDeparture || Math.abs(leftDeparture - rightDeparture) > 45 * 60 * 1000) return false;
+  const leftStops = Array.isArray(left && left.stops) ? left.stops.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)) : [];
+  const rightStops = Array.isArray(right && right.stops) ? right.stops.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)) : [];
+  if (leftStops.length < 2 || rightStops.length < 2) return false;
+  return projectionPlaceKey0421(leftStops[0].name) === projectionPlaceKey0421(rightStops[0].name) &&
+    projectionPlaceKey0421(leftStops[leftStops.length - 1].name) === projectionPlaceKey0421(rightStops[rightStops.length - 1].name);
+}
+
 async function createDriverTrip(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -2710,10 +2730,11 @@ async function createDriverTrip(req, res) {
   const strongProfile = cleanText(normalized.blablaProfileUuid, 160).toLowerCase();
   const strongTripId = cleanText(normalized.blablaTripId, 160);
   const requestedTripKey = cleanText(normalized.tripKey, 180);
+  const requestedCanonicalTripId = cleanText(normalized.canonicalTripId || normalized.localTripId, 180);
   try {
     const result = await db.runTransaction(async (tx) => {
       const existingByToken = await tx.get(ref);
-      const driverTrips = (strongProfile && strongTripId) || requestedTripKey
+      const driverTrips = (strongProfile && strongTripId) || requestedTripKey || requestedCanonicalTripId
         ? await tx.get(db.collection("trips").where("driverUsername", "==", driver.username).limit(300))
         : null;
       const identityMatches = driverTrips
@@ -2726,10 +2747,24 @@ async function createDriverTrip(req, res) {
             const sameTripKey =
               requestedTripKey &&
               cleanText(data.tripKey, 180) === requestedTripKey;
-            return sameStrongIdentity || sameTripKey;
+            const sameCanonicalTrip =
+              requestedCanonicalTripId &&
+              cleanText(data.canonicalTripId || data.localTripId, 180) === requestedCanonicalTripId;
+            return sameStrongIdentity || sameTripKey || sameCanonicalTrip;
           })
         : [];
       if (identityMatches.length) {
+        const incompatible = identityMatches.filter((doc) => !projectionPhysicalIdentityCompatible0421(normalized, doc.data()));
+        if (incompatible.length) {
+          throw Object.assign(new Error("Identidade forte já está associada a uma viagem física incompatível."), {
+            httpStatus: 409,
+            code: "strong_identity_conflict",
+            details: {
+              canonicalTripIdHash: sha256Hex(requestedCanonicalTripId).slice(0, 24),
+              conflictCount: incompatible.length,
+            },
+          });
+        }
         const winner = identityMatches.slice().sort((left, right) => {
           const leftData = left.data();
           const rightData = right.data();
@@ -2776,7 +2811,13 @@ async function createDriverTrip(req, res) {
       adoptedCanonicalIdentity: result.adopted === true,
     });
   } catch (error) {
-    return fail(res, error.httpStatus || 500, error.code || "publish_failed", error.message || "Falha ao publicar viagem.");
+    return fail(
+      res,
+      error.httpStatus || 500,
+      error.code || "publish_failed",
+      error.message || "Falha ao publicar viagem.",
+      error.details || null,
+    );
   }
 }
 
