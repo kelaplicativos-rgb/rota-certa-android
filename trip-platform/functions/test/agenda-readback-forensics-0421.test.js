@@ -23,6 +23,19 @@ test("deterministic protected-booking conflict returns bounded correlation detai
   assert.doesNotMatch(source, /protectedBookingId:\s*bookingId/);
 });
 
+test("older transport revision is not stale when the logical snapshot is identical", () => {
+  const capacity = source.slice(
+    source.indexOf("async function reconcileDriverCapacitySnapshot"),
+    source.indexOf("async function listDriverTripSyncState0402"),
+  );
+  assert.match(capacity, /const sameLogicalSnapshot = deterministicRequest/);
+  assert.match(capacity, /incomingLogicalRevision === currentLogicalRevision/);
+  assert.match(capacity, /incomingCanonicalStateHash === currentCanonicalStateHash/);
+  assert.match(capacity, /if \(staleByRevision && sameLogicalSnapshot\)/);
+  assert.match(capacity, /logicalReplay:\s*true/);
+  assert.match(capacity, /stale:\s*false/);
+});
+
 test("sync-state exposes both logical and transport revision spaces", () => {
   const syncState = source.slice(source.indexOf("async function listDriverTripSyncState0402"), source.indexOf("async function reconcileDriverAgendaSeatAllocation"));
   assert.match(syncState, /canonicalRevision:/);
