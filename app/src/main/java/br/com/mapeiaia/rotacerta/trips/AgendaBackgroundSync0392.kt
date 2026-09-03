@@ -1448,17 +1448,16 @@ internal object AgendaBackgroundSync0392 {
                 key !in canonicalKeys &&
                 observedKey !in observedStrongKeys
             ) {
-                if (
-                    coordinator.recordExternalTombstone(
-                        binding = binding,
-                        mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
-                        source = "PROJECTION_RECONCILER",
-                        outboxCanonicalTripId = "projection-cleanup:" +
-                            sha256TripPublication0387(binding.remoteTripId).take(24),
-                    ) != null
-                ) {
+                coordinator.recordExternalTombstone(
+                    binding = binding,
+                    mutationType = "BLABLACAR_COMPLETE_SCOPE_ORPHAN",
+                    source = "PROJECTION_RECONCILER",
+                    outboxCanonicalTripId = "projection-cleanup:" +
+                        sha256TripPublication0387(binding.remoteTripId).take(24),
+                )?.let { event ->
                     orphanProjectionTombstones++
                     publicationQueued++
+                    publicationCanonicalTripIds0431 += event.canonicalTripId
                 }
             }
         }
