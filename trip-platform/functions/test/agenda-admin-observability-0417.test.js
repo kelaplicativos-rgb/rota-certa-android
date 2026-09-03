@@ -235,3 +235,13 @@ test("0.1.428 open mode removes public and admin login gates without creating a 
   assert.equal((source.match(/db\.collection\("passengerSessions"\)/g) || []).length > 0, true);
   assert.doesNotMatch(source, /openPassengerSessions|noAuthSessions|bypassSessions/);
 });
+
+
+test("0.1.428 open sessions stay within one Agenda", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(source, /driverScope0428/);
+  assert.match(source, /visibleEntries/);
+  assert.match(source, /scopedDocs/);
+  assert.match(source, /passenger_auth_restored/);
+  assert.match(source, /password_change_unavailable/);
+});
