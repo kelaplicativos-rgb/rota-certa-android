@@ -722,6 +722,7 @@ internal object PublicAgendaAutoSync0300 {
         canonicalTripId: String = "",
         seatAllocationVersion: Long = 0L,
         canonicalTripSnapshot: Trip? = null,
+        remoteStateHint0402: DriverTripSyncState0402? = null,
     ): Boolean = withContext(Dispatchers.IO) {
         if (source.identity_conflict) return@withContext false
         val profileUuid = source.profile_uuid.trim()
@@ -841,6 +842,7 @@ internal object PublicAgendaAutoSync0300 {
                 mutationId0421 = mutationId0421,
                 idempotencyKey0421 = idempotencyKey0421,
                 seatAllocationVersion = seatAllocationVersion,
+                remoteStateHint0402 = remoteStateHint0402,
             )
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
