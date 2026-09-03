@@ -499,6 +499,8 @@ function writeDeliveredTripPublicationOutbox(tx, {
   mutationType,
   source,
   sourceEventId = "",
+  mutationId = "",
+  idempotencyKey = "",
 }) {
   const tenant = normalizeUsername(tenantId);
   const canonical = cleanText(canonicalTripId, 120);
@@ -518,6 +520,8 @@ function writeDeliveredTripPublicationOutbox(tx, {
     destination: "PUBLIC_AGENDA",
     sourceEventId: immutableSourceEventId,
     payloadReference: immutableSourceEventId ? "tripChangeEvents/" + immutableSourceEventId : "",
+    mutationId: cleanText(mutationId, 120),
+    idempotencyKey: cleanText(idempotencyKey, 120),
     status: "DELIVERED",
     attempts: 1,
     createdAtMillis: now,
@@ -5933,6 +5937,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const entityRevision = Math.max(0, Math.floor(Number(req.body && req.body.entityRevision || 0)));
   const canonicalTripId = cleanText(req.body && req.body.canonicalTripId, 180);
   const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
+  const mutationId0421 = cleanText(req.body && req.body.mutationId0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const idempotencyKey0421 = cleanText(req.body && req.body.idempotencyKey0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
@@ -5952,6 +5958,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       }
       const currentEntityRevision = Math.max(0, Math.floor(Number(previous.publicationRevision || 0)));
       const currentEventId = cleanText(previous.publicationEventId, 120);
+      const currentMutationId0421 = cleanText(previous.publicationMutationId0421, 120);
+      const currentIdempotencyKey0421 = cleanText(previous.publicationIdempotencyKey0421, 120);
       const deterministicRequest = entityRevision > 0;
       const staleByRevision = deterministicRequest && entityRevision < currentEntityRevision;
       const incomingLogicalRevision = Math.max(0, Math.floor(Number(rawTrip && rawTrip.canonicalRevision || 0)));
@@ -5988,7 +5996,16 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         };
       }
       if (deterministicRequest && entityRevision === currentEntityRevision && currentEntityRevision > 0) {
-        if (currentEventId && outboxEventId && currentEventId !== outboxEventId) {
+        const sameIdempotentMutation = Boolean(
+          idempotencyKey0421 &&
+          currentIdempotencyKey0421 &&
+          idempotencyKey0421 === currentIdempotencyKey0421
+        ) || Boolean(
+          mutationId0421 &&
+          currentMutationId0421 &&
+          mutationId0421 === currentMutationId0421
+        );
+        if (currentEventId && outboxEventId && currentEventId !== outboxEventId && !sameIdempotentMutation) {
           throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
         }
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
@@ -6133,6 +6150,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           mutationType: protectedChanges.length ? "LOCAL_CANONICAL_SNAPSHOT_WITH_BOOKINGS" : "LOCAL_CANONICAL_SNAPSHOT",
           source: "ANDROID_OUTBOX",
           sourceEventId: protectedEventIds[0] || "",
+          mutationId: mutationId0421,
+          idempotencyKey: idempotencyKey0421,
         });
       }
       tx.update(tripRef, {
@@ -6144,6 +6163,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
         publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
+        publicationMutationId0421: deterministicRequest ? mutationId0421 : currentMutationId0421,
+        publicationIdempotencyKey0421: deterministicRequest ? idempotencyKey0421 : currentIdempotencyKey0421,
         canonicalTripId: deterministicRequest && canonicalTripId ? canonicalTripId : cleanText(previous.canonicalTripId, 180),
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
@@ -6173,6 +6194,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       changed: result.changed,
       entityRevision: Math.max(0, Number(result.entityRevision || 0)),
       stale: result.stale === true,
+      logicalReplay: result.logicalReplay === true,
       snapshotOverbooked: result.snapshotOverbooked === true,
     });
   } catch (error) {
