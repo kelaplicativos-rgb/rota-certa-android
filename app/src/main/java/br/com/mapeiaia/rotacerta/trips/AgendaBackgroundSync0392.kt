@@ -1670,11 +1670,12 @@ internal object AgendaBackgroundSync0392 {
                 if (
                     attestation.divergent > 0 ||
                     attestation.invalidIdentity > 0 ||
-                    attestation.invalidLink > 0 ||
                     attestation.staleRevision > 0
                 ) {
                     needsRepair = true
                 }
+                // BlaBla public-link proof is intentionally independent from Agenda MATCH.
+                // Link failure must not create a projection repair storm for a correct Agenda card.
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
