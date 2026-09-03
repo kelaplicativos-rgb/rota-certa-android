@@ -6400,6 +6400,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const claimNamespace = cleanText(req.body && req.body.claimNamespace, 40);
   const snapshotRevision = cleanText(req.body && req.body.snapshotRevision, 128).replace(/[^A-Za-z0-9:_-]/g, "");
   const sourceComplete = req.body && req.body.sourceComplete === true;
+  const preserveManagedClaims0436 = req.body && req.body.preserveManagedClaims0436 === true;
   const entityRevision = Math.max(0, Math.floor(Number(req.body && req.body.entityRevision || 0)));
   const canonicalTripId = cleanText(req.body && req.body.canonicalTripId, 180);
   const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
@@ -6439,8 +6440,17 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
-  if (!sourceComplete || !snapshotRevision) {
+  if (!snapshotRevision) {
+    return fail(res, 409, "capacity_snapshot_incomplete", "A revisão do snapshot de capacidade está ausente.");
+  }
+  if (!sourceComplete && !preserveManagedClaims0436) {
     return fail(res, 409, "capacity_snapshot_incomplete", "O snapshot de capacidade ainda não está completo.");
+  }
+  if (preserveManagedClaims0436 && (!incomingPublicProjection0434 || !expectedPublicProjectionHash0425)) {
+    return fail(res, 409, "partial_projection_requires_canonical_bytes", "Reparo parcial exige a projeção canônica exata.");
+  }
+  if (preserveManagedClaims0436 && rawClaims.length) {
+    return fail(res, 409, "partial_projection_claims_forbidden", "Reparo parcial não pode substituir claims de capacidade.");
   }
   if (rawProtectedBookings.length && (entityRevision <= 0 || claimNamespace !== "LOCAL_MIRROR:")) {
     return fail(res, 409, "protected_snapshot_requires_revision", "Reservas protegidas exigem snapshot local versionado.");
@@ -6484,6 +6494,15 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         logicalMetadataMatches0425 &&
         Boolean(expectedPublicProjectionHash0425) &&
         !publicProjectionHashMatches0425;
+      const sameRevisionCanonicalAdvance0436 =
+        deterministicRequest &&
+        entityRevision === currentEntityRevision &&
+        currentEntityRevision > 0 &&
+        incomingLogicalRevision > currentLogicalRevision &&
+        Boolean(incomingPublicProjection0434) &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        Boolean(canonicalTripId) &&
+        cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId;
       const legacyProjectionRepair0425 =
         !deterministicRequest &&
         currentEntityRevision > 0 &&
@@ -6536,7 +6555,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           outboxEventId &&
           currentEventId !== outboxEventId &&
           !sameIdempotentMutation &&
-          !sameRevisionProjectionRepair0425
+          !sameRevisionProjectionRepair0425 &&
+          !sameRevisionCanonicalAdvance0436
         ) {
           throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
         }
@@ -6551,7 +6571,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
             occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
           };
         }
-        if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425) {
+        if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425 && !sameRevisionCanonicalAdvance0436) {
           throw Object.assign(
             new Error("Reparo de mesma revisão exige a identidade idempotente original."),
             { httpStatus: 409, code: "publication_revision_repair_identity_mismatch" },
@@ -6578,13 +6598,20 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         };
       }
 
-      const normalized = normalizeDriverTrip({ ...rawTrip, capacityReliable: true }, previous);
-      const candidateTrip = { ...previous, ...normalized, capacityReliable: true };
-      if (claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
+      const normalized = normalizeDriverTrip({
+        ...rawTrip,
+        capacityReliable: preserveManagedClaims0436 ? rawTrip.capacityReliable === true : true,
+      }, previous);
+      const candidateTrip = {
+        ...previous,
+        ...normalized,
+        capacityReliable: preserveManagedClaims0436 ? previous.capacityReliable === true : true,
+      };
+      if (!preserveManagedClaims0436 && claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
         throw Object.assign(new Error("A cota BlaBlaCar ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
       }
       const expectedInventory = operationalSeatLimit(candidateTrip);
-      if (Number(candidateTrip.capacity || 0) !== expectedInventory) {
+      if (!preserveManagedClaims0436 && Number(candidateTrip.capacity || 0) !== expectedInventory) {
         throw Object.assign(new Error("O inventário operacional diverge das cotas canônicas."), { httpStatus: 409, code: "inventory_mismatch" });
       }
 
@@ -6618,7 +6645,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       const recordsWithProtected = records.map((record) => protectedById.get(record.id) || record);
 
       const desiredIds = new Set();
-      const desiredClaims = rawClaims.map((raw) => {
+      const desiredClaims = preserveManagedClaims0436 ? [] : rawClaims.map((raw) => {
         const id = cleanText(raw && raw.id, 120).replace(/[^A-Za-z0-9_-]/g, "");
         if (!id || desiredIds.has(id)) throw new Error("Identificador de ocupação inválido ou duplicado.");
         desiredIds.add(id);
@@ -6636,20 +6663,34 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         return normalizedClaim;
       });
 
-      const staleManaged = recordsWithProtected.filter((record) => managedCapacityClaim(record, claimNamespace) && !desiredIds.has(record.id));
-      const preserved = recordsWithProtected.filter((record) => !managedCapacityClaim(record, claimNamespace));
-      const candidateRecords = [...preserved, ...desiredClaims];
-      const capacityState = reconciledSegmentCapacity(candidateTrip, candidateRecords);
-      const loads = capacityState.loads;
-      const persistence = canonicalCapacityPersistence(candidateTrip, candidateRecords, capacityState);
+      const staleManaged = preserveManagedClaims0436
+        ? []
+        : recordsWithProtected.filter((record) => managedCapacityClaim(record, claimNamespace) && !desiredIds.has(record.id));
+      const preserved = preserveManagedClaims0436
+        ? recordsWithProtected
+        : recordsWithProtected.filter((record) => !managedCapacityClaim(record, claimNamespace));
+      const candidateRecords = preserveManagedClaims0436 ? recordsWithProtected : [...preserved, ...desiredClaims];
+      const capacityState = preserveManagedClaims0436 ? null : reconciledSegmentCapacity(candidateTrip, candidateRecords);
+      const loads = preserveManagedClaims0436
+        ? (Array.isArray(previous.segmentLoads) ? previous.segmentLoads : [])
+        : capacityState.loads;
+      const persistence = preserveManagedClaims0436
+        ? {}
+        : canonicalCapacityPersistence(candidateTrip, candidateRecords, capacityState);
       // An authoritative channel snapshot may reveal that already-confirmed occupancy now
       // exceeds a reduced quota. Persist that truth atomically and fail closed as FULL;
       // do not preserve an older optimistic availability. New bookings still use the
       // strict overbooking assertions in their own transactions.
-      const snapshotOverbooked = loads.some((load) => Number(load || 0) > Number(candidateTrip.capacity || 0)) ||
-        Number(persistence.operationalOverbookingSeats || 0) > 0;
-      const status = snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads);
-      const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+      const snapshotOverbooked = preserveManagedClaims0436 ? false : (
+        loads.some((load) => Number(load || 0) > Number(candidateTrip.capacity || 0)) ||
+          Number(persistence.operationalOverbookingSeats || 0) > 0
+      );
+      const status = preserveManagedClaims0436
+        ? cleanText(previous.status, 24)
+        : (snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads));
+      const occupancyRevision = preserveManagedClaims0436
+        ? Math.max(0, Number(previous.occupancyRevision || 0))
+        : Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
       const previousPublicProjectionHash0434 = cleanText(previous.publicProjectionHash0434, 160).toLowerCase();
       const publicProjectionRevision0434 = Math.max(0, Math.floor(Number(previous.publicProjectionRevision0434 || 0))) +
         (incomingPublicProjection0434 && expectedPublicProjectionHash0425 !== previousPublicProjectionHash0434 ? 1 : 0);
@@ -6689,7 +6730,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         capacityReliable: true,
         status,
         ...canonicalProjectionPersistence0434,
-        capacitySnapshotRevision: snapshotRevision,
+        capacitySnapshotRevision: preserveManagedClaims0436
+          ? cleanText(previous.capacitySnapshotRevision, 128)
+          : snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
         publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
@@ -6776,10 +6819,12 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       tx.update(tripRef, {
         ...normalized,
         ...persistence,
-        capacityReliable: true,
+        capacityReliable: preserveManagedClaims0436 ? previous.capacityReliable === true : true,
         status,
         ...canonicalProjectionPersistence0434,
-        capacitySnapshotRevision: snapshotRevision,
+        capacitySnapshotRevision: preserveManagedClaims0436
+          ? cleanText(previous.capacitySnapshotRevision, 128)
+          : snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
         publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
