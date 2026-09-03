@@ -996,7 +996,7 @@ function canonicalPublicTripPayload0411(token, data) {
 }
 
 function canonicalPublicTripHash0411(payload) {
-  const semanticPayload = { ...payload, publicationRevision: 0 };
+  const semanticPayload = { ...payload, publicationRevision: 0, blablaPublicUrl: "" };
   return "public-v2:" + sha256Hex(JSON.stringify(semanticPayload));
 }
 
