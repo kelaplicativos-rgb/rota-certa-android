@@ -392,46 +392,97 @@ class TripStore(context: Context) {
         synchronized(CANONICAL_LOCK) {
             val originalTrips = trips()
             val keyedTrips = originalTrips.map(::canonicalizeTripIdentity0406)
-            val externalGroups = keyedTrips
-                .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isNotBlank() }
-                .groupBy(Trip::tripKey)
-            val winnersByKey = externalGroups.mapValues { (_, candidates) ->
-                candidates.maxWithOrNull(
-                    compareBy<Trip> { it.canonicalRevision }.thenBy { it.updatedAtMillis },
-                ) ?: candidates.first()
-            }
+            val strongIdentityGroups0421 = keyedTrips
+                .mapNotNull { trip ->
+                    canonicalBlaBlaTripKey0406(
+                        tenantId = tenantScope.tenantId,
+                        profileUuid = trip.blablaProfileUuid,
+                        providerTripId = trip.blablaTripId,
+                    )?.let { key -> key to trip }
+                }
+                .groupBy({ it.first }, { it.second })
+            val conflictStrongKeys0421 = strongIdentityGroups0421
+                .filterValues { candidates ->
+                    candidates.size > 1 && candidates.any { left ->
+                        candidates.any { right ->
+                            left.id != right.id && !canonicalProjectionPhysicalIdentityCompatible0421(left, right)
+                        }
+                    }
+                }
+                .keys
             val loserToWinner = mutableMapOf<String, String>()
-            externalGroups.values.forEach { group ->
-                val winner = winnersByKey[group.first().tripKey] ?: return@forEach
-                group.filterNot { it.id == winner.id }.forEach { loser -> loserToWinner[loser.id] = winner.id }
+            strongIdentityGroups0421.forEach { (key, candidates) ->
+                if (candidates.size <= 1 || key in conflictStrongKeys0421) return@forEach
+                val winner = candidates.maxWithOrNull(
+                    compareBy<Trip> { resolvedTripRecordOrigin(it) == TripRecordOrigin.LOCAL }
+                        .thenBy { it.canonicalRevision }
+                        .thenBy { it.updatedAtMillis },
+                ) ?: return@forEach
+                candidates.filterNot { it.id == winner.id }.forEach { loser ->
+                    loserToWinner[loser.id] = winner.id
+                }
+            }
+            if (conflictStrongKeys0421.isNotEmpty()) {
+                val conflictIds = strongIdentityGroups0421
+                    .filterKeys { it in conflictStrongKeys0421 }
+                    .values
+                    .flatten()
+                    .map { seatSyncDiagnosticKey(it.id) }
+                    .distinct()
+                    .take(24)
+                UnifiedDebugEventStore.record(
+                    "CANONICAL_STRONG_IDENTITY_CONFLICT_0421",
+                    appContext.packageName,
+                    "tenantId=" + tenantScope.tenantId +
+                        " conflictKeys=" + conflictStrongKeys0421.size +
+                        " affectedTrips=" + conflictIds.size +
+                        " tripKeys=" + conflictIds.joinToString(",") +
+                        " action=preserve_unproven_no_destructive_merge",
+                )
             }
             val originalBookings = bookings()
             val remappedBookings = originalBookings.map { booking ->
                 loserToWinner[booking.tripId]?.let { winnerId -> booking.copy(tripId = winnerId) } ?: booking
             }
-            val winnerIds = winnersByKey.values.map(Trip::id).toSet()
-            val retainedTrips = keyedTrips.filter { trip ->
-                resolvedTripRecordOrigin(trip) != TripRecordOrigin.EXTERNAL_BACKING ||
-                    trip.tripKey.isBlank() ||
-                    trip.id in winnerIds
-            }
+            val retainedTrips = keyedTrips.filterNot { it.id in loserToWinner }
             val bookingsByTrip = remappedBookings.groupBy(Booking::tripId)
             val activeTimezone = ZoneId.systemDefault().id
             val hashedTrips = retainedTrips.map { trip ->
-                val migrated = if (trip.publicTimezoneId0411.isBlank()) {
-                    trip.copy(
+                val identityConflict = canonicalBlaBlaTripKey0406(
+                    tenantId = tenantScope.tenantId,
+                    profileUuid = trip.blablaProfileUuid,
+                    providerTripId = trip.blablaTripId,
+                ) in conflictStrongKeys0421
+                val conflictAware = if (identityConflict) {
+                    trip.invalidatePublicMirror0411("STRONG_IDENTITY_CONFLICT_0421")
+                } else trip
+                val migrated = if (conflictAware.publicTimezoneId0411.isBlank()) {
+                    conflictAware.copy(
                         publicTimezoneId0411 = activeTimezone,
                         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = nowMillis,
                     ).invalidatePublicMirror0411("LEGACY_PUBLIC_TIMEZONE_MIGRATED")
                 } else {
-                    trip
+                    conflictAware
                 }
                 val stateHash = canonicalTripStateHash0406(migrated, bookingsByTrip[migrated.id].orEmpty())
                 if (migrated.canonicalStateHash == stateHash) migrated else migrated.copy(canonicalStateHash = stateHash)
             }
             val canonicalByKey = hashedTrips.filter { it.tripKey.isNotBlank() }.associateBy(Trip::tripKey)
+            val canonicalByStrongExternalKey0421 = hashedTrips
+                .mapNotNull { trip ->
+                    canonicalBlaBlaTripKey0406(
+                        tenantId = tenantScope.tenantId,
+                        profileUuid = trip.blablaProfileUuid,
+                        providerTripId = trip.blablaTripId,
+                    )?.let { key -> key to trip }
+                }
+                .groupBy({ it.first }, { it.second })
+                .filterKeys { it !in conflictStrongKeys0421 }
+                .mapNotNull { (key, candidates) -> candidates.singleOrNull()?.let { key to it } }
+                .toMap()
+            val knownStrongExternalKeys0421 = strongIdentityGroups0421.keys
             val originalBindings = publicExternalBindings()
             val normalizedBindings = originalBindings.map { binding ->
                 val key = canonicalBlaBlaTripKey0406(
@@ -439,7 +490,7 @@ class TripStore(context: Context) {
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
                 )
-                val canonical = key?.let(canonicalByKey::get)
+                val canonical = key?.let { canonicalByStrongExternalKey0421[it] ?: canonicalByKey[it] }
                 if (canonical != null && binding.bookingTripId != canonical.id) {
                     binding.copy(
                         bookingTripId = canonical.id,
@@ -460,11 +511,12 @@ class TripStore(context: Context) {
                 } else binding
             }
             val groupedBindings = normalizedBindings.groupBy { binding ->
-                canonicalBlaBlaTripKey0406(
+                val key = canonicalBlaBlaTripKey0406(
                     tenantId = tenantScope.tenantId,
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
-                ) ?: "remote:" + binding.remoteTripId
+                )
+                if (key != null && key !in conflictStrongKeys0421) key else "remote:" + binding.remoteTripId
             }
             val orderedBindingGroups = groupedBindings.values.map { candidates ->
                 candidates.sortedWith(
@@ -484,7 +536,7 @@ class TripStore(context: Context) {
                     profileUuid = binding.profileUuid,
                     providerTripId = binding.blablaTripId,
                 )
-                key != null && key !in canonicalByKey
+                key != null && key !in knownStrongExternalKeys0421
             }
             val changed = hashedTrips != originalTrips ||
                 remappedBookings != originalBookings ||
@@ -507,6 +559,8 @@ class TripStore(context: Context) {
                 unresolvedExternalIdentity = hashedTrips.count {
                     resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && it.tripKey.isBlank()
                 },
+                consolidatedStrongIdentityTrips0421 = loserToWinner.size,
+                strongIdentityConflicts0421 = conflictStrongKeys0421.size,
                 duplicateAgendaBindingsForCleanup = duplicateBindingsForCleanup,
                 orphanAgendaBindingsForCleanup = orphanBindingsForCleanup,
             )
@@ -876,6 +930,8 @@ internal data class CanonicalIntegrityReport0406(
     val duplicateAgendaBindings: Int = 0,
     val orphanAgendaBindings: Int = 0,
     val unresolvedExternalIdentity: Int = 0,
+    val consolidatedStrongIdentityTrips0421: Int = 0,
+    val strongIdentityConflicts0421: Int = 0,
     val duplicateAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
     val orphanAgendaBindingsForCleanup: List<PublicExternalTripBinding> = emptyList(),
 )
@@ -936,6 +992,15 @@ data class PublicExternalTripBinding(
         seatAllocationVersionUsed = seatAllocationVersionUsed,
         canonicalStateHash = stateHash,
     )
+}
+
+internal fun canonicalProjectionPhysicalIdentityCompatible0421(left: Trip, right: Trip): Boolean {
+    if (kotlin.math.abs(left.departureAtMillis - right.departureAtMillis) > 45L * 60L * 1000L) return false
+    val leftStops = left.stops.sortedBy(TripStop::order)
+    val rightStops = right.stops.sortedBy(TripStop::order)
+    if (leftStops.size < 2 || rightStops.size < 2) return false
+    return normalizeBindingPlace(leftStops.first().name) == normalizeBindingPlace(rightStops.first().name) &&
+        normalizeBindingPlace(leftStops.last().name) == normalizeBindingPlace(rightStops.last().name)
 }
 
 private fun normalizeBindingPlace(value: String): String = java.text.Normalizer
