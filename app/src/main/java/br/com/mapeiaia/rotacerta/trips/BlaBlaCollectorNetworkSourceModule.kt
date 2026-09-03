@@ -29,10 +29,25 @@ internal data class BlaBlaNetworkBookingSourceEvidence(
 @Serializable
 internal data class BlaBlaNetworkTripSourceEvidence(
     val tripId: String = "",
+    val publicTripHref: String = "",
+    val publicTripHrefSource: String = "",
+    val publicTripHrefBinding: String = "",
+    val publicTripHrefEndpoint: String = "",
+    val publicTripHrefJsonPath: String = "",
     val bookingsComplete: Boolean = false,
     val bookings: List<BlaBlaNetworkBookingSourceEvidence> = emptyList(),
     val waypointsComplete: Boolean = false,
     val waypoints: List<BlaBlaNetworkWaypointSourceEvidence> = emptyList(),
+)
+
+internal data class BlaBlaNetworkPublicTripResolution(
+    val administrativeTripId: String,
+    val publicTripHref: String,
+    val publicTripId: String,
+    val source: String,
+    val binding: String,
+    val endpoint: String,
+    val jsonPath: String,
 )
 
 internal data class BlaBlaNetworkResolvedBooking(
@@ -73,6 +88,32 @@ internal fun shouldAwaitNetworkTripSource0407(
 internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BOOKINGS = 48
     private const val MAX_WAYPOINTS = 48
     private val stableIdRegex = Regex("[A-Za-z0-9_-]{8,160}")
+
+    fun resolvePublicTrip(
+        expectedTripId: String?,
+        source: BlaBlaNetworkTripSourceEvidence?,
+    ): BlaBlaNetworkPublicTripResolution? {
+        val expected = expectedTripId?.trim()?.takeIf(stableIdRegex::matches) ?: return null
+        val evidence = source ?: return null
+        val sourceTripId = evidence.tripId.trim().takeIf(stableIdRegex::matches) ?: return null
+        if (!expected.equals(sourceTripId, ignoreCase = true)) return null
+        if (evidence.publicTripHrefBinding != BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE) return null
+        val href = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+            raw = evidence.publicTripHref,
+            expectedAdministrativeTripId = expected,
+            boundAdministrativeTripId = sourceTripId,
+        ) ?: return null
+        val publicId = BlaBlaCollectorUrlModule.publicTripPublicId(href) ?: return null
+        return BlaBlaNetworkPublicTripResolution(
+            administrativeTripId = sourceTripId,
+            publicTripHref = href,
+            publicTripId = publicId,
+            source = evidence.publicTripHrefSource.trim().ifBlank { "network_structured" }.take(80),
+            binding = evidence.publicTripHrefBinding,
+            endpoint = evidence.publicTripHrefEndpoint.trim().take(240),
+            jsonPath = evidence.publicTripHrefJsonPath.trim().take(240),
+        )
+    }
 
     fun resolve(
         expectedTripId: String?,
