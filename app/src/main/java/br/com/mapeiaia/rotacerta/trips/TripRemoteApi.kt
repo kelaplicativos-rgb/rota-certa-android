@@ -1200,10 +1200,25 @@ class TripRemoteApi(
 
             phase = "decode_json"
             try {
-                json.decodeFromString<T>(responseText)
+                val decoded = json.decodeFromString<T>(responseText)
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "OK",
+                    reason = "WRITE_ACCEPTED",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
+                decoded
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "SERVER_ACK",
+                    status = "FAILED",
+                    reason = "RESPONSE_DECODE_FAILED",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                )
                 remoteException(
                     method = method,
                     path = path,
@@ -1227,6 +1242,15 @@ class TripRemoteApi(
         } catch (remote: TripRemoteApiException) {
             throw remote
         } catch (error: Throwable) {
+            if (status <= 0) {
+                recordRemotePublicationEvidence0421(
+                    evidence0421,
+                    stage = "HTTP_RESPONSE",
+                    status = "FAILED",
+                    reason = "TRANSPORT_" + phase.uppercase(),
+                    extra = "networkCallId=$networkCallId httpStatus=0 responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_SEND nextStage=SERVER_ACK",
+                )
+            }
             remoteException(
                 method = method,
                 path = path,
