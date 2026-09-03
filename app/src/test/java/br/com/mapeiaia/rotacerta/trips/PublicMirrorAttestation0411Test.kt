@@ -193,8 +193,17 @@ class PublicMirrorAttestation0411Test {
             publicMirrorAttestedPublicationRevision0411 = trip.publicationRevision,
             publicMirrorExpectedHash0411 = hash,
             publicMirrorReadbackHash0411 = hash,
+            publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
+            publicMirrorPublicIdentity0421 = "remote-0411",
+            publicMirrorLastReadbackAtMillis0421 = now,
         )
 
+        assertFalse(
+            validated.copy(
+                publicMirrorLastReadbackAtMillis0421 = 0L,
+                publicMirrorPublicIdentity0421 = "",
+            ).publicMirrorAttestationCurrent0411(),
+        )
         assertTrue(validated.publicMirrorAttestationCurrent0411())
         assertFalse(validated.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorAttestationCurrent0411())
         assertTrue(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
