@@ -67,11 +67,12 @@ test("visibility policy is server-side and revisioned separately", () => {
   assert.match(visibility, /visibilityPolicyRevision0434/);
 });
 
-test("public Agenda applies VisibilityPolicy after selecting attested canonical trips", () => {
+test("public Agenda applies VisibilityPolicy after selecting committed canonical trips", () => {
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
     source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicProjectionAttestedCurrent0429/);
+  assert.match(agenda, /publicProjectionCommittedCurrent0434/);
+  assert.doesNotMatch(agenda, /publicProjectionAttestedCurrent0429/);
   assert.match(agenda, /applyPublicTripVisibility0434/);
 });
