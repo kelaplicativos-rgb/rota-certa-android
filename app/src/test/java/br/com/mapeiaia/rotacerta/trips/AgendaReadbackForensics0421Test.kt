@@ -54,6 +54,14 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun outboxAndReadbackShareOneEvidenceIdForTheSameLogicalRevision() {
+        val traceId = publicationEventId0387("tenant", "trip-0421", 31)
+        assertTrue(publicationEvidenceId0421(traceId, 7).startsWith("ev_"))
+        assertTrue(publicationEvidenceId0421(traceId, 7) == publicationEvidenceId0421(traceId, 7))
+        assertFalse(publicationEvidenceId0421(traceId, 7) == publicationEvidenceId0421(traceId, 8))
+    }
+
+    @Test
     fun projectionRepairCannotCreateANewRevisionForTheSameLogicalSnapshot() {
         val trip = Trip(
             id = "trip-0421",
