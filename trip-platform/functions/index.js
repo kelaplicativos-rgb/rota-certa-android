@@ -4049,11 +4049,6 @@ async function setDriverPassengerAgendaAdmin0418(req, res) {
 
   const enabled = req.body && req.body.agendaAdmin === true;
   const currentContact = cleanText(access.passengerContact, 40);
-  const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(currentContact)).get();
-  if (enabled && (!accountSnap.exists || !passengerAccountIsActivated(accountSnap.data()))) {
-    return fail(res, 409, "passenger_account_not_activated", "Este passageiro ainda não ativou o acesso Minhas Viagens.");
-  }
-
   const before = access.agendaAdmin === true;
   const now = Date.now();
   const accessRef = db.collection("driverPassengerAccess").doc(access.id);
@@ -4277,6 +4272,7 @@ async function createPassengerSession(passengerContact, passengerId = "") {
     passengerContact,
     passengerId: cleanText(passengerId, 120),
     createdAtMillis: now,
+    lastActivityAtMillis: now,
     expiresAtMillis,
   });
   return { token, expiresAtMillis };
