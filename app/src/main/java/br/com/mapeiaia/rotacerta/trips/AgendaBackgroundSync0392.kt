@@ -2108,45 +2108,53 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "VERIFYING")
-        projectionIntegrity = reconcileProjectionIntegrity0406(
-            context = appContext,
-            store = store,
-            rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
-            seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-            repair = true,
-            completeCoverage = collectorResponseForThisCycle0407(),
-            completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
-        )
-        if (projectionIntegrity.repairQueued > 0) {
-            try {
-                outboxDelivered += TripMutationCoordinator0387(appContext, store).drainPending(limit = 128)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Throwable) {
-                failures++
-                UnifiedDebugEventStore.record(
-                    "PROJECTION_REPAIR_OUTBOX_FAILED_0406",
-                    appContext.packageName,
-                    AgendaFailureEvidence.describe(
-                        error = error,
-                        operation = "PROJECTION_REPAIR_OUTBOX",
-                        component = "AgendaBackgroundSync0392",
-                        method = "runTenantCycle",
-                    ),
-                )
-            }
+        if (reason == "blablacar_collection_result") {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_CARD_DELTA_ATTESTED_0431",
+                appContext.packageName,
+                "changedCards=${collectorCanonical.publicationCanonicalTripIds0431.size} publicationQueued=${collectorCanonical.publicationQueued} fullSyncRequested=false globalProjectionRepair=false",
+            )
+        } else {
+            AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "VERIFYING")
             projectionIntegrity = reconcileProjectionIntegrity0406(
                 context = appContext,
                 store = store,
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-                repair = false,
+                repair = true,
                 completeCoverage = collectorResponseForThisCycle0407(),
                 completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
+            if (projectionIntegrity.repairQueued > 0) {
+                try {
+                    outboxDelivered += TripMutationCoordinator0387(appContext, store).drainPending(limit = 128)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    failures++
+                    UnifiedDebugEventStore.record(
+                        "PROJECTION_REPAIR_OUTBOX_FAILED_0406",
+                        appContext.packageName,
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "PROJECTION_REPAIR_OUTBOX",
+                            component = "AgendaBackgroundSync0392",
+                            method = "runTenantCycle",
+                        ),
+                    )
+                }
+                projectionIntegrity = reconcileProjectionIntegrity0406(
+                    context = appContext,
+                    store = store,
+                    rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+                    seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+                    repair = false,
+                    completeCoverage = collectorResponseForThisCycle0407(),
+                    completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
+                )
+            }
+            failures += projectionIntegrity.failures
         }
-        failures += projectionIntegrity.failures
         runCatching {
             BookingPushRegistration0304.ensureRegistered(appContext, store)
         }
