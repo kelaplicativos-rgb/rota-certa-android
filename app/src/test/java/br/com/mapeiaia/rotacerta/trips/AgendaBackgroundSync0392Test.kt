@@ -31,6 +31,45 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
+    fun targetedVerifyKeepsLogicalAndTransportRevisionsIndependent() {
+        assertEquals(
+            30L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 8L,
+                localPublicationRevision = 8L,
+                remotePublicationRevision = 30L,
+            ),
+        )
+        assertEquals(
+            39L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 14L,
+                localPublicationRevision = 14L,
+                remotePublicationRevision = 39L,
+            ),
+        )
+        assertEquals(
+            8L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 8L,
+                localPublicationRevision = 0L,
+                remotePublicationRevision = 0L,
+            ),
+        )
+        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 6L))
+        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 8L))
+        assertTrue(targetedReverifyRemoteLogicalAhead0439(8L, 9L))
+
+        val source = backgroundSource()
+        assertTrue(source.contains("val remoteBefore = api.listDriverTripSyncStates0402().trips"))
+        assertTrue(source.contains("remoteStateHint0402 = remoteBefore"))
+        assertTrue(source.contains("entityRevision = transportRevision0439"))
+        assertTrue(source.contains("publicationRevision = transportRevision0439"))
+        assertTrue(source.contains("REMOTE_LOGICAL_REVISION_AHEAD"))
+        assertFalse(source.contains("entityRevision = canonical.canonicalRevision"))
+    }
+
+    @Test
     fun cardVerifyUsesCanonicalMirrorWithoutBrowserOrAutomaticRetry() {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_reverify"))
         assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_reverify"))
