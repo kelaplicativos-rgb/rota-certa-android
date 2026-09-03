@@ -72,7 +72,17 @@ class AgendaPrivateMirror0434Test {
         )
 
         val strongCanonicalId = "blablacar:strong-canonical-0434"
-        val payload = privateAgendaMirrorPayload0434(trip, listOf(booking), strongCanonicalId)
+        val canonicalOperational = canonicalOperationalSnapshot0434(
+            trip = trip,
+            bookings = listOf(booking),
+            nowMillis = trip.updatedAtMillis,
+        )
+        val payload = privateAgendaMirrorPayload0434(
+            trip = trip,
+            bookings = listOf(booking),
+            operationalSnapshot = canonicalOperational,
+            canonicalTripId = strongCanonicalId,
+        )
         val json = privateAgendaMirrorCanonicalJson0434(payload)
 
         assertEquals(strongCanonicalId, payload.canonicalTripId)
@@ -87,6 +97,11 @@ class AgendaPrivateMirror0434Test {
         assertEquals(PassengerOperationalStatus.IN_CAR.name, payload.bookings.single().operationalStatus)
         assertEquals(PassengerPaymentStatus.PAID.name, payload.bookings.single().paymentStatus)
         assertEquals(10000L, payload.bookings.single().fareMinorUnits)
+        assertEquals(canonicalOperational.segmentLoads, payload.segmentLoads)
+        assertEquals(canonicalOperational.segmentPassengerLoads, payload.segmentPassengerLoads)
+        assertEquals(canonicalOperational.segmentBlockedLoads, payload.segmentBlockedLoads)
+        assertEquals(canonicalOperational.availableSeatsMinimum, payload.availableSeatsMinimum)
+        assertEquals(canonicalOperational.availableSeatsMaximum, payload.availableSeatsMaximum)
         assertEquals(privateAgendaMirrorHash0434(json), privateAgendaMirrorHash0434(json))
         assertTrue(privateAgendaMirrorHash0434(json).startsWith("private-v1:"))
     }
