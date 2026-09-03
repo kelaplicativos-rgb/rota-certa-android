@@ -4420,6 +4420,31 @@ async function requirePassengerSession(req, res) {
     fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
     return null;
   }
+
+  const driverScope0428 = normalizeUsername(data.driverScope0428 || "");
+  if (driverScope0428) {
+    const requestedDriverRaw = cleanText(
+      req.get("X-Rota-Certa-Passenger-Driver") ||
+      req.get("X-Rota-Certa-Admin-Driver") ||
+      (req.query && req.query.driverUsername) ||
+      (req.body && req.body.driverUsername),
+      80,
+    );
+    const resolvedScopeDriver = requestedDriverRaw ? await resolveDriverUsername(requestedDriverRaw) : null;
+    const requestedDriver = resolvedScopeDriver ? resolvedScopeDriver.canonicalUsername : "";
+    if (requestedDriver !== driverScope0428) {
+      fail(res, 403, "passenger_session_scope_mismatch", "Este acesso pertence somente à Agenda em que foi criado.");
+      return null;
+    }
+    const scopedDriverData = resolvedScopeDriver && resolvedScopeDriver.driverSnap && resolvedScopeDriver.driverSnap.exists
+      ? resolvedScopeDriver.driverSnap.data()
+      : null;
+    if (agendaAuthenticationRequired0428(scopedDriverData)) {
+      await sessionRef.delete().catch(() => {});
+      fail(res, 401, "passenger_auth_restored", "A autenticação desta Agenda foi reativada. Entre novamente com sua senha.");
+      return null;
+    }
+  }
   let lastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
   if (now - lastActivityAtMillis > 60 * 1000) {
     await sessionRef.set({ lastActivityAtMillis: now }, { merge: true }).catch(() => {});
@@ -4430,6 +4455,7 @@ async function requirePassengerSession(req, res) {
     passengerId: cleanText(data.passengerId, 120),
     contactHash: cleanText(data.contactHash, 80),
     sessionContextHash: cleanText(data.sessionContextHash, 80),
+    driverScope0428,
     sessionRefId: sessionRef.id,
     createdAtMillis: Number(data.createdAtMillis || 0),
     lastActivityAtMillis,
