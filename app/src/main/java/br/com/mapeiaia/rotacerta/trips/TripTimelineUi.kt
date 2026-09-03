@@ -983,6 +983,7 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
         appendLine("Duração do readback: " + trip.publicMirrorReadbackLatencyMillis0411 + " ms")
         if (trip.publicMirrorHttpStatus0421 > 0) appendLine("HTTP status: " + trip.publicMirrorHttpStatus0421)
         if (trip.publicMirrorBackendErrorCode0421.isNotBlank()) appendLine("Error code: " + trip.publicMirrorBackendErrorCode0421)
+        appendLine("Estágio exato da falha: " + trip.publicMirrorFailedStage0421.ifBlank { "nenhuma falha na última comparação" })
         appendLine("Evidence ID: " + trip.publicMirrorEvidenceId0421.ifBlank { "não gerado" })
         appendLine("Trace ID: " + trip.publicMirrorTraceId0421.ifBlank { "não gerado" })
         if (trip.publicMirrorExpectedBytes0421 > 0 || trip.publicMirrorActualBytes0421 > 0) {
@@ -1021,6 +1022,7 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"differentByteRanges\":").append(q(trip.publicMirrorDifferentByteRanges0421.joinToString(","))).append(',')
         append("\"httpStatus\":").append(trip.publicMirrorHttpStatus0421).append(',')
         append("\"errorCode\":").append(q(trip.publicMirrorBackendErrorCode0421)).append(',')
+        append("\"failedStage\":").append(q(trip.publicMirrorFailedStage0421)).append(',')
         append("\"reasonCode\":").append(q(trip.publicMirrorAttestationReason0411)).append(',')
         append("\"readbackAtMillis\":").append(trip.publicMirrorLastReadbackAtMillis0421).append(',')
         append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411)
