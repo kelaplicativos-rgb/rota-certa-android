@@ -105,14 +105,9 @@ private val privateMirrorJson0434 = Json {
 internal fun privateAgendaMirrorPayload0434(
     trip: Trip,
     bookings: List<Booking>,
+    operationalSnapshot: CanonicalOperationalSnapshot0434,
     canonicalTripId: String = trip.id,
 ): PrivateAgendaMirrorPayload0434 {
-    val snapshotAtMillis = trip.updatedAtMillis.takeIf { it > 0L } ?: trip.createdAtMillis
-    val operationalInventory = operationalInventoryCapacity(trip, bookings)
-    val projectedTrip = trip.copy(capacity = operationalInventory)
-    val loads = SeatAvailabilityEngine.segmentLoads(projectedTrip, bookings, snapshotAtMillis)
-    val summary = operationalSeatSummary(projectedTrip, bookings, snapshotAtMillis)
-    val available = if (trip.capacityReliable) summary.availableSeats.coerceAtLeast(0) else 0
     val canonicalId = canonicalTripId.trim().ifBlank { trip.id }
     return PrivateAgendaMirrorPayload0434(
         canonicalTripId = canonicalId,
@@ -142,17 +137,17 @@ internal fun privateAgendaMirrorPayload0434(
         capacity = trip.capacity.coerceAtLeast(0),
         publishedSeats = trip.publishedSeats?.coerceAtLeast(0),
         rotaCertaSeatAllocation = (trip.rotaCertaSeatAllocation ?: 0).coerceAtLeast(0),
-        operationalInventory = operationalInventory,
+        operationalInventory = operationalSnapshot.capacity,
         capacityReliable = trip.capacityReliable,
-        segmentLoads = loads.map { it.occupiedSeats.coerceAtLeast(0) },
-        segmentPassengerLoads = loads.map { it.passengerSeats.coerceAtLeast(0) },
-        segmentBlockedLoads = loads.map { it.blockedSeats.coerceAtLeast(0) },
-        availableSeatsMinimum = available,
-        availableSeatsMaximum = available,
-        operationalAvailableSeats = available,
-        confirmedPassengerSeats = summary.confirmedPassengerSeats.coerceAtLeast(0),
-        blockedSeats = summary.blockedSeats.coerceAtLeast(0),
-        operationalOverbookingSeats = summary.overbookingSeats.coerceAtLeast(0),
+        segmentLoads = operationalSnapshot.segmentLoads,
+        segmentPassengerLoads = operationalSnapshot.segmentPassengerLoads,
+        segmentBlockedLoads = operationalSnapshot.segmentBlockedLoads,
+        availableSeatsMinimum = operationalSnapshot.availableSeatsMinimum,
+        availableSeatsMaximum = operationalSnapshot.availableSeatsMaximum,
+        operationalAvailableSeats = operationalSnapshot.operationalAvailableSeats,
+        confirmedPassengerSeats = operationalSnapshot.confirmedPassengerSeats,
+        blockedSeats = operationalSnapshot.blockedSeats,
+        operationalOverbookingSeats = operationalSnapshot.operationalOverbookingSeats,
         publicBookingEnabled = trip.publicBookingEnabled,
         itineraryAuthoritative = trip.itineraryAuthoritative,
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
@@ -206,12 +201,18 @@ internal suspend fun syncPrivateAgendaMirror0434(
     api: TripRemoteApi,
     trip: Trip,
     bookings: List<Booking>,
+    operationalSnapshot: CanonicalOperationalSnapshot0434,
     canonicalTripId: String,
     correlationId: String = "",
     syncOperationId: String = "",
     idempotencyKey: String = "",
 ): DriverPrivateMirrorReadback0434 {
-    val payload = privateAgendaMirrorPayload0434(trip, bookings, canonicalTripId)
+    val payload = privateAgendaMirrorPayload0434(
+        trip = trip,
+        bookings = bookings,
+        operationalSnapshot = operationalSnapshot,
+        canonicalTripId = canonicalTripId,
+    )
     val canonicalJson = privateAgendaMirrorCanonicalJson0434(payload)
     val privateHash = privateAgendaMirrorHash0434(canonicalJson)
     val write = api.writePrivateAgendaMirror0434(
