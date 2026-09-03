@@ -56,6 +56,28 @@ class AgendaImmediateCardDelta0431Test {
     }
 
     @Test
+    fun timelineLazyCardsDoNotDeserializePersistentStoresWhileScrolling() {
+        val ui = source("TripTimelineUi.kt")
+        val capacity = source("TripGlobalPassengerFlow0256.kt")
+        val control = source("BlaBlaTripControl0407.kt")
+        val cardScope = ui.substring(
+            ui.indexOf("private fun TimelineEntryCard("),
+            ui.indexOf("internal data class TimelineQuickPassengerOption"),
+        )
+
+        assertTrue(ui.contains("registeredAccounts0432"))
+        assertTrue(ui.contains("commandAuditsByCard0432"))
+        assertTrue(ui.contains("bookingsSnapshot0432 = bookings"))
+        assertFalse(cardScope.contains("BlaBlaPublicationSeatSyncStateStore(context).get"))
+        assertFalse(cardScope.contains("BlaBlaTripCommandStatusStore0407(context).get"))
+        assertFalse(cardScope.contains("BlaBlaTripControlEvents0407.revision.collectAsState"))
+        assertFalse(cardScope.contains("resolveBlaBlaTripTarget0407(context, entry)"))
+        assertTrue(cardScope.contains("timelineDesiredSeatSyncPlan(entry, trip, bookingsSnapshot0432)"))
+        assertTrue(capacity.contains("bookingsSnapshot: List<Booking>"))
+        assertTrue(control.contains("accounts: List<BlaBlaDynamicAccount>"))
+    }
+
+    @Test
     fun fullReconcileIsStrictlyTimelineToPublicAgendaAndDoesNotMaterializeCollectorSnapshot() {
         val background = source("AgendaBackgroundSync0392.kt")
         val collectorScope = background.substring(
