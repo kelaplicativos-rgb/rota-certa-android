@@ -13,10 +13,13 @@ class BlaBlaCaptureOrchestrator0368Test {
         assertEquals(BlaBlaBrowserOperation.REMOTE_WRITE, BlaBlaBrowserRequest.SEAT_SAVE.operation)
         assertEquals(BlaBlaBrowserOperation.CAPTURE, BlaBlaBrowserRequest.SEAT_OPTIONS.operation)
         assertEquals(BlaBlaBrowserOperation.CAPTURE, BlaBlaBrowserRequest.TRIP_DETAIL.operation)
+        assertEquals(BlaBlaBrowserOperation.CAPTURE, BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE.operation)
         assertEquals(BlaBlaBrowserOperation.CAPTURE, BlaBlaBrowserRequest.PASSENGER_CONTACT.operation)
         assertEquals(BlaBlaBrowserOperation.NAVIGATION, BlaBlaBrowserRequest.TRIP_OPEN.operation)
         assertEquals(BlaBlaBrowserOperation.NAVIGATION, BlaBlaBrowserRequest.PASSENGER_OPEN.operation)
         assertTrue(BlaBlaBrowserRequest.SEAT_OPTIONS.isCollectionStep)
+        assertTrue(BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE.isCollectionStep)
+        assertFalse(BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE.mutatesRemoteState)
         assertFalse(BlaBlaBrowserRequest.SEAT_CHANGE.isCollectionStep)
         assertTrue(BlaBlaBrowserRequest.SEAT_CHANGE.mutatesRemoteState)
     }
