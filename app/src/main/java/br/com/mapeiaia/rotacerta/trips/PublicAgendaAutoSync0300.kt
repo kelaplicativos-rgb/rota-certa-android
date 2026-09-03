@@ -523,7 +523,7 @@ internal object PublicAgendaAutoSync0300 {
             trip = publicTrip.copy(remoteId = remoteTripId),
             claims = mirrors,
             protectedBookings = if (entityRevision > 0L) {
-                localBookings.filter { protectedBookingParticipatesInCapacitySnapshot0421(it, nowMillis) }
+                localBookings.filter(::protectedBookingMustBeTransmitted0422)
             } else {
                 emptyList()
             },
@@ -1101,6 +1101,14 @@ internal object PublicAgendaAutoSync0300 {
 
         return synced
     }
+
+    /**
+     * Transport contract is broader than capacity participation: terminal Rota Certa
+     * bookings must reach the backend so a remote REQUESTED/CONFIRMED record can be
+     * cancelled/rejected/expired instead of continuing to consume seats.
+     */
+    internal fun protectedBookingMustBeTransmitted0422(booking: Booking): Boolean =
+        booking.source == BookingSource.ROTA_CERTA
 
     internal fun protectedBookingParticipatesInCapacitySnapshot0421(
         booking: Booking,

@@ -1001,7 +1001,9 @@ function canonicalPublicTripPayload0411(token, data) {
 }
 
 function canonicalPublicTripHash0411(payload) {
-  const semanticPayload = { ...payload, publicationRevision: 0, blablaPublicUrl: "" };
+  // Transport revision is intentionally excluded; the observed BlaBlaCar public URL
+  // is semantic public state and must participate in the byte-for-byte attestation.
+  const semanticPayload = { ...payload, publicationRevision: 0 };
   return "public-v2:" + sha256Hex(JSON.stringify(semanticPayload));
 }
 
@@ -1018,11 +1020,15 @@ async function getDriverPublicTripReadback0411(req, res, token) {
     return fail(res, 409, "trip_projection_tombstoned", "A projeção pública desta viagem está removida.");
   }
   const payload = canonicalPublicTripPayload0411(token, data);
+  const committedAt = data.publicCommittedAt0422;
+  const committedAtMillis = committedAt && typeof committedAt.toMillis === "function"
+    ? Math.max(0, Number(committedAt.toMillis() || 0))
+    : Math.max(0, Number(data.updatedAtMillis || 0));
   return json(res, 200, {
     remoteTripId: token,
     payload,
     publicProjectionHash: canonicalPublicTripHash0411(payload),
-    persistedAtMillis: Math.max(0, Number(data.updatedAtMillis || 0)),
+    persistedAtMillis: committedAtMillis,
   });
 }
 
@@ -6038,6 +6044,10 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       }
       if (deterministicRequest && entityRevision === currentEntityRevision && currentEntityRevision > 0) {
         const sameIdempotentMutation = Boolean(
+          currentEventId &&
+          outboxEventId &&
+          currentEventId === outboxEventId
+        ) || Boolean(
           idempotencyKey0421 &&
           currentIdempotencyKey0421 &&
           idempotencyKey0421 === currentIdempotencyKey0421
@@ -6049,16 +6059,31 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         if (currentEventId && outboxEventId && currentEventId !== outboxEventId && !sameIdempotentMutation) {
           throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
         }
-        const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
-        return {
-          changed: false,
-          stale: false,
-          range,
-          entityRevision: currentEntityRevision,
-          occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
-        };
+        if (sameLogicalSnapshot) {
+          const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+          return {
+            changed: false,
+            stale: false,
+            logicalReplay: true,
+            range,
+            entityRevision: currentEntityRevision,
+            occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+          };
+        }
+        if (!sameIdempotentMutation) {
+          throw Object.assign(
+            new Error("Reparo de mesma revisão exige a identidade idempotente original."),
+            { httpStatus: 409, code: "publication_revision_repair_identity_mismatch" },
+          );
+        }
+        // Same mutation + same transport revision but stale/missing logical projection:
+        // intentionally fall through and re-apply the canonical snapshot atomically.
       }
-      if (previous.capacityReliable === true && cleanText(previous.capacitySnapshotRevision, 128) === snapshotRevision) {
+      if (
+        previous.capacityReliable === true &&
+        cleanText(previous.capacitySnapshotRevision, 128) === snapshotRevision &&
+        (!deterministicRequest || sameLogicalSnapshot)
+      ) {
         const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
         return {
           changed: false,
@@ -6210,6 +6235,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
         updatedAtMillis: now,
+        publicCommittedAt0422: FieldValue.serverTimestamp(),
       });
       return {
         changed: true,

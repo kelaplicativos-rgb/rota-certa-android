@@ -56,6 +56,7 @@ class PublicMirrorAttestation0411Test {
                 remoteTripId = "remote-0411",
                 payload = stale,
                 publicProjectionHash = canonicalPublicProjectionHash0411(stale),
+                persistedAtMillis = now,
             ),
         )
 
@@ -79,6 +80,13 @@ class PublicMirrorAttestation0411Test {
         assertTrue(changedDiff.firstDifferentByteOffset >= 0)
         assertTrue(changedDiff.differentByteRanges.isNotEmpty())
         assertNotEquals(changedDiff.expectedSha256, changedDiff.actualSha256)
+        val titleDiff = changedDiff.fieldDiffs.single { it.fieldPath == "$.title" }
+        assertEquals("string", titleDiff.expectedType)
+        assertEquals("string", titleDiff.actualType)
+        assertTrue(titleDiff.expectedByteStart >= 0)
+        assertTrue(titleDiff.actualByteStart >= 0)
+        assertTrue(titleDiff.expectedBytesHex.isNotBlank())
+        assertTrue(titleDiff.actualBytesHex.isNotBlank())
     }
 
     @Test
@@ -97,6 +105,7 @@ class PublicMirrorAttestation0411Test {
                 remoteTripId = "remote-0411",
                 payload = changed,
                 publicProjectionHash = canonicalPublicProjectionHash0411(changed),
+                persistedAtMillis = now,
             ),
         )
 
@@ -106,7 +115,7 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
-    fun transportRevisionDifferenceDoesNotReplaceLogicalRevision() {
+    fun staleTransportRevisionPreventsBlueWithoutReplacingLogicalRevision() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -121,16 +130,18 @@ class PublicMirrorAttestation0411Test {
                 remoteTripId = "remote-0411",
                 payload = stale,
                 publicProjectionHash = canonicalPublicProjectionHash0411(stale),
+                persistedAtMillis = now,
             ),
         )
 
-        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
-        assertTrue(decision.revisionValid)
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
         assertFalse("canonicalRevision" in decision.mismatchFields)
+        assertTrue("publicationRevision" in decision.mismatchFields)
     }
 
     @Test
-    fun BlaBlaLinkForAnotherTripDoesNotForgeOrBlockAgendaMatch() {
+    fun BlaBlaLinkForAnotherTripPreventsBlueAndChangesPublicHash() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -147,11 +158,38 @@ class PublicMirrorAttestation0411Test {
                 remoteTripId = "remote-0411",
                 payload = wrong,
                 publicProjectionHash = canonicalPublicProjectionHash0411(wrong),
+                persistedAtMillis = now,
             ),
         )
 
-        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
         assertFalse(decision.linkValid)
+        assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun missingRealBlaBlaLinkIsUnresolvedAndCannotBeAttested() {
+        val trip = canonicalTrip().copy(blablaPublicUrl = null)
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.linkValid)
+        assertEquals("BLABLACAR_PUBLIC_URL_UNRESOLVED", decision.reason)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
     }
 
@@ -170,6 +208,7 @@ class PublicMirrorAttestation0411Test {
                 remoteTripId = "remote-0411",
                 payload = expected,
                 publicProjectionHash = "public-v2:not-the-readback-hash",
+                persistedAtMillis = now,
             ),
         )
 
@@ -258,7 +297,7 @@ class PublicMirrorAttestation0411Test {
         assertTrue(complete.verified)
         assertFalse(complete.copy(attestationValidated0411 = 2, attestationPending0411 = 1).verified)
         assertFalse(complete.copy(attestationDivergent0411 = 1).verified)
-        assertTrue(complete.copy(attestationInvalidLink0411 = 1).verified)
+        assertFalse(complete.copy(attestationInvalidLink0411 = 1).verified)
         assertFalse(complete.copy(attestationReadbackFailures0411 = 1, failures = 1).verified)
     }
 

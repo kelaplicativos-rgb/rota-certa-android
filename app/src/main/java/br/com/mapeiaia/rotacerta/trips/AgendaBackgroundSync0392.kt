@@ -728,6 +728,7 @@ internal data class ProjectionIntegrity0406(
             attestationPending0411 == 0 &&
             attestationDivergent0411 == 0 &&
             attestationInvalidIdentity0411 == 0 &&
+            attestationInvalidLink0411 == 0 &&
             attestationStaleRevision0411 == 0 &&
             attestationReadbackFailures0411 == 0 &&
             attestationValidated0411 == canonicalActive
@@ -1683,15 +1684,31 @@ internal object AgendaBackgroundSync0392 {
                     )
                 }
                 accumulateAttestation0411(attestation)
+                val attestedTrip = store.getTrip(trip.id) ?: trip
+                val onlyUnresolvedBlaBlaLink =
+                    attestation.invalidLink > 0 &&
+                        attestedTrip.blablaPublicUrl.isNullOrBlank() &&
+                        attestedTrip.publicMirrorMismatchFields0411.distinct() == listOf("blablaPublicUrl")
                 if (
-                    attestation.divergent > 0 ||
-                    attestation.invalidIdentity > 0 ||
-                    attestation.staleRevision > 0
+                    !onlyUnresolvedBlaBlaLink &&
+                    (
+                        attestation.divergent > 0 ||
+                            attestation.invalidIdentity > 0 ||
+                            attestation.staleRevision > 0
+                    )
                 ) {
                     needsRepair = true
                 }
-                // BlaBla public-link proof is intentionally independent from Agenda MATCH.
-                // Link failure must not create a projection repair storm for a correct Agenda card.
+                if (onlyUnresolvedBlaBlaLink) {
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_PUBLIC_URL_UNRESOLVED_0422",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                            " profileUuidPresent=" + !trip.blablaProfileUuid.isNullOrBlank() +
+                            " blablaTripIdPresent=" + !trip.blablaTripId.isNullOrBlank() +
+                            " action=await_strong_collector_evidence projectionReplay=false attestation=false",
+                    )
+                }
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
@@ -2296,6 +2313,7 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionInvalidIdentity0411 == 0 &&
+                    cycle.projectionInvalidLink0411 == 0 &&
                     cycle.projectionStaleRevision0411 == 0 &&
                     cycle.projectionReadbackFailures0411 == 0 &&
                     cycle.projectionValidated0411 == cycle.projectionExpected0411
@@ -2310,7 +2328,9 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionDuplicates > 0 ||
                     cycle.projectionOrphans > 0 ||
                     cycle.projectionInvalidIdentity0411 > 0 ||
+                    cycle.projectionInvalidLink0411 > 0 ||
                     cycle.projectionRevisionMismatch > 0 ||
+                    cycle.projectionRevisionRegression > 0 ||
                     cycle.projectionHashMismatch > 0 ||
                     cycle.projectionCapacityMismatch > 0 ||
                     cycle.projectionStatusMismatch > 0 -> "DIVERGENT"

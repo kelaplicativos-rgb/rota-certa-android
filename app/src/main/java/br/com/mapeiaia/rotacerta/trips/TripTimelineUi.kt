@@ -1020,6 +1020,52 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
     val maxStages = 64
     val stages = correlated.takeLast(maxStages)
     val truncated = correlated.size > stages.size
+
+    fun lastStageDetail(vararg keys: String): String {
+        stages.asReversed().forEach { event ->
+            keys.forEach { key ->
+                val value = detail(event.details, key)
+                if (value.isNotBlank()) return value
+            }
+        }
+        return ""
+    }
+    fun derivedFailedStage(): String {
+        stages.asReversed().forEach { event ->
+            val status = detail(event.details, "status").uppercase()
+            if (status in setOf("FAILED", "MISMATCH", "DENIED", "ERROR")) {
+                return detail(event.details, "stage")
+            }
+        }
+        return ""
+    }
+
+    val httpStatus = trip.publicMirrorHttpStatus0421.takeIf { it > 0 }
+        ?: lastStageDetail("httpStatus").toIntOrNull()
+        ?: 0
+    val networkCallId = trip.publicMirrorNetworkCallId0421.ifBlank {
+        lastStageDetail("networkCallId")
+    }
+    val requestBytes = trip.publicMirrorRequestBytes0421.takeIf { it > 0 }
+        ?: lastStageDetail("requestBytes").toIntOrNull()
+        ?: 0
+    val responseBytes = trip.publicMirrorResponseBytes0421.takeIf { it > 0 }
+        ?: lastStageDetail("responseBytes").toIntOrNull()
+        ?: 0
+    val requestHash = trip.publicMirrorRequestHash0421.ifBlank {
+        lastStageDetail("requestHash", "requestSha256")
+    }
+    val responseHash = trip.publicMirrorResponseHash0421.ifBlank {
+        lastStageDetail("responseHash", "responseSha256")
+    }
+    val errorCode = trip.publicMirrorBackendErrorCode0421.ifBlank {
+        lastStageDetail("errorCode", "backendErrorCode")
+    }
+    val failedStage = trip.publicMirrorFailedStage0421.ifBlank(::derivedFailedStage)
+    val reasonCode = trip.publicMirrorAttestationReason0411.ifBlank {
+        lastStageDetail("reasonCode")
+    }
+
     return buildString {
         append('{')
         append("\"schemaVersion\":\"public-evidence-v2\",")
@@ -1037,19 +1083,30 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"actualLength\":").append(trip.publicMirrorActualBytes0421).append(',')
         append("\"firstDifferentByteOffset\":").append(trip.publicMirrorFirstDifferentByteOffset0421).append(',')
         append("\"differentByteRanges\":").append(q(trip.publicMirrorDifferentByteRanges0421.joinToString(","))).append(',')
-        append("\"httpStatus\":").append(trip.publicMirrorHttpStatus0421).append(',')
-        append("\"errorCode\":").append(q(trip.publicMirrorBackendErrorCode0421)).append(',')
-        append("\"failedStage\":").append(q(trip.publicMirrorFailedStage0421)).append(',')
-        append("\"networkCallId\":").append(q(trip.publicMirrorNetworkCallId0421)).append(',')
-        append("\"requestBytes\":").append(trip.publicMirrorRequestBytes0421).append(',')
-        append("\"responseBytes\":").append(trip.publicMirrorResponseBytes0421).append(',')
-        append("\"requestHash\":").append(q(trip.publicMirrorRequestHash0421)).append(',')
-        append("\"responseHash\":").append(q(trip.publicMirrorResponseHash0421)).append(',')
-        append("\"reasonCode\":").append(q(trip.publicMirrorAttestationReason0411)).append(',')
+        append("\"fieldDiffs\":[")
+        trip.publicMirrorFieldDiffs0422.forEachIndexed { index, raw ->
+            if (index > 0) append(',')
+            val validJson = runCatching {
+                JSONObject(raw)
+                raw
+            }.getOrNull()
+            if (validJson != null) append(validJson) else append(q(raw))
+        }
+        append("],")
+        append("\"httpStatus\":").append(httpStatus).append(',')
+        append("\"errorCode\":").append(q(errorCode)).append(',')
+        append("\"failedStage\":").append(q(failedStage)).append(',')
+        append("\"networkCallId\":").append(q(networkCallId)).append(',')
+        append("\"requestBytes\":").append(requestBytes).append(',')
+        append("\"responseBytes\":").append(responseBytes).append(',')
+        append("\"requestHash\":").append(q(requestHash)).append(',')
+        append("\"responseHash\":").append(q(responseHash)).append(',')
+        append("\"reasonCode\":").append(q(reasonCode)).append(',')
         append("\"readbackAtMillis\":").append(trip.publicMirrorLastReadbackAtMillis0421).append(',')
         append("\"attestedAtMillis\":").append(trip.publicMirrorAttestedAtMillis0411).append(',')
         append("\"truncated\":").append(truncated).append(',')
-        append("\"stageCount\":").append(correlated.size).append(',')
+        append("\"totalStageCount\":").append(correlated.size).append(',')
+        append("\"stageCount\":").append(stages.size).append(',')
         append("\"stages\":[")
         stages.forEachIndexed { index, event ->
             if (index > 0) append(',')

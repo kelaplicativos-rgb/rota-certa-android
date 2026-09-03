@@ -5,6 +5,12 @@ import java.time.ZoneId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 @Serializable
 enum class PublicMirrorAttestationState0411 {
@@ -137,12 +143,29 @@ internal fun canonicalPublicProjectionJson0411(payload: CanonicalPublicTripPaylo
 
 internal fun canonicalPublicProjectionHash0411(payload: CanonicalPublicTripPayload0411): String =
     "public-v2:" + MessageDigest.getInstance("SHA-256")
-        .digest(
-            canonicalPublicProjectionJson0411(
-                payload.copy(publicationRevision = 0L, blablaPublicUrl = ""),
-            ).toByteArray(Charsets.UTF_8),
-        )
+        .digest(canonicalSemanticProjectionJson0422(payload).toByteArray(Charsets.UTF_8))
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+private fun canonicalSemanticProjectionJson0422(payload: CanonicalPublicTripPayload0411): String =
+    canonicalPublicProjectionJson0411(payload.copy(publicationRevision = 0L))
+
+@Serializable
+internal data class PublicProjectionFieldDiff0422(
+    val fieldPath: String,
+    val expectedValue: String,
+    val actualValue: String,
+    val expectedType: String,
+    val actualType: String,
+    val expectedByteStart: Int,
+    val expectedByteEnd: Int,
+    val actualByteStart: Int,
+    val actualByteEnd: Int,
+    val expectedBytesHex: String,
+    val actualBytesHex: String,
+    val expectedUtf8Fragment: String,
+    val actualUtf8Fragment: String,
+    val truncated: Boolean,
+)
 
 internal data class PublicProjectionByteDiff0421(
     val expectedLength: Int,
@@ -151,14 +174,80 @@ internal data class PublicProjectionByteDiff0421(
     val actualSha256: String,
     val firstDifferentByteOffset: Int,
     val differentByteRanges: List<String>,
+    val fieldDiffs: List<PublicProjectionFieldDiff0422> = emptyList(),
 )
+
+internal fun publicProjectionFieldDiffJson0422(diff: PublicProjectionFieldDiff0422): String =
+    publicProjectionJson0411.encodeToString(diff)
+
+private fun ByteArray.indexOfSequence0422(needle: ByteArray, startAt: Int = 0): Int {
+    if (needle.isEmpty()) return startAt.coerceIn(0, size)
+    if (needle.size > size) return -1
+    for (index in startAt.coerceAtLeast(0)..(size - needle.size)) {
+        var matches = true
+        for (offset in needle.indices) {
+            if (this[index + offset] != needle[offset]) {
+                matches = false
+                break
+            }
+        }
+        if (matches) return index
+    }
+    return -1
+}
+
+private fun jsonElementType0422(value: JsonElement?): String = when (value) {
+    null, JsonNull -> "null"
+    is JsonObject -> "object"
+    is JsonArray -> "array"
+    is JsonPrimitive -> when {
+        value.isString -> "string"
+        value.content == "true" || value.content == "false" -> "boolean"
+        else -> "number"
+    }
+    else -> "unknown"
+}
+
+private data class JsonByteRange0422(val start: Int, val endExclusive: Int)
+
+private fun locateTopLevelJsonValue0422(
+    jsonBytes: ByteArray,
+    fieldName: String,
+    value: JsonElement?,
+): JsonByteRange0422 {
+    val keyBytes = ("\"" + fieldName + "\":").toByteArray(Charsets.UTF_8)
+    val keyStart = jsonBytes.indexOfSequence0422(keyBytes)
+    if (keyStart < 0) return JsonByteRange0422(-1, -1)
+    val valueStart = keyStart + keyBytes.size
+    val serializedValue = (value ?: JsonNull).toString().toByteArray(Charsets.UTF_8)
+    val located = jsonBytes.indexOfSequence0422(serializedValue, valueStart)
+    return if (located == valueStart) {
+        JsonByteRange0422(located, located + serializedValue.size)
+    } else {
+        JsonByteRange0422(valueStart, (valueStart + serializedValue.size).coerceAtMost(jsonBytes.size))
+    }
+}
+
+private fun boundedByteEvidence0422(bytes: ByteArray, range: JsonByteRange0422): Triple<String, String, Boolean> {
+    if (range.start < 0 || range.endExclusive < range.start || range.start >= bytes.size) {
+        return Triple("", "", false)
+    }
+    val safeEnd = range.endExclusive.coerceAtMost(bytes.size)
+    val evidenceEnd = minOf(safeEnd, range.start + 96)
+    val fragment = bytes.copyOfRange(range.start, evidenceEnd)
+    val hex = fragment.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+    val utf8 = fragment.toString(Charsets.UTF_8).take(240)
+    return Triple(hex, utf8, safeEnd - range.start > fragment.size)
+}
 
 internal fun compareCanonicalPublicBytes0421(
     expected: CanonicalPublicTripPayload0411,
     actual: CanonicalPublicTripPayload0411,
 ): PublicProjectionByteDiff0421 {
-    val expectedBytes = canonicalPublicProjectionJson0411(expected.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
-    val actualBytes = canonicalPublicProjectionJson0411(actual.copy(publicationRevision = 0L, blablaPublicUrl = "")).toByteArray(Charsets.UTF_8)
+    val expectedJson = canonicalSemanticProjectionJson0422(expected)
+    val actualJson = canonicalSemanticProjectionJson0422(actual)
+    val expectedBytes = expectedJson.toByteArray(Charsets.UTF_8)
+    val actualBytes = actualJson.toByteArray(Charsets.UTF_8)
     val limit = minOf(expectedBytes.size, actualBytes.size)
     var first = -1
     val ranges = mutableListOf<String>()
@@ -175,10 +264,45 @@ internal fun compareCanonicalPublicBytes0421(
     }
     if (ranges.size < 12 && rangeStart >= 0) ranges += "$rangeStart-${limit - 1}"
     if (expectedBytes.size != actualBytes.size && ranges.size < 12) {
-        val start = limit
-        if (first < 0) first = start
-        ranges += "$start-${maxOf(expectedBytes.size, actualBytes.size) - 1}"
+        val rangeTailStart = limit
+        if (first < 0) first = rangeTailStart
+        ranges += "$rangeTailStart-${maxOf(expectedBytes.size, actualBytes.size) - 1}"
     }
+
+    val expectedObject = publicProjectionJson0411.parseToJsonElement(expectedJson).jsonObject
+    val actualObject = publicProjectionJson0411.parseToJsonElement(actualJson).jsonObject
+    val fieldDiffs = (expectedObject.keys + actualObject.keys)
+        .distinct()
+        .filter { field -> expectedObject[field] != actualObject[field] }
+        .take(24)
+        .map { field ->
+            val expectedValue = expectedObject[field]
+            val actualValue = actualObject[field]
+            val expectedRange = locateTopLevelJsonValue0422(expectedBytes, field, expectedValue)
+            val actualRange = locateTopLevelJsonValue0422(actualBytes, field, actualValue)
+            val expectedEvidence = boundedByteEvidence0422(expectedBytes, expectedRange)
+            val actualEvidence = boundedByteEvidence0422(actualBytes, actualRange)
+            val expectedText = (expectedValue ?: JsonNull).toString()
+            val actualText = (actualValue ?: JsonNull).toString()
+            PublicProjectionFieldDiff0422(
+                fieldPath = "$." + field,
+                expectedValue = expectedText.take(240),
+                actualValue = actualText.take(240),
+                expectedType = jsonElementType0422(expectedValue),
+                actualType = jsonElementType0422(actualValue),
+                expectedByteStart = expectedRange.start,
+                expectedByteEnd = expectedRange.endExclusive,
+                actualByteStart = actualRange.start,
+                actualByteEnd = actualRange.endExclusive,
+                expectedBytesHex = expectedEvidence.first,
+                actualBytesHex = actualEvidence.first,
+                expectedUtf8Fragment = expectedEvidence.second,
+                actualUtf8Fragment = actualEvidence.second,
+                truncated = expectedEvidence.third || actualEvidence.third ||
+                    expectedText.length > 240 || actualText.length > 240,
+            )
+        }
+
     fun sha(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
         .digest(bytes)
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
@@ -189,6 +313,7 @@ internal fun compareCanonicalPublicBytes0421(
         actualSha256 = sha(actualBytes),
         firstDifferentByteOffset = first,
         differentByteRanges = ranges,
+        fieldDiffs = fieldDiffs,
     )
 }
 
@@ -205,9 +330,15 @@ internal fun evaluatePublicMirrorReadback0411(
             actual.blablaTripId == expected.blablaTripId
     if (!identityValid) mismatch += "identity"
 
-    val revisionValid = actual.canonicalRevision == expected.canonicalRevision &&
+    val logicalRevisionValid = actual.canonicalRevision == expected.canonicalRevision &&
         actual.canonicalRevision > 0L
-    if (!revisionValid) mismatch += "canonicalRevision"
+    if (!logicalRevisionValid) mismatch += "canonicalRevision"
+    val transportRevisionValid = expected.publicationRevision > 0L &&
+        actual.publicationRevision >= expected.publicationRevision
+    if (!transportRevisionValid) mismatch += "publicationRevision"
+    val persistedCommitValid = readback.persistedAtMillis > 0L
+    if (!persistedCommitValid) mismatch += "persistedAtMillis"
+    val revisionValid = logicalRevisionValid && transportRevisionValid && persistedCommitValid
 
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
@@ -244,14 +375,20 @@ internal fun evaluatePublicMirrorReadback0411(
     if (readbackHash != expectedHash) mismatch += "publicHash"
 
     val uniqueMismatch = mismatch.distinct()
-    val agendaMismatch = uniqueMismatch.filterNot { it == "blablaPublicUrl" }
-    val validated = identityValid && revisionValid && agendaMismatch.isEmpty()
+    val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
     return PublicMirrorAttestationDecision0411(
         state = if (validated) PublicMirrorAttestationState0411.VALIDATED else PublicMirrorAttestationState0411.DIVERGENT,
         expectedHash = expectedHash,
         readbackHash = readbackHash,
         mismatchFields = uniqueMismatch,
-        reason = if (validated) "PUBLIC_READBACK_MATCH" else "PUBLIC_READBACK_MISMATCH",
+        reason = when {
+            validated -> "PUBLIC_READBACK_MATCH"
+            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_UNRESOLVED"
+            !transportRevisionValid -> "STALE_TRANSPORT_REVISION"
+            !logicalRevisionValid -> "STALE_LOGICAL_REVISION"
+            !persistedCommitValid -> "PUBLIC_COMMIT_TIMESTAMP_MISSING"
+            else -> "PUBLIC_READBACK_MISMATCH"
+        },
         identityValid = identityValid,
         revisionValid = revisionValid,
         linkValid = linkValid,
@@ -292,6 +429,7 @@ internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorActualBytes0421 = 0,
     publicMirrorFirstDifferentByteOffset0421 = -1,
     publicMirrorDifferentByteRanges0421 = emptyList(),
+    publicMirrorFieldDiffs0422 = emptyList(),
     publicMirrorHttpStatus0421 = 0,
     publicMirrorBackendErrorCode0421 = "",
     publicMirrorFailedStage0421 = "",

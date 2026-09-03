@@ -49,8 +49,20 @@ class AgendaReadbackForensics0421Test {
         assertTrue(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(booking(BookingStatus.REQUESTED), now))
         assertTrue(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(booking(BookingStatus.HELD, now + 1_000), now))
         assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(booking(BookingStatus.HELD, now - 1), now))
-        assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(booking(BookingStatus.CANCELLED), now))
-        assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(booking(BookingStatus.REJECTED), now))
+        val cancelled = booking(BookingStatus.CANCELLED)
+        val rejected = booking(BookingStatus.REJECTED)
+        val expired = booking(BookingStatus.EXPIRED)
+        assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(cancelled, now))
+        assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(rejected, now))
+        assertFalse(PublicAgendaAutoSync0300.protectedBookingParticipatesInCapacitySnapshot0421(expired, now))
+        assertTrue(PublicAgendaAutoSync0300.protectedBookingMustBeTransmitted0422(cancelled))
+        assertTrue(PublicAgendaAutoSync0300.protectedBookingMustBeTransmitted0422(rejected))
+        assertTrue(PublicAgendaAutoSync0300.protectedBookingMustBeTransmitted0422(expired))
+        assertFalse(
+            PublicAgendaAutoSync0300.protectedBookingMustBeTransmitted0422(
+                cancelled.copy(source = BookingSource.BLABLACAR),
+            ),
+        )
     }
 
     @Test
@@ -207,4 +219,16 @@ class AgendaReadbackForensics0421Test {
             ),
         )
     }
+
+    @Test
+    fun publicEvidenceHeaderAggregatesObservedStagesAndKeepsStageCountExact() {
+        val source = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("lastStageDetail"))
+        assertTrue(source.contains("totalStageCount"))
+        assertTrue(source.contains("append(stages.size)"))
+        assertTrue(source.contains("fieldDiffs"))
+        assertTrue(source.contains("requestSha256"))
+        assertTrue(source.contains("responseSha256"))
+    }
+
 }
