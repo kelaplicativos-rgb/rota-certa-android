@@ -665,7 +665,8 @@ internal fun completeCollectorProfileUuids0408(
         if (
             snapshot.identityVerified &&
             snapshot.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-            snapshot.skippedTrips == 0
+            snapshot.skippedTrips == 0 &&
+            snapshot.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.AVAILABLE
         ) profileUuid.lowercase() else null
     }.toSet()
 }
