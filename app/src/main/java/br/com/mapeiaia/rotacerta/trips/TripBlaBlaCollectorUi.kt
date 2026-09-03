@@ -280,7 +280,13 @@ fun BlaBlaCollectorPanel(
                 archiving = false
                 syncDateScope = null
                 val account = registry.get(accountId)
-                message = "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
+                val failure = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407).orEmpty()
+                message = if (failure == "TEMPORARILY_RESTRICTED") {
+                    "BlaBlaCar restringiu temporariamente esta sessão. Seus últimos dados válidos foram preservados. " +
+                        "A sincronização será retomada após a sessão voltar a ficar disponível."
+                } else {
+                    "Sincronização não concluída em ${account?.displayLabel ?: "uma conta"}. O login dessa conta foi preservado."
+                }
                 onChanged(message.orEmpty())
             }
         } else if (accountId != null) {
@@ -850,12 +856,17 @@ internal fun DynamicAccountRow(
             Text(account.profileUuid ?: "UUID será descoberto após login/validação")
             Text(
                 when {
+                    snapshot?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED ->
+                        "BlaBlaCar temporariamente restrito • últimos dados preservados ⚠️"
                     connected -> "Conectado • UUID confirmado ✅"
                     snapshot != null -> "Sessão salva • UUID pendente ⏳"
                     else -> "Ainda não conectado"
                 },
             )
             if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
+            if (snapshot?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED) {
+                Text("Abra esta conta quando quiser revalidar a sessão. O Rota Certa não ficará tentando em segundo plano.")
+            }
             if (showBrowserDetails) {
                 Text("Perfil do navegador: ${account.webProfileName}")
                 Text("Sessão isolada: ${if (snapshot == null) "ainda não iniciada" else "salva no aparelho"}")
