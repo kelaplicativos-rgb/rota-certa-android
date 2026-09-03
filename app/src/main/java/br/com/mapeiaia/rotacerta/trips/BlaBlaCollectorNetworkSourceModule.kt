@@ -96,7 +96,7 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
         val expected = expectedTripId?.trim()?.takeIf(stableIdRegex::matches) ?: return null
         val evidence = source ?: return null
         val sourceTripId = evidence.tripId.trim().takeIf(stableIdRegex::matches) ?: return null
-        if (!expected.equals(sourceTripId, ignoreCase = true)) return null
+        if (expected != sourceTripId) return null
         if (evidence.publicTripHrefBinding != BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE) return null
         val href = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
             raw = evidence.publicTripHref,
@@ -122,7 +122,7 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
         val expected = expectedTripId?.trim()?.takeIf(stableIdRegex::matches) ?: return null
         val evidence = source ?: return null
         val sourceTripId = evidence.tripId.trim().takeIf(stableIdRegex::matches) ?: return null
-        if (!expected.equals(sourceTripId, ignoreCase = true) || !evidence.bookingsComplete) return null
+        if (expected != sourceTripId || !evidence.bookingsComplete) return null
         if (evidence.bookings.size > MAX_BOOKINGS) return null
 
         val resolved = evidence.bookings.map { booking ->
