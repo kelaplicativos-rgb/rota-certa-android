@@ -373,6 +373,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         val normalizedResult = if (accountResult == "success") "COMPLETE" else "PARTIAL"
         val state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, normalizedResult, error)
         publishCurrentSessions(appContext, "account_${normalizedResult.lowercase()}")
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "account_${normalizedResult.lowercase()}")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_ACCOUNT_END_0400", appContext.packageName,
             "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
@@ -451,6 +452,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         val response = publishCurrentSessions(context, "run_terminal")
         val result = automaticCollectorTerminalStatus0400(response, before.failedAccountIds.size, before.targetAccountIds.size, before.pendingAuthAccountIds.size)
         val finalState = AgendaBackgroundSyncConfig0392.finishCollectorRun0400(context, generation, result, before.lastError)
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(context, "run_terminal:$result")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_COLLECTION_END_0401", context.packageName,
             "generation=$generation result=$result reason=${reason.take(80)} target=${finalState.targetAccountIds.size} completed=${finalState.completedAccountIds.size} failed=${finalState.failedAccountIds.size} pendingAuth=${finalState.pendingAuthAccountIds.size} trips=${response.trips.size} completeForScope=${response.coverage.complete_for_scope} executionHost=worker_headless_webview activityLaunch=false browserOpened=false",
