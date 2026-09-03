@@ -281,6 +281,8 @@ function createAgendaAdmin0417({
       actorId: session.actorId,
       sessionStartedAtMillis: session.createdAtMillis,
       expiresAtMillis: session.expiresAtMillis,
+      openAccess: session.openAccess === true,
+      authenticationRequired: authenticationRequired0417(driver),
     });
   }
 
@@ -423,6 +425,7 @@ function createAgendaAdmin0417({
       changes: [
         { field: "publicVisibility", before: JSON.stringify(safeVisibility0417(before.publicVisibility0417)), after: JSON.stringify(visibility) },
         { field: "publicProfileUuids", before: JSON.stringify(normalizeProfileScope0417(before.publicTripProfileUuids0417)), after: JSON.stringify(profiles) },
+        { field: "authenticationRequired", before: String(authenticationRequired0417(before)), after: String(authenticationRequired) },
       ],
     });
     return json0417(res, 200, {
