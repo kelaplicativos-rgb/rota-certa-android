@@ -2685,9 +2685,32 @@ class AgendaBackgroundSyncWorker0392(
             return Result.success()
         }
 
+        val requestedAtMillis0435 = AgendaBackgroundSync0392.requestedAtMillis0435(parameters)
+        if (AgendaBackgroundSync0392.staleDurableOneShot0435(reason, requestedAtMillis0435)) {
+            AgendaBackgroundSync0392.targetedTripWork0407(parameters)?.let { work ->
+                BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(
+                    BlaBlaCommandResult0407(
+                        commandId = work.commandId,
+                        target = work.target,
+                        capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                        status = BlaBlaCommandStatus0407.STALE_STATE,
+                        errorCode = "STALE_DURABLE_WORK_0435",
+                        verification = "stale_work_discarded_without_external_navigation",
+                        startedAtMillis = requestedAtMillis0435.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        finishedAtMillis = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            UnifiedDebugEventStore.record(
+                "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435",
+                applicationContext.packageName,
+                "workId=$id trigger=${agendaBackgroundSyncTrigger0397(reason)} reason=${reason.take(80)} requestedAt=$requestedAtMillis0435 attempt=$runAttemptCount result=SKIPPED",
+            )
+            return Result.success()
+        }
+
         if (
             reason == "periodic" ||
-            reason == "trip_reverify" ||
             reason.startsWith("admin_update_now:") ||
             agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE
         ) {
@@ -2728,23 +2751,17 @@ class AgendaBackgroundSyncWorker0392(
                 return Result.success()
             }
             val targetedResult = targetedWork?.let { work ->
-                BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                AgendaBackgroundSync0392.reverifyCanonicalMirror0435(
                     context = applicationContext,
-                    target = work.target,
-                    commandId = work.commandId,
-                    origin = "timeline_card_worker",
+                    work = work,
                 )
             }
             val cycle = if (targetedWork != null) {
-                if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
-                    AgendaBackgroundSync0392.runCycle(
-                        context = applicationContext,
-                        reason = reason,
-                        collectorTarget0407 = targetedWork.target,
-                    )
-                } else {
-                    AgendaBackgroundSyncRun0392()
-                }
+                AgendaBackgroundSyncRun0392(
+                    projectionExpected0411 = 1,
+                    projectionValidated0411 = if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) 1 else 0,
+                    projectionDivergent0411 = if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) 0 else 1,
+                )
             } else {
                 AgendaBackgroundSync0392.runCycle(
                     context = applicationContext,
@@ -2758,10 +2775,7 @@ class AgendaBackgroundSyncWorker0392(
                 collectorWasRequested &&
                     collectorState.status in setOf("PARTIAL", "INTERRUPTED", "FAILED", "PENDING_AUTH")
             val collectorAuthRequired = collectorWasRequested && collectorState.status == "PENDING_AUTH"
-            val targetedRetryable = targetedResult?.status in setOf(
-                BlaBlaCommandStatus0407.UNVERIFIED,
-                BlaBlaCommandStatus0407.FAILED,
-            )
+            val targetedRetryable = false
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
             val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
             val bookingCardDeltaSuccess0431 = bookingTargetRemoteTripId0431.isNotBlank() && cycle.failures == 0
@@ -2862,7 +2876,7 @@ class AgendaBackgroundSyncWorker0392(
                     ),
                 )
             }
-            if (targetedResult != null && !retryPending) {
+            if (targetedResult != null) {
                 BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(targetedResult)
             }
             AgendaBackgroundSyncConfig0392.recordRunFinished(
@@ -2883,7 +2897,7 @@ class AgendaBackgroundSyncWorker0392(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
-            val retryPending = runAttemptCount < 5
+            val retryPending = reason != "trip_reverify" && runAttemptCount < 5
             if (!retryPending) {
                 AgendaBackgroundSync0392.targetedTripWork0407(parameters)?.let { work ->
                     BlaBlaTripCommandStatusStore0407(applicationContext).recordResult(
