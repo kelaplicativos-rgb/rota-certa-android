@@ -809,6 +809,7 @@ internal class TripMutationCoordinator0387(
 
     suspend fun drainPending(limit: Int = 32): Int = withContext(Dispatchers.IO) {
         var delivered = 0
+        val deliveredCanonicalIds0429 = linkedSetOf<String>()
         outbox.pending(limit = limit).forEach { candidate ->
             val event = outbox.markProcessing(candidate.id) ?: return@forEach
             val startedNs = System.nanoTime()
@@ -897,6 +898,9 @@ internal class TripMutationCoordinator0387(
                 )
                 outbox.markDelivered(event.id)
                 delivered++
+                if (event.operation != TripPublicationOperation0387.TOMBSTONE) {
+                    deliveredCanonicalIds0429 += event.canonicalTripId
+                }
                 recordEvent(
                     "TRIP_MUTATION_OUTBOX_DELIVERED",
                     event,
@@ -938,6 +942,52 @@ internal class TripMutationCoordinator0387(
                     "TRIP_MUTATION_OUTBOX_FAILED",
                     event,
                     "publicationResult=${if (retryable) "retryable" else "final"} retryCount=${event.attempts} latencyMs=${(System.nanoTime() - startedNs) / 1_000_000L} ${failureSummary0387(error)}",
+                )
+            }
+        }
+        if (deliveredCanonicalIds0429.isNotEmpty()) {
+            try {
+                val settings = store.onlineSettings()
+                if (settings.configured) {
+                    val api = TripRemoteApi(settings)
+                    val remoteStates = api.listDriverTripSyncStates0402().trips
+                    deliveredCanonicalIds0429.forEach { canonicalTripId ->
+                        val trip = store.getTrip(canonicalTripId) ?: return@forEach
+                        if (trip.deleted || trip.publicationTombstone || trip.status == TripStatus.CANCELLED) {
+                            return@forEach
+                        }
+                        val candidates = remoteStates
+                            .filter { remote -> remoteMatchesCanonicalProjection0408(trip, remote) }
+                            .distinctBy(DriverTripSyncState0402::remoteTripId)
+                        if (candidates.size != 1) {
+                            UnifiedDebugEventStore.record(
+                                "PUBLIC_INCREMENTAL_ATTESTATION_DEFERRED_0429",
+                                appContext.packageName,
+                                "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                                    " projectionCandidates=" + candidates.size +
+                                    " reason=" + if (candidates.isEmpty()) "PUBLIC_PROJECTION_MISSING" else "PUBLIC_PROJECTION_DUPLICATE",
+                            )
+                            return@forEach
+                        }
+                        PublicMirrorAttestationCoordinator0411.attest(
+                            context = appContext,
+                            store = store,
+                            api = api,
+                            trip = trip,
+                            remote = candidates.single(),
+                            force = true,
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_INCREMENTAL_ATTESTATION_FAILED_0429",
+                    appContext.packageName,
+                    "canonicalCount=" + deliveredCanonicalIds0429.size +
+                        " error=" + error::class.java.simpleName +
+                        " message=" + error.message.orEmpty().take(180),
                 )
             }
         }
