@@ -62,6 +62,48 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun transportRebasePreservesMutationIdentityAndIdempotencyKey() {
+        val trip = Trip(
+            id = "trip-stable-0421",
+            title = "A → B",
+            departureAtMillis = 1_900_000_000_000L,
+            capacity = 2,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A"),
+                TripStop(id = "b", order = 1, name = "B"),
+            ),
+            canonicalRevision = 9,
+            canonicalStateHash = "state-9",
+        )
+        val snapshot = TripPublicationSnapshot0387(
+            trip = trip,
+            semanticSignature = "semantic-9",
+            seatAllocationVersion = 4,
+        )
+        val identity = publicationMutationIdentity0421(trip.id, snapshot)
+        val original = TripPublicationOutboxEvent0387(
+            id = publicationEventId0387("tenant", trip.id, 31),
+            tenantId = "tenant",
+            canonicalTripId = trip.id,
+            revision = 31,
+            operation = TripPublicationOperation0387.UPSERT_LOCAL,
+            mutationType = "TEST",
+            source = "TEST",
+            snapshot = snapshot,
+            mutationId0421 = identity.first,
+            idempotencyKey0421 = identity.second,
+        )
+        val rebased = original.copy(
+            id = publicationEventId0387("tenant", trip.id, 99),
+            revision = 99,
+        )
+        assertTrue(original.resolvedMutationId0421() == rebased.resolvedMutationId0421())
+        assertTrue(original.resolvedIdempotencyKey0421() == rebased.resolvedIdempotencyKey0421())
+        assertFalse(original.id == rebased.id)
+    }
+
+    @Test
     fun projectionRepairCannotCreateANewRevisionForTheSameLogicalSnapshot() {
         val trip = Trip(
             id = "trip-0421",
