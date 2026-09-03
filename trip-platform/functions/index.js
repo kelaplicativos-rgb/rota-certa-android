@@ -4423,26 +4423,29 @@ async function requirePassengerSession(req, res) {
 
   const driverScope0428 = normalizeUsername(data.driverScope0428 || "");
   if (driverScope0428) {
+    const resolvedScopeDriver = await resolveDriverUsername(driverScope0428);
+    const scopedDriver = resolvedScopeDriver ? resolvedScopeDriver.canonicalUsername : "";
+    const scopedDriverData = resolvedScopeDriver && resolvedScopeDriver.driverSnap && resolvedScopeDriver.driverSnap.exists
+      ? resolvedScopeDriver.driverSnap.data()
+      : null;
+    if (!scopedDriver || scopedDriver !== driverScope0428 || agendaAuthenticationRequired0428(scopedDriverData)) {
+      await sessionRef.delete().catch(() => {});
+      fail(res, 401, "passenger_auth_restored", "A autenticação desta Agenda foi reativada. Entre novamente com sua senha.");
+      return null;
+    }
     const requestedDriverRaw = cleanText(
-      req.get("X-Rota-Certa-Passenger-Driver") ||
       req.get("X-Rota-Certa-Admin-Driver") ||
       (req.query && req.query.driverUsername) ||
       (req.body && req.body.driverUsername),
       80,
     );
-    const resolvedScopeDriver = requestedDriverRaw ? await resolveDriverUsername(requestedDriverRaw) : null;
-    const requestedDriver = resolvedScopeDriver ? resolvedScopeDriver.canonicalUsername : "";
-    if (requestedDriver !== driverScope0428) {
-      fail(res, 403, "passenger_session_scope_mismatch", "Este acesso pertence somente à Agenda em que foi criado.");
-      return null;
-    }
-    const scopedDriverData = resolvedScopeDriver && resolvedScopeDriver.driverSnap && resolvedScopeDriver.driverSnap.exists
-      ? resolvedScopeDriver.driverSnap.data()
-      : null;
-    if (agendaAuthenticationRequired0428(scopedDriverData)) {
-      await sessionRef.delete().catch(() => {});
-      fail(res, 401, "passenger_auth_restored", "A autenticação desta Agenda foi reativada. Entre novamente com sua senha.");
-      return null;
+    if (requestedDriverRaw) {
+      const resolvedRequestedDriver = await resolveDriverUsername(requestedDriverRaw);
+      const requestedDriver = resolvedRequestedDriver ? resolvedRequestedDriver.canonicalUsername : "";
+      if (requestedDriver !== driverScope0428) {
+        fail(res, 403, "passenger_session_scope_mismatch", "Este acesso pertence somente à Agenda em que foi criado.");
+        return null;
+      }
     }
   }
   let lastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
