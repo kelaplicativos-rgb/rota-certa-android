@@ -1114,6 +1114,26 @@ function privateMirrorContainsSecret0434(value) {
   );
 }
 
+function privateMirrorSourceUpdatedAt0437(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return 0;
+  let latest = Math.max(
+    0,
+    Number(payload.createdAtMillis || 0),
+    Number(payload.updatedAtMillis || 0),
+    Number(payload.deletedAtMillis || 0)
+  );
+  const bookings = Array.isArray(payload.bookings) ? payload.bookings : [];
+  bookings.forEach((booking) => {
+    if (!booking || typeof booking !== "object" || Array.isArray(booking)) return;
+    latest = Math.max(
+      latest,
+      Number(booking.createdAtMillis || 0),
+      Number(booking.updatedAtMillis || 0)
+    );
+  });
+  return Number.isFinite(latest) ? Math.max(0, Math.floor(latest)) : 0;
+}
+
 function parsePrivateMirror0434(rawJson, expectedHash, canonicalTripId, canonicalRevision) {
   const canonicalJson = String(rawJson == null ? "" : rawJson);
   if (!canonicalJson || Buffer.byteLength(canonicalJson, "utf8") > 700000) {
@@ -1169,6 +1189,12 @@ async function putDriverPrivateMirror0434(req, res) {
       const previousRevision = Math.max(0, Math.floor(Number(previous && previous.canonicalRevision || 0)));
       const previousHash = cleanText(previous && previous.privateStateHash, 160).toLowerCase();
       const previousMirrorRevision = Math.max(0, Math.floor(Number(previous && previous.mirrorRevision || 0)));
+      const incomingPrivateSourceUpdatedAt0437 = privateMirrorSourceUpdatedAt0437(parsed.payload);
+      const previousPrivateSourceUpdatedAt0437 = Math.max(
+        0,
+        Math.floor(Number(previous && previous.privateSourceUpdatedAtMillis0437 || 0)),
+        privateMirrorSourceUpdatedAt0437(previous && previous.payload)
+      );
       if (previous && canonicalRevision < previousRevision) {
         throw Object.assign(new Error("Revisão canônica do espelho é obsoleta."), {
           httpStatus: 409, code: "private_mirror_stale_revision",
@@ -1176,13 +1202,38 @@ async function putDriverPrivateMirror0434(req, res) {
         });
       }
       if (previous && canonicalRevision === previousRevision && previousHash && previousHash !== parsed.privateStateHash) {
-        throw Object.assign(new Error("A mesma revisão canônica possui conteúdo privado divergente."), {
-          httpStatus: 409, code: "private_mirror_revision_hash_conflict",
-          details: { canonicalRevisionActual: previousRevision, privateActualHash: previousHash, privateExpectedHash: parsed.privateStateHash },
-        });
+        if (incomingPrivateSourceUpdatedAt0437 < previousPrivateSourceUpdatedAt0437) {
+          throw Object.assign(new Error("Estado privado do espelho é mais antigo que o já persistido."), {
+            httpStatus: 409, code: "private_mirror_stale_private_state",
+            details: {
+              canonicalRevisionActual: previousRevision,
+              privateSourceUpdatedAtActual: previousPrivateSourceUpdatedAt0437,
+              privateSourceUpdatedAtExpected: incomingPrivateSourceUpdatedAt0437,
+              privateActualHash: previousHash,
+              privateExpectedHash: parsed.privateStateHash,
+            },
+          });
+        }
+        if (incomingPrivateSourceUpdatedAt0437 === previousPrivateSourceUpdatedAt0437) {
+          throw Object.assign(new Error("A mesma revisão e frescor privados possuem conteúdo divergente."), {
+            httpStatus: 409, code: "private_mirror_revision_hash_conflict",
+            details: {
+              canonicalRevisionActual: previousRevision,
+              privateSourceUpdatedAtActual: previousPrivateSourceUpdatedAt0437,
+              privateSourceUpdatedAtExpected: incomingPrivateSourceUpdatedAt0437,
+              privateActualHash: previousHash,
+              privateExpectedHash: parsed.privateStateHash,
+            },
+          });
+        }
       }
       if (previous && canonicalRevision === previousRevision && previousHash === parsed.privateStateHash) {
-        return { changed: false, replayed: true, mirrorRevision: previousMirrorRevision };
+        return {
+          changed: false,
+          replayed: true,
+          mirrorRevision: previousMirrorRevision,
+          privateSourceUpdatedAtMillis0437: previousPrivateSourceUpdatedAt0437,
+        };
       }
       const mirrorRevision = previousMirrorRevision + 1;
       tx.set(ref, {
@@ -1191,6 +1242,7 @@ async function putDriverPrivateMirror0434(req, res) {
         canonicalRevision,
         mirrorRevision,
         privateStateHash: parsed.privateStateHash,
+        privateSourceUpdatedAtMillis0437: incomingPrivateSourceUpdatedAt0437,
         canonicalJson: parsed.canonicalJson,
         payload: parsed.payload,
         correlationId: cleanText(body.correlationId, 120),
@@ -1199,13 +1251,19 @@ async function putDriverPrivateMirror0434(req, res) {
         persistedAtMillis: Date.now(),
         updatedAt: FieldValue.serverTimestamp(),
       }, { merge: false });
-      return { changed: true, replayed: false, mirrorRevision };
+      return {
+        changed: true,
+        replayed: false,
+        mirrorRevision,
+        privateSourceUpdatedAtMillis0437: incomingPrivateSourceUpdatedAt0437,
+      };
     });
     return json(res, 200, {
       canonicalTripId,
       canonicalRevision,
       mirrorRevision: result.mirrorRevision,
       privateStateHash: parsed.privateStateHash,
+      privateSourceUpdatedAtMillis0437: result.privateSourceUpdatedAtMillis0437 || privateMirrorSourceUpdatedAt0437(parsed.payload),
       changed: result.changed,
       replayed: result.replayed,
     });
@@ -1231,6 +1289,11 @@ async function readDriverPrivateMirror0434(req, res) {
     canonicalRevision: Math.max(0, Math.floor(Number(data.canonicalRevision || 0))),
     mirrorRevision: Math.max(0, Math.floor(Number(data.mirrorRevision || 0))),
     privateStateHash: cleanText(data.privateStateHash, 160),
+    privateSourceUpdatedAtMillis0437: Math.max(
+      0,
+      Math.floor(Number(data.privateSourceUpdatedAtMillis0437 || 0)),
+      privateMirrorSourceUpdatedAt0437(data.payload)
+    ),
     canonicalJson: String(data.canonicalJson || ""),
     persistedAtMillis: Math.max(0, Number(data.persistedAtMillis || 0)),
   });
