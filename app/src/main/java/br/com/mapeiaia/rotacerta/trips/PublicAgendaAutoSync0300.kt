@@ -333,10 +333,7 @@ internal object PublicAgendaAutoSync0300 {
                     nowMillis = nowMillis,
                 )
             }
-            .filterNot { synthesized ->
-                localTrips.any { local -> samePhysicalTrip(local, synthesized.trip) }
-            }
-            .distinctBy { it.trip.tripKey.ifBlank { it.trip.publicToken } }
+            .distinctBy { it.trip.tripKey.ifBlank { it.trip.id } }
             .take(100)
             .toList()
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
@@ -1529,18 +1526,6 @@ internal object PublicAgendaAutoSync0300 {
         val time = timeRaw?.trim()?.takeIf(String::isNotEmpty) ?: return@runCatching null
         LocalDate.parse(dateRaw.trim()).atTime(LocalTime.parse(time.take(5))).atZone(zoneId).toInstant().toEpochMilli()
     }.getOrNull()
-
-    private fun samePhysicalTrip(left: Trip, right: Trip): Boolean {
-        if (abs(left.departureAtMillis - right.departureAtMillis) > 45L * 60L * 1000L) return false
-        val leftStops = left.stops.sortedBy(TripStop::order)
-        val rightStops = right.stops.sortedBy(TripStop::order)
-        val leftOrigin = leftStops.firstOrNull()?.name.orEmpty()
-        val leftDestination = leftStops.lastOrNull()?.name.orEmpty()
-        val rightOrigin = rightStops.firstOrNull()?.name.orEmpty()
-        val rightDestination = rightStops.lastOrNull()?.name.orEmpty()
-        return normalizePlace(leftOrigin) == normalizePlace(rightOrigin) &&
-            normalizePlace(leftDestination) == normalizePlace(rightDestination)
-    }
 
     private fun stableIdentity(source: BlaBlaCollectorTrip): String = listOf(
         source.profile_uuid.trim(),
