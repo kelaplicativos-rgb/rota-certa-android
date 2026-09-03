@@ -2313,6 +2313,7 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionPending0411 == 0 &&
                     cycle.projectionDivergent0411 == 0 &&
                     cycle.projectionInvalidIdentity0411 == 0 &&
+                    cycle.projectionInvalidLink0411 == 0 &&
                     cycle.projectionStaleRevision0411 == 0 &&
                     cycle.projectionReadbackFailures0411 == 0 &&
                     cycle.projectionValidated0411 == cycle.projectionExpected0411
@@ -2327,7 +2328,9 @@ class AgendaBackgroundSyncWorker0392(
                     cycle.projectionDuplicates > 0 ||
                     cycle.projectionOrphans > 0 ||
                     cycle.projectionInvalidIdentity0411 > 0 ||
+                    cycle.projectionInvalidLink0411 > 0 ||
                     cycle.projectionRevisionMismatch > 0 ||
+                    cycle.projectionRevisionRegression > 0 ||
                     cycle.projectionHashMismatch > 0 ||
                     cycle.projectionCapacityMismatch > 0 ||
                     cycle.projectionStatusMismatch > 0 -> "DIVERGENT"
