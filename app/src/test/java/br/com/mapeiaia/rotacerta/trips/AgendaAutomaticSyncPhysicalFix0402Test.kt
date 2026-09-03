@@ -40,12 +40,20 @@ class AgendaAutomaticSyncPhysicalFix0402Test {
         assertTrue(backend.contains("listDriverTripSyncState0402"))
         assertTrue(backend.contains("capacitySnapshotRevision"))
         assertTrue(publicAgenda.contains("remoteSyncStates0402"))
-        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402"))
-        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_REMOTE_REVISION_NO_OP_0402"))
-        assertTrue(publicAgenda.contains("putSkipped=true"))
-        assertTrue(publicAgenda.contains("remoteStateHint0402.capacitySnapshotRevision == synthesized.snapshotRevision"))
+        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_0434"))
+        assertFalse(publicAgenda.contains("PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402"))
+        assertFalse(publicAgenda.contains("firstRequestUsesServerCanonical=true"))
+        assertTrue(publicAgenda.contains("expectedPublicProjectionJson0434"))
     }
 
+    @Test
+    fun cardVerifyCannotOwnFiveMinuteBlablacarHeadlessSession() {
+        assertTrue(background.contains("reverifyCanonicalMirror0435"))
+        assertTrue(background.contains("PublicMirrorAttestationCoordinator0411.attest"))
+        assertFalse(background.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(background.contains("STALE_DURABLE_WORK_0435"))
+        assertTrue(background.contains("val targetedRetryable = false"))
+    }
     @Test
     fun reservationHomeComposableNeverOwnsNetworkReconcileLifecycle() {
         assertFalse(reservationAlert.contains("BookingPushRegistration0304.ensureRegistered"))
