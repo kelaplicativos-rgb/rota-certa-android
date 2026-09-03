@@ -57,6 +57,10 @@ jobs:
           printf '%s\n' "$SOURCE_SHA" > /tmp/source-head.txt
           printf '%s\n' "$SOURCE_BRANCH" > /tmp/source-branch.txt
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       - name: Configure Firebase Android app
         shell: bash
         run: |
@@ -89,10 +93,6 @@ jobs:
             npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - uses: actions/setup-java@v4
         with:
