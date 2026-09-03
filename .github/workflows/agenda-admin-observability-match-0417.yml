@@ -1,19 +1,19 @@
-name: Rota Certa Agenda authentication toggle 0.1.428
+name: Rota Certa Agenda canonical B2B mirror 0.1.429
 
 on:
   push:
     branches:
-      - agent/agenda-authentication-toggle-0.1.428
+      - agent/agenda-canonical-b2b-mirror-0.1.429
   pull_request:
     branches:
-      - agent/agenda-admin-session-determinism-0.1.427-r2
+      - agent/agenda-authentication-toggle-0.1.428
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-authentication-toggle-0428-${{ github.ref }}
+  group: agenda-canonical-b2b-mirror-0429-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -38,13 +38,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=08247d31b17962544cc2e98c2547821a21f07284
+          BASE=37fd0f58eeb57e17b3902883ee453b0555e2e1ae
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5721' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.428"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5722' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.429"' app/build.gradle.kts
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           if git diff --name-only "$BASE"..HEAD | grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol'; then
             echo "Protected FAROL scope changed unexpectedly."
@@ -68,6 +68,7 @@ jobs:
           node --check trip-platform/public/admin-0417.js
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
           node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
+          node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
 
       - name: Configure Firebase Android app
         shell: bash
@@ -124,6 +125,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile lint and assemble exact SHA
@@ -141,8 +143,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5721'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.428'" /tmp/aapt.txt
+          grep -Fq "versionCode='5722'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.429'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -180,7 +182,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke live Agenda authentication toggle
+      - name: Smoke live canonical B2B mirror
         shell: bash
         run: |
           set -euo pipefail
@@ -199,24 +201,27 @@ jobs:
           grep -Fq 'Exigir autenticação na Agenda' /tmp/live-index.html
           CODE="$(curl --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
           test "$CODE" = "401" -o "$CODE" = "400"
-          echo "LIVE_AGENDA_AUTH_TOGGLE_0428=PASS"
+          grep -Fq 'publicProjectionAttestedCurrent0429' trip-platform/functions/index.js
+          grep -Fq 'authority=CANONICAL_TRIP_STORE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'actual.publicationRevision == expected.publicationRevision' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
+          echo "LIVE_AGENDA_CANONICAL_B2B_0429=PASS"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0428
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0428/rota-certa-0.1.428-agenda-authentication-toggle.apk
-          cp /tmp/source-head.txt /tmp/0428/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0428/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0428/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0428/apk.sha256
-          cp /tmp/aapt.txt /tmp/0428/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0428/apksigner.txt
+          mkdir -p /tmp/0429
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0429/rota-certa-0.1.429-agenda-canonical-b2b-mirror.apk
+          cp /tmp/source-head.txt /tmp/0429/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0429/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0429/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0429/apk.sha256
+          cp /tmp/aapt.txt /tmp/0429/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0429/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.428-agenda-authentication-toggle-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.429-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0428
+          path: /tmp/0429
