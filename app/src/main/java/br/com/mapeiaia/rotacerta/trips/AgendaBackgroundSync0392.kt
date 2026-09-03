@@ -1683,15 +1683,31 @@ internal object AgendaBackgroundSync0392 {
                     )
                 }
                 accumulateAttestation0411(attestation)
+                val attestedTrip = store.getTrip(trip.id) ?: trip
+                val onlyUnresolvedBlaBlaLink =
+                    attestation.invalidLink > 0 &&
+                        attestedTrip.blablaPublicUrl.isNullOrBlank() &&
+                        attestedTrip.publicMirrorMismatchFields0411.distinct() == listOf("blablaPublicUrl")
                 if (
-                    attestation.divergent > 0 ||
-                    attestation.invalidIdentity > 0 ||
-                    attestation.staleRevision > 0
+                    !onlyUnresolvedBlaBlaLink &&
+                    (
+                        attestation.divergent > 0 ||
+                            attestation.invalidIdentity > 0 ||
+                            attestation.staleRevision > 0
+                    )
                 ) {
                     needsRepair = true
                 }
-                // BlaBla public-link proof is intentionally independent from Agenda MATCH.
-                // Link failure must not create a projection repair storm for a correct Agenda card.
+                if (onlyUnresolvedBlaBlaLink) {
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_PUBLIC_URL_UNRESOLVED_0422",
+                        context.applicationContext.packageName,
+                        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                            " profileUuidPresent=" + !trip.blablaProfileUuid.isNullOrBlank() +
+                            " blablaTripIdPresent=" + !trip.blablaTripId.isNullOrBlank() +
+                            " action=await_strong_collector_evidence projectionReplay=false attestation=false",
+                    )
+                }
             }
             if (repair && needsRepair && queueRepair(trip)) repairQueued++
         }
