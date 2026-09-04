@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.450 BlaBlaCar public URL attestation
+name: Rota Certa 0.1.451 canonical reactive upsert + public URL attestation
 
 on:
   push:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5743' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.450"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5744' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.451"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -137,6 +137,9 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -157,8 +160,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5743'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.450'" /tmp/aapt.txt
+          grep -Fq "versionCode='5744'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.451'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -205,25 +208,25 @@ jobs:
           grep -Fq '"ok":true' /tmp/health.json
           grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
           grep -Fq 'PUBLIC_URL_PRECONDITION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
-          echo "BLABLACAR_PUBLIC_URL_ATTESTATION_0450_LIVE=PASS"
+          echo "CANONICAL_REACTIVE_UPSERT_0451_LIVE=PASS"
           echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0450
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0450/rota-certa-0.1.450-blablacar-public-url-attestation.apk
-          cp /tmp/source-head.txt /tmp/0450/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0450/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0450/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0450/apk.sha256
-          cp /tmp/aapt.txt /tmp/0450/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0450/apksigner.txt
+          mkdir -p /tmp/0451
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0451/rota-certa-0.1.451-canonical-reactive-upsert.apk
+          cp /tmp/source-head.txt /tmp/0451/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0451/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0451/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0451/apk.sha256
+          cp /tmp/aapt.txt /tmp/0451/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0451/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.450-blablacar-public-url-attestation-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.451-canonical-reactive-upsert-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0450
+          path: /tmp/0451
