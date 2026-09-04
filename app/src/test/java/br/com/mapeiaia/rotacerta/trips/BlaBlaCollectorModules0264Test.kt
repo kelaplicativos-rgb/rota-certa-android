@@ -205,6 +205,89 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
+    fun partialFieldEnrichmentPreservesUnobservedConfirmedMetadata() {
+        val previous = trip().copy(
+            profile_name = "Driver",
+            arrival_time = "13:00",
+            search_from = "Origin",
+            search_to = "Destination",
+            actual_departure = "Origin terminal",
+            actual_arrival = "Destination terminal",
+            price = "R$ 70,00",
+            availability = "available",
+            uuid_validation = "verified_from_authenticated_profile_session",
+            itinerary_stops = listOf("Origin terminal", "Middle", "Destination terminal"),
+            itinerary_authoritative = true,
+            published_seats = 3,
+        )
+        val partial = previous.copy(
+            profile_name = "",
+            arrival_time = null,
+            search_from = null,
+            search_to = null,
+            actual_departure = null,
+            actual_arrival = null,
+            price = "R$ 75,00",
+            availability = "unknown",
+            trip_href = null,
+            uuid_validation = "unknown",
+            passengers = emptyList(),
+            itinerary_stops = emptyList(),
+            itinerary_authoritative = false,
+            booked_seats = 0,
+            published_seats = null,
+            passenger_roster_complete = false,
+        )
+
+        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(previous),
+            current = listOf(partial),
+            authoritativeComplete = false,
+        ).trips.single()
+
+        assertEquals("R$ 75,00", merged.price)
+        assertEquals(previous.actual_departure, merged.actual_departure)
+        assertEquals(previous.actual_arrival, merged.actual_arrival)
+        assertEquals(previous.search_from, merged.search_from)
+        assertEquals(previous.search_to, merged.search_to)
+        assertEquals(previous.arrival_time, merged.arrival_time)
+        assertEquals(previous.trip_href, merged.trip_href)
+        assertEquals(previous.availability, merged.availability)
+        assertEquals(previous.uuid_validation, merged.uuid_validation)
+        assertEquals(previous.itinerary_stops, merged.itinerary_stops)
+        assertTrue(merged.itinerary_authoritative)
+        assertEquals(previous.published_seats, merged.published_seats)
+        assertEquals(previous.passengers, merged.passengers)
+        assertEquals(previous.booked_seats, merged.booked_seats)
+        assertTrue(merged.passenger_roster_complete)
+    }
+
+    @Test
+    fun partialNewOccupancyAdvancesWithoutPretendingRosterIsComplete() {
+        val previous = trip()
+        val second = passenger.copy(
+            name = "Passenger B",
+            phone = "5511888888888",
+            booking_href = "https://www.blablacar.com.br/rides/offer/passenger/reservation-b",
+        )
+        val partial = previous.copy(
+            passengers = listOf(passenger, second),
+            booked_seats = 2,
+            passenger_roster_complete = false,
+        )
+
+        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(previous),
+            current = listOf(partial),
+            authoritativeComplete = false,
+        ).trips.single()
+
+        assertEquals(2, merged.passengers.size)
+        assertEquals(2, merged.booked_seats)
+        assertFalse(merged.passenger_roster_complete)
+    }
+
+    @Test
     fun explicitEmptyRegistryResponseDoesNotKeepRemovedAccountTrips() {
         val previous = BlaBlaCollectorMonthResponse(
             status = "validated",
