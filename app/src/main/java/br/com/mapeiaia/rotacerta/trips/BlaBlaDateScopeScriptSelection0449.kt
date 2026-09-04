@@ -143,24 +143,40 @@ internal fun mergeSelectiveCollectorTrip0449(
 
     var merged = if (wantsCore) fresh else base
 
-    if (!selection.wantsPublicUrl()) {
-        merged = merged.copy(
+    merged = if (selection.wantsPublicUrl()) {
+        merged.copy(
+            public_trip_href = fresh.public_trip_href,
+            public_trip_href_source = fresh.public_trip_href_source,
+            public_trip_href_binding = fresh.public_trip_href_binding,
+        )
+    } else {
+        merged.copy(
             public_trip_href = previous?.public_trip_href,
             public_trip_href_source = previous?.public_trip_href_source.orEmpty(),
             public_trip_href_binding = previous?.public_trip_href_binding.orEmpty(),
         )
     }
 
-    if (!selection.wantsPassengerData()) {
-        merged = merged.copy(
+    merged = if (selection.wantsPassengerData()) {
+        merged.copy(
+            passengers = fresh.passengers,
+            booked_seats = fresh.booked_seats,
+            passenger_roster_complete = fresh.passenger_roster_complete,
+        )
+    } else {
+        merged.copy(
             passengers = previous?.passengers.orEmpty(),
             booked_seats = previous?.booked_seats ?: 0,
             passenger_roster_complete = previous?.passenger_roster_complete ?: false,
         )
     }
 
-    if (!selection.wantsSeatData()) {
-        merged = merged.copy(
+    merged = if (selection.wantsSeatData()) {
+        merged.copy(
+            published_seats = fresh.published_seats,
+        )
+    } else {
+        merged.copy(
             published_seats = previous?.published_seats,
         )
     }
