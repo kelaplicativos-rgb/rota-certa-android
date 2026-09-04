@@ -142,6 +142,7 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
     const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
+    const val EXTRA_ENABLED_SCRIPTS_0449 = "blablacar_enabled_scripts_0449"
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
     const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
@@ -159,11 +160,38 @@ object BlaBlaDynamicSessionIntents {
         .putExtra(EXTRA_MODE, MODE_SYNC)
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         syncDates(context, account, listOf(targetDate))
-    fun syncDates(context: Context, account: BlaBlaDynamicAccount, targetDates: Collection<LocalDate>): Intent =
-        intent(context, account, MODE_SYNC).putStringArrayListExtra(
+
+    fun syncDates(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+    ): Intent = syncDatesInternal0449(context, account, targetDates, enabledScripts = null)
+
+    internal fun syncDates(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+        enabledScripts: Collection<BlaBlaBrowserRequest>,
+    ): Intent = syncDatesInternal0449(context, account, targetDates, enabledScripts)
+
+    private fun syncDatesInternal0449(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+        enabledScripts: Collection<BlaBlaBrowserRequest>?,
+    ): Intent {
+        val result = intent(context, account, MODE_SYNC).putStringArrayListExtra(
             EXTRA_TARGET_DATES,
             ArrayList(targetDates.distinct().sorted().map(LocalDate::toString)),
         )
+        if (enabledScripts != null) {
+            result.putStringArrayListExtra(
+                EXTRA_ENABLED_SCRIPTS_0449,
+                ArrayList(enabledScripts.map(BlaBlaBrowserRequest::name).distinct().sorted()),
+            )
+        }
+        return result
+    }
     fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
         intent(context, account, MODE_SYNC)
             .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
@@ -507,6 +535,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var targetTripId = ""
     private var targetTripHref = ""
     private var targetDates: List<LocalDate> = emptyList()
+    private var scriptSelection0449 = BlaBlaDateScopeScriptSelection0449.legacyAll()
     // Compatibility projection for page-finished dispatch; script authority lives in browserOrchestrator.
     private var phase = Phase.IDLE
     private var candidates = emptyList<BlaBlaDomRideCandidate>()
@@ -631,6 +660,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             .sorted()
             .takeIf { mode == BlaBlaDynamicSessionIntents.MODE_SYNC }
             .orEmpty()
+        val enabledScriptNames0449 = intent?.getStringArrayListExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_ENABLED_SCRIPTS_0449,
+        )
+        scriptSelection0449 = if (
+            mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
+            targetDates.isNotEmpty()
+        ) {
+            BlaBlaDateScopeScriptSelection0449.fromNames(enabledScriptNames0449)
+        } else {
+            BlaBlaDateScopeScriptSelection0449.legacyAll()
+        }
         if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
             targetTripId = ""
             targetTripHref = ""
@@ -1305,7 +1345,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         UnifiedDebugEventStore.record(
             "SYNC_START",
             packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(PROFILE_URL)} dateScopeCount=${targetDates.size} dateScopeStart=${targetDates.firstOrNull() ?: "none"} dateScopeEnd=${targetDates.lastOrNull() ?: "none"}",
+            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(PROFILE_URL)} dateScopeCount=${targetDates.size} dateScopeStart=${targetDates.firstOrNull() ?: "none"} dateScopeEnd=${targetDates.lastOrNull() ?: "none"} selectiveScripts=${scriptSelection0449.selective} requestedScripts=${scriptSelection0449.requestedNames().joinToString(",")}",
         )
         loadTrackedUrl(PROFILE_URL)
     }
@@ -1785,6 +1825,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
             targetedTripId = targetTripId.takeIf(String::isNotBlank),
+            selectiveScriptSync0449 = scriptSelection0449.selective,
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
@@ -1898,70 +1939,89 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterComplete=true piiLogged=false",
                 )
             }
-            val rosterSignature = directRosterSignature(sourceBackedResult)
-            if (rosterSignature == lastTripRosterSignature) {
-                tripRosterStablePasses++
-            } else {
-                lastTripRosterSignature = rosterSignature
-                tripRosterStablePasses = 1
-            }
-            val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
-                networkResolved = networkResolution != null,
-                passengerCount = sourceBackedResult.detail.passengers.size,
-                readAttempts = tripRosterReadAttempts,
-                maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
-            )
-            val confirmedRosterComplete = networkResolution != null ||
-                (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+            val acceptedResult = if (scriptSelection0449.wantsPassengerData()) {
+                val rosterSignature = directRosterSignature(sourceBackedResult)
+                if (rosterSignature == lastTripRosterSignature) {
+                    tripRosterStablePasses++
+                } else {
+                    lastTripRosterSignature = rosterSignature
+                    tripRosterStablePasses = 1
+                }
+                val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                    networkResolved = networkResolution != null,
                     passengerCount = sourceBackedResult.detail.passengers.size,
-                    structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
-                    explicitEmpty = sourceBackedResult.explicitEmptyRoster,
-                    hasMore = sourceBackedResult.rosterHasMore,
-                    terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
-                    stablePasses = tripRosterStablePasses,
-                ))
-            val acceptedResult = sourceBackedResult.copy(
-                detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
-            )
-            val rosterState = BlaBlaCollectorPassengerModule.rosterState(
-                passengerCount = acceptedResult.detail.passengers.size,
-                rosterComplete = acceptedResult.detail.passengerRosterComplete,
-                explicitEmpty = acceptedResult.explicitEmptyRoster,
-            )
-            UnifiedDebugEventStore.record(
-                "TRIP_ROSTER_PROBE",
-                packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
-            )
-            if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
-                if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
-                    tripRosterReadAttempts++
-                    statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
-                    val retryRoster = {
+                    readAttempts = tripRosterReadAttempts,
+                    maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
+                )
+                val confirmedRosterComplete = networkResolution != null ||
+                    (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                        passengerCount = sourceBackedResult.detail.passengers.size,
+                        structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
+                        explicitEmpty = sourceBackedResult.explicitEmptyRoster,
+                        hasMore = sourceBackedResult.rosterHasMore,
+                        terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
+                        stablePasses = tripRosterStablePasses,
+                    ))
+                val passengerResult = sourceBackedResult.copy(
+                    detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
+                )
+                val rosterState = BlaBlaCollectorPassengerModule.rosterState(
+                    passengerCount = passengerResult.detail.passengers.size,
+                    rosterComplete = passengerResult.detail.passengerRosterComplete,
+                    explicitEmpty = passengerResult.explicitEmptyRoster,
+                )
+                UnifiedDebugEventStore.record(
+                    "TRIP_ROSTER_PROBE",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${passengerResult.detail.passengers.size} bookingLinks=${passengerResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${passengerResult.detail.passengerRosterComplete} explicitEmpty=${passengerResult.explicitEmptyRoster} hasMore=${passengerResult.rosterHasMore} terminalEvidence=${passengerResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
+                )
+                if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+                    if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                        tripRosterReadAttempts++
+                        statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                        if (passengerResult.rosterHasMore) {
+                            UnifiedDebugEventStore.record(
+                                "ROSTER_EXPANSION_NOT_AUTOMATED",
+                                packageName,
+                                "account=${account.displayLabel} tripId=$candidateTripId reason=interaction_not_documented passiveRetry=true",
+                            )
+                        }
                         postSessionDelayed0405({
                             captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
                         }, ROSTER_RETRY_MS)
+                        return@evaluateRequest
                     }
-                    if (acceptedResult.rosterHasMore) {
-                        UnifiedDebugEventStore.record(
-                            "ROSTER_EXPANSION_NOT_AUTOMATED",
-                            packageName,
-                            "account=${account.displayLabel} tripId=$candidateTripId reason=interaction_not_documented passiveRetry=true",
-                        )
-                    }
-                    retryRoster()
+                    skipped++
+                    UnifiedDebugEventStore.record(
+                        "TRIP_REJECTED",
+                        packageName,
+                        "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
+                    )
+                    advanceCandidate(expectedSync, expectedCandidate)
                     return@evaluateRequest
                 }
-                skipped++
+                passengerResult
+            } else {
                 UnifiedDebugEventStore.record(
-                    "TRIP_REJECTED",
+                    "ORCHESTRATOR_SCRIPT_SKIPPED_0449",
                     packageName,
-                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
+                    "account=${account.displayLabel} tripId=$candidateTripId group=passengers requested=false action=preserve_previous",
                 )
-                advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluateRequest
+                sourceBackedResult.copy(
+                    detail = sourceBackedResult.detail.copy(
+                        passengers = emptyList(),
+                        passengerRosterComplete = true,
+                    ),
+                    passengerHrefs = emptyList(),
+                    explicitEmptyRoster = true,
+                    rosterHasMore = false,
+                    rosterTerminalEvidence = true,
+                )
             }
-            if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            if (
+                BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+                scriptSelection0449.wantsSeatData()
+            ) {
                 val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
                 if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
                     tripRosterReadAttempts++
@@ -2049,47 +2109,62 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     authenticatedProfileSessionVerified = identityConfirmedThisSync,
                 )
             }
-            networkResolution?.let(::saveNetworkPassengerMetadata)
-            val networkPublicLink = BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
-                candidateTripId,
-                identityAcceptedResult.networkSource,
-            )?.let { resolved ->
-                val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId source=${resolved.source} endpoint=${resolved.endpoint} jsonPath=${resolved.jsonPath} protocol=https publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)} piiLogged=false",
-                )
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_NETWORK_BOUND",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId binding=${resolved.binding} publicIdRelation=$relation exactAdministrativeTrip=true fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)}",
-                )
-                ResolvedPublicTripLink0423(
-                    href = resolved.publicTripHref,
-                    source = resolved.source,
-                    binding = resolved.binding,
-                )
+            if (scriptSelection0449.wantsPassengerData()) {
+                networkResolution?.let(::saveNetworkPassengerMetadata)
             }
-            val authoritativeNavigationPublicLink = publicTripNavigation0443
-                ?.takeIf { captured ->
-                    captured.syncGeneration == expectedSync &&
-                        captured.navigationGeneration == expectedNavigation &&
-                        captured.candidateIndex == expectedCandidate &&
-                        captured.administrativeTripId == candidateTripId
+            val networkPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
+                    candidateTripId,
+                    identityAcceptedResult.networkSource,
+                )?.let { resolved ->
+                    val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$candidateTripId source=${resolved.source} endpoint=${resolved.endpoint} jsonPath=${resolved.jsonPath} protocol=https publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)} piiLogged=false",
+                    )
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_TRIP_LINK_NETWORK_BOUND",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$candidateTripId binding=${resolved.binding} publicIdRelation=$relation exactAdministrativeTrip=true fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)}",
+                    )
+                    ResolvedPublicTripLink0423(
+                        href = resolved.publicTripHref,
+                        source = resolved.source,
+                        binding = resolved.binding,
+                    )
                 }
-                ?.resolved
-            val passivePublicLink = BlaBlaCollectorUrlModule.publicTrip(
-                identityAcceptedResult.publicTripHref,
-                candidateTripId,
-            )?.let { href ->
-                ResolvedPublicTripLink0423(
-                    href = href,
-                    source = "passive_dom",
-                    binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
-                )
+            } else {
+                null
+            }
+            val authoritativeNavigationPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                publicTripNavigation0443
+                    ?.takeIf { captured ->
+                        captured.syncGeneration == expectedSync &&
+                            captured.navigationGeneration == expectedNavigation &&
+                            captured.candidateIndex == expectedCandidate &&
+                            captured.administrativeTripId == candidateTripId
+                    }
+                    ?.resolved
+            } else {
+                null
+            }
+            val passivePublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                BlaBlaCollectorUrlModule.publicTrip(
+                    identityAcceptedResult.publicTripHref,
+                    candidateTripId,
+                )?.let { href ->
+                    ResolvedPublicTripLink0423(
+                        href = href,
+                        source = "passive_dom",
+                        binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                    )
+                }
+            } else {
+                null
             }
             val persistedPublicLink = if (
+                scriptSelection0449.wantsPublicUrl() &&
                 networkPublicLink == null &&
                 authoritativeNavigationPublicLink == null &&
                 passivePublicLink == null
@@ -2098,20 +2173,32 @@ internal class BlaBlaDynamicAccountSessionController0401(
             } else {
                 null
             }
-            val resolvedPublicLink = resolvePreferredPublicTripLink0423(
-                network = networkPublicLink,
-                passiveDom = passivePublicLink,
-                persistedCanonical = persistedPublicLink,
-                authoritativeNavigation = authoritativeNavigationPublicLink,
-            )
+            val resolvedPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                resolvePreferredPublicTripLink0423(
+                    network = networkPublicLink,
+                    passiveDom = passivePublicLink,
+                    persistedCanonical = persistedPublicLink,
+                    authoritativeNavigation = authoritativeNavigationPublicLink,
+                )
+            } else {
+                UnifiedDebugEventStore.record(
+                    "ORCHESTRATOR_SCRIPT_SKIPPED_0449",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId group=public_url requested=false action=skip_capture_preserve_previous",
+                )
+                null
+            }
             pendingTripDetail = identityAcceptedResult.copy(
                 publicTripHref = resolvedPublicLink?.href.orEmpty(),
                 publicTripHrefSource = resolvedPublicLink?.source.orEmpty(),
                 publicTripHrefBinding = resolvedPublicLink?.binding.orEmpty(),
             )
-            pendingTripPassengers = (
-                networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers
-            ).toMutableList()
+            pendingTripPassengers = if (scriptSelection0449.wantsPassengerData()) {
+                (networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers)
+                    .toMutableList()
+            } else {
+                mutableListOf()
+            }
             pendingTripPassengerCardIndexes.clear()
             pendingTripPassengers.indices.forEach { rowIndex ->
                 pendingTripPassengerCardIndexes[rowIndex] = rowIndex
@@ -2123,7 +2210,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
             passengerCardReadAttempts = 0
             publicTripShareReadAttempts = 0
             publicTripShareCaptureInFlight = false
-            if (resolvedPublicLink != null) {
+            if (!scriptSelection0449.wantsPublicUrl()) {
+                loadNextPassengerContact(expectedSync, expectedCandidate)
+            } else if (resolvedPublicLink != null) {
                 val event = when (resolvedPublicLink.source) {
                     "network_structured" -> "PUBLIC_TRIP_LINK_CAPTURED"
                     "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
@@ -2479,7 +2568,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 BlaBlaDirectPassengerStep.FINISH -> break
             }
         }
-        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+        if (
+            BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+            scriptSelection0449.wantsSeatData()
+        ) {
             loadCurrentTripEdit(expectedSync, expectedCandidate)
         } else {
             UnifiedDebugEventStore.record(
@@ -2920,7 +3012,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
-        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+        if (
+            BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+            scriptSelection0449.wantsSeatData()
+        ) {
             val seatState = BlaBlaCollectorSeatModule.state(
                 tripId = candidateTripId,
                 editHref = pendingEditHref,
@@ -2933,15 +3028,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return
             }
         }
-        val rosterState = BlaBlaCollectorPassengerModule.rosterState(
-            passengerCount = pendingTripPassengers.size,
-            rosterComplete = result.detail.passengerRosterComplete,
-            explicitEmpty = result.explicitEmptyRoster,
-        )
-        if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
-            skipped++
-            blockCurrentCard(expectedSync, expectedCandidate, "finalize_unknown_roster")
-            return
+        if (scriptSelection0449.wantsPassengerData()) {
+            val rosterState = BlaBlaCollectorPassengerModule.rosterState(
+                passengerCount = pendingTripPassengers.size,
+                rosterComplete = result.detail.passengerRosterComplete,
+                explicitEmpty = result.explicitEmptyRoster,
+            )
+            if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "finalize_unknown_roster")
+                return
+            }
         }
         val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())
         val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(enrichedDetail.url)
@@ -2962,7 +3059,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             blockCurrentCard(expectedSync, expectedCandidate, "trip_fields_unparseable")
             return
         }
-        val trip = normalizedTrip.copy(
+        val freshTrip = normalizedTrip.copy(
             itinerary_stops = result.itineraryStops
                 .map(String::trim)
                 .filter(String::isNotBlank)
@@ -2977,6 +3074,26 @@ internal class BlaBlaDynamicAccountSessionController0401(
             public_trip_href_binding = result.publicTripHrefBinding,
             published_seats = pendingPublishedSeats,
         )
+        val previousTrip0449 = candidateTripId?.let { strongTripId ->
+            store.read(account)?.trips?.singleOrNull { previous ->
+                previous.trip_id?.trim() == strongTripId
+            }
+        }
+        val trip = mergeSelectiveCollectorTrip0449(
+            previous = previousTrip0449,
+            fresh = freshTrip,
+            selection = scriptSelection0449,
+        )
+        if (trip == null) {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "SELECTIVE_SYNC_REQUIRES_EXISTING_TRIP_0449",
+                packageName,
+                "account=${account.displayLabel} tripId=${candidateTripId.orEmpty()} requestedScripts=${scriptSelection0449.requestedNames().joinToString(",")} action=preserve_previous_skip_new_card",
+            )
+            blockCurrentCard(expectedSync, expectedCandidate, "selective_sync_requires_existing_trip")
+            return
+        }
         collected += trip
         UnifiedDebugEventStore.record(
             "TRIP_ACCEPTED",
@@ -3082,11 +3199,31 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val prior = existing.firstOrNull { it.tripId == tripId }
         val evidence = BlaBlaHarvestTripEvidence(
             tripId = tripId,
-            publishedSeats = pendingPublishedSeats ?: prior?.publishedSeats,
-            views = detail.views ?: prior?.views,
-            itineraryStops = detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() },
-            passengers = pendingTripPassengers.toList(),
-            passengerRosterComplete = detail.detail.passengerRosterComplete,
+            publishedSeats = if (scriptSelection0449.wantsSeatData()) {
+                pendingPublishedSeats ?: prior?.publishedSeats
+            } else {
+                prior?.publishedSeats
+            },
+            views = if (scriptSelection0449.wantsCoreTripData()) {
+                detail.views ?: prior?.views
+            } else {
+                prior?.views
+            },
+            itineraryStops = if (scriptSelection0449.wantsCoreTripData()) {
+                detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() }
+            } else {
+                prior?.itineraryStops.orEmpty()
+            },
+            passengers = if (scriptSelection0449.wantsPassengerData()) {
+                pendingTripPassengers.toList()
+            } else {
+                prior?.passengers.orEmpty()
+            },
+            passengerRosterComplete = if (scriptSelection0449.wantsPassengerData()) {
+                detail.detail.passengerRosterComplete
+            } else {
+                prior?.passengerRosterComplete ?: false
+            },
         )
         evidenceStore.replace(account.id, existing.filterNot { it.tripId == tripId } + evidence)
         UnifiedDebugEventStore.record(
@@ -3154,6 +3291,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
             targetedTripId = targetTripId.takeIf(String::isNotBlank),
+            selectiveScriptSync0449 = scriptSelection0449.selective,
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,

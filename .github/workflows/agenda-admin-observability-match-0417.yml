@@ -1,27 +1,27 @@
-name: Rota Certa Agenda canonical B2B mirror 0.1.448
+name: Rota Certa 0.1.449 BlaBlaCar orchestrator UI
 
 on:
   push:
     branches:
-      - agent/agenda-canonical-b2b-mirror-0.1.429
+      - agent/blablacar-orchestrator-ui-0.1.449
   pull_request:
     branches:
-      - agent/agenda-authentication-toggle-0.1.428
+      - agent/agenda-canonical-b2b-mirror-0.1.429
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-canonical-b2b-mirror-0438-${{ github.ref }}
+  group: blablacar-orchestrator-ui-0449-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-build-deploy:
+  validate-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 80
+    timeout-minutes: 60
     env:
-      GOOGLE_MAPS_API_KEY: agenda_0428_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: orchestrator_0449_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -34,17 +34,27 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Verify lineage version and protected FAROL
+      - name: Verify lineage version UI contract and protected FAROL
         shell: bash
         run: |
           set -euo pipefail
-          BASE=37fd0f58eeb57e17b3902883ee453b0555e2e1ae
+          BASE=cd43f0dc4c73ff3bd5735266815786a2d835e3a1
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5741' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.448"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5742' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.449"' app/build.gradle.kts
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
+          grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'group.requests.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq '32 scripts registrados • 22 CAPTURE • 8 NAVIGATION • 2 REMOTE_WRITE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'check(selectableRequests.size == 32)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
+          grep -Fq 'Text("Só vagas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("URL pública")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'EXTRA_ENABLED_SCRIPTS_0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'selectiveScriptSync0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           if git diff --name-only "$BASE"..HEAD | grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol'; then
             echo "Protected FAROL scope changed unexpectedly."
@@ -52,24 +62,6 @@ jobs:
           fi
           printf '%s\n' "$SOURCE_SHA" > /tmp/source-head.txt
           printf '%s\n' "$SOURCE_BRANCH" > /tmp/source-branch.txt
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Validate admin backend and browser contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm --prefix trip-platform/functions install --no-audit --no-fund
-          node --check trip-platform/functions/index.js
-          node --check trip-platform/functions/agenda-admin-0417.js
-          node --check trip-platform/public/app.js
-          node --check trip-platform/public/admin-0417.js
-          node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
-          node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
-          node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
-          node --test trip-platform/functions/test/agenda-private-mirror-0434.test.js
 
       - name: Configure Firebase Android app
         shell: bash
@@ -112,7 +104,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Focused Android regressions
+      - name: Focused orchestrator regressions
         shell: bash
         run: |
           set -euo pipefail
@@ -120,24 +112,13 @@ jobs:
           export ROTA_CERTA_GIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           export ROTA_CERTA_GIT_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAgendaAdminRole0418Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticRecorderTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaOrchestratorScriptSelection0449Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.cardVerifyUsesCanonicalMirrorAndOnlyAcquiresMissingPublicUrlWithoutRetry' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile lint and assemble exact SHA
@@ -149,104 +130,35 @@ jobs:
           ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
           ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5741'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.448'" /tmp/aapt.txt
+          grep -Fq "versionCode='5742'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.449'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
-
-      - name: Configure Firebase deployment authentication
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
-            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
-            chmod 600 /tmp/firebase-deploy-sa.json
-            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
-            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
-          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
-            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
-            chmod 600 /tmp/firebase-deploy-sa.json
-            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
-            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
-          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
-            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
-          else
-            echo "Firebase credential is missing."
-            exit 3
-          fi
-
-      - name: Deploy exact SHA Agenda backend and hosting
-        shell: bash
-        run: |
-          set -euo pipefail
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          cd trip-platform
-          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
-          else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
-          fi
-
-      - name: Smoke live canonical B2B mirror
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
-          grep -Fq '"ok":true' /tmp/health.json
-          BUST="$(date +%s%N)"
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=$BUST" -o /tmp/live-admin.js
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
-          grep -Fq '__rotaCertaAgendaAdminBound0427' /tmp/live-admin.js
-          grep -Fq 'X-Rota-Certa-Operation-Id' /tmp/live-admin.js
-          grep -Fq 'rotacerta-passenger-session-context-0427' /tmp/live-app.js
-          grep -Fq 'adminAuthenticationRequired0428' /tmp/live-admin.js
-          grep -Fq 'agendaAuthenticationRequired0428' /tmp/live-app.js
-          grep -Fq 'Exigir autenticação na Agenda' /tmp/live-index.html
-          CODE="$(curl --silent --show-error -o /tmp/admin-probe.json -w '%{http_code}' -H 'X-Rota-Certa-Admin-Driver: probe' "$BASE/v1/admin/overview")"
-          test "$CODE" = "401" -o "$CODE" = "400"
-          grep -Fq 'publicProjectionAttestedCurrent0429' trip-platform/functions/index.js
-          grep -Fq 'authority=CANONICAL_TRIP_STORE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'actual.publicationRevision == expected.publicationRevision' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
-          grep -Fq 'agendaBackgroundSyncRequestsCollector0430' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'val collectorRequested = agendaBackgroundSyncRequestsCollector0430(reason)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'enqueueCardDelta0431' app/src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt
-          grep -Fq 'publicationCanonicalTripIds0431' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'PUBLIC_BOOKING_CANONICAL_ECHO_0431' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
-          grep -Fq 'serverPublicAttestationConfirmed0433' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt
-          grep -Fq 'PUBLIC_ATTESTATION_NOT_COMMITTED_0433' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
-          grep -Fq 'collectorCardAttestationIntegrity0433' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'private-agenda-mirror-v1' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt
-          grep -Fq 'tripPrivateMirrors0434' trip-platform/functions/index.js
-          grep -Fq 'expectedPublicProjectionJson0434' trip-platform/functions/index.js
-          grep -Fq 'applyPublicTripVisibility0434' trip-platform/functions/index.js
-          grep -Fq 'visibilityPolicyRevision0434' trip-platform/functions/agenda-admin-0417.js
-          echo "LIVE_AGENDA_CANONICAL_B2B_0434=PASS"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0448
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0448/rota-certa-0.1.448-agenda-canonical-b2b-mirror.apk
-          cp /tmp/source-head.txt /tmp/0448/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0448/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0448/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0448/apk.sha256
-          cp /tmp/aapt.txt /tmp/0448/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0448/apksigner.txt
+          mkdir -p /tmp/0449
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0449/rota-certa-0.1.449-blablacar-orchestrator-ui.apk
+          cp /tmp/source-head.txt /tmp/0449/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0449/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0449/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0449/apk.sha256
+          cp /tmp/aapt.txt /tmp/0449/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0449/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.448-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.449-blablacar-orchestrator-ui-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0448
+          path: /tmp/0449
