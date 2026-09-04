@@ -2095,47 +2095,62 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     authenticatedProfileSessionVerified = identityConfirmedThisSync,
                 )
             }
-            networkResolution?.let(::saveNetworkPassengerMetadata)
-            val networkPublicLink = BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
-                candidateTripId,
-                identityAcceptedResult.networkSource,
-            )?.let { resolved ->
-                val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId source=${resolved.source} endpoint=${resolved.endpoint} jsonPath=${resolved.jsonPath} protocol=https publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)} piiLogged=false",
-                )
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_NETWORK_BOUND",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId binding=${resolved.binding} publicIdRelation=$relation exactAdministrativeTrip=true fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)}",
-                )
-                ResolvedPublicTripLink0423(
-                    href = resolved.publicTripHref,
-                    source = resolved.source,
-                    binding = resolved.binding,
-                )
+            if (scriptSelection0449.wantsPassengerData()) {
+                networkResolution?.let(::saveNetworkPassengerMetadata)
             }
-            val authoritativeNavigationPublicLink = publicTripNavigation0443
-                ?.takeIf { captured ->
-                    captured.syncGeneration == expectedSync &&
-                        captured.navigationGeneration == expectedNavigation &&
-                        captured.candidateIndex == expectedCandidate &&
-                        captured.administrativeTripId == candidateTripId
+            val networkPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
+                    candidateTripId,
+                    identityAcceptedResult.networkSource,
+                )?.let { resolved ->
+                    val relation = if (resolved.publicTripId == candidateTripId) "same" else "different"
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_TRIP_LINK_NETWORK_DISCOVERED",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$candidateTripId source=${resolved.source} endpoint=${resolved.endpoint} jsonPath=${resolved.jsonPath} protocol=https publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)} piiLogged=false",
+                    )
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_TRIP_LINK_NETWORK_BOUND",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$candidateTripId binding=${resolved.binding} publicIdRelation=$relation exactAdministrativeTrip=true fingerprint=${publicTripHrefFingerprint0423(resolved.publicTripHref)}",
+                    )
+                    ResolvedPublicTripLink0423(
+                        href = resolved.publicTripHref,
+                        source = resolved.source,
+                        binding = resolved.binding,
+                    )
                 }
-                ?.resolved
-            val passivePublicLink = BlaBlaCollectorUrlModule.publicTrip(
-                identityAcceptedResult.publicTripHref,
-                candidateTripId,
-            )?.let { href ->
-                ResolvedPublicTripLink0423(
-                    href = href,
-                    source = "passive_dom",
-                    binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
-                )
+            } else {
+                null
+            }
+            val authoritativeNavigationPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                publicTripNavigation0443
+                    ?.takeIf { captured ->
+                        captured.syncGeneration == expectedSync &&
+                            captured.navigationGeneration == expectedNavigation &&
+                            captured.candidateIndex == expectedCandidate &&
+                            captured.administrativeTripId == candidateTripId
+                    }
+                    ?.resolved
+            } else {
+                null
+            }
+            val passivePublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                BlaBlaCollectorUrlModule.publicTrip(
+                    identityAcceptedResult.publicTripHref,
+                    candidateTripId,
+                )?.let { href ->
+                    ResolvedPublicTripLink0423(
+                        href = href,
+                        source = "passive_dom",
+                        binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                    )
+                }
+            } else {
+                null
             }
             val persistedPublicLink = if (
+                scriptSelection0449.wantsPublicUrl() &&
                 networkPublicLink == null &&
                 authoritativeNavigationPublicLink == null &&
                 passivePublicLink == null
@@ -2144,20 +2159,32 @@ internal class BlaBlaDynamicAccountSessionController0401(
             } else {
                 null
             }
-            val resolvedPublicLink = resolvePreferredPublicTripLink0423(
-                network = networkPublicLink,
-                passiveDom = passivePublicLink,
-                persistedCanonical = persistedPublicLink,
-                authoritativeNavigation = authoritativeNavigationPublicLink,
-            )
+            val resolvedPublicLink = if (scriptSelection0449.wantsPublicUrl()) {
+                resolvePreferredPublicTripLink0423(
+                    network = networkPublicLink,
+                    passiveDom = passivePublicLink,
+                    persistedCanonical = persistedPublicLink,
+                    authoritativeNavigation = authoritativeNavigationPublicLink,
+                )
+            } else {
+                UnifiedDebugEventStore.record(
+                    "ORCHESTRATOR_SCRIPT_SKIPPED_0449",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId group=public_url requested=false action=skip_capture_preserve_previous",
+                )
+                null
+            }
             pendingTripDetail = identityAcceptedResult.copy(
                 publicTripHref = resolvedPublicLink?.href.orEmpty(),
                 publicTripHrefSource = resolvedPublicLink?.source.orEmpty(),
                 publicTripHrefBinding = resolvedPublicLink?.binding.orEmpty(),
             )
-            pendingTripPassengers = (
-                networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers
-            ).toMutableList()
+            pendingTripPassengers = if (scriptSelection0449.wantsPassengerData()) {
+                (networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers)
+                    .toMutableList()
+            } else {
+                mutableListOf()
+            }
             pendingTripPassengerCardIndexes.clear()
             pendingTripPassengers.indices.forEach { rowIndex ->
                 pendingTripPassengerCardIndexes[rowIndex] = rowIndex
@@ -2169,7 +2196,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
             passengerCardReadAttempts = 0
             publicTripShareReadAttempts = 0
             publicTripShareCaptureInFlight = false
-            if (resolvedPublicLink != null) {
+            if (!scriptSelection0449.wantsPublicUrl()) {
+                loadNextPassengerContact(expectedSync, expectedCandidate)
+            } else if (resolvedPublicLink != null) {
                 val event = when (resolvedPublicLink.source) {
                     "network_structured" -> "PUBLIC_TRIP_LINK_CAPTURED"
                     "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
