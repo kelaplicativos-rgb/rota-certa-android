@@ -989,7 +989,7 @@ internal object PublicAgendaAutoSync0300 {
         val synthesized = preOperationalEvidenceStep0457(
             stage = "CANONICAL_PROJECTION_BUILD",
             previousStage = "CANONICAL_SOURCE_RESOLUTION",
-            nextStage = "DIAGNOSTIC_CONTEXT_BUILD",
+            nextStage = "DIAGNOSTIC_KEY_BUILD",
         ) {
             canonical?.let { canonicalTrip ->
             toCanonicalExternalProjection0406(
@@ -1009,7 +1009,13 @@ internal object PublicAgendaAutoSync0300 {
             }
         } ?: return@withContext false
         val startedAt = System.nanoTime()
-        val tripKey = sha256(synthesized.trip.publicToken).take(12)
+        val tripKey = preOperationalEvidenceStep0457(
+            stage = "DIAGNOSTIC_KEY_BUILD",
+            previousStage = "CANONICAL_PROJECTION_BUILD",
+            nextStage = "DIAGNOSTIC_CONTEXT_BUILD",
+        ) {
+            sha256(synthesized.trip.publicToken).take(12)
+        }
         val diagnosticStartedNs0458 = System.nanoTime()
         val failureContext = try {
             val value = AgendaFailureEvidence.tripContext(
@@ -1028,8 +1034,8 @@ internal object PublicAgendaAutoSync0300 {
                 stage = "DIAGNOSTIC_CONTEXT_BUILD",
                 status = "OK",
                 reasonCode = "DIAGNOSTIC_CONTEXT_READY",
-                previousStage = "CANONICAL_PROJECTION_BUILD",
-                nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+                previousStage = "DIAGNOSTIC_KEY_BUILD",
+                nextStage = "REMOTE_API_CONTEXT_BUILD",
                 startedNs = diagnosticStartedNs0458,
             )
             value
@@ -1042,8 +1048,8 @@ internal object PublicAgendaAutoSync0300 {
                 stage = "DIAGNOSTIC_CONTEXT_BUILD",
                 status = "DEGRADED",
                 reasonCode = "DIAGNOSTIC_CONTEXT_FALLBACK",
-                previousStage = "CANONICAL_PROJECTION_BUILD",
-                nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+                previousStage = "DIAGNOSTIC_KEY_BUILD",
+                nextStage = "REMOTE_API_CONTEXT_BUILD",
                 startedNs = diagnosticStartedNs0458,
                 error = error,
             )
@@ -1064,11 +1070,17 @@ internal object PublicAgendaAutoSync0300 {
             context.packageName,
             "tripKey=$tripKey sourceComplete=${synthesized.sourceComplete} revision=${synthesized.snapshotRevision.takeLast(12)} fullSyncRequested=false",
         )
-        val api = TripRemoteApi(settings)
+        val api = preOperationalEvidenceStep0457(
+            stage = "REMOTE_API_CONTEXT_BUILD",
+            previousStage = "DIAGNOSTIC_CONTEXT_BUILD",
+            nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+        ) {
+            TripRemoteApi(settings)
+        }
         val privateMirrorTrip0434 = canonical ?: synthesized.trip
         val privateMirrorBookings0434 = preOperationalEvidenceStep0457(
             stage = "PRIVATE_MIRROR_INPUT_BUILD",
-            previousStage = "DIAGNOSTIC_CONTEXT_BUILD",
+            previousStage = "REMOTE_API_CONTEXT_BUILD",
             nextStage = "CANONICAL_OPERATIONAL_GUARD",
         ) {
             canonicalMirrorBookings0441(
