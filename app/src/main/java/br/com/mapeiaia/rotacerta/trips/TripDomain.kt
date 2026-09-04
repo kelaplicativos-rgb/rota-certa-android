@@ -123,7 +123,7 @@ data class Trip(
     val externalSnapshot: BlaBlaCollectorTrip? = null,
     /** Semantic fingerprint of [externalSnapshot], excluding volatile browser/UI attributes. */
     val externalSnapshotFingerprint: String = "",
-    /** False means the observation was partial and must not replace a previously complete canonical snapshot. */
+    /** False means the current observation is partial: positive evidence may merge, but absence cannot erase confirmed state. */
     val externalSnapshotComplete: Boolean = false,
     /** Stable tenant-scoped identity. External trips are tenant + provider + profile UUID + provider trip id. */
     val tripKey: String = "",
