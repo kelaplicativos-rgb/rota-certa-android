@@ -229,10 +229,11 @@ class PublicMirrorAttestation0411Test {
             ),
         )
 
-        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertEquals(PublicMirrorAttestationState0411.UNPROVEN, decision.state)
         assertFalse(decision.linkValid)
         assertEquals("BLABLACAR_PUBLIC_URL_UNRESOLVED", decision.reason)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertFalse(decision.mismatchFields.any { it != "blablaPublicUrl" })
     }
 
     @Test
@@ -351,6 +352,17 @@ class PublicMirrorAttestation0411Test {
             ).publicMirrorAttestationCurrent0411(),
         )
         assertTrue(validated.publicMirrorAttestationCurrent0411())
+        assertTrue(validated.publicMirrorProjectionCurrent0411())
+        val linkOnlyUnproven = validated.copy(
+            publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+            publicMirrorAttestedCanonicalRevision0411 = 0L,
+            publicMirrorAttestedPublicationRevision0411 = 0L,
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_UNRESOLVED",
+            publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
+        )
+        assertFalse(linkOnlyUnproven.publicMirrorAttestationCurrent0411())
+        assertTrue(linkOnlyUnproven.publicMirrorProjectionCurrent0411())
+        assertFalse(linkOnlyUnproven.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorProjectionCurrent0411())
         assertFalse(validated.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorAttestationCurrent0411())
         assertFalse(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
         assertFalse(validated.invalidatePublicMirror0411("TEST_MUTATION").publicMirrorAttestationCurrent0411())
