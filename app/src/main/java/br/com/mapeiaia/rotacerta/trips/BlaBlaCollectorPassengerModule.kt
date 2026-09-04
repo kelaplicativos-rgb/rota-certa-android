@@ -100,10 +100,17 @@ internal object BlaBlaCollectorPassengerModule {
                 previous,
                 BlaBlaPassengerRosterReconciler.reconcile(previous, current),
             )
-            // Preserve confirmed rows and positive enrichment, but never promote a
-            // partial acquisition to a complete roster merely because occupancy did
-            // not change. Completeness belongs to the current authoritative evidence.
-            return merged.copy(passenger_roster_complete = false)
+            // A partial roster read itself cannot prove completeness. However, when
+            // the snapshot positively enriches another field and the reconciled
+            // occupancy is unchanged, roster fields were effectively unobserved by
+            // that partial enrichment and the last confirmed completeness is kept.
+            val preservePreviouslyConfirmedCompleteness =
+                previous.passenger_roster_complete &&
+                    sameRosterOccupancy(previous, merged) &&
+                    hasPositiveNonRosterEnrichment(previous, current)
+            return merged.copy(
+                passenger_roster_complete = preservePreviouslyConfirmedCompleteness,
+            )
         }
         if (current.passengers.isEmpty()) {
             return preserveStableTripMetadata(previous, current.copy(booked_seats = 0))
@@ -212,6 +219,43 @@ internal object BlaBlaCollectorPassengerModule {
             // confirmed for this same strong trip identity.
             published_seats = current.published_seats ?: previous?.published_seats,
         )
+    }
+
+    private fun hasPositiveNonRosterEnrichment(
+        previous: BlaBlaCollectorTrip,
+        current: BlaBlaCollectorTrip,
+    ): Boolean {
+        fun changedString(previousValue: String?, currentValue: String?): Boolean {
+            val currentObserved = currentValue?.trim()?.takeIf(String::isNotEmpty) ?: return false
+            return currentObserved != previousValue?.trim().orEmpty()
+        }
+
+        return changedString(previous.profile_name, current.profile_name) ||
+            changedString(previous.departure_time, current.departure_time) ||
+            changedString(previous.arrival_time, current.arrival_time) ||
+            changedString(previous.search_from, current.search_from) ||
+            changedString(previous.search_to, current.search_to) ||
+            changedString(previous.actual_departure, current.actual_departure) ||
+            changedString(previous.actual_arrival, current.actual_arrival) ||
+            changedString(previous.price, current.price) ||
+            (
+                current.availability.isNotBlank() &&
+                    !current.availability.equals("unknown", ignoreCase = true) &&
+                    current.availability != previous.availability
+                ) ||
+            changedString(previous.trip_href, current.trip_href) ||
+            changedString(previous.trip_id, current.trip_id) ||
+            (
+                current.uuid_validation.isNotBlank() &&
+                    !current.uuid_validation.equals("unknown", ignoreCase = true) &&
+                    current.uuid_validation != previous.uuid_validation
+                ) ||
+            (
+                current.itinerary_stops.isNotEmpty() &&
+                    current.itinerary_stops != previous.itinerary_stops
+                ) ||
+            current.published_seats?.let { it != previous.published_seats } == true ||
+            changedString(previous.public_trip_href, current.public_trip_href)
     }
 
     private fun sameRosterOccupancy(
