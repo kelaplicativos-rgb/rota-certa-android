@@ -856,7 +856,7 @@ internal object PublicAgendaAutoSync0300 {
                         append(" accountIdentity=").append(accountIdentityConfirmed0455)
                         append(" profileUuidPresent=").append(profileUuid.isNotBlank())
                         append(" tripIdPresent=").append(tripId.isNotBlank())
-                        append(" previousStage=OUTBOX_IDENTITY_GUARD nextStage=PRIVATE_MIRROR_REQUEST")
+                        append(" previousStage=CANONICAL_REBASE_GUARD nextStage=CANONICAL_OPERATIONAL_GUARD")
                     },
                 )
             }
