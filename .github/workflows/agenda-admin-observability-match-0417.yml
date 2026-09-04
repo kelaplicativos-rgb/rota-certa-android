@@ -47,7 +47,10 @@ jobs:
           grep -Fq 'versionName = "0.1.449"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          grep -Fq 'BlaBlaDateScopeScriptCatalog0449.selectableRequests.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'group.requests.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq '32 scripts registrados • 22 CAPTURE • 8 NAVIGATION • 2 REMOTE_WRITE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'check(selectableRequests.size == 32)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'Text("Só vagas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'Text("URL pública")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'EXTRA_ENABLED_SCRIPTS_0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
