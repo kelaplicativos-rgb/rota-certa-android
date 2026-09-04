@@ -110,6 +110,7 @@ jobs:
           node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
           node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
+          node --test trip-platform/functions/test/public-blablacar-link-0409.test.js
 
       - uses: actions/setup-java@v4
         with:
