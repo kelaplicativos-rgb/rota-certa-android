@@ -156,8 +156,8 @@ class AgendaFailureEvidence0382Test {
         assertTrue(outbox.contains("stage = \"OUTBOX_FAILURE\""))
         assertTrue(outbox.contains("UNCAUGHT_PUBLICATION_EXCEPTION"))
         assertTrue(outbox.contains("canonicalByteEvidence0458.compactDetails0458()"))
-        assertTrue(timeline.contains("\"failure\":{"))
-        assertTrue(timeline.contains("\"firstSanitizedDiffOffset\":"))
+        assertTrue(timeline.contains("\\\"failure\\\":{"))
+        assertTrue(timeline.contains("\\\"firstSanitizedDiffOffset\\\":"))
         assertTrue(timeline.contains("causalFailureEvent0458"))
     }
 
