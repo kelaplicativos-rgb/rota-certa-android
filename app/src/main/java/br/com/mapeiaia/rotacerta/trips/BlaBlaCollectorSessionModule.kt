@@ -294,6 +294,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         identityVerified: Boolean,
         dateScope: Collection<LocalDate>? = null,
         targetedTripId: String? = null,
+        selectiveScriptSync0449: Boolean = false,
     ) {
         withAccountLock(account.id) {
             val previous = readUnlocked(account)
@@ -313,7 +314,8 @@ class BlaBlaDynamicSessionStore(context: Context) {
             val droppedOutOfScope = trips.size - scopedTrips.size
             // A targeted trip read is never authoritative for the account universe.
             // It may replace that exact strong identity, but missing sibling cards are preserved.
-            val authoritativeComplete = identityVerified && skippedTrips == 0 && exactTargetId == null
+            val authoritativeComplete =
+                identityVerified && skippedTrips == 0 && exactTargetId == null && !selectiveScriptSync0449
             val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
                 previous = previous?.trips.orEmpty(),
                 current = scopedTrips,
@@ -361,7 +363,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
             UnifiedDebugEventStore.record(
                 "SNAPSHOT_SAVED",
                 appContext.packageName,
-                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete targeted=${exactTargetId != null} targetTripIdPresent=${exactTargetId != null} dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
+                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete selectiveScriptSync0449=$selectiveScriptSync0449 targeted=${exactTargetId != null} targetTripIdPresent=${exactTargetId != null} dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
             )
         }
     }
