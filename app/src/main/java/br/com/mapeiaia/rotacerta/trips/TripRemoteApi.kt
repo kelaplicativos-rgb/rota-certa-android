@@ -739,24 +739,34 @@ class TripRemoteApi(
     internal suspend fun writePrivateAgendaMirror0434(
         mirror: DriverPrivateMirrorWriteRequest0434,
         evidence0421: RemotePublicationEvidenceContext0421? = null,
-    ): DriverPrivateMirrorWriteResponse0434 = request(
-        method = "PUT",
-        path = "/v1/driver/private-mirror",
-        body = json.encodeToString(mirror),
-        requireDriverToken = true,
-        evidence0421 = evidence0421,
-    )
+    ): DriverPrivateMirrorWriteResponse0434 {
+        val body = serializeRequestForEvidence0458(evidence0421, "PRIVATE_MIRROR_WRITE") {
+            json.encodeToString(mirror)
+        }
+        return request(
+            method = "PUT",
+            path = "/v1/driver/private-mirror",
+            body = body,
+            requireDriverToken = true,
+            evidence0421 = evidence0421,
+        )
+    }
 
     internal suspend fun readPrivateAgendaMirror0434(
         canonicalTripId: String,
         evidence0421: RemotePublicationEvidenceContext0421? = null,
-    ): DriverPrivateMirrorReadback0434 = request(
-        method = "POST",
-        path = "/v1/driver/private-mirror/readback",
-        body = json.encodeToString(DriverPrivateMirrorReadRequest0434(canonicalTripId.trim())),
-        requireDriverToken = true,
-        evidence0421 = evidence0421,
-    )
+    ): DriverPrivateMirrorReadback0434 {
+        val body = serializeRequestForEvidence0458(evidence0421, "PRIVATE_MIRROR_READBACK") {
+            json.encodeToString(DriverPrivateMirrorReadRequest0434(canonicalTripId.trim()))
+        }
+        return request(
+            method = "POST",
+            path = "/v1/driver/private-mirror/readback",
+            body = body,
+            requireDriverToken = true,
+            evidence0421 = evidence0421,
+        )
+    }
 
     suspend fun reportPublicTripAttestation0417(
         remoteTripId: String,
@@ -828,63 +838,8 @@ class TripRemoteApi(
         expectedPublicProjectionJson0434: String = "",
         sourceComplete: Boolean = true,
         preserveManagedClaims0436: Boolean = false,
-    ): DriverCapacitySnapshotResponse = request(
-        method = "PUT",
-        path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
-        body = json.encodeToString(
-            DriverCapacitySnapshotRequest(
-                trip = trip.copy(
-                    remoteId = remoteTripId,
-                    capacityReliable = if (sourceComplete) true else trip.capacityReliable,
-                ),
-                claims = claims.map { booking ->
-                    DriverCapacitySnapshotClaim(
-                        id = booking.id,
-                        passengerName = booking.passengerName,
-                        passengerContact = booking.passengerContact,
-                        boardingStopId = booking.boardingStopId,
-                        dropoffStopId = booking.dropoffStopId,
-                        seats = booking.seats,
-                        status = booking.status.name,
-                        source = booking.source,
-                        capacityClaimType = booking.capacityClaimType,
-                        sourceReference = booking.sourceReference,
-                        occupancyGroupId = booking.occupancyGroupId,
-                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
-                    )
-                },
-                protectedBookings = protectedBookings.map { booking ->
-                    DriverProtectedBookingSnapshot(
-                        id = booking.id,
-                        passengerName = booking.passengerName,
-                        passengerContact = booking.passengerContact,
-                        boardingStopId = booking.boardingStopId,
-                        dropoffStopId = booking.dropoffStopId,
-                        seats = booking.seats,
-                        status = booking.status.name,
-                        operationalStatus = booking.operationalStatus,
-                        paymentStatus = booking.paymentStatus,
-                        lastDriverSelection = booking.lastDriverSelection,
-                        holdExpiresAtMillis = booking.holdExpiresAtMillis,
-                        sourceReference = booking.sourceReference,
-                        occupancyGroupId = booking.occupancyGroupId,
-                    )
-                },
-                claimNamespace = claimNamespace,
-                snapshotRevision = snapshotRevision,
-                sourceComplete = sourceComplete,
-                preserveManagedClaims0436 = preserveManagedClaims0436,
-                entityRevision = entityRevision,
-                canonicalTripId = canonicalTripId,
-                outboxEventId = outboxEventId,
-                mutationId0421 = mutationId0421,
-                idempotencyKey0421 = idempotencyKey0421,
-                expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
-                expectedPublicProjectionJson0434 = expectedPublicProjectionJson0434,
-            ),
-        ),
-        requireDriverToken = true,
-        evidence0421 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+    ): DriverCapacitySnapshotResponse {
+        val evidence0421 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
             RemotePublicationEvidenceContext0421(
                 evidenceId = publicationEvidenceId0421(traceId, trip.canonicalRevision),
                 traceId = traceId,
@@ -894,8 +849,69 @@ class TripRemoteApi(
                 mutationId = mutationId0421,
                 idempotencyKey = idempotencyKey0421,
             )
-        },
-    )
+        }
+        val body = serializeRequestForEvidence0458(evidence0421, "CAPACITY_SNAPSHOT") {
+            json.encodeToString(
+                DriverCapacitySnapshotRequest(
+                    trip = trip.copy(
+                        remoteId = remoteTripId,
+                        capacityReliable = if (sourceComplete) true else trip.capacityReliable,
+                    ),
+                    claims = claims.map { booking ->
+                        DriverCapacitySnapshotClaim(
+                            id = booking.id,
+                            passengerName = booking.passengerName,
+                            passengerContact = booking.passengerContact,
+                            boardingStopId = booking.boardingStopId,
+                            dropoffStopId = booking.dropoffStopId,
+                            seats = booking.seats,
+                            status = booking.status.name,
+                            source = booking.source,
+                            capacityClaimType = booking.capacityClaimType,
+                            sourceReference = booking.sourceReference,
+                            occupancyGroupId = booking.occupancyGroupId,
+                            holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                        )
+                    },
+                    protectedBookings = protectedBookings.map { booking ->
+                        DriverProtectedBookingSnapshot(
+                            id = booking.id,
+                            passengerName = booking.passengerName,
+                            passengerContact = booking.passengerContact,
+                            boardingStopId = booking.boardingStopId,
+                            dropoffStopId = booking.dropoffStopId,
+                            seats = booking.seats,
+                            status = booking.status.name,
+                            operationalStatus = booking.operationalStatus,
+                            paymentStatus = booking.paymentStatus,
+                            lastDriverSelection = booking.lastDriverSelection,
+                            holdExpiresAtMillis = booking.holdExpiresAtMillis,
+                            sourceReference = booking.sourceReference,
+                            occupancyGroupId = booking.occupancyGroupId,
+                        )
+                    },
+                    claimNamespace = claimNamespace,
+                    snapshotRevision = snapshotRevision,
+                    sourceComplete = sourceComplete,
+                    preserveManagedClaims0436 = preserveManagedClaims0436,
+                    entityRevision = entityRevision,
+                    canonicalTripId = canonicalTripId,
+                    outboxEventId = outboxEventId,
+                    mutationId0421 = mutationId0421,
+                    idempotencyKey0421 = idempotencyKey0421,
+                    expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
+                    expectedPublicProjectionJson0434 = expectedPublicProjectionJson0434,
+                ),
+            )
+        }
+        return request(
+            method = "PUT",
+            path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
+            body = body,
+            requireDriverToken = true,
+            evidence0421 = evidence0421,
+        )
+    }
 
     suspend fun listBookings(remoteTripId: String): DriverBookingsResponse = request(
         method = "GET",
@@ -1172,6 +1188,63 @@ class TripRemoteApi(
         requireDriverToken = false,
     )
 
+    private inline fun serializeRequestForEvidence0458(
+        evidence0421: RemotePublicationEvidenceContext0421?,
+        requestKind: String,
+        block: () -> String,
+    ): String {
+        val startedNs = System.nanoTime()
+        return try {
+            val body = block()
+            val bytes = body.toByteArray(Charsets.UTF_8)
+            val byteEvidence = AgendaFailureEvidence.byteSanitizationEvidence0458(bytes)
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "REQUEST_SERIALIZATION",
+                status = "OK",
+                reason = "JSON_SERIALIZED",
+                extra = "requestKind=$requestKind charset=UTF-8 " +
+                    byteEvidence.compactDetails0458() +
+                    " durationMs=" + ((System.nanoTime() - startedNs).coerceAtLeast(0L) / 1_000_000L) +
+                    " previousStage=CANONICAL_OPERATIONAL_BUILD nextStage=REQUEST_SANITIZATION",
+            )
+            body
+        } catch (error: Throwable) {
+            val resolution = AgendaFailureEvidence.resolveCauseChain(error)
+            val root = resolution.chain.lastOrNull() ?: error
+            val message = runCatching { UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()) }
+                .getOrDefault("<sanitization-failed>")
+                .replace('"', '\'')
+                .take(240)
+            val rootMessage = runCatching { UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()) }
+                .getOrDefault("<sanitization-failed>")
+                .replace('"', '\'')
+                .take(240)
+            val source = error.stackTrace.firstOrNull { it.className.startsWith("br.com.mapeiaia.rotacerta") }
+            recordRemotePublicationEvidence0421(
+                evidence0421,
+                stage = "REQUEST_SERIALIZATION",
+                status = "FAILED",
+                reason = "REQUEST_SERIALIZATION_EXCEPTION",
+                extra = buildString {
+                    append("requestKind=").append(requestKind)
+                    append(" exceptionClass=").append(error.javaClass.name)
+                    append(" exceptionMessage=\"").append(message).append('\"')
+                    append(" rootCauseClass=").append(root.javaClass.name)
+                    append(" rootCauseMessage=\"").append(rootMessage).append('\"')
+                    if (source != null) {
+                        append(" exceptionSource=")
+                            .append(source.fileName ?: source.className.substringAfterLast('.'))
+                            .append(':').append(source.methodName).append(':').append(source.lineNumber)
+                    }
+                    append(" durationMs=").append(((System.nanoTime() - startedNs).coerceAtLeast(0L)) / 1_000_000L)
+                    append(" previousStage=CANONICAL_OPERATIONAL_BUILD nextStage=STOP")
+                },
+            )
+            throw error
+        }
+    }
+
     private suspend inline fun <reified T> request(
         method: String,
         path: String,
@@ -1188,12 +1261,25 @@ class TripRemoteApi(
             append('-')
             append(sha256Hex("$method|$path".toByteArray(Charsets.UTF_8)).take(10))
         }
+        val sanitizationEvidence0458 = AgendaFailureEvidence.byteSanitizationEvidence0458(requestPayloadBytes)
+        recordRemotePublicationEvidence0421(
+            evidence0421,
+            stage = "REQUEST_SANITIZATION",
+            status = if (sanitizationEvidence0458.sanitizerSucceeded) "OK" else "DEGRADED",
+            reason = if (sanitizationEvidence0458.sanitizerSucceeded) {
+                if (sanitizationEvidence0458.sanitizationChanged) "EVIDENCE_REDACTION_APPLIED" else "EVIDENCE_REDACTION_NOT_REQUIRED"
+            } else {
+                "EVIDENCE_SANITIZER_FAILED"
+            },
+            extra = "networkCallId=$networkCallId " + sanitizationEvidence0458.compactDetails0458() +
+                " charset=UTF-8 previousStage=REQUEST_SERIALIZATION nextStage=REQUEST_BUILD",
+        )
         recordRemotePublicationEvidence0421(
             evidence0421,
             stage = "REQUEST_BUILD",
             status = "OK",
             reason = "REQUEST_SERIALIZED",
-            extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} charset=UTF-8 contentType=application/json previousStage=OUTBOX_DEQUEUE nextStage=HTTP_SEND",
+            extra = "networkCallId=$networkCallId method=$method endpoint=${seatSyncDiagnosticKey(path)} requestBytes=${requestPayloadBytes.size} requestSha256=${sha256Hex(requestPayloadBytes)} charset=UTF-8 contentType=application/json previousStage=REQUEST_SANITIZATION nextStage=HTTP_SEND",
         )
         var phase = "validate_configuration"
         var connection: HttpURLConnection? = null
@@ -1406,24 +1492,27 @@ class TripRemoteApi(
         extra: String = "",
     ) {
         evidence ?: return
-        UnifiedDebugEventStore.record(
-            "PUBLIC_EVIDENCE_0421",
-            "br.com.mapeiaia.rotacerta.trips",
-            buildString {
-                append("evidenceId=").append(evidence.evidenceId)
-                append(" traceId=").append(evidence.traceId)
-                append(" correlationId=").append(evidence.traceId)
-                append(" stage=").append(stage)
-                append(" status=").append(status)
-                append(" reasonCode=").append(reason)
-                append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
-                append(" logicalRevision=").append(evidence.logicalRevision)
-                append(" transportRevision=").append(evidence.transportRevision)
-                append(" mutationId=").append(evidence.mutationId)
-                append(" idempotencyKey=").append(evidence.idempotencyKey)
-                if (extra.isNotBlank()) append(' ').append(extra)
-            },
-        )
+        // Evidence must never become a transport/business failure source.
+        runCatching {
+            UnifiedDebugEventStore.recordAlways(
+                "PUBLIC_EVIDENCE_0421",
+                "br.com.mapeiaia.rotacerta.trips",
+                buildString {
+                    append("evidenceId=").append(evidence.evidenceId)
+                    append(" traceId=").append(evidence.traceId)
+                    append(" correlationId=").append(evidence.traceId)
+                    append(" stage=").append(stage)
+                    append(" status=").append(status)
+                    append(" reasonCode=").append(reason)
+                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
+                    append(" logicalRevision=").append(evidence.logicalRevision)
+                    append(" transportRevision=").append(evidence.transportRevision)
+                    append(" mutationId=").append(evidence.mutationId)
+                    append(" idempotencyKey=").append(evidence.idempotencyKey)
+                    if (extra.isNotBlank()) append(' ').append(extra)
+                },
+            )
+        }
     }
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest.getInstance("SHA-256")
