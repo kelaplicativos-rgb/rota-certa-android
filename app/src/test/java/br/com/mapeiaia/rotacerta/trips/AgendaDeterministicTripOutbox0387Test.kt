@@ -187,7 +187,7 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(bookingSync.contains("changed.forEach { tripId ->"))
         assertTrue(bookingSync.contains("mutationCoordinator.recordLocalMutation("))
         assertTrue(bookingSync.contains("canonicalTripId = tripId"))
-        assertTrue(bookingSync.contains("mutationCoordinator.drainPending()"))
+        assertTrue(bookingSync.contains("mutationCoordinator.drainPending(canonicalTripIds = changed)"))
         assertFalse(bookingSync.contains("publicAgendaSyncRevision"))
     }
 
