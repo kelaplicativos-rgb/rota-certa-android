@@ -72,6 +72,27 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun projectionIdCannotOverrideAuthoritativeCanonicalTripKey() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-a",
+            date = "2030-09-04",
+            trip_id = "trip-a",
+        )
+        val canonical = Trip(
+            id = "timeline-ext-compatibility-id",
+            title = "External canonical",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "profile-a",
+            blablaTripId = "trip-a",
+            tripKey = "canonical-authoritative-id",
+        )
+        assertTrue(strongExternalSnapshotIdentityMatches0387("canonical-authoritative-id", canonical, source))
+        assertFalse(strongExternalSnapshotIdentityMatches0387("timeline-ext-compatibility-id", canonical, source))
+    }
+
+    @Test
     fun publicationIdempotencyKeyContainsTenantTripAndRevision() {
         val r55 = publicationEventId0387("tenant-a", "trip-a", 55)
         assertEquals(r55, publicationEventId0387("tenant-a", "trip-a", 55))
@@ -142,6 +163,11 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(outbox.contains("fun rebase("))
         assertTrue(outbox.contains("superseded_by_revision_"))
         assertTrue(outbox.contains("publicationEventId0387(target.tenantId, target.canonicalTripId, nextRevision)"))
+        assertTrue(outbox.contains("rebaseCount0453"))
+        assertTrue(outbox.contains("MAX_STALE_REBASES_0453"))
+        assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_READBACK_PENDING_0453"))
+        assertTrue(outbox.contains("publicMirrorProjectionCurrent0411()"))
+        assertFalse(outbox.contains("projection_replay_same_logical_revision"))
     }
 
     @Test
