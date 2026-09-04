@@ -58,21 +58,27 @@ test("backend and public client accept exact HTTPS permalinks across BlaBlaCar m
   }
 });
 
-test("invalid host, scheme, search URL, and wrong trip id remain fail-closed", () => {
+test("unbound backend stays strict while public canonical rendering accepts a distinct public token", () => {
   const backendUrl = backendUrlContext();
   const publicUrl = publicUrlContext();
   const tripId = "trip-0409-alpha";
-  const invalid = [
+  const structurallyInvalid = [
     "https://blablacar.evil.com/trip?id=" + tripId,
     "http://www.blablacar.fr/trip?id=" + tripId,
     "https://www.blablacar.fr/search?id=" + tripId,
-    "https://www.blablacar.fr/trip?id=other-trip",
     "javascript:alert(1)",
   ];
-  for (const raw of invalid) {
+  for (const raw of structurallyInvalid) {
     assert.equal(backendUrl.normalizeBlaBlaPublicUrl(raw, tripId), "");
     assert.equal(publicUrl.safeBlaBlaPublicUrl({ blablaTripId: tripId, blablaPublicUrl: raw }), "");
   }
+
+  const differentPublicToken = "https://www.blablacar.fr/trip?id=public-token-0409&search_uuid=temp";
+  assert.equal(backendUrl.normalizeBlaBlaPublicUrl(differentPublicToken, tripId), "");
+  assert.equal(
+    publicUrl.safeBlaBlaPublicUrl({ blablaTripId: tripId, blablaPublicUrl: differentPublicToken }),
+    "https://www.blablacar.fr/trip?id=public-token-0409",
+  );
 });
 
 test("public snapshot contract preserves external trip id beside its permalink", () => {
