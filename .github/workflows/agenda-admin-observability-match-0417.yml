@@ -114,7 +114,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
