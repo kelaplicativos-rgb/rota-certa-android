@@ -100,18 +100,10 @@ internal object BlaBlaCollectorPassengerModule {
                 previous,
                 BlaBlaPassengerRosterReconciler.reconcile(previous, current),
             )
-            // Incomplete acquisition is not itself a semantic downgrade. When the
-            // reconciled roster is the same last-known complete roster (possibly
-            // enriched with phone/route metadata), retain its completeness. A newly
-            // observed/changed occupancy keeps completeness=false until confirmed.
-            return if (
-                previous.passenger_roster_complete &&
-                sameRosterOccupancy(previous, merged)
-            ) {
-                merged.copy(passenger_roster_complete = true)
-            } else {
-                merged
-            }
+            // Preserve confirmed rows and positive enrichment, but never promote a
+            // partial acquisition to a complete roster merely because occupancy did
+            // not change. Completeness belongs to the current authoritative evidence.
+            return merged.copy(passenger_roster_complete = false)
         }
         if (current.passengers.isEmpty()) {
             return preserveStableTripMetadata(previous, current.copy(booked_seats = 0))
