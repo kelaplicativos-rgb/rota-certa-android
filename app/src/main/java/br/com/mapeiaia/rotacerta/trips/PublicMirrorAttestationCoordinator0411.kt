@@ -48,6 +48,8 @@ internal object PublicMirrorAttestationCoordinator0411 {
             .ifBlank { "trip-" + seatSyncDiagnosticKey(current.id) }
             .take(120)
         val evidenceId = publicationEvidenceId0421(traceId, current.canonicalRevision)
+        val resolvedCanonicalTripId0453 = remote.canonicalTripId.trim()
+            .ifBlank { current.tripKey.trim().ifBlank { current.id } }
 
         fun evidence(stage: String, status: String, reason: String, extra: String = "") {
             UnifiedDebugEventStore.record(
@@ -60,7 +62,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
                     append(" stage=").append(stage)
                     append(" status=").append(status)
                     append(" reasonCode=").append(reason)
-                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(current.id))
+                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedCanonicalTripId0453))
                     append(" logicalRevision=").append(current.canonicalRevision)
                     append(" transportRevision=").append(current.publicationRevision)
                     append(" canonicalStateHash=").append(current.canonicalStateHash.takeLast(24))
@@ -77,16 +79,47 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " remoteLogicalRevisionHint=" + remote.canonicalRevision +
                 " remoteTransportRevisionHint=" + remote.publicationRevision,
         )
+        val publicIdentity0453 = remote.remoteTripId.trim()
+        evidence(
+            stage = "PUBLIC_IDENTITY_RESOLUTION",
+            status = if (publicIdentity0453.isNotBlank()) "OK" else "FAILED",
+            reason = if (publicIdentity0453.isNotBlank()) "PUBLIC_IDENTITY_RESOLVED" else "PUBLIC_IDENTITY_UNRESOLVED",
+            extra = "publicIdentityExpected=" + publicIdentity0453 +
+                " previousStage=SERVER_ACK nextStage=" + if (publicIdentity0453.isNotBlank()) "PUBLIC_READBACK_REQUEST" else "STOP",
+        )
+        if (publicIdentity0453.isBlank()) {
+            store.recordPublicMirrorAttestation0411(
+                canonicalTripId = current.id,
+                expectedCanonicalRevision = current.canonicalRevision,
+                expectedPublicationRevision = current.publicationRevision,
+                state = PublicMirrorAttestationState0411.PENDING,
+                expectedHash = current.publicMirrorExpectedHash0411,
+                readbackHash = "",
+                mismatchFields = listOf("publicIdentity"),
+                reason = "PUBLIC_IDENTITY_UNRESOLVED",
+                readbackLatencyMillis = 0L,
+                evidenceId0421 = evidenceId,
+                traceId0421 = traceId,
+                failedStage0421 = "PUBLIC_IDENTITY_RESOLUTION",
+            )
+            evidence(
+                stage = "ATTESTATION",
+                status = "DENIED",
+                reason = "PUBLIC_IDENTITY_UNRESOLVED",
+                extra = "httpSendAttempted=false requestBytes=0",
+            )
+            return PublicMirrorAttestationBatch0411(expected = 1, pending = 1, invalidIdentity = 1)
+        }
         evidence(
             stage = "PUBLIC_READBACK_REQUEST",
             status = "START",
             reason = "INDEPENDENT_PUBLIC_READBACK",
-            extra = "publicIdentityExpected=" + remote.remoteTripId,
+            extra = "publicIdentityExpected=" + publicIdentity0453,
         )
 
         val startedNs = System.nanoTime()
         val readback = try {
-            api.readPublicTripProjection0411(remote.remoteTripId)
+            api.readPublicTripProjection0411(publicIdentity0453)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
@@ -162,7 +195,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             bookings = store.bookingsFor(current.id),
             publicationRevision = current.publicationRevision,
             nowMillis = nowMillis,
-            canonicalTripId = remote.canonicalTripId.ifBlank { current.id },
+            canonicalTripId = resolvedCanonicalTripId0453,
         )
         val diff = compareCanonicalPublicBytes0421(expected, readback.payload)
         evidence(
@@ -388,6 +421,11 @@ internal object PublicMirrorAttestationCoordinator0411 {
             PublicMirrorAttestationState0411.PENDING -> PublicMirrorAttestationBatch0411(
                 expected = 1,
                 pending = 1,
+                readbackLatencyMillis = elapsed,
+            )
+            PublicMirrorAttestationState0411.UNPROVEN -> PublicMirrorAttestationBatch0411(
+                expected = 1,
+                invalidLink = if (finalDecision.linkValid) 0 else 1,
                 readbackLatencyMillis = elapsed,
             )
             else -> PublicMirrorAttestationBatch0411(
