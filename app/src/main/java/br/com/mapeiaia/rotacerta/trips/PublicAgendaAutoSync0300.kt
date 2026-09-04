@@ -89,6 +89,24 @@ internal fun canonicalMirrorBookings0441(
             .toList()
     }
 
+internal fun externalIncrementalCanonicalIdentityMatches0452(
+    resolvedInternalTripId: String,
+    expectedStrongId: String,
+    boundInternalTripId: String,
+    canonicalTripSnapshot: Trip?,
+    source: BlaBlaCollectorTrip,
+): Boolean {
+    val resolved = resolvedInternalTripId.trim()
+    if (resolved.isBlank()) return false
+    return resolved == expectedStrongId ||
+        resolved == boundInternalTripId ||
+        strongExternalSnapshotIdentityMatches0387(
+            canonicalTripId = resolved,
+            snapshotTrip = canonicalTripSnapshot,
+            sourceTrip = source,
+        )
+}
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -772,10 +790,16 @@ internal object PublicAgendaAutoSync0300 {
                 profileUuid,
                 tripId,
             )
+            val canonicalIdentityAccepted0452 = externalIncrementalCanonicalIdentityMatches0452(
+                resolvedInternalTripId = resolvedInternalTripId,
+                expectedStrongId = expectedStrongId,
+                boundInternalTripId = boundInternalTripId,
+                canonicalTripSnapshot = canonicalTripSnapshot,
+                source = source,
+            )
             require(
                 profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1 &&
-                    resolvedInternalTripId.isNotBlank() &&
-                    (resolvedInternalTripId == expectedStrongId || resolvedInternalTripId == boundInternalTripId)
+                    canonicalIdentityAccepted0452
             ) {
                 "Sincronização externa determinística exige internalTripId + conta + profile UUID + tripId fortes."
             }
