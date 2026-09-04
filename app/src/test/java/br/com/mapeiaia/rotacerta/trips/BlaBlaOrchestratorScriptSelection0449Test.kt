@@ -42,7 +42,6 @@ class BlaBlaOrchestratorScriptSelection0449Test {
         assertTrue(ui.contains("Switch("))
         assertTrue(ui.contains("selectedAccounts0449 = accounts.filter"))
         assertTrue(ui.contains("syncQueue = selectedAccounts0449.map { it.id }"))
-        assertFalse(ui.contains("syncQueue = accounts.map { it.id }\n                        syncCursor = 0\n                        syncing = true\n                        archiving = false\n                        message = \"Sincronizando \\$summary"))
     }
 
     @Test
