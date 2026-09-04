@@ -93,19 +93,35 @@ function activeAdminTrips0417(trips, nowMillis = Date.now()) {
   );
 }
 
+function isOfficialBlaBlaHost0417(hostname) {
+  const labels = clean0417(hostname, 253).toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function validatedBlaBlaPublicUrl0417(raw, expectedTripId) {
   const value = clean0417(raw, 1200);
   const expected = clean0417(expectedTripId, 160);
   if (!value || !expected) return "";
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:") return "";
-    if (!/(^|\.)blablacar\.[a-z.]+$/i.test(url.hostname)) return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost0417(url.hostname)) return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
     const path = url.pathname.replace(/\/+$/, "");
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
     const pathId = path.startsWith("/trip/") ? decodeURIComponent(path.slice("/trip/".length)).split("/")[0] : "";
     const actual = clean0417(url.searchParams.get("id") || pathId, 160);
-    return actual === expected ? value : "";
+    if (!actual) return "";
+    // This is a read-only view over canonical state whose public URL was
+    // previously bound by the orchestrator. Public token != administrative ID
+    // is valid; equality is not re-imposed here.
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
+    return url.toString();
   } catch (_) {
     return "";
   }
