@@ -92,8 +92,26 @@ internal object BlaBlaCollectorPassengerModule {
         previous: BlaBlaCollectorTrip?,
         current: BlaBlaCollectorTrip,
     ): BlaBlaCollectorTrip {
-        if (previous == null || !current.passenger_roster_complete) {
-            return preserveStableTripMetadata(previous, BlaBlaPassengerRosterReconciler.reconcile(previous, current))
+        if (previous == null) {
+            return preserveStableTripMetadata(null, current)
+        }
+        if (!current.passenger_roster_complete) {
+            val merged = preserveStableTripMetadata(
+                previous,
+                BlaBlaPassengerRosterReconciler.reconcile(previous, current),
+            )
+            // Incomplete acquisition is not itself a semantic downgrade. When the
+            // reconciled roster is the same last-known complete roster (possibly
+            // enriched with phone/route metadata), retain its completeness. A newly
+            // observed/changed occupancy keeps completeness=false until confirmed.
+            return if (
+                previous.passenger_roster_complete &&
+                sameRosterOccupancy(previous, merged)
+            ) {
+                merged.copy(passenger_roster_complete = true)
+            } else {
+                merged
+            }
         }
         if (current.passengers.isEmpty()) {
             return preserveStableTripMetadata(previous, current.copy(booked_seats = 0))
@@ -153,7 +171,40 @@ internal object BlaBlaCollectorPassengerModule {
                     " action=" + if (previousHref != null) "preserve_previous" else "keep_unavailable",
             )
         }
+        fun observed(currentValue: String?, previousValue: String?): String? =
+            currentValue?.takeIf(String::isNotBlank) ?: previousValue?.takeIf(String::isNotBlank)
+
+        val previousItinerary = previous?.itinerary_stops.orEmpty()
+        val effectiveItinerary = current.itinerary_stops.takeIf(List<String>::isNotEmpty) ?: previousItinerary
+        val sameObservedItinerary = previous != null &&
+            effectiveItinerary.map(::normalizeEvidence) == previousItinerary.map(::normalizeEvidence)
+        val effectiveAvailability = current.availability
+            .takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+            ?: previous?.availability
+                ?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+            ?: current.availability
+        val effectiveValidation = current.uuid_validation
+            .takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+            ?: previous?.uuid_validation
+                ?.takeIf { it.isNotBlank() && !it.equals("unknown", ignoreCase = true) }
+            ?: current.uuid_validation
+
         return current.copy(
+            profile_name = current.profile_name.takeIf(String::isNotBlank) ?: previous?.profile_name.orEmpty(),
+            departure_time = observed(current.departure_time, previous?.departure_time),
+            arrival_time = observed(current.arrival_time, previous?.arrival_time),
+            search_from = observed(current.search_from, previous?.search_from),
+            search_to = observed(current.search_to, previous?.search_to),
+            actual_departure = observed(current.actual_departure, previous?.actual_departure),
+            actual_arrival = observed(current.actual_arrival, previous?.actual_arrival),
+            price = observed(current.price, previous?.price),
+            availability = effectiveAvailability,
+            trip_href = observed(current.trip_href, previous?.trip_href),
+            trip_id = observed(current.trip_id, previous?.trip_id),
+            uuid_validation = effectiveValidation,
+            itinerary_stops = effectiveItinerary,
+            itinerary_authoritative = current.itinerary_authoritative ||
+                (sameObservedItinerary && previous?.itinerary_authoritative == true),
             public_trip_href = currentHref ?: previousHref,
             public_trip_href_source = if (keepsCurrentHref) {
                 current.public_trip_href_source
@@ -169,6 +220,28 @@ internal object BlaBlaCollectorPassengerModule {
             // confirmed for this same strong trip identity.
             published_seats = current.published_seats ?: previous?.published_seats,
         )
+    }
+
+    private fun sameRosterOccupancy(
+        previous: BlaBlaCollectorTrip,
+        current: BlaBlaCollectorTrip,
+    ): Boolean {
+        if (previous.booked_seats != current.booked_seats || previous.passengers.size != current.passengers.size) {
+            return false
+        }
+        val unmatched = current.passengers.toMutableList()
+        return previous.passengers.all { prior ->
+            val index = unmatched.indexOfFirst { candidate ->
+                prior.seats.coerceAtLeast(1) == candidate.seats.coerceAtLeast(1) &&
+                    BlaBlaPassengerRosterReconciler.matches(prior, candidate)
+            }
+            if (index < 0) {
+                false
+            } else {
+                unmatched.removeAt(index)
+                true
+            }
+        }
     }
 
     private fun duplicateEvidenceMatches(
