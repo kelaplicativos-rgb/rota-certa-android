@@ -249,6 +249,25 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun preOperationalReplayEvidencePinpointsTheExactFailingSubstep() {
+        val autoSync = source("PublicAgendaAutoSync0300.kt")
+        listOf(
+            "ONLINE_SETTINGS_READ",
+            "CANONICAL_SOURCE_RESOLUTION",
+            "CANONICAL_PROJECTION_BUILD",
+            "DIAGNOSTIC_CONTEXT_BUILD",
+            "PRIVATE_MIRROR_INPUT_BUILD",
+        ).forEach { stage ->
+            assertTrue(autoSync.contains("stage = \"$stage\""))
+        }
+        assertTrue(autoSync.contains("stage=CANONICAL_OPERATIONAL_GUARD"))
+        assertTrue(autoSync.contains("reasonCode=PRE_OPERATIONAL_EXCEPTION"))
+        assertTrue(autoSync.contains("exceptionClass="))
+        assertTrue(autoSync.contains("exceptionMessage="))
+        assertTrue(autoSync.contains("previousStage=PRIVATE_MIRROR_INPUT_BUILD nextStage=PRIVATE_MIRROR_REQUEST"))
+    }
+
+    @Test
     fun genericUiChangesNoLongerTriggerFullAgendaSync() {
         val activity = source("TripsActivity.kt")
         assertFalse(activity.contains("publicAgendaSyncRevision"))

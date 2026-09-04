@@ -864,20 +864,99 @@ internal object PublicAgendaAutoSync0300 {
                 "Sincronização externa determinística exige snapshot canônico forte ou conta + profile UUID + tripId fortes."
             }
         }
-        val settings = store.onlineSettings()
-        if (!settings.configured) return@withContext false
-        val canonical = canonicalTripSnapshot?.takeIf { trip ->
-            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !trip.deleted &&
-                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim() == tripId
-        } ?: store.trips().firstOrNull { trip ->
-            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !trip.deleted &&
-                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim() == tripId
+        fun <T> preOperationalEvidenceStep0457(
+            stage: String,
+            previousStage: String,
+            nextStage: String,
+            block: () -> T,
+        ): T {
+            return try {
+                val value = block()
+                if (outboxEventId.isNotBlank()) {
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_EVIDENCE_0421",
+                        context.packageName,
+                        buildString {
+                            append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                            append(" traceId=").append(outboxEventId)
+                            append(" correlationId=").append(outboxEventId)
+                            append(" stage=").append(stage)
+                            append(" status=OK")
+                            append(" reasonCode=PRE_OPERATIONAL_STEP_OK")
+                            append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                            append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                            append(" transportRevision=").append(entityRevision)
+                            append(" mutationId=").append(mutationId0421)
+                            append(" idempotencyKey=").append(idempotencyKey0421)
+                            append(" previousStage=").append(previousStage)
+                            append(" nextStage=").append(nextStage)
+                        },
+                    )
+                }
+                value
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                if (outboxEventId.isNotBlank()) {
+                    UnifiedDebugEventStore.record(
+                        "PUBLIC_EVIDENCE_0421",
+                        context.packageName,
+                        buildString {
+                            append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                            append(" traceId=").append(outboxEventId)
+                            append(" correlationId=").append(outboxEventId)
+                            append(" stage=").append(stage)
+                            append(" status=FAILED")
+                            append(" reasonCode=PRE_OPERATIONAL_EXCEPTION")
+                            append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                            append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                            append(" transportRevision=").append(entityRevision)
+                            append(" mutationId=").append(mutationId0421)
+                            append(" idempotencyKey=").append(idempotencyKey0421)
+                            append(" exceptionClass=").append(error.javaClass.name)
+                            append(" exceptionMessage=").append(
+                                UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(180),
+                            )
+                            append(" previousStage=").append(previousStage)
+                            append(" nextStage=STOP")
+                        },
+                    )
+                }
+                throw error
+            }
         }
-        val synthesized = canonical?.let { canonicalTrip ->
+
+        val settings = preOperationalEvidenceStep0457(
+            stage = "ONLINE_SETTINGS_READ",
+            previousStage = "INCREMENTAL_IDENTITY_GUARD",
+            nextStage = "CANONICAL_SOURCE_RESOLUTION",
+        ) {
+            store.onlineSettings()
+        }
+        if (!settings.configured) return@withContext false
+        val canonical = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_SOURCE_RESOLUTION",
+            previousStage = "ONLINE_SETTINGS_READ",
+            nextStage = "CANONICAL_PROJECTION_BUILD",
+        ) {
+            canonicalTripSnapshot?.takeIf { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !trip.deleted &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+            } ?: store.trips().firstOrNull { trip ->
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                    !trip.deleted &&
+                    trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                    trip.blablaTripId?.trim() == tripId
+            }
+        }
+        val synthesized = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_PROJECTION_BUILD",
+            previousStage = "CANONICAL_SOURCE_RESOLUTION",
+            nextStage = "DIAGNOSTIC_CONTEXT_BUILD",
+        ) {
+            canonical?.let { canonicalTrip ->
             toCanonicalExternalProjection0406(
                 canonical = canonicalTrip,
                 source = source,
@@ -886,17 +965,23 @@ internal object PublicAgendaAutoSync0300 {
         } ?: run {
             val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
             val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
-            toPublicTrip(
-                source = source,
-                capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
-                rotaCertaSeatAllocation = rotaCertaQuota,
-                nowMillis = nowMillis,
-            )
+                toPublicTrip(
+                    source = source,
+                    capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
+                    rotaCertaSeatAllocation = rotaCertaQuota,
+                    nowMillis = nowMillis,
+                )
+            }
         } ?: return@withContext false
         val startedAt = System.nanoTime()
         val tripKey = sha256(synthesized.trip.publicToken).take(12)
-        val failureContext = AgendaFailureEvidence.tripContext(
-            trip = synthesized.trip,
+        val failureContext = preOperationalEvidenceStep0457(
+            stage = "DIAGNOSTIC_CONTEXT_BUILD",
+            previousStage = "CANONICAL_PROJECTION_BUILD",
+            nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+        ) {
+            AgendaFailureEvidence.tripContext(
+                trip = synthesized.trip,
             bookings = synthesized.capacityClaims,
             tripKey = tripKey,
             publicIdentity = store.publicExternalBindings()
@@ -904,9 +989,10 @@ internal object PublicAgendaAutoSync0300 {
                 ?.remoteTripId,
             origin = TripRecordOrigin.EXTERNAL_BACKING.name,
             revision = synthesized.snapshotRevision,
-            confirmedSeatsOverride = synthesized.bookedSeats,
-            realAvailableSeatsOverride = synthesized.realAvailableSeats,
-        )
+                confirmedSeatsOverride = synthesized.bookedSeats,
+                realAvailableSeatsOverride = synthesized.realAvailableSeats,
+            )
+        }
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_INCREMENTAL_START",
             context.packageName,
@@ -914,11 +1000,17 @@ internal object PublicAgendaAutoSync0300 {
         )
         val api = TripRemoteApi(settings)
         val privateMirrorTrip0434 = canonical ?: synthesized.trip
-        val privateMirrorBookings0434 = canonicalMirrorBookings0441(
-            canonicalSourceAuthoritative = canonical != null,
-            storedCanonicalBookings = store.bookingsFor(privateMirrorTrip0434.id),
-            synthesizedCapacityClaims = synthesized.capacityClaims,
-        )
+        val privateMirrorBookings0434 = preOperationalEvidenceStep0457(
+            stage = "PRIVATE_MIRROR_INPUT_BUILD",
+            previousStage = "DIAGNOSTIC_CONTEXT_BUILD",
+            nextStage = "CANONICAL_OPERATIONAL_GUARD",
+        ) {
+            canonicalMirrorBookings0441(
+                canonicalSourceAuthoritative = canonical != null,
+                storedCanonicalBookings = store.bookingsFor(privateMirrorTrip0434.id),
+                synthesizedCapacityClaims = synthesized.capacityClaims,
+            )
+        }
         val canonicalTripId0434 = privateMirrorTrip0434.tripKey
             .ifBlank { resolvedInternalTripId }
             .ifBlank { privateMirrorTrip0434.id }
@@ -950,7 +1042,7 @@ internal object PublicAgendaAutoSync0300 {
                     append(" domainInventory=").append(domainInventory0456)
                     append(" publishedSeats=").append(privateMirrorTrip0434.publishedSeats ?: -1)
                     append(" rotaCertaSeatAllocation=").append(privateMirrorTrip0434.rotaCertaSeatAllocation ?: -1)
-                    append(" previousStage=INCREMENTAL_IDENTITY_GUARD nextStage=PRIVATE_MIRROR_REQUEST")
+                    append(" previousStage=PRIVATE_MIRROR_INPUT_BUILD nextStage=PRIVATE_MIRROR_REQUEST")
                 },
             )
         }
