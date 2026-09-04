@@ -894,7 +894,7 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               publicTripHrefSource: 'network_structured_response_url',
               publicTripHrefBinding: 'network_authoritative',
               publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
-              publicTripHrefJsonPath: '${'
+              publicTripHrefJsonPath: 'response.url'
             });
           }
 
