@@ -54,6 +54,36 @@ internal data class AgendaCauseResolution(
     val depthTruncated: Boolean,
 )
 
+internal data class AgendaByteSanitizationEvidence0458(
+    val rawBytes: Int,
+    val sanitizedBytes: Int,
+    val rawSha256: String,
+    val sanitizedSha256: String,
+    val utf8RoundTrip: Boolean,
+    val sanitizerSucceeded: Boolean,
+    val sanitizationChanged: Boolean,
+    val changedByteCount: Int,
+    val firstSanitizedDiffOffset: Int,
+    val sanitizedDiffRanges: List<String>,
+    val nulByteCount: Int,
+    val controlByteCount: Int,
+) {
+    fun compactDetails0458(): String = buildString {
+        append("rawBytes=").append(rawBytes)
+        append(" sanitizedBytes=").append(sanitizedBytes)
+        append(" rawSha256=").append(rawSha256)
+        append(" sanitizedSha256=").append(sanitizedSha256)
+        append(" utf8RoundTrip=").append(utf8RoundTrip)
+        append(" sanitizerSucceeded=").append(sanitizerSucceeded)
+        append(" sanitizationChanged=").append(sanitizationChanged)
+        append(" changedByteCount=").append(changedByteCount)
+        append(" firstSanitizedDiffOffset=").append(firstSanitizedDiffOffset)
+        append(" sanitizedDiffRanges=").append(sanitizedDiffRanges.joinToString(",").ifBlank { "none" })
+        append(" nulByteCount=").append(nulByteCount)
+        append(" controlByteCount=").append(controlByteCount)
+    }
+}
+
 /**
  * Bounded structured failure envelope for the existing AgendaTrace/UnifiedDebugEventStore path.
  * It does not perform I/O, retry, sync, persistence or mutation. All user-visible/exported text
@@ -80,29 +110,89 @@ internal object AgendaFailureEvidence {
         confirmedSeatsOverride: Int? = null,
         realAvailableSeatsOverride: Int? = null,
     ): AgendaFailureTripContext {
-        val seats = operationalSeatSummary(trip, bookings)
-        val departure = Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault())
-        val externalIdentity = canonicalExternalTripIdentityKey(
-            trip.blablaProfileUuid,
-            trip.blablaTripId,
-            trip.blablaManageUrl,
-        )
+        // Evidence generation is observability, never a business precondition.
+        // Every derived value is best-effort so malformed trip/booking shape can
+        // be described without the diagnostic path throwing before the real guard.
+        val seats = runCatching { operationalSeatSummary(trip, bookings) }.getOrNull()
+        val departure = runCatching {
+            Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault())
+        }.getOrNull()
+        val externalIdentity = runCatching {
+            canonicalExternalTripIdentityKey(
+                trip.blablaProfileUuid,
+                trip.blablaTripId,
+                trip.blablaManageUrl,
+            )
+        }.getOrNull()
+        val fallbackInventory = runCatching { operationalInventoryCapacity(trip, bookings) }.getOrNull()
         return AgendaFailureTripContext(
             tripKey = tripKey,
-            canonicalIdentity = externalIdentity ?: trip.id,
+            canonicalIdentity = externalIdentity ?: trip.tripKey.ifBlank { trip.id },
             publicIdentity = publicIdentity?.takeIf(String::isNotBlank) ?: "<unresolved>",
             origin = origin,
             route = trip.title,
-            date = dateFormatter.format(departure),
-            time = timeFormatter.format(departure),
-            blablaQuota = seats.blablaQuotaSeats,
-            rotaCertaQuota = seats.rotaCertaQuotaSeats,
-            operationalInventory = seats.operationalInventorySeats,
-            confirmedSeats = confirmedSeatsOverride ?: seats.confirmedPassengerSeats,
-            realAvailableSeats = realAvailableSeatsOverride ?: seats.availableSeats,
+            date = departure?.let(dateFormatter::format).orEmpty(),
+            time = departure?.let(timeFormatter::format).orEmpty(),
+            blablaQuota = seats?.blablaQuotaSeats ?: trip.publishedSeats?.takeIf { it in 0..999 },
+            rotaCertaQuota = seats?.rotaCertaQuotaSeats ?: trip.rotaCertaSeatAllocation?.takeIf { it in 0..999 },
+            operationalInventory = seats?.operationalInventorySeats ?: fallbackInventory,
+            confirmedSeats = confirmedSeatsOverride ?: seats?.confirmedPassengerSeats,
+            realAvailableSeats = realAvailableSeatsOverride ?: seats?.availableSeats,
             revision = revision,
             signature = signature,
             snapshotVersion = if (revision.isBlank()) "" else revision.substringBefore(':').take(40),
+        )
+    }
+
+    fun byteSanitizationEvidence0458(raw: ByteArray): AgendaByteSanitizationEvidence0458 {
+        val decoded = raw.toString(Charsets.UTF_8)
+        val utf8RoundTrip = decoded.toByteArray(Charsets.UTF_8).contentEquals(raw)
+        var sanitizerSucceeded = true
+        val sanitizedText = runCatching {
+            UnifiedDebugEventStore.sanitizeForExport(decoded)
+        }.getOrElse {
+            sanitizerSucceeded = false
+            "[evidence sanitization failed]"
+        }
+        val sanitized = sanitizedText.toByteArray(Charsets.UTF_8)
+        val maxLength = maxOf(raw.size, sanitized.size)
+        var first = -1
+        var changed = 0
+        var rangeStart = -1
+        val ranges = mutableListOf<String>()
+        for (index in 0 until maxLength) {
+            val differs = raw.getOrNull(index) != sanitized.getOrNull(index)
+            if (differs) {
+                changed += 1
+                if (first < 0) first = index
+                if (rangeStart < 0) rangeStart = index
+            } else if (rangeStart >= 0) {
+                if (ranges.size < 12) ranges += "$rangeStart-${index - 1}"
+                rangeStart = -1
+            }
+        }
+        if (rangeStart >= 0 && ranges.size < 12) ranges += "$rangeStart-${maxLength - 1}"
+
+        fun sha(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
+            .digest(bytes)
+            .joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
+
+        return AgendaByteSanitizationEvidence0458(
+            rawBytes = raw.size,
+            sanitizedBytes = sanitized.size,
+            rawSha256 = sha(raw),
+            sanitizedSha256 = sha(sanitized),
+            utf8RoundTrip = utf8RoundTrip,
+            sanitizerSucceeded = sanitizerSucceeded,
+            sanitizationChanged = !raw.contentEquals(sanitized),
+            changedByteCount = changed,
+            firstSanitizedDiffOffset = first,
+            sanitizedDiffRanges = ranges,
+            nulByteCount = raw.count { it.toInt() == 0 },
+            controlByteCount = raw.count { byte ->
+                val unsigned = byte.toInt() and 0xff
+                unsigned < 0x20 && unsigned !in setOf(0x09, 0x0a, 0x0d)
+            },
         )
     }
 
