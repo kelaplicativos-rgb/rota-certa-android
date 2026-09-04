@@ -698,6 +698,19 @@ function normalizeBlaBlaPublicUrl(raw, expectedTripId = "") {
   return normalizeBlaBlaUrl(raw, expectedTripId, true);
 }
 
+/**
+ * Canonical projection input is already bound upstream by the BlaBlaCar
+ * orchestrator to the strong administrative trip identity. BlaBlaCar may use a
+ * distinct opaque token in the public /trip URL, so this trusted canonical path
+ * validates the public permalink structurally without re-imposing ID equality.
+ * General/unbound write paths continue to use normalizeBlaBlaPublicUrl().
+ */
+function normalizeCanonicalBoundBlaBlaPublicUrl0423(raw, expectedAdministrativeTripId = "") {
+  const expected = cleanText(expectedAdministrativeTripId, 160);
+  if (!expected) return "";
+  return normalizeBlaBlaPublicUrl(raw, expected) || normalizeBlaBlaUrl(raw, "", true);
+}
+
 function normalizeStops(rawStops) {
   if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > 24) {
     throw new Error("A viagem precisa ter entre 2 e 24 paradas.");
@@ -1128,7 +1141,7 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     capacityReliable: payload.capacityReliable === true,
     itineraryAuthoritative: payload.itineraryAuthoritative === true,
     publicUrl: cleanText(payload.publicUrl, 1200),
-    blablaPublicUrl: normalizeBlaBlaPublicUrl(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160)),
+    blablaPublicUrl: normalizeCanonicalBoundBlaBlaPublicUrl0423(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160)),
     publicationRevision: Math.max(0, Math.floor(Number(payload.publicationRevision || 0))),
     canonicalStateHash: cleanText(payload.canonicalStateHash, 160),
   };
