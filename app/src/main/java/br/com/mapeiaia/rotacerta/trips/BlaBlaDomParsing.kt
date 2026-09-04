@@ -33,6 +33,79 @@ data class BlaBlaDomRideCandidate(
         get() = passengerRosterReportedComplete
 }
 
+internal data class BlaBlaExactCandidateHydration0451(
+    val candidate: BlaBlaDomRideCandidate,
+    val sourceChain: List<String>,
+)
+
+internal fun rehydrateExactCandidate0451(
+    targetHref: String,
+    profileUuid: String,
+    tripId: String,
+    canonicalTrips: List<Trip>,
+    dynamicTrips: List<BlaBlaCollectorTrip>,
+    collectorTrips: List<BlaBlaCollectorTrip>,
+): BlaBlaExactCandidateHydration0451 {
+    val expectedProfile = profileUuid.trim()
+    val expectedTripId = tripId.trim()
+    var candidate = BlaBlaDomRideCandidate(href = targetHref.trim())
+    if (expectedProfile.isBlank() || expectedTripId.isBlank()) {
+        return BlaBlaExactCandidateHydration0451(candidate = candidate, sourceChain = emptyList())
+    }
+
+    val sources = mutableListOf<String>()
+
+    fun matchesObservation(observation: BlaBlaCollectorTrip): Boolean =
+        observation.profile_uuid.trim().equals(expectedProfile, ignoreCase = true) &&
+            (
+                observation.trip_id?.trim() == expectedTripId ||
+                    BlaBlaCollectorUrlModule.tripId(observation.trip_href.orEmpty()) == expectedTripId
+                )
+
+    fun firstObserved(vararg values: String?): String =
+        values.firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
+
+    fun enrich(source: String, observation: BlaBlaCollectorTrip?) {
+        if (observation == null || !matchesObservation(observation)) return
+        val enriched = candidate.copy(
+            departureTime = candidate.departureTime.ifBlank { observation.departure_time.orEmpty().trim() },
+            arrivalTime = candidate.arrivalTime.ifBlank { observation.arrival_time.orEmpty().trim() },
+            origin = candidate.origin.ifBlank {
+                firstObserved(observation.actual_departure, observation.search_from)
+            },
+            destination = candidate.destination.ifBlank {
+                firstObserved(observation.actual_arrival, observation.search_to)
+            },
+            price = candidate.price.ifBlank { observation.price.orEmpty().trim() },
+            dateText = candidate.dateText.ifBlank { observation.date.trim() },
+        )
+        if (enriched != candidate) {
+            candidate = enriched
+            sources += source
+        }
+    }
+
+    val canonical = canonicalTrips
+        .asSequence()
+        .filter { trip ->
+            trip.blablaProfileUuid?.trim()?.equals(expectedProfile, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == expectedTripId
+        }
+        .maxWithOrNull(compareBy<Trip>({ it.canonicalRevision }, { it.updatedAtMillis }))
+    enrich("trip_store", canonical?.externalSnapshot)
+
+    val dynamic = dynamicTrips.firstOrNull(::matchesObservation)
+    enrich("dynamic_session", dynamic)
+
+    val collector = collectorTrips.firstOrNull(::matchesObservation)
+    enrich("collector_state", collector)
+
+    return BlaBlaExactCandidateHydration0451(
+        candidate = candidate,
+        sourceChain = sources.distinct(),
+    )
+}
+
 @Serializable
 data class BlaBlaDomTripDetail(
     val url: String = "",
