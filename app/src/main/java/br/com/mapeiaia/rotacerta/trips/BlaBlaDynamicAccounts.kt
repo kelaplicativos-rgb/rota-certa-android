@@ -160,11 +160,25 @@ object BlaBlaDynamicSessionIntents {
         .putExtra(EXTRA_MODE, MODE_SYNC)
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         syncDates(context, account, listOf(targetDate))
+
     fun syncDates(
         context: Context,
         account: BlaBlaDynamicAccount,
         targetDates: Collection<LocalDate>,
-        enabledScripts: Collection<BlaBlaBrowserRequest>? = null,
+    ): Intent = syncDatesInternal0449(context, account, targetDates, enabledScripts = null)
+
+    internal fun syncDates(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+        enabledScripts: Collection<BlaBlaBrowserRequest>,
+    ): Intent = syncDatesInternal0449(context, account, targetDates, enabledScripts)
+
+    private fun syncDatesInternal0449(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+        enabledScripts: Collection<BlaBlaBrowserRequest>?,
     ): Intent {
         val result = intent(context, account, MODE_SYNC).putStringArrayListExtra(
             EXTRA_TARGET_DATES,
