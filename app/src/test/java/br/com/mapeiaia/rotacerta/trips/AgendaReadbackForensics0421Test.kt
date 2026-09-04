@@ -210,7 +210,7 @@ class AgendaReadbackForensics0421Test {
             snapshot = snapshot,
             status = TripPublicationStatus0387.DELIVERED,
         )
-        assertTrue(
+        assertFalse(
             shouldDeduplicatePublicationEvent0410(
                 latest = latest,
                 operation = TripPublicationOperation0387.UPSERT_LOCAL,
