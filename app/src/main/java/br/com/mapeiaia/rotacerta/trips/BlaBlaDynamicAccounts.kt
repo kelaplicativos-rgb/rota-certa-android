@@ -142,6 +142,7 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_TARGET_TRIP_ID = "blablacar_target_trip_id"
     const val EXTRA_TARGET_DATE = "blablacar_target_date"
     const val EXTRA_TARGET_DATES = "blablacar_target_dates"
+    const val EXTRA_ENABLED_SCRIPTS_0449 = "blablacar_enabled_scripts_0449"
     const val EXTRA_AUTOMATIC_COLLECTION_GENERATION = "blablacar_automatic_collection_generation_0400"
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
     const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
@@ -159,11 +160,24 @@ object BlaBlaDynamicSessionIntents {
         .putExtra(EXTRA_MODE, MODE_SYNC)
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         syncDates(context, account, listOf(targetDate))
-    fun syncDates(context: Context, account: BlaBlaDynamicAccount, targetDates: Collection<LocalDate>): Intent =
-        intent(context, account, MODE_SYNC).putStringArrayListExtra(
+    fun syncDates(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        targetDates: Collection<LocalDate>,
+        enabledScripts: Collection<BlaBlaBrowserRequest>? = null,
+    ): Intent {
+        val result = intent(context, account, MODE_SYNC).putStringArrayListExtra(
             EXTRA_TARGET_DATES,
             ArrayList(targetDates.distinct().sorted().map(LocalDate::toString)),
         )
+        if (enabledScripts != null) {
+            result.putStringArrayListExtra(
+                EXTRA_ENABLED_SCRIPTS_0449,
+                ArrayList(enabledScripts.map(BlaBlaBrowserRequest::name).distinct().sorted()),
+            )
+        }
+        return result
+    }
     fun syncExact(context: Context, account: BlaBlaDynamicAccount, tripId: String, tripHref: String): Intent =
         intent(context, account, MODE_SYNC)
             .putExtra(EXTRA_TARGET_TRIP_ID, tripId)
@@ -507,6 +521,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var targetTripId = ""
     private var targetTripHref = ""
     private var targetDates: List<LocalDate> = emptyList()
+    private var scriptSelection0449 = BlaBlaDateScopeScriptSelection0449.legacyAll()
     // Compatibility projection for page-finished dispatch; script authority lives in browserOrchestrator.
     private var phase = Phase.IDLE
     private var candidates = emptyList<BlaBlaDomRideCandidate>()
@@ -631,6 +646,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             .sorted()
             .takeIf { mode == BlaBlaDynamicSessionIntents.MODE_SYNC }
             .orEmpty()
+        val enabledScriptNames0449 = intent?.getStringArrayListExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_ENABLED_SCRIPTS_0449,
+        )
+        scriptSelection0449 = if (
+            mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
+            targetDates.isNotEmpty()
+        ) {
+            BlaBlaDateScopeScriptSelection0449.fromNames(enabledScriptNames0449)
+        } else {
+            BlaBlaDateScopeScriptSelection0449.legacyAll()
+        }
         if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
             targetTripId = ""
             targetTripHref = ""
@@ -1305,7 +1331,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         UnifiedDebugEventStore.record(
             "SYNC_START",
             packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(PROFILE_URL)} dateScopeCount=${targetDates.size} dateScopeStart=${targetDates.firstOrNull() ?: "none"} dateScopeEnd=${targetDates.lastOrNull() ?: "none"}",
+            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(PROFILE_URL)} dateScopeCount=${targetDates.size} dateScopeStart=${targetDates.firstOrNull() ?: "none"} dateScopeEnd=${targetDates.lastOrNull() ?: "none"} selectiveScripts=${scriptSelection0449.selective} requestedScripts=${scriptSelection0449.requestedNames().joinToString(",")}",
         )
         loadTrackedUrl(PROFILE_URL)
     }
