@@ -905,6 +905,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             currentContext = ::browserExecutionContext,
             deserializer = serializer<DynamicPageState0426>(),
             reason = "source_access_probe_0426",
+            timeoutMs = SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447,
         ) { page ->
             pageAccessInspectionInFlight0426 = false
             if (destroyed) return@executeCollectionStep
@@ -3494,6 +3495,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_IDENTITY_READ_ATTEMPTS = 3
         private const val IDENTITY_RETRY_MS = 700L
         private const val HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404 = 20_000L
+        internal const val SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447 = 4_000L
         private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24
         private const val PROFILE_REVIEW_SCROLL_SETTLE_MS = 700L
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2
