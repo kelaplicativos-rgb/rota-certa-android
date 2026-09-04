@@ -327,7 +327,7 @@ private data class DynamicPublicTripShareEvidence(
 )
 
 @Serializable
-private data class DynamicPublicSearchLinkCard(
+internal data class DynamicPublicSearchLinkCard(
     val driverName: String = "",
     val departureTime: String? = null,
     val actualDeparture: String? = null,
@@ -340,6 +340,48 @@ private data class DynamicPublicSearchLinkPage(
     val bodyText: String = "",
     val cards: List<DynamicPublicSearchLinkCard> = emptyList(),
 )
+
+private fun normalizedExactPublicSearchTime0448(raw: String?): String? {
+    val match = Regex("(?<!\\d)([01]?\\d|2[0-3]):([0-5]\\d)(?!\\d)")
+        .find(raw.orEmpty())
+        ?: return null
+    val hour = match.groupValues[1].toIntOrNull() ?: return null
+    return hour.toString().padStart(2, '0') + ":" + match.groupValues[2]
+}
+
+internal fun resolveExactPublicSearchTripLink0448(
+    expectedAdministrativeTripId: String?,
+    expectedDriverName: String?,
+    expectedDepartureTime: String?,
+    cards: List<DynamicPublicSearchLinkCard>,
+    providerOrigin: String?,
+): ResolvedPublicTripLink0423? {
+    val administrativeTripId = expectedAdministrativeTripId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val driverKey = BlaBlaPublicSearchPlanner.normalizePerson(expectedDriverName.orEmpty())
+        .takeIf(String::isNotEmpty)
+        ?: return null
+    val departureTime = normalizedExactPublicSearchTime0448(expectedDepartureTime) ?: return null
+    val origin = BlaBlaCollectorUrlModule.origin(providerOrigin) ?: return null
+
+    val matchingHrefs = cards.mapNotNull { card ->
+        if (BlaBlaPublicSearchPlanner.normalizePerson(card.driverName) != driverKey) return@mapNotNull null
+        if (normalizedExactPublicSearchTime0448(card.departureTime) != departureTime) return@mapNotNull null
+        val raw = card.href?.trim()?.takeIf(String::isNotEmpty) ?: return@mapNotNull null
+        val absolute = if (raw.startsWith('/')) "$origin$raw" else raw
+        BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+            raw = absolute,
+            expectedAdministrativeTripId = administrativeTripId,
+            boundAdministrativeTripId = administrativeTripId,
+        )
+    }.distinct()
+
+    val href = matchingHrefs.singleOrNull() ?: return null
+    return ResolvedPublicTripLink0423(
+        href = href,
+        source = "exact_public_search",
+        binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+    )
+}
 
 @Serializable
 private data class DynamicPassengerCardOpenState(
@@ -533,6 +575,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var lastExternalNavigationAtMillis0426 = 0L
     private var lastNavigationIntervalMillis0426 = -1L
     private var pageAccessInspectionInFlight0426 = false
+    private var sourceAccessInspectedSyncGeneration0448 = Long.MIN_VALUE
+    private var sourceAccessInspectedNavigationGeneration0448 = Long.MIN_VALUE
     private var restrictionHandledGeneration0426 = Long.MIN_VALUE
 
 
@@ -895,7 +939,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun inspectSourceAccess0426(view: WebView, url: String, onAvailable: () -> Unit) {
-        if (destroyed || pageAccessInspectionInFlight0426) return
+        if (destroyed) return
+        val expectedSync = syncGeneration
+        val expectedNavigation = navigationGeneration
+        if (
+            sourceAccessInspectedSyncGeneration0448 == expectedSync &&
+            sourceAccessInspectedNavigationGeneration0448 == expectedNavigation
+        ) {
+            onAvailable()
+            return
+        }
+        if (pageAccessInspectionInFlight0426) return
         pageAccessInspectionInFlight0426 = true
         browserOrchestrator.executeCollectionStep(
             androidContext = this,
@@ -908,7 +962,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
             timeoutMs = SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447,
         ) { page ->
             pageAccessInspectionInFlight0426 = false
-            if (destroyed) return@executeCollectionStep
+            if (
+                destroyed ||
+                expectedSync != syncGeneration ||
+                expectedNavigation != navigationGeneration
+            ) return@executeCollectionStep
+            sourceAccessInspectedSyncGeneration0448 = expectedSync
+            sourceAccessInspectedNavigationGeneration0448 = expectedNavigation
             val detection = BlaBlaSourceAccessDetector0426.detect(
                 BlaBlaSourceAccessProbe0426(
                     finalUrl = page?.url?.takeIf(String::isNotBlank) ?: url,
@@ -2271,22 +2331,44 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val captured = exactPublicTripHrefForTrip(
+            val providerOrigin = BlaBlaCollectorUrlModule.origin(webView.url)
+                ?: BlaBlaCollectorUrlModule.origin(candidate.href)
+            val sameIdPublicHref = exactPublicTripHrefForTrip(
                 expectedTripId = tripId,
                 hrefs = evidence?.cards.orEmpty().map { it.href },
-                providerOrigin = BlaBlaCollectorUrlModule.origin(webView.url)
-                    ?: BlaBlaCollectorUrlModule.origin(candidate.href),
+                providerOrigin = providerOrigin,
             )
-            if (captured != null) {
-                pendingTripDetail = pendingTripDetail?.copy(
-                    publicTripHref = captured,
-                    publicTripHrefSource = "exact_public_search",
-                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+            val resolvedPublicLink = sameIdPublicHref?.let { href ->
+                ResolvedPublicTripLink0423(
+                    href = href,
+                    source = "exact_public_search",
+                    binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
                 )
+            } ?: resolveExactPublicSearchTripLink0448(
+                expectedAdministrativeTripId = tripId,
+                expectedDriverName = pendingTripDetail?.detail?.driverName
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+                    ?: account.profileName,
+                expectedDepartureTime = pendingTripDetail?.detail?.departureTime
+                    ?.trim()
+                    ?.takeIf(String::isNotEmpty)
+                    ?: candidate.departureTime,
+                cards = evidence?.cards.orEmpty(),
+                providerOrigin = providerOrigin,
+            )
+            if (resolvedPublicLink != null) {
+                pendingTripDetail = pendingTripDetail?.copy(
+                    publicTripHref = resolvedPublicLink.href,
+                    publicTripHrefSource = resolvedPublicLink.source,
+                    publicTripHrefBinding = resolvedPublicLink.binding,
+                )
+                val publicTripId = BlaBlaCollectorUrlModule.publicTripPublicId(resolvedPublicLink.href).orEmpty()
+                val relation = if (publicTripId == tripId) "same" else "different"
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId source=exact_public_search exactTrip=true cards=${evidence?.cards?.size ?: 0} fingerprint=${publicTripHrefFingerprint0423(captured)}",
+                    "account=${account.displayLabel} tripId=$tripId source=${resolvedPublicLink.source} binding=${resolvedPublicLink.binding} exactTrip=true cards=${evidence?.cards?.size ?: 0} publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolvedPublicLink.href)}",
                 )
                 loadNextPassengerContact(expectedSync, expectedCandidate)
                 return@evaluateRequest
@@ -2305,7 +2387,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             UnifiedDebugEventStore.record(
                 "PUBLIC_TRIP_LINK_UNAVAILABLE",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId source=exact_public_search cards=${evidence?.cards?.size ?: 0} attempts=${publicTripSearchReadAttempts + 1} reason=no_exact_trip_id_match action=continue_without_inventing_link",
+                "account=${account.displayLabel} tripId=$tripId source=exact_public_search cards=${evidence?.cards?.size ?: 0} attempts=${publicTripSearchReadAttempts + 1} reason=no_unique_verified_public_card_match action=continue_without_inventing_link",
             )
             loadNextPassengerContact(expectedSync, expectedCandidate)
         }
