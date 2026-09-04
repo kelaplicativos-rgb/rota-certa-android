@@ -116,7 +116,7 @@ class BlaBlaNetworkDiagnosticRecorderTest {
         assertTrue(script.contains("publicTripHrefSource: 'network_structured_response_id'"))
         assertTrue(script.contains("function rememberBoundResponsePublicTripUrl(finalUrl, endpoint, requestUrl, pageTripIdAtRequest)"))
         assertTrue(script.contains("publicTripHrefSource: 'network_structured_response_url'"))
-        assertTrue(script.contains("publicTripHrefJsonPath: '$response.url'"))
+        assertTrue(script.contains("publicTripHrefJsonPath: '\$response.url'"))
         val responseUrlEvidence = script.indexOf("response && response.url ? response.url : ''")
         val firstNonJsonReturn = script.indexOf("if (!contentType.includes('json'))")
         assertTrue(responseUrlEvidence >= 0)
