@@ -2554,7 +2554,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 BlaBlaDirectPassengerStep.FINISH -> break
             }
         }
-        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+        if (
+            BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+            scriptSelection0449.wantsSeatData()
+        ) {
             loadCurrentTripEdit(expectedSync, expectedCandidate)
         } else {
             UnifiedDebugEventStore.record(
@@ -2995,7 +2998,10 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href)
-        if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+        if (
+            BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+            scriptSelection0449.wantsSeatData()
+        ) {
             val seatState = BlaBlaCollectorSeatModule.state(
                 tripId = candidateTripId,
                 editHref = pendingEditHref,
@@ -3008,15 +3014,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return
             }
         }
-        val rosterState = BlaBlaCollectorPassengerModule.rosterState(
-            passengerCount = pendingTripPassengers.size,
-            rosterComplete = result.detail.passengerRosterComplete,
-            explicitEmpty = result.explicitEmptyRoster,
-        )
-        if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
-            skipped++
-            blockCurrentCard(expectedSync, expectedCandidate, "finalize_unknown_roster")
-            return
+        if (scriptSelection0449.wantsPassengerData()) {
+            val rosterState = BlaBlaCollectorPassengerModule.rosterState(
+                passengerCount = pendingTripPassengers.size,
+                rosterComplete = result.detail.passengerRosterComplete,
+                explicitEmpty = result.explicitEmptyRoster,
+            )
+            if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+                skipped++
+                blockCurrentCard(expectedSync, expectedCandidate, "finalize_unknown_roster")
+                return
+            }
         }
         val enrichedDetail = result.detail.copy(passengers = pendingTripPassengers.toList())
         val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(enrichedDetail.url)
