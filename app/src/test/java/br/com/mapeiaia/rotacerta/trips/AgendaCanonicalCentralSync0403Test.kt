@@ -203,7 +203,7 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(background.contains("!publicationAlreadyCurrent0453"))
         assertTrue(background.contains("publicMirrorProjectionCurrent0411()"))
         assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
-        assertTrue(background.contains("result=UNCHANGED_SKIP publicationAlreadyCurrent=$publicationAlreadyCurrent0453"))
+        assertTrue(background.contains("result=UNCHANGED_SKIP publicationAlreadyCurrent=\$publicationAlreadyCurrent0453"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403"))
         assertTrue(background.contains("store.bookingsFor(previousBookingTripId)"))
         assertTrue(background.contains("binding.copy("))
