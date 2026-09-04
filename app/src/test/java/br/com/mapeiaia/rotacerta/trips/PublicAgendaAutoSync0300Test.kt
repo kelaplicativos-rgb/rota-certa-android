@@ -204,6 +204,75 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun canonicalReplayUsesAuthoritativeTripEvenWhenRawCollectorIsNoLongerDiscoverable() {
+        val canonical = Trip(
+            id = "canonical-trip-1",
+            title = "Santo André → São Tomé das Letras",
+            departureAtMillis = 1_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "canonical-sa", order = 0, name = "Santo André"),
+                TripStop(id = "canonical-stl", order = 1, name = "São Tomé das Letras"),
+            ),
+            publicToken = "bbcanonicaltoken",
+            remoteId = "remote-existing",
+            blablaProfileUuid = "profile-canonical",
+            blablaTripId = "trip-canonical",
+            publishedSeats = 3,
+            rotaCertaSeatAllocation = 1,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = 10,
+            publicationRevision = 3,
+            tripKey = "tripkey:canonical",
+            canonicalStateHash = "tripstate-v1:canonical",
+            externalSnapshotFingerprint = "bbcap-v2:canonical",
+        )
+        val staleRawSnapshot = BlaBlaCollectorTrip(
+            profile_uuid = "profile-canonical",
+            trip_id = "trip-canonical",
+            date = "invalid-date",
+            departure_time = "11:00",
+            booked_seats = 1,
+            published_seats = 3,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro",
+                    seats = 1,
+                    boarding = "Santo André",
+                    dropoff = "São Tomé das Letras",
+                ),
+            ),
+        )
+
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = staleRawSnapshot,
+                capacity = 4,
+                nowMillis = 2_000L,
+                zoneId = zone,
+            ),
+        )
+
+        val projected = PublicAgendaAutoSync0300.toCanonicalExternalProjection0406(
+            canonical = canonical,
+            source = staleRawSnapshot,
+            nowMillis = 2_000L,
+        )
+
+        assertNotNull(projected)
+        assertEquals(canonical.id, projected.trip.id)
+        assertEquals(canonical.tripKey, projected.trip.tripKey)
+        assertEquals(canonical.departureAtMillis, projected.trip.departureAtMillis)
+        assertEquals(listOf("canonical-sa", "canonical-stl"), projected.trip.stops.map(TripStop::id))
+        assertEquals(1, projected.bookedSeats)
+        assertEquals("canonical-sa", projected.capacityClaims.single().boardingStopId)
+        assertEquals("canonical-stl", projected.capacityClaims.single().dropoffStopId)
+        assertEquals("bbcap-v2:canonical", projected.snapshotRevision)
+    }
+
+    @Test
     fun departedCollectorTripIsNotRepublished() {
         val departure = LocalDate.of(2030, 9, 10)
             .atTime(LocalTime.of(11, 0))
