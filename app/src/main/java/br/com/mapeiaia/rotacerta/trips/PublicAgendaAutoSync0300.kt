@@ -864,64 +864,99 @@ internal object PublicAgendaAutoSync0300 {
                 "Sincronização externa determinística exige snapshot canônico forte ou conta + profile UUID + tripId fortes."
             }
         }
+        fun recordPreOperationalEvidence0458(
+            stage: String,
+            status: String,
+            reasonCode: String,
+            previousStage: String,
+            nextStage: String,
+            startedNs: Long,
+            error: Throwable? = null,
+        ) {
+            if (outboxEventId.isBlank()) return
+            runCatching {
+                val causeResolution = error?.let(AgendaFailureEvidence::resolveCauseChain)
+                val root = causeResolution?.chain?.lastOrNull()
+                val sourceFrame = error?.stackTrace?.firstOrNull {
+                    it.className.startsWith("br.com.mapeiaia.rotacerta")
+                }
+                val exceptionMessage = error?.message.orEmpty().let { raw ->
+                    runCatching { UnifiedDebugEventStore.sanitizeForExport(raw) }
+                        .getOrDefault("<sanitization-failed>")
+                        .replace('"', '\'')
+                        .take(240)
+                }
+                val rootMessage = root?.message.orEmpty().let { raw ->
+                    runCatching { UnifiedDebugEventStore.sanitizeForExport(raw) }
+                        .getOrDefault("<sanitization-failed>")
+                        .replace('"', '\'')
+                        .take(240)
+                }
+                UnifiedDebugEventStore.recordAlways(
+                    "PUBLIC_EVIDENCE_0421",
+                    context.packageName,
+                    buildString {
+                        append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                        append(" traceId=").append(outboxEventId)
+                        append(" correlationId=").append(outboxEventId)
+                        append(" stage=").append(stage)
+                        append(" status=").append(status)
+                        append(" reasonCode=").append(reasonCode)
+                        append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                        append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                        append(" transportRevision=").append(entityRevision)
+                        append(" mutationId=").append(mutationId0421)
+                        append(" idempotencyKey=").append(idempotencyKey0421)
+                        append(" durationMs=").append(((System.nanoTime() - startedNs).coerceAtLeast(0L)) / 1_000_000L)
+                        if (error != null) {
+                            append(" exceptionClass=").append(error.javaClass.name)
+                            append(" exceptionMessage=\"").append(exceptionMessage).append('\"')
+                            append(" rootCauseClass=").append(root?.javaClass?.name.orEmpty())
+                            append(" rootCauseMessage=\"").append(rootMessage).append('\"')
+                            if (sourceFrame != null) {
+                                append(" exceptionSource=")
+                                    .append(sourceFrame.fileName ?: sourceFrame.className.substringAfterLast('.'))
+                                    .append(':').append(sourceFrame.methodName)
+                                    .append(':').append(sourceFrame.lineNumber)
+                            }
+                        }
+                        append(" previousStage=").append(previousStage)
+                        append(" nextStage=").append(nextStage)
+                    },
+                )
+            }
+        }
+
         fun <T> preOperationalEvidenceStep0457(
             stage: String,
             previousStage: String,
             nextStage: String,
             block: () -> T,
         ): T {
+            val startedNs0458 = System.nanoTime()
             return try {
                 val value = block()
-                if (outboxEventId.isNotBlank()) {
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_EVIDENCE_0421",
-                        context.packageName,
-                        buildString {
-                            append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
-                            append(" traceId=").append(outboxEventId)
-                            append(" correlationId=").append(outboxEventId)
-                            append(" stage=").append(stage)
-                            append(" status=OK")
-                            append(" reasonCode=PRE_OPERATIONAL_STEP_OK")
-                            append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
-                            append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
-                            append(" transportRevision=").append(entityRevision)
-                            append(" mutationId=").append(mutationId0421)
-                            append(" idempotencyKey=").append(idempotencyKey0421)
-                            append(" previousStage=").append(previousStage)
-                            append(" nextStage=").append(nextStage)
-                        },
-                    )
-                }
+                recordPreOperationalEvidence0458(
+                    stage = stage,
+                    status = "OK",
+                    reasonCode = "PRE_OPERATIONAL_STEP_OK",
+                    previousStage = previousStage,
+                    nextStage = nextStage,
+                    startedNs = startedNs0458,
+                )
                 value
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Throwable) {
-                if (outboxEventId.isNotBlank()) {
-                    UnifiedDebugEventStore.record(
-                        "PUBLIC_EVIDENCE_0421",
-                        context.packageName,
-                        buildString {
-                            append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
-                            append(" traceId=").append(outboxEventId)
-                            append(" correlationId=").append(outboxEventId)
-                            append(" stage=").append(stage)
-                            append(" status=FAILED")
-                            append(" reasonCode=PRE_OPERATIONAL_EXCEPTION")
-                            append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
-                            append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
-                            append(" transportRevision=").append(entityRevision)
-                            append(" mutationId=").append(mutationId0421)
-                            append(" idempotencyKey=").append(idempotencyKey0421)
-                            append(" exceptionClass=").append(error.javaClass.name)
-                            append(" exceptionMessage=").append(
-                                UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(180),
-                            )
-                            append(" previousStage=").append(previousStage)
-                            append(" nextStage=STOP")
-                        },
-                    )
-                }
+                recordPreOperationalEvidence0458(
+                    stage = stage,
+                    status = "FAILED",
+                    reasonCode = "PRE_OPERATIONAL_EXCEPTION",
+                    previousStage = previousStage,
+                    nextStage = "STOP",
+                    startedNs = startedNs0458,
+                    error = error,
+                )
                 throw error
             }
         }
@@ -975,22 +1010,53 @@ internal object PublicAgendaAutoSync0300 {
         } ?: return@withContext false
         val startedAt = System.nanoTime()
         val tripKey = sha256(synthesized.trip.publicToken).take(12)
-        val failureContext = preOperationalEvidenceStep0457(
-            stage = "DIAGNOSTIC_CONTEXT_BUILD",
-            previousStage = "CANONICAL_PROJECTION_BUILD",
-            nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
-        ) {
-            AgendaFailureEvidence.tripContext(
+        val diagnosticStartedNs0458 = System.nanoTime()
+        val failureContext = try {
+            val value = AgendaFailureEvidence.tripContext(
                 trip = synthesized.trip,
-            bookings = synthesized.capacityClaims,
-            tripKey = tripKey,
-            publicIdentity = store.publicExternalBindings()
-                .firstOrNull { it.publicToken == synthesized.trip.publicToken }
-                ?.remoteTripId,
-            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
-            revision = synthesized.snapshotRevision,
+                bookings = synthesized.capacityClaims,
+                tripKey = tripKey,
+                publicIdentity = store.publicExternalBindings()
+                    .firstOrNull { it.publicToken == synthesized.trip.publicToken }
+                    ?.remoteTripId,
+                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                revision = synthesized.snapshotRevision,
                 confirmedSeatsOverride = synthesized.bookedSeats,
                 realAvailableSeatsOverride = synthesized.realAvailableSeats,
+            )
+            recordPreOperationalEvidence0458(
+                stage = "DIAGNOSTIC_CONTEXT_BUILD",
+                status = "OK",
+                reasonCode = "DIAGNOSTIC_CONTEXT_READY",
+                previousStage = "CANONICAL_PROJECTION_BUILD",
+                nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+                startedNs = diagnosticStartedNs0458,
+            )
+            value
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            // Observability is fail-open: a diagnostic envelope must never block
+            // the canonical publication pipeline.
+            recordPreOperationalEvidence0458(
+                stage = "DIAGNOSTIC_CONTEXT_BUILD",
+                status = "DEGRADED",
+                reasonCode = "DIAGNOSTIC_CONTEXT_FALLBACK",
+                previousStage = "CANONICAL_PROJECTION_BUILD",
+                nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+                startedNs = diagnosticStartedNs0458,
+                error = error,
+            )
+            AgendaFailureTripContext(
+                tripKey = tripKey,
+                canonicalIdentity = synthesized.trip.tripKey.ifBlank { synthesized.trip.id },
+                publicIdentity = "<unresolved>",
+                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                route = synthesized.trip.title,
+                revision = synthesized.snapshotRevision,
+                confirmedSeats = synthesized.bookedSeats,
+                realAvailableSeats = synthesized.realAvailableSeats,
+                snapshotVersion = synthesized.snapshotRevision.substringBefore(':').take(40),
             )
         }
         UnifiedDebugEventStore.record(
@@ -1046,11 +1112,17 @@ internal object PublicAgendaAutoSync0300 {
                 },
             )
         }
-        val canonicalOperational0434 = canonicalOperationalSnapshot0434(
-            trip = privateMirrorTrip0434,
-            bookings = privateMirrorBookings0434,
-            nowMillis = privateMirrorTrip0434.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
-        )
+        val canonicalOperational0434 = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_OPERATIONAL_BUILD",
+            previousStage = "CANONICAL_OPERATIONAL_GUARD",
+            nextStage = "PRIVATE_MIRROR_REQUEST",
+        ) {
+            canonicalOperationalSnapshot0434(
+                trip = privateMirrorTrip0434,
+                bookings = privateMirrorBookings0434,
+                nowMillis = privateMirrorTrip0434.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
+            )
+        }
         val privateMirrorEvidence0455 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
             RemotePublicationEvidenceContext0421(
                 evidenceId = publicationEvidenceId0421(traceId, privateMirrorTrip0434.canonicalRevision),
