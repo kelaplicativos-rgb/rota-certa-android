@@ -1051,6 +1051,31 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
     val stages = correlated.takeLast(maxStages)
     val truncated = correlated.size > stages.size
 
+    // A retry reuses the same evidenceId/traceId. Scope causal fields to the
+    // newest OUTBOX_DEQUEUE so persisted failure metadata from an older attempt
+    // cannot masquerade as the result of the attempt currently on screen.
+    val latestOutboxDequeueIndex0459 = correlated.indexOfLast { event ->
+        detail(event.details, "stage") == "OUTBOX_DEQUEUE"
+    }
+    val currentAttemptEvents0459 = if (latestOutboxDequeueIndex0459 >= 0) {
+        correlated.drop(latestOutboxDequeueIndex0459)
+    } else {
+        emptyList()
+    }
+    val currentAttemptStarted0459 = currentAttemptEvents0459.isNotEmpty()
+    val currentAttemptNumber0459 = currentAttemptEvents0459.firstOrNull()
+        ?.let { detail(it.details, "attempt").toIntOrNull() }
+        ?: 0
+    val currentAttemptStartMonotonicNs0459 = currentAttemptEvents0459.firstOrNull()?.monotonicNs ?: Long.MAX_VALUE
+    val currentAttemptLastEvent0459 = currentAttemptEvents0459.lastOrNull()
+    val currentAttemptLastStage0459 = currentAttemptLastEvent0459
+        ?.let { detail(it.details, "stage") }
+        .orEmpty()
+    val currentAttemptNextExpectedStage0459 = currentAttemptLastEvent0459
+        ?.let { detail(it.details, "nextStage") }
+        .orEmpty()
+    val failureScope0459 = currentAttemptEvents0459.ifEmpty { stages }
+
     fun lastStageDetail(vararg keys: String): String {
         stages.asReversed().forEach { event ->
             keys.forEach { key ->
@@ -1060,8 +1085,17 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         }
         return ""
     }
+    fun lastAttemptDetail0459(vararg keys: String): String {
+        failureScope0459.asReversed().forEach { event ->
+            keys.forEach { key ->
+                val value = detail(event.details, key)
+                if (value.isNotBlank()) return value
+            }
+        }
+        return ""
+    }
     fun failedEvidenceEvents0458(): List<UnifiedDebugEventStore.SnapshotEvent> =
-        stages.asReversed().filter { event ->
+        failureScope0459.asReversed().filter { event ->
             detail(event.details, "status").uppercase() in setOf("FAILED", "MISMATCH", "DENIED", "ERROR")
         }
 
@@ -1073,33 +1107,77 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
     fun derivedFailedStage(): String =
         causalFailureEvent0458?.let { detail(it.details, "stage") }.orEmpty()
 
-    val httpStatus = trip.publicMirrorHttpStatus0421.takeIf { it > 0 }
-        ?: lastStageDetail("httpStatus").toIntOrNull()
-        ?: 0
-    val networkCallId = trip.publicMirrorNetworkCallId0421.ifBlank {
-        lastStageDetail("networkCallId")
+    val currentAttemptConfirmed0459 = currentAttemptEvents0459.any { event ->
+        detail(event.details, "stage") == "ATTESTATION" &&
+            detail(event.details, "status").uppercase() == "CONFIRMED"
     }
-    val requestBytes = trip.publicMirrorRequestBytes0421.takeIf { it > 0 }
-        ?: lastStageDetail("requestBytes").toIntOrNull()
-        ?: 0
-    val responseBytes = trip.publicMirrorResponseBytes0421.takeIf { it > 0 }
-        ?: lastStageDetail("responseBytes").toIntOrNull()
-        ?: 0
-    val requestHash = trip.publicMirrorRequestHash0421.ifBlank {
-        lastStageDetail("requestHash", "requestSha256")
+    val attemptState0459 = when {
+        currentAttemptStarted0459 && causalFailureEvent0458 != null -> "FAILED"
+        currentAttemptStarted0459 && currentAttemptConfirmed0459 -> "SUCCEEDED"
+        currentAttemptStarted0459 -> "IN_PROGRESS"
+        causalFailureEvent0458 != null -> "FAILED"
+        else -> "HISTORICAL"
     }
-    val responseHash = trip.publicMirrorResponseHash0421.ifBlank {
-        lastStageDetail("responseHash", "responseSha256")
+
+    val httpStatus = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("httpStatus").toIntOrNull() ?: 0
+    } else {
+        trip.publicMirrorHttpStatus0421.takeIf { it > 0 }
+            ?: lastStageDetail("httpStatus").toIntOrNull()
+            ?: 0
     }
-    val errorCode = trip.publicMirrorBackendErrorCode0421.ifBlank {
-        lastStageDetail("errorCode", "backendErrorCode")
+    val networkCallId = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("networkCallId")
+    } else {
+        trip.publicMirrorNetworkCallId0421.ifBlank { lastStageDetail("networkCallId") }
+    }
+    val requestBytes = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("requestBytes").toIntOrNull() ?: 0
+    } else {
+        trip.publicMirrorRequestBytes0421.takeIf { it > 0 }
+            ?: lastStageDetail("requestBytes").toIntOrNull()
+            ?: 0
+    }
+    val responseBytes = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("responseBytes").toIntOrNull() ?: 0
+    } else {
+        trip.publicMirrorResponseBytes0421.takeIf { it > 0 }
+            ?: lastStageDetail("responseBytes").toIntOrNull()
+            ?: 0
+    }
+    val requestHash = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("requestHash", "requestSha256")
+    } else {
+        trip.publicMirrorRequestHash0421.ifBlank { lastStageDetail("requestHash", "requestSha256") }
+    }
+    val responseHash = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("responseHash", "responseSha256")
+    } else {
+        trip.publicMirrorResponseHash0421.ifBlank { lastStageDetail("responseHash", "responseSha256") }
+    }
+    val errorCode = if (currentAttemptStarted0459) {
+        lastAttemptDetail0459("errorCode", "backendErrorCode")
+    } else {
+        trip.publicMirrorBackendErrorCode0421.ifBlank { lastStageDetail("errorCode", "backendErrorCode") }
     }
     val observedFailedStage0458 = derivedFailedStage()
-    val failedStage = observedFailedStage0458.ifBlank { trip.publicMirrorFailedStage0421 }
-    val causalFailureReason0458 = causalFailureEvent0458?.let { detail(it.details, "reasonCode") }.orEmpty()
-    val reasonCode = causalFailureReason0458.ifBlank {
-        trip.publicMirrorAttestationReason0411.ifBlank { lastStageDetail("reasonCode") }
+    val failedStage = if (currentAttemptStarted0459) {
+        observedFailedStage0458
+    } else {
+        observedFailedStage0458.ifBlank { trip.publicMirrorFailedStage0421 }
     }
+    val causalFailureReason0458 = causalFailureEvent0458?.let { detail(it.details, "reasonCode") }.orEmpty()
+    val reasonCode = if (currentAttemptStarted0459) {
+        causalFailureReason0458
+    } else {
+        causalFailureReason0458.ifBlank {
+            trip.publicMirrorAttestationReason0411.ifBlank { lastStageDetail("reasonCode") }
+        }
+    }
+    val stalePersistedFailureIgnored0459 =
+        currentAttemptStarted0459 &&
+            observedFailedStage0458.isBlank() &&
+            trip.publicMirrorFailedStage0421.isNotBlank()
     val failureExceptionClass0458 = causalFailureEvent0458?.let { detail(it.details, "exceptionClass") }.orEmpty()
     val failureExceptionMessage0458 = causalFailureEvent0458?.let { detail(it.details, "exceptionMessage") }.orEmpty()
     val failureRootClass0458 = causalFailureEvent0458?.let { detail(it.details, "rootCauseClass") }.orEmpty()
@@ -1142,6 +1220,14 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"requestHash\":").append(q(requestHash)).append(',')
         append("\"responseHash\":").append(q(responseHash)).append(',')
         append("\"reasonCode\":").append(q(reasonCode)).append(',')
+        append("\"attempt\":").append(currentAttemptNumber0459).append(',')
+        append("\"attemptState\":").append(q(attemptState0459)).append(',')
+        append("\"lastObservedStage\":").append(q(currentAttemptLastStage0459)).append(',')
+        append("\"nextExpectedStage\":").append(q(currentAttemptNextExpectedStage0459)).append(',')
+        append("\"attemptStartedAtMillis\":").append(currentAttemptEvents0459.firstOrNull()?.atMillis ?: 0L).append(',')
+        append("\"lastStageAtMillis\":").append(currentAttemptLastEvent0459?.atMillis ?: 0L).append(',')
+        append("\"currentAttemptStageCount\":").append(currentAttemptEvents0459.size).append(',')
+        append("\"stalePersistedFailureIgnored\":").append(stalePersistedFailureIgnored0459).append(',')
         append("\"failure\":{")
         append("\"stage\":").append(q(failedStage)).append(',')
         append("\"reasonCode\":").append(q(causalFailureReason0458)).append(',')
@@ -1161,6 +1247,16 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
             if (index > 0) append(',')
             append('{')
             append("\"atMillis\":").append(event.atMillis).append(',')
+            val stageAttempt0459 = detail(event.details, "attempt").toIntOrNull()
+                ?: if (
+                    currentAttemptStarted0459 &&
+                    event.monotonicNs >= currentAttemptStartMonotonicNs0459
+                ) {
+                    currentAttemptNumber0459
+                } else {
+                    0
+                }
+            append("\"attempt\":").append(stageAttempt0459).append(',')
             append("\"stage\":").append(q(detail(event.details, "stage"))).append(',')
             append("\"status\":").append(q(detail(event.details, "status"))).append(',')
             append("\"reasonCode\":").append(q(detail(event.details, "reasonCode"))).append(',')
