@@ -87,6 +87,23 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     }
 
     @Test
+    fun uiCatalogMatchesPhysicalAndRegisteredScriptInventoryExactly() {
+        val physical = File("src/main/assets/blablacar/scripts")
+            .listFiles()
+            .orEmpty()
+            .filter { it.extension == "js" }
+            .map { it.name }
+            .toSet()
+        val registered = BlaBlaBrowserRequest.values().map { it.assetName }.toSet()
+        val exposed = BlaBlaDateScopeScriptCatalog0449.selectableRequests.map { it.assetName }.toSet()
+
+        assertEquals(32, physical.size)
+        assertEquals(32, registered.size)
+        assertEquals(physical, registered)
+        assertEquals(registered, exposed)
+    }
+
+    @Test
     fun onlySeatsUpdatesPublishedSeatsAndPreservesEveryUnselectedField() {
         val previous = trip(seats = 2, passenger = "Anterior")
         val fresh = trip(
