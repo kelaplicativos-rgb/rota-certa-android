@@ -9,7 +9,7 @@ const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
 const { buildProfileUpdate } = require("./public-profile-policy");
 const { cleanIdentifier, deriveRotationToken, tokenMatches } = require("./public-agenda-link-policy");
-const { createAgendaAdmin0417 } = require("./agenda-admin-0417");
+const { createAgendaAdmin0417, safeVisibility0417 } = require("./agenda-admin-0417");
 const {
   initialTesterCredits,
   normalizeTesterCredits,
@@ -718,7 +718,83 @@ function normalizeStops(rawStops) {
   return stops;
 }
 
-function normalizeDriverTrip(raw, previous = null) {
+function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw, recordsRaw) {
+  const previousStops = Array.isArray(previousStopsRaw) ? previousStopsRaw : [];
+  const nextStops = Array.isArray(nextStopsRaw) ? nextStopsRaw : [];
+  const records = Array.isArray(recordsRaw) ? recordsRaw : [];
+  const previousIds = previousStops.map((stop) => cleanText(stop && stop.id, 80));
+  const nextIds = nextStops.map((stop) => cleanText(stop && stop.id, 80));
+  if (previousIds.join("|") === nextIds.join("|")) {
+    return { changed: false, records, changes: [] };
+  }
+  if (
+    previousStops.length !== 2 ||
+    nextStops.length < 2 ||
+    previousIds.some((id) => !id) ||
+    nextIds.some((id) => !id)
+  ) {
+    throw Object.assign(
+      new Error("A migração canônica de paradas não é segura para esta estrutura."),
+      { httpStatus: 409, code: "canonical_stop_shape_migration_unsafe" },
+    );
+  }
+  const oldFirst = previousIds[0];
+  const oldLast = previousIds[1];
+  const newFirst = nextIds[0];
+  const newLast = nextIds[nextIds.length - 1];
+  const nextIdSet = new Set(nextIds);
+
+  const mapStopId = (rawId) => {
+    const id = cleanText(rawId, 80);
+    if (!id) return "";
+    if (nextIdSet.has(id)) return id;
+    if (id === oldFirst) return newFirst;
+    if (id === oldLast) return newLast;
+    throw Object.assign(
+      new Error("Reserva existente referencia uma parada que não pode ser migrada com segurança."),
+      { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+    );
+  };
+
+  const changes = [];
+  const migrated = records.map((record) => {
+    if (!record) return record;
+    const oldBoarding = cleanText(record.boardingStopId, 80);
+    const oldDropoff = cleanText(record.dropoffStopId, 80);
+    if (!oldBoarding && !oldDropoff) return record;
+    if (!oldBoarding || !oldDropoff) {
+      throw Object.assign(
+        new Error("Reserva existente possui trecho incompleto e não pode ser migrada automaticamente."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+    const boardingStopId = mapStopId(oldBoarding);
+    const dropoffStopId = mapStopId(oldDropoff);
+    const fromIndex = nextIds.indexOf(boardingStopId);
+    const toIndex = nextIds.indexOf(dropoffStopId);
+    if (fromIndex < 0 || toIndex <= fromIndex) {
+      throw Object.assign(
+        new Error("A migração canônica alteraria o sentido do trecho de uma reserva existente."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+    if (boardingStopId === oldBoarding && dropoffStopId === oldDropoff) return record;
+    const updated = {
+      ...record,
+      boardingStopId,
+      dropoffStopId,
+    };
+    changes.push({
+      id: cleanText(record.id, 120),
+      boardingStopId,
+      dropoffStopId,
+    });
+    return updated;
+  });
+  return { changed: true, records: migrated, changes };
+}
+
+function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false) {
   const capacity = Number(raw.capacity);
   if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
   const departureAtMillis = Number(raw.departureAtMillis);
@@ -729,7 +805,7 @@ function normalizeDriverTrip(raw, previous = null) {
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
-    if (oldStopIds !== newStopIds) {
+    if (oldStopIds !== newStopIds && !allowBookedStopShapeMigration0439) {
       throw new Error("A estrutura de paradas não pode mudar depois da primeira reserva.");
     }
   }
@@ -841,7 +917,61 @@ function itineraryIsAuthoritative(token, data) {
   return !isExternalBlaBlaTrip(token, data);
 }
 
+function safePublicTripFromCanonical0434(token, data) {
+  const payload = canonicalPublicTripPayloadFromStored0434(data && data.canonicalPublicProjection0434);
+  const capacity = Math.max(0, Number(payload.capacity || 0));
+  const availableMinimum = Math.max(0, Number(payload.availableSeatsMinimum || 0));
+  const availableMaximum = Math.max(0, Number(payload.availableSeatsMaximum || 0));
+  const reliable = payload.capacityReliable === true;
+  const isFull = payload.status === "FULL";
+  const passengerLoads = Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : [];
+  const blockedLoads = Array.isArray(payload.segmentBlockedLoads) ? payload.segmentBlockedLoads : [];
+  return {
+    tripId: token,
+    publicToken: token,
+    title: payload.title,
+    departureAtMillis: payload.departureAtMillis,
+    capacity,
+    status: payload.status,
+    stops: payload.stops,
+    segmentLoads: payload.segmentLoads,
+    segmentPassengerLoads: passengerLoads,
+    segmentBlockedLoads: blockedLoads,
+    availableSeatsMinimum: reliable ? availableMinimum : 0,
+    availableSeatsMaximum: reliable ? availableMaximum : 0,
+    isFull: reliable && isFull,
+    canReserve: payload.publicBookingEnabled === true && reliable && !isFull && availableMaximum > 0,
+    confirmedPassengerSeats: passengerLoads.length ? Math.max(...passengerLoads.map((v) => Math.max(0, Number(v || 0)))) : 0,
+    blockedSeats: blockedLoads.length ? Math.max(...blockedLoads.map((v) => Math.max(0, Number(v || 0)))) : 0,
+    rotaCertaSeatAllocation: Math.max(0, Number(payload.rotaCertaSeatAllocation || 0)),
+    blablaAvailableSeats: Math.max(0, Number(payload.publishedSeats || 0)),
+    rotaCertaAllocatedSeats: Math.max(0, Number(payload.rotaCertaSeatAllocation || 0)),
+    rotaCertaAvailableSeats: Math.max(0, availableMaximum - Math.max(0, Number(payload.publishedSeats || 0))),
+    totalAvailableSeats: availableMaximum,
+    totalConsideredSeats: availableMaximum,
+    operationalAvailableSeats: Math.max(0, Number(payload.operationalAvailableSeats || 0)),
+    physicalAvailableSeatsMinimum: availableMinimum,
+    physicalAvailableSeatsMaximum: availableMaximum,
+    operationalOverbookingSeats: 0,
+    operationalBreakdownReliable: reliable,
+    publicBookingEnabled: payload.publicBookingEnabled === true,
+    itineraryAuthoritative: payload.itineraryAuthoritative === true,
+    publishedSeats: payload.publishedSeats == null ? null : Math.max(0, Number(payload.publishedSeats || 0)),
+    capacityReliable: reliable,
+    notes: data.notes || "",
+    publicUrl: payload.publicUrl || null,
+    blablaTripId: payload.blablaTripId || null,
+    blablaPublicUrl: payload.blablaPublicUrl || null,
+    driverUsername: data.driverUsername || "",
+    driverDisplayName: data.driverDisplayName || "",
+    updatedAtMillis: data.updatedAtMillis || null,
+  };
+}
+
 function safePublicTrip(token, data) {
+  if (data && data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object") {
+    return safePublicTripFromCanonical0434(token, data);
+  }
   const capacity = Math.max(0, Number(data.capacity || 0));
   const expectedSegments = Math.max(0, (Array.isArray(data.stops) ? data.stops.length : 0) - 1);
   const segmentLoads = Array.isArray(data.segmentLoads)
@@ -963,12 +1093,51 @@ function canonicalPublicStop0411(raw, index) {
     order: Number.isInteger(Number(stop.order)) ? Number(stop.order) : index,
     name: cleanText(stop.name, 160),
     address: cleanText(stop.address, 300),
-    plannedArrivalMillis: Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null,
-    plannedDepartureMillis: Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null,
+    plannedArrivalMillis: stop.plannedArrivalMillis == null
+      ? null
+      : (Number.isFinite(Number(stop.plannedArrivalMillis)) ? Number(stop.plannedArrivalMillis) : null),
+    plannedDepartureMillis: stop.plannedDepartureMillis == null
+      ? null
+      : (Number.isFinite(Number(stop.plannedDepartureMillis)) ? Number(stop.plannedDepartureMillis) : null),
+  };
+}
+
+function canonicalPublicTripPayloadFromStored0434(raw) {
+  const payload = raw && typeof raw === "object" ? raw : {};
+  return {
+    schemaVersion: "public-trip-v2",
+    canonicalTripId: cleanText(payload.canonicalTripId, 180),
+    canonicalRevision: Math.max(0, Math.floor(Number(payload.canonicalRevision || 0))),
+    blablaProfileUuid: cleanText(payload.blablaProfileUuid, 160).toLowerCase(),
+    blablaTripId: cleanText(payload.blablaTripId, 160),
+    title: cleanText(payload.title, 220),
+    departureAtMillis: Math.max(0, Number(payload.departureAtMillis || 0)),
+    timezoneId: cleanText(payload.timezoneId, 80),
+    status: cleanText(payload.status, 24),
+    capacity: Math.max(0, Number(payload.capacity || 0)),
+    stops: (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
+    segmentLoads: (Array.isArray(payload.segmentLoads) ? payload.segmentLoads : []).map((v) => Math.max(0, Number(v || 0))),
+    segmentPassengerLoads: (Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : []).map((v) => Math.max(0, Number(v || 0))),
+    segmentBlockedLoads: (Array.isArray(payload.segmentBlockedLoads) ? payload.segmentBlockedLoads : []).map((v) => Math.max(0, Number(v || 0))),
+    availableSeatsMinimum: Math.max(0, Number(payload.availableSeatsMinimum || 0)),
+    availableSeatsMaximum: Math.max(0, Number(payload.availableSeatsMaximum || 0)),
+    operationalAvailableSeats: Math.max(0, Number(payload.operationalAvailableSeats || 0)),
+    publishedSeats: payload.publishedSeats == null ? null : Math.max(0, Number(payload.publishedSeats || 0)),
+    rotaCertaSeatAllocation: Math.max(0, Number(payload.rotaCertaSeatAllocation || 0)),
+    publicBookingEnabled: payload.publicBookingEnabled === true,
+    capacityReliable: payload.capacityReliable === true,
+    itineraryAuthoritative: payload.itineraryAuthoritative === true,
+    publicUrl: cleanText(payload.publicUrl, 1200),
+    blablaPublicUrl: normalizeBlaBlaPublicUrl(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160)),
+    publicationRevision: Math.max(0, Math.floor(Number(payload.publicationRevision || 0))),
+    canonicalStateHash: cleanText(payload.canonicalStateHash, 160),
   };
 }
 
 function canonicalPublicTripPayload0411(token, data) {
+  if (data && data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object") {
+    return canonicalPublicTripPayloadFromStored0434(data.canonicalPublicProjection0434);
+  }
   const publicTrip = safePublicTrip(token, data);
   const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
   const blablaTripId = cleanText(data.blablaTripId, 160);
@@ -1011,6 +1180,205 @@ function canonicalPublicTripHash0411(payload) {
   const semanticPayload = { ...payload, publicationRevision: 0 };
   return "public-v2:" + sha256Hex(JSON.stringify(semanticPayload));
 }
+
+function privateMirrorDocumentId0434(driverUsername, canonicalTripId) {
+  return sha256Hex(cleanText(driverUsername, 40) + "|" + cleanText(canonicalTripId, 180));
+}
+
+function privateMirrorContainsSecret0434(value) {
+  if (Array.isArray(value)) return value.some(privateMirrorContainsSecret0434);
+  if (!value || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, child]) =>
+    /password|cookie|secret|authorization|api.?key|credential|cancellationtoken|blablamanageurl|accesstoken|refreshtoken/i.test(key) ||
+    privateMirrorContainsSecret0434(child)
+  );
+}
+
+function privateMirrorSourceUpdatedAt0437(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return 0;
+  let latest = Math.max(
+    0,
+    Number(payload.createdAtMillis || 0),
+    Number(payload.updatedAtMillis || 0),
+    Number(payload.deletedAtMillis || 0)
+  );
+  const bookings = Array.isArray(payload.bookings) ? payload.bookings : [];
+  bookings.forEach((booking) => {
+    if (!booking || typeof booking !== "object" || Array.isArray(booking)) return;
+    latest = Math.max(
+      latest,
+      Number(booking.createdAtMillis || 0),
+      Number(booking.updatedAtMillis || 0)
+    );
+  });
+  return Number.isFinite(latest) ? Math.max(0, Math.floor(latest)) : 0;
+}
+
+function parsePrivateMirror0434(rawJson, expectedHash, canonicalTripId, canonicalRevision) {
+  const canonicalJson = String(rawJson == null ? "" : rawJson);
+  if (!canonicalJson || Buffer.byteLength(canonicalJson, "utf8") > 700000) {
+    throw Object.assign(new Error("Espelho privado ausente ou excede o limite permitido."), { httpStatus: 400, code: "invalid_private_mirror" });
+  }
+  let payload;
+  try { payload = JSON.parse(canonicalJson); } catch (_) {
+    throw Object.assign(new Error("Espelho privado não contém JSON canônico válido."), { httpStatus: 400, code: "invalid_private_mirror_json" });
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) || payload.schemaVersion !== "private-agenda-mirror-v1") {
+    throw Object.assign(new Error("Schema do espelho privado inválido."), { httpStatus: 400, code: "invalid_private_mirror_schema" });
+  }
+  if (privateMirrorContainsSecret0434(payload)) {
+    throw Object.assign(new Error("Espelho privado contém campo técnico proibido."), { httpStatus: 400, code: "private_mirror_secret_rejected" });
+  }
+  const payloadCanonicalTripId = cleanText(payload.canonicalTripId, 180);
+  const payloadCanonicalRevision = Math.max(0, Math.floor(Number(payload.canonicalRevision || 0)));
+  if (!payloadCanonicalTripId || payloadCanonicalTripId !== canonicalTripId || payloadCanonicalRevision !== canonicalRevision) {
+    throw Object.assign(new Error("Identidade/revisão do espelho privado diverge do envelope."), { httpStatus: 409, code: "private_mirror_identity_revision_mismatch" });
+  }
+  const actualHash = "private-v1:" + sha256Hex(canonicalJson);
+  if (!/^private-v1:[0-9a-f]{64}$/.test(expectedHash) || actualHash !== expectedHash) {
+    throw Object.assign(new Error("Hash do espelho privado diverge dos bytes canônicos."), {
+      httpStatus: 409, code: "private_mirror_hash_mismatch",
+      details: { expectedPrivateStateHash: expectedHash, actualPrivateStateHash: actualHash },
+    });
+  }
+  return { payload, canonicalJson, privateStateHash: actualHash };
+}
+
+async function putDriverPrivateMirror0434(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const canonicalTripId = cleanText(body.canonicalTripId, 180);
+  const canonicalRevision = Math.max(0, Math.floor(Number(body.canonicalRevision || 0)));
+  const privateStateHash = cleanText(body.privateStateHash, 160).toLowerCase();
+  if (!canonicalTripId) return fail(res, 400, "private_mirror_identity_required", "Identidade canônica obrigatória.");
+  let parsed;
+  try {
+    parsed = parsePrivateMirror0434(body.canonicalJson, privateStateHash, canonicalTripId, canonicalRevision);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "private_mirror_invalid", error.message, error.details || null);
+  }
+  const ref = db.collection("tripPrivateMirrors0434").doc(privateMirrorDocumentId0434(driver.username, canonicalTripId));
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      const previous = snap.exists ? snap.data() : null;
+      if (previous && cleanText(previous.driverUsername, 40) !== driver.username) {
+        throw Object.assign(new Error("Espelho pertence a outro tenant."), { httpStatus: 403, code: "private_mirror_owner_mismatch" });
+      }
+      const previousRevision = Math.max(0, Math.floor(Number(previous && previous.canonicalRevision || 0)));
+      const previousHash = cleanText(previous && previous.privateStateHash, 160).toLowerCase();
+      const previousMirrorRevision = Math.max(0, Math.floor(Number(previous && previous.mirrorRevision || 0)));
+      const incomingPrivateSourceUpdatedAt0437 = privateMirrorSourceUpdatedAt0437(parsed.payload);
+      const previousPrivateSourceUpdatedAt0437 = Math.max(
+        0,
+        Math.floor(Number(previous && previous.privateSourceUpdatedAtMillis0437 || 0)),
+        privateMirrorSourceUpdatedAt0437(previous && previous.payload)
+      );
+      if (previous && canonicalRevision < previousRevision) {
+        throw Object.assign(new Error("Revisão canônica do espelho é obsoleta."), {
+          httpStatus: 409, code: "private_mirror_stale_revision",
+          details: { canonicalRevisionActual: previousRevision, canonicalRevisionExpected: canonicalRevision },
+        });
+      }
+      if (previous && canonicalRevision === previousRevision && previousHash && previousHash !== parsed.privateStateHash) {
+        if (incomingPrivateSourceUpdatedAt0437 < previousPrivateSourceUpdatedAt0437) {
+          throw Object.assign(new Error("Estado privado do espelho é mais antigo que o já persistido."), {
+            httpStatus: 409, code: "private_mirror_stale_private_state",
+            details: {
+              canonicalRevisionActual: previousRevision,
+              privateSourceUpdatedAtActual: previousPrivateSourceUpdatedAt0437,
+              privateSourceUpdatedAtExpected: incomingPrivateSourceUpdatedAt0437,
+              privateActualHash: previousHash,
+              privateExpectedHash: parsed.privateStateHash,
+            },
+          });
+        }
+        if (incomingPrivateSourceUpdatedAt0437 === previousPrivateSourceUpdatedAt0437) {
+          throw Object.assign(new Error("A mesma revisão e frescor privados possuem conteúdo divergente."), {
+            httpStatus: 409, code: "private_mirror_revision_hash_conflict",
+            details: {
+              canonicalRevisionActual: previousRevision,
+              privateSourceUpdatedAtActual: previousPrivateSourceUpdatedAt0437,
+              privateSourceUpdatedAtExpected: incomingPrivateSourceUpdatedAt0437,
+              privateActualHash: previousHash,
+              privateExpectedHash: parsed.privateStateHash,
+            },
+          });
+        }
+      }
+      if (previous && canonicalRevision === previousRevision && previousHash === parsed.privateStateHash) {
+        return {
+          changed: false,
+          replayed: true,
+          mirrorRevision: previousMirrorRevision,
+          privateSourceUpdatedAtMillis0437: previousPrivateSourceUpdatedAt0437,
+        };
+      }
+      const mirrorRevision = previousMirrorRevision + 1;
+      tx.set(ref, {
+        driverUsername: driver.username,
+        canonicalTripId,
+        canonicalRevision,
+        mirrorRevision,
+        privateStateHash: parsed.privateStateHash,
+        privateSourceUpdatedAtMillis0437: incomingPrivateSourceUpdatedAt0437,
+        canonicalJson: parsed.canonicalJson,
+        payload: parsed.payload,
+        correlationId: cleanText(body.correlationId, 120),
+        syncOperationId: cleanText(body.syncOperationId, 120),
+        idempotencyKey: cleanText(body.idempotencyKey, 120),
+        persistedAtMillis: Date.now(),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: false });
+      return {
+        changed: true,
+        replayed: false,
+        mirrorRevision,
+        privateSourceUpdatedAtMillis0437: incomingPrivateSourceUpdatedAt0437,
+      };
+    });
+    return json(res, 200, {
+      canonicalTripId,
+      canonicalRevision,
+      mirrorRevision: result.mirrorRevision,
+      privateStateHash: parsed.privateStateHash,
+      privateSourceUpdatedAtMillis0437: result.privateSourceUpdatedAtMillis0437 || privateMirrorSourceUpdatedAt0437(parsed.payload),
+      changed: result.changed,
+      replayed: result.replayed,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "private_mirror_write_failed", error.message || "Falha ao persistir espelho privado.", error.details || null);
+  }
+}
+
+async function readDriverPrivateMirror0434(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  const canonicalTripId = cleanText(req.body && req.body.canonicalTripId, 180);
+  if (!canonicalTripId) return fail(res, 400, "private_mirror_identity_required", "Identidade canônica obrigatória.");
+  const ref = db.collection("tripPrivateMirrors0434").doc(privateMirrorDocumentId0434(driver.username, canonicalTripId));
+  const snap = await ref.get();
+  if (!snap.exists) return fail(res, 404, "private_mirror_not_found", "Espelho privado não encontrado.");
+  const data = snap.data();
+  if (cleanText(data.driverUsername, 40) !== driver.username) {
+    return fail(res, 403, "private_mirror_owner_mismatch", "Espelho pertence a outro tenant.");
+  }
+  return json(res, 200, {
+    canonicalTripId: cleanText(data.canonicalTripId, 180),
+    canonicalRevision: Math.max(0, Math.floor(Number(data.canonicalRevision || 0))),
+    mirrorRevision: Math.max(0, Math.floor(Number(data.mirrorRevision || 0))),
+    privateStateHash: cleanText(data.privateStateHash, 160),
+    privateSourceUpdatedAtMillis0437: Math.max(
+      0,
+      Math.floor(Number(data.privateSourceUpdatedAtMillis0437 || 0)),
+      privateMirrorSourceUpdatedAt0437(data.payload)
+    ),
+    canonicalJson: String(data.canonicalJson || ""),
+    persistedAtMillis: Math.max(0, Number(data.persistedAtMillis || 0)),
+  });
+}
+
 
 async function getDriverPublicTripReadback0411(req, res, token) {
   const driver = await requireDriver(req, res);
@@ -2592,22 +2960,57 @@ function safePublicDriverReviews(value) {
 }
 
 function publicVisibilityPolicy0417(data) {
-  const raw = data && data.publicVisibility0417 && typeof data.publicVisibility0417 === "object"
-    ? data.publicVisibility0417
-    : {};
-  const visible = (field) => raw[field] !== false;
+  return safeVisibility0417(data && data.publicVisibility0417);
+}
+
+function applyPublicTripVisibility0434(publicTrip, sourceData, driverData) {
+  const visibility = publicVisibilityPolicy0417(driverData || {});
+  const out = { ...(publicTrip || {}) };
+  if (!visibility.tripTitle) delete out.title;
+  if (!visibility.tripDateTime) delete out.departureAtMillis;
+  if (!visibility.tripStatus) delete out.status;
+  if (!visibility.tripBlaBlaLink) delete out.blablaPublicUrl;
+  if (!visibility.tripStops) {
+    out.stops = [];
+  } else if (!visibility.tripStopAddresses && Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const filtered = { ...stop };
+      delete filtered.address;
+      return filtered;
+    });
+  }
+  if (!visibility.tripPrices && Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const filtered = { ...stop };
+      delete filtered.priceToNextCents;
+      return filtered;
+    });
+  }
+  if (!visibility.tripCapacity) {
+    delete out.capacity;
+    delete out.publishedSeats;
+    delete out.rotaCertaSeatAllocation;
+    delete out.blablaAvailableSeats;
+    delete out.rotaCertaAllocatedSeats;
+  }
+  if (!visibility.tripAvailability) {
+    [
+      "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads",
+      "availableSeatsMinimum", "availableSeatsMaximum", "operationalAvailableSeats",
+      "physicalAvailableSeatsMinimum", "physicalAvailableSeatsMaximum",
+      "confirmedPassengerSeats", "blockedSeats", "operationalOverbookingSeats",
+      "rotaCertaAvailableSeats", "totalAvailableSeats", "totalConsideredSeats",
+      "isFull", "canReserve", "operationalBreakdownReliable",
+    ].forEach((field) => delete out[field]);
+  }
+  const visibilityPolicyRevision0434 = Math.max(0, Number(driverData && driverData.visibilityPolicyRevision0434 || 0));
+  const publicProjectionRevision0434 = Math.max(0, Number(sourceData && sourceData.publicProjectionRevision0434 || 0));
+  const hashMaterial = { ...out, visibilityPolicyRevision0434, publicProjectionRevision0434 };
   return {
-    name: visible("name"),
-    whatsapp: visible("whatsapp"),
-    photo: visible("photo"),
-    about: visible("about"),
-    rating: visible("rating"),
-    reviews: visible("reviews"),
-    badge: visible("badge"),
-    vehicle: visible("vehicle"),
-    amenities: visible("amenities"),
-    preferences: visible("preferences"),
-    paymentInstructions: visible("paymentInstructions"),
+    ...out,
+    visibilityPolicyRevision0434,
+    publicProjectionRevision0434,
+    publicProjectionHash0434: "public-visible-v1:" + sha256Hex(JSON.stringify(hashMaterial)),
   };
 }
 
@@ -2640,6 +3043,40 @@ function safePublicDriverProfile(data, username = "") {
   if (visibility.preferences) profile.preferences = splitPublicList(driver.driverPreferences);
   if (visibility.paymentInstructions) profile.paymentInstructions = cleanText(driver.paymentInstructions, 240);
   return profile;
+}
+
+function publicProjectionAttestedCurrent0429(token, data) {
+  if (!data || data.publicationTombstone === true) return false;
+  const canonicalTripId = cleanText(data.canonicalTripId || data.localTripId, 180);
+  if (!canonicalTripId) return false;
+  if (cleanText(data.publicAttestationState0417, 24) !== "VERIFIED") return false;
+  const publicationRevision = Math.max(0, Number(data.publicationRevision || 0));
+  const canonicalRevision = Math.max(0, Number(data.canonicalRevision || 0));
+  if (!publicationRevision || !canonicalRevision) return false;
+  if (Math.max(0, Number(data.publicAttestedPublicationRevision0417 || 0)) !== publicationRevision) return false;
+  if (Math.max(0, Number(data.publicAttestedCanonicalRevision0417 || 0)) !== canonicalRevision) return false;
+  const attestedHash = cleanText(data.publicAttestedHash0417, 160).toLowerCase();
+  if (!attestedHash) return false;
+  const actualHash = canonicalPublicTripHash0411(
+    canonicalPublicTripPayload0411(token, data),
+  ).toLowerCase();
+  return attestedHash === actualHash;
+}
+
+function publicProjectionCommittedCurrent0434(token, data) {
+  if (!data || data.publicationTombstone === true) return false;
+  const canonicalTripId = cleanText(data.canonicalTripId || data.localTripId, 180);
+  const canonicalRevision = Math.max(0, Number(data.canonicalRevision || 0));
+  if (!canonicalTripId || !canonicalRevision) return false;
+  if (!data.canonicalPublicProjection0434 || typeof data.canonicalPublicProjection0434 !== "object") return false;
+  const payload = canonicalPublicTripPayload0411(token, data);
+  if (cleanText(payload.canonicalTripId, 180) !== canonicalTripId) return false;
+  if (Math.max(0, Number(payload.canonicalRevision || 0)) !== canonicalRevision) return false;
+  const committedHash = cleanText(data.publicProjectionHash0434, 160).toLowerCase();
+  if (!committedHash) return false;
+  const actualHash = canonicalPublicTripHash0411(payload).toLowerCase();
+  if (committedHash !== actualHash) return false;
+  return Boolean(data.publicCommittedAt0422);
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
@@ -2679,7 +3116,11 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
       .filter(Boolean),
   );
   const sourceDocs = snapshot.docs
-    .filter((doc) => PUBLIC_STATUSES.has(doc.data().status) && Number(doc.data().departureAtMillis) > Date.now())
+    .filter((doc) =>
+      PUBLIC_STATUSES.has(doc.data().status) &&
+      Number(doc.data().departureAtMillis) > Date.now() &&
+      publicProjectionCommittedCurrent0434(doc.id, doc.data())
+    )
     .filter((doc) => {
       if (!publicProfileScope0417.size) return true;
       const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
@@ -2687,9 +3128,12 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     })
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
-  const trips = tester
+  const rawTrips = tester
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
     : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
+  const trips = rawTrips.map((trip, index) =>
+    applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver)
+  );
   if (!tester) {
     await appendPublicDebugEvent({
       driverUsername: username,
@@ -2705,25 +3149,6 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     trips,
     authenticationRequired,
   });
-}
-
-function projectionPlaceKey0421(value) {
-  return String(value || "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase().trim()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function projectionPhysicalIdentityCompatible0421(left, right) {
-  const leftDeparture = Math.max(0, Number(left && left.departureAtMillis || 0));
-  const rightDeparture = Math.max(0, Number(right && right.departureAtMillis || 0));
-  if (!leftDeparture || !rightDeparture || Math.abs(leftDeparture - rightDeparture) > 45 * 60 * 1000) return false;
-  const leftStops = Array.isArray(left && left.stops) ? left.stops.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)) : [];
-  const rightStops = Array.isArray(right && right.stops) ? right.stops.slice().sort((a, b) => Number(a.order || 0) - Number(b.order || 0)) : [];
-  if (leftStops.length < 2 || rightStops.length < 2) return false;
-  return projectionPlaceKey0421(leftStops[0].name) === projectionPlaceKey0421(rightStops[0].name) &&
-    projectionPlaceKey0421(leftStops[leftStops.length - 1].name) === projectionPlaceKey0421(rightStops[rightStops.length - 1].name);
 }
 
 async function createDriverTrip(req, res) {
@@ -2767,17 +3192,8 @@ async function createDriverTrip(req, res) {
           })
         : [];
       if (identityMatches.length) {
-        const incompatible = identityMatches.filter((doc) => !projectionPhysicalIdentityCompatible0421(normalized, doc.data()));
-        if (incompatible.length) {
-          throw Object.assign(new Error("Identidade forte já está associada a uma viagem física incompatível."), {
-            httpStatus: 409,
-            code: "strong_identity_conflict",
-            details: {
-              canonicalTripIdHash: sha256Hex(requestedCanonicalTripId).slice(0, 24),
-              conflictCount: incompatible.length,
-            },
-          });
-        }
+        // Route text and departure time are mutable fields. Strong canonical/provider
+        // identity alone decides adoption, so a legitimate edit cannot split a trip.
         const winner = identityMatches.slice().sort((left, right) => {
           const leftData = left.data();
           const rightData = right.data();
@@ -3195,6 +3611,9 @@ async function getPublicTrip(res, req, token) {
     const view = await requirePassengerAgendaView(req, res, driverUsername);
     if (!view) return;
   }
+  if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
+    return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
+  }
   if (!PUBLIC_STATUSES.has(data.status)) {
     await appendPublicDebugEvent({
       driverUsername,
@@ -3229,7 +3648,8 @@ async function getPublicTrip(res, req, token) {
   }).catch(() => {});
   let publicDriver = safePublicDriverProfile(data, driverUsername);
   if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
-  const publicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
+  const rawPublicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
+  const publicTrip = applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {});
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
@@ -6123,6 +6543,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const claimNamespace = cleanText(req.body && req.body.claimNamespace, 40);
   const snapshotRevision = cleanText(req.body && req.body.snapshotRevision, 128).replace(/[^A-Za-z0-9:_-]/g, "");
   const sourceComplete = req.body && req.body.sourceComplete === true;
+  const preserveManagedClaims0436 = req.body && req.body.preserveManagedClaims0436 === true;
   const entityRevision = Math.max(0, Math.floor(Number(req.body && req.body.entityRevision || 0)));
   const canonicalTripId = cleanText(req.body && req.body.canonicalTripId, 180);
   const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
@@ -6132,17 +6553,47 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
     req.body && req.body.expectedPublicProjectionHash0425,
     160,
   ).toLowerCase();
+  const expectedPublicProjectionJson0434 = String(
+    req.body && req.body.expectedPublicProjectionJson0434 || "",
+  );
+  let incomingPublicProjection0434 = null;
   if (
     expectedPublicProjectionHash0425 &&
     !/^public-v2:[0-9a-f]{64}$/.test(expectedPublicProjectionHash0425)
   ) {
     return fail(res, 400, "invalid_public_projection_hash", "Hash da projeção pública inválido.");
   }
+  if (expectedPublicProjectionJson0434) {
+    if (Buffer.byteLength(expectedPublicProjectionJson0434, "utf8") > 180000) {
+      return fail(res, 400, "public_projection_too_large", "Projeção pública excede o limite.");
+    }
+    try {
+      incomingPublicProjection0434 = canonicalPublicTripPayloadFromStored0434(JSON.parse(expectedPublicProjectionJson0434));
+    } catch (_) {
+      return fail(res, 400, "invalid_public_projection_json", "Projeção pública canônica inválida.");
+    }
+    const incomingHash0434 = canonicalPublicTripHash0411(incomingPublicProjection0434).toLowerCase();
+    if (!expectedPublicProjectionHash0425 || incomingHash0434 !== expectedPublicProjectionHash0425) {
+      return fail(res, 409, "public_projection_hash_mismatch", "Os bytes públicos enviados não correspondem ao hash informado.", {
+        expectedPublicProjectionHash: expectedPublicProjectionHash0425,
+        actualPublicProjectionHash: incomingHash0434,
+      });
+    }
+  }
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
-  if (!sourceComplete || !snapshotRevision) {
+  if (!snapshotRevision) {
+    return fail(res, 409, "capacity_snapshot_incomplete", "A revisão do snapshot de capacidade está ausente.");
+  }
+  if (!sourceComplete && !preserveManagedClaims0436) {
     return fail(res, 409, "capacity_snapshot_incomplete", "O snapshot de capacidade ainda não está completo.");
+  }
+  if (preserveManagedClaims0436 && (!incomingPublicProjection0434 || !expectedPublicProjectionHash0425)) {
+    return fail(res, 409, "partial_projection_requires_canonical_bytes", "Reparo parcial exige a projeção canônica exata.");
+  }
+  if (preserveManagedClaims0436 && rawClaims.length) {
+    return fail(res, 409, "partial_projection_claims_forbidden", "Reparo parcial não pode substituir claims de capacidade.");
   }
   if (rawProtectedBookings.length && (entityRevision <= 0 || claimNamespace !== "LOCAL_MIRROR:")) {
     return fail(res, 409, "protected_snapshot_requires_revision", "Reservas protegidas exigem snapshot local versionado.");
@@ -6186,6 +6637,15 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         logicalMetadataMatches0425 &&
         Boolean(expectedPublicProjectionHash0425) &&
         !publicProjectionHashMatches0425;
+      const sameRevisionCanonicalAdvance0436 =
+        deterministicRequest &&
+        entityRevision === currentEntityRevision &&
+        currentEntityRevision > 0 &&
+        incomingLogicalRevision > currentLogicalRevision &&
+        Boolean(incomingPublicProjection0434) &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        Boolean(canonicalTripId) &&
+        cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId;
       const legacyProjectionRepair0425 =
         !deterministicRequest &&
         currentEntityRevision > 0 &&
@@ -6238,7 +6698,8 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           outboxEventId &&
           currentEventId !== outboxEventId &&
           !sameIdempotentMutation &&
-          !sameRevisionProjectionRepair0425
+          !sameRevisionProjectionRepair0425 &&
+          !sameRevisionCanonicalAdvance0436
         ) {
           throw Object.assign(new Error("A mesma revisão já pertence a outro evento."), { httpStatus: 409, code: "publication_revision_conflict" });
         }
@@ -6253,7 +6714,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
             occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
           };
         }
-        if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425) {
+        if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425 && !sameRevisionCanonicalAdvance0436) {
           throw Object.assign(
             new Error("Reparo de mesma revisão exige a identidade idempotente original."),
             { httpStatus: 409, code: "publication_revision_repair_identity_mismatch" },
@@ -6280,18 +6741,50 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         };
       }
 
-      const normalized = normalizeDriverTrip({ ...rawTrip, capacityReliable: true }, previous);
-      const candidateTrip = { ...previous, ...normalized, capacityReliable: true };
-      if (claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
+      const previousStopIds0439 = (previous.stops || []).map((stop) => cleanText(stop && stop.id, 80)).join("|");
+      const incomingStops0439 = normalizeStops(rawTrip.stops);
+      const incomingStopIds0439 = incomingStops0439.map((stop) => stop.id).join("|");
+      const previousBlaBlaTripId0439 = cleanText(previous.blablaTripId, 160);
+      const incomingBlaBlaTripId0439 = cleanText(rawTrip && rawTrip.blablaTripId, 160);
+      const previousProfileUuid0439 = cleanText(previous.blablaProfileUuid, 160);
+      const incomingProfileUuid0439 = cleanText(rawTrip && rawTrip.blablaProfileUuid, 160);
+      const sameStrongExternalIdentity0439 =
+        Boolean(previousBlaBlaTripId0439) &&
+        previousBlaBlaTripId0439 === incomingBlaBlaTripId0439 &&
+        (!previousProfileUuid0439 || previousProfileUuid0439 === incomingProfileUuid0439);
+      const bookedStopShapeMigrationAuthorized0439 =
+        Number(previous.bookingsCount || 0) > 0 &&
+        previousStopIds0439 !== incomingStopIds0439 &&
+        deterministicRequest &&
+        sameStrongExternalIdentity0439 &&
+        Boolean(incomingPublicProjection0434) &&
+        Boolean(expectedPublicProjectionHash0425) &&
+        Boolean(canonicalTripId) &&
+        cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId;
+
+      const normalized = normalizeDriverTrip({
+        ...rawTrip,
+        capacityReliable: preserveManagedClaims0436 ? rawTrip.capacityReliable === true : true,
+      }, previous, bookedStopShapeMigrationAuthorized0439);
+      const candidateTrip = {
+        ...previous,
+        ...normalized,
+        capacityReliable: preserveManagedClaims0436 ? previous.capacityReliable === true : true,
+      };
+      if (!preserveManagedClaims0436 && claimNamespace === "BLABLACAR_SYNC:" && !Number.isInteger(Number(candidateTrip.publishedSeats))) {
         throw Object.assign(new Error("A cota BlaBlaCar ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
       }
       const expectedInventory = operationalSeatLimit(candidateTrip);
-      if (Number(candidateTrip.capacity || 0) !== expectedInventory) {
+      if (!preserveManagedClaims0436 && Number(candidateTrip.capacity || 0) !== expectedInventory) {
         throw Object.assign(new Error("O inventário operacional diverge das cotas canônicas."), { httpStatus: 409, code: "inventory_mismatch" });
       }
 
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const stopShapeMigration0439 = bookedStopShapeMigrationAuthorized0439
+        ? canonicalEndpointStopShapeMigration0439(previous.stops, candidateTrip.stops, records)
+        : { changed: false, records, changes: [] };
+      const migratedRecords0439 = stopShapeMigration0439.records;
       const now = Date.now();
       const protectedIds = new Set();
       const protectedChanges = [];
@@ -6300,7 +6793,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         const id = cleanText(raw && raw.id, 120).replace(/[^A-Za-z0-9_-]/g, "");
         if (!id || protectedIds.has(id)) throw Object.assign(new Error("Identificador de reserva protegida inválido ou duplicado."), { httpStatus: 409, code: "invalid_protected_booking_id" });
         protectedIds.add(id);
-        const previousBooking = records.find((record) => record.id === id) || null;
+        const previousBooking = migratedRecords0439.find((record) => record.id === id) || null;
         const normalizedProtected = normalizeProtectedSnapshotBooking(raw || {}, candidateTrip, previousBooking);
         const changes = [
           ...bookingRelevantChanges(previousBooking, normalizedProtected),
@@ -6317,10 +6810,10 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         protectedById.set(id, updatedProtected);
         if (changes.length) protectedChanges.push({ id, previous: previousBooking, updated: updatedProtected, changes });
       });
-      const recordsWithProtected = records.map((record) => protectedById.get(record.id) || record);
+      const recordsWithProtected = migratedRecords0439.map((record) => protectedById.get(record.id) || record);
 
       const desiredIds = new Set();
-      const desiredClaims = rawClaims.map((raw) => {
+      const desiredClaims = preserveManagedClaims0436 ? [] : rawClaims.map((raw) => {
         const id = cleanText(raw && raw.id, 120).replace(/[^A-Za-z0-9_-]/g, "");
         if (!id || desiredIds.has(id)) throw new Error("Identificador de ocupação inválido ou duplicado.");
         desiredIds.add(id);
@@ -6338,27 +6831,76 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         return normalizedClaim;
       });
 
-      const staleManaged = recordsWithProtected.filter((record) => managedCapacityClaim(record, claimNamespace) && !desiredIds.has(record.id));
-      const preserved = recordsWithProtected.filter((record) => !managedCapacityClaim(record, claimNamespace));
-      const candidateRecords = [...preserved, ...desiredClaims];
-      const capacityState = reconciledSegmentCapacity(candidateTrip, candidateRecords);
-      const loads = capacityState.loads;
-      const persistence = canonicalCapacityPersistence(candidateTrip, candidateRecords, capacityState);
+      const staleManaged = preserveManagedClaims0436
+        ? []
+        : recordsWithProtected.filter((record) => managedCapacityClaim(record, claimNamespace) && !desiredIds.has(record.id));
+      const preserved = preserveManagedClaims0436
+        ? recordsWithProtected
+        : recordsWithProtected.filter((record) => !managedCapacityClaim(record, claimNamespace));
+      const candidateRecords = preserveManagedClaims0436 ? recordsWithProtected : [...preserved, ...desiredClaims];
+      const capacityState = preserveManagedClaims0436 ? null : reconciledSegmentCapacity(candidateTrip, candidateRecords);
+      const loads = preserveManagedClaims0436
+        ? (Array.isArray(previous.segmentLoads) ? previous.segmentLoads : [])
+        : capacityState.loads;
+      const persistence = preserveManagedClaims0436
+        ? {}
+        : canonicalCapacityPersistence(candidateTrip, candidateRecords, capacityState);
       // An authoritative channel snapshot may reveal that already-confirmed occupancy now
       // exceeds a reduced quota. Persist that truth atomically and fail closed as FULL;
       // do not preserve an older optimistic availability. New bookings still use the
       // strict overbooking assertions in their own transactions.
-      const snapshotOverbooked = loads.some((load) => Number(load || 0) > Number(candidateTrip.capacity || 0)) ||
-        Number(persistence.operationalOverbookingSeats || 0) > 0;
-      const status = snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads);
-      const occupancyRevision = Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+      const snapshotOverbooked = preserveManagedClaims0436 ? false : (
+        loads.some((load) => Number(load || 0) > Number(candidateTrip.capacity || 0)) ||
+          Number(persistence.operationalOverbookingSeats || 0) > 0
+      );
+      const status = preserveManagedClaims0436
+        ? cleanText(previous.status, 24)
+        : (snapshotOverbooked ? "FULL" : statusForReconciledLoads(candidateTrip, loads));
+      const occupancyRevision = preserveManagedClaims0436
+        ? Math.max(0, Number(previous.occupancyRevision || 0))
+        : Math.max(0, Number(previous.occupancyRevision || 0)) + 1;
+      const previousPublicProjectionHash0434 = cleanText(previous.publicProjectionHash0434, 160).toLowerCase();
+      const publicProjectionRevision0434 = Math.max(0, Math.floor(Number(previous.publicProjectionRevision0434 || 0))) +
+        (incomingPublicProjection0434 && expectedPublicProjectionHash0425 !== previousPublicProjectionHash0434 ? 1 : 0);
+      const canonicalProjectionPersistence0434 = incomingPublicProjection0434 ? {
+        canonicalPublicProjection0434: incomingPublicProjection0434,
+        publicProjectionHash0434: expectedPublicProjectionHash0425,
+        publicProjectionRevision0434,
+        canonicalTripId: incomingPublicProjection0434.canonicalTripId,
+        canonicalRevision: incomingPublicProjection0434.canonicalRevision,
+        canonicalStateHash: incomingPublicProjection0434.canonicalStateHash,
+        title: incomingPublicProjection0434.title,
+        departureAtMillis: incomingPublicProjection0434.departureAtMillis,
+        publicTimezoneId0411: incomingPublicProjection0434.timezoneId,
+        status: incomingPublicProjection0434.status,
+        capacity: incomingPublicProjection0434.capacity,
+        stops: incomingPublicProjection0434.stops,
+        segmentLoads: incomingPublicProjection0434.segmentLoads,
+        segmentPassengerLoads: incomingPublicProjection0434.segmentPassengerLoads,
+        segmentBlockedLoads: incomingPublicProjection0434.segmentBlockedLoads,
+        availableSeatsMinimum: incomingPublicProjection0434.availableSeatsMinimum,
+        availableSeatsMaximum: incomingPublicProjection0434.availableSeatsMaximum,
+        operationalAvailableSeats: incomingPublicProjection0434.operationalAvailableSeats,
+        publishedSeats: incomingPublicProjection0434.publishedSeats,
+        rotaCertaSeatAllocation: incomingPublicProjection0434.rotaCertaSeatAllocation,
+        publicBookingEnabled: incomingPublicProjection0434.publicBookingEnabled,
+        capacityReliable: incomingPublicProjection0434.capacityReliable,
+        itineraryAuthoritative: incomingPublicProjection0434.itineraryAuthoritative,
+        publicUrl: incomingPublicProjection0434.publicUrl,
+        blablaProfileUuid: incomingPublicProjection0434.blablaProfileUuid,
+        blablaTripId: incomingPublicProjection0434.blablaTripId,
+        blablaPublicUrl: incomingPublicProjection0434.blablaPublicUrl,
+      } : {};
       const nextProjectionData0425 = {
         ...previous,
         ...normalized,
         ...persistence,
         capacityReliable: true,
         status,
-        capacitySnapshotRevision: snapshotRevision,
+        ...canonicalProjectionPersistence0434,
+        capacitySnapshotRevision: preserveManagedClaims0436
+          ? cleanText(previous.capacitySnapshotRevision, 128)
+          : snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
         publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
@@ -6371,9 +6913,9 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         bookingsCount: candidateRecords.length + staleManaged.length,
       };
       if (expectedPublicProjectionHash0425) {
-        const nextPublicProjectionHash0425 = canonicalPublicTripHash0411(
-          canonicalPublicTripPayload0411(token, nextProjectionData0425),
-        ).toLowerCase();
+        const nextPublicProjectionHash0425 = incomingPublicProjection0434
+          ? canonicalPublicTripHash0411(incomingPublicProjection0434).toLowerCase()
+          : canonicalPublicTripHash0411(canonicalPublicTripPayload0411(token, nextProjectionData0425)).toLowerCase();
         if (nextPublicProjectionHash0425 !== expectedPublicProjectionHash0425) {
           throw Object.assign(
             new Error("A projeção calculada pelo servidor diverge da projeção canônica enviada."),
@@ -6391,6 +6933,18 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
 
       const protectedEventIds = [];
       const protectedRefundIds = [];
+      stopShapeMigration0439.changes.forEach((migration) => {
+        if (!migration.id) return;
+        tx.set(
+          tripRef.collection("bookings").doc(migration.id),
+          {
+            boardingStopId: migration.boardingStopId,
+            dropoffStopId: migration.dropoffStopId,
+            updatedAtMillis: now,
+          },
+          { merge: true },
+        );
+      });
       protectedChanges.forEach(({ id, previous: previousBooking, updated: updatedProtected, changes }) => {
         const persisted = { ...updatedProtected };
         delete persisted.id;
@@ -6445,9 +6999,12 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       tx.update(tripRef, {
         ...normalized,
         ...persistence,
-        capacityReliable: true,
+        capacityReliable: preserveManagedClaims0436 ? previous.capacityReliable === true : true,
         status,
-        capacitySnapshotRevision: snapshotRevision,
+        ...canonicalProjectionPersistence0434,
+        capacitySnapshotRevision: preserveManagedClaims0436
+          ? cleanText(previous.capacitySnapshotRevision, 128)
+          : snapshotRevision,
         publicationRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         publicationTombstone: false,
         publicationEventId: deterministicRequest ? outboxEventId : currentEventId,
@@ -6456,17 +7013,26 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         canonicalTripId: deterministicRequest && canonicalTripId ? canonicalTripId : cleanText(previous.canonicalTripId, 180),
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
+        canonicalStopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
+        canonicalStopShapeMigratedAtMillis0439: stopShapeMigration0439.changed ? now : Number(previous.canonicalStopShapeMigratedAtMillis0439 || 0),
         updatedAtMillis: now,
         publicCommittedAt0422: FieldValue.serverTimestamp(),
       });
+      const committedRange0434 = incomingPublicProjection0434
+        ? {
+            minimum: incomingPublicProjection0434.availableSeatsMinimum,
+            maximum: incomingPublicProjection0434.availableSeatsMaximum,
+          }
+        : capacityAvailabilityRange(candidateTrip, loads);
       return {
         changed: true,
         stale: false,
-        range: capacityAvailabilityRange(candidateTrip, loads),
+        range: committedRange0434,
         entityRevision: deterministicRequest ? entityRevision : currentEntityRevision,
         occupancyRevision,
         snapshotOverbooked,
         refundBookingIds: protectedRefundIds,
+        stopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
       };
     });
     for (const bookingId of (result.refundBookingIds || [])) {
@@ -6485,6 +7051,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       stale: result.stale === true,
       logicalReplay: result.logicalReplay === true,
       snapshotOverbooked: result.snapshotOverbooked === true,
+      stopShapeMigrationCount0439: Math.max(0, Number(result.stopShapeMigrationCount0439 || 0)),
     });
   } catch (error) {
     return fail(
@@ -6836,6 +7403,8 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/driver/push-tokens") return await registerDriverPushToken(req, res);
     if (req.method === "POST" && path === "/v1/driver/trips") return await createDriverTrip(req, res);
     if (req.method === "GET" && path === "/v1/driver/trips/sync-state") return await listDriverTripSyncState0402(req, res);
+    if (req.method === "PUT" && path === "/v1/driver/private-mirror") return await putDriverPrivateMirror0434(req, res);
+    if (req.method === "POST" && path === "/v1/driver/private-mirror/readback") return await readDriverPrivateMirror0434(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/ensure") return await ensureDriverPublicAgenda(req, res);
     if (req.method === "POST" && path === "/v1/driver/agenda/regenerate") return await regenerateDriverPublicAgenda(req, res);
     if (req.method === "PUT" && path === "/v1/driver/agenda/seat-allocation") return await reconcileDriverAgendaSeatAllocation(req, res);

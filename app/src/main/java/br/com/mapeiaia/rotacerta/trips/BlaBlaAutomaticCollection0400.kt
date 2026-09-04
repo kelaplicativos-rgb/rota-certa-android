@@ -58,6 +58,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         target: BlaBlaTripTarget0407,
         commandId: String,
         origin: String,
+        timeoutMillis: Long = HEADLESS_TARGET_TIMEOUT_MS_0407,
     ): BlaBlaCommandResult0407 {
         val appContext = context.applicationContext
         val startedAt = System.currentTimeMillis()
@@ -127,15 +128,16 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 appContext.packageName,
                 "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} found=${before != null} transport=HYBRID",
             )
+            val effectiveTimeoutMillis = timeoutMillis.coerceIn(5_000L, HEADLESS_TARGET_TIMEOUT_MS_0407)
             val hostResult = try {
-                withTimeout(HEADLESS_TARGET_TIMEOUT_MS_0407) {
+                withTimeout(effectiveTimeoutMillis) {
                     runTargetTripHeadless0407(appContext, account, target, origin)
                 }
             } catch (timeout: TimeoutCancellationException) {
                 UnifiedDebugEventStore.record(
                     "FAILED",
                     appContext.packageName,
-                    "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP error=TIMEOUT timeoutMs=$HEADLESS_TARGET_TIMEOUT_MS_0407",
+                    "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP error=TIMEOUT timeoutMs=$effectiveTimeoutMillis",
                 )
                 return@withLock BlaBlaCommandResult0407(
                     commandId = commandId,
@@ -373,6 +375,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         val normalizedResult = if (accountResult == "success") "COMPLETE" else "PARTIAL"
         val state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, normalizedResult, error)
         publishCurrentSessions(appContext, "account_${normalizedResult.lowercase()}")
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "account_${normalizedResult.lowercase()}")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_ACCOUNT_END_0400", appContext.packageName,
             "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
@@ -451,6 +454,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         val response = publishCurrentSessions(context, "run_terminal")
         val result = automaticCollectorTerminalStatus0400(response, before.failedAccountIds.size, before.targetAccountIds.size, before.pendingAuthAccountIds.size)
         val finalState = AgendaBackgroundSyncConfig0392.finishCollectorRun0400(context, generation, result, before.lastError)
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(context, "run_terminal:$result")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_COLLECTION_END_0401", context.packageName,
             "generation=$generation result=$result reason=${reason.take(80)} target=${finalState.targetAccountIds.size} completed=${finalState.completedAccountIds.size} failed=${finalState.failedAccountIds.size} pendingAuth=${finalState.pendingAuthAccountIds.size} trips=${response.trips.size} completeForScope=${response.coverage.complete_for_scope} executionHost=worker_headless_webview activityLaunch=false browserOpened=false",

@@ -721,7 +721,11 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             try {
               const url = new URL(String(rawUrl || ''), location.href);
               if (url.protocol !== 'https:' || !allowedHost(url.hostname)) return '';
-              const value = sourceText(url.searchParams.get('id'), 160);
+              let value = sourceText(url.searchParams.get('id'), 160);
+              if (!value) {
+                const match = url.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
+                value = sourceText(match && match[1], 160);
+              }
               return /^[A-Za-z0-9_-]{8,160}$/.test(value) ? value : '';
             } catch (_) {
               return '';
@@ -876,6 +880,22 @@ internal object BlaBlaNetworkDiagnosticPolicy {
                 });
               }
             }
+          }
+
+          function rememberBoundResponsePublicTripUrl(finalUrl, endpoint, requestUrl, pageTripIdAtRequest) {
+            const tripId = sourceText(pageTripIdAtRequest, 160);
+            if (!/^[A-Za-z0-9_-]{8,160}$/.test(tripId)) return;
+            const requestTripId = requestAdministrativeTripId(requestUrl);
+            if (requestTripId !== tripId) return;
+            const candidate = publicTripCandidate(finalUrl);
+            if (!candidate) return;
+            mergeTripSource(tripId, {
+              publicTripHref: candidate.href,
+              publicTripHrefSource: 'network_structured_response_url',
+              publicTripHrefBinding: 'network_authoritative',
+              publicTripHrefEndpoint: String(endpoint || '').slice(0, 240),
+              publicTripHrefJsonPath: 'response.url'
+            });
           }
 
           function sourceWaypoint(rawValue) {
@@ -1102,6 +1122,12 @@ internal object BlaBlaNetworkDiagnosticPolicy {
             if (!capturePage()) return;
             const endpoint = safeEndpoint(response && response.url ? response.url : rawUrl);
             if (!endpoint) return;
+            rememberBoundResponsePublicTripUrl(
+              response && response.url ? response.url : '',
+              endpoint,
+              rawUrl,
+              pageTripIdAtRequest
+            );
             let contentType = '';
             let contentLength = 0;
             try {
@@ -1183,6 +1209,12 @@ internal object BlaBlaNetworkDiagnosticPolicy {
               if (!capturePage()) return;
               const endpoint = safeEndpoint(xhr.responseURL || meta.url);
               if (!endpoint) return;
+              rememberBoundResponsePublicTripUrl(
+                xhr.responseURL || '',
+                endpoint,
+                meta.url,
+                meta.pageTripId
+              );
               let contentType = '';
               try { contentType = String(xhr.getResponseHeader('content-type') || '').toLowerCase(); } catch (_) {}
               if (!contentType.includes('json')) {

@@ -62,6 +62,27 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
+    fun orchestratorNavigationBindingMayCarryDifferentPublicTokenButUnboundStateCannot() {
+        val raw = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1NavigationPublicToken0409&search_uuid=temp"
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1NavigationPublicToken0409",
+            BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                raw = raw,
+                expectedTripId = tripIdA,
+                binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+            ),
+        )
+        assertNull(BlaBlaCollectorUrlModule.publicTripForCollectorState(raw, tripIdA, null))
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = raw,
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdB,
+            ),
+        )
+    }
+
+    @Test
     fun authoritativeNetworkBindingStillRejectsSearchAndForgedHosts() {
         assertNull(
             BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(

@@ -135,7 +135,10 @@ class AgendaCanonicalProjectionConvergence0408Test {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
         assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
-        assertTrue(outbox.contains("remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED"))
+        assertTrue(outbox.contains("remoteProjectionDivergenceObserved &&"))
+        assertTrue(outbox.contains("sameLogicalSnapshot &&"))
+        assertTrue(outbox.contains("latest?.status == TripPublicationStatus0387.DELIVERED"))
+        assertTrue(outbox.contains("return replay"))
         assertFalse(outbox.contains("class ProjectionPublicationOutbox0410"))
     }
 
@@ -159,6 +162,35 @@ class AgendaCanonicalProjectionConvergence0408Test {
         val partial = response(status = "partial", complete = false, global = false)
         assertFalse(remoteProjectionWithinCompleteScope0408(orphan, partial, emptySet()))
         assertTrue(remoteProjectionWithinCompleteScope0408(orphan, partial, setOf(profileA.lowercase())))
+    }
+
+    @Test
+    fun publicProjectionOrphanCleanupUsesCanonicalTripStoreWithoutCollectorCoverageGate() {
+        val background = source("AgendaBackgroundSync0392.kt")
+        val orphanBlock = background.substring(
+            background.indexOf("val orphanStates = remoteStates.filter"),
+            background.indexOf("val report = ProjectionIntegrity0406"),
+        )
+        assertTrue(orphanBlock.contains("authority=CANONICAL_TRIP_STORE"))
+        assertTrue(orphanBlock.contains("mutationType = \"CANONICAL_PUBLIC_ORPHAN\""))
+        assertFalse(orphanBlock.contains("remoteProjectionWithinCompleteScope0408("))
+    }
+
+    @Test
+    fun publicPublisherNeverCollapsesDistinctCanonicalTripsByRouteOrTime() {
+        val publisher = source("PublicAgendaAutoSync0300.kt")
+        assertFalse(publisher.contains("samePhysicalTrip("))
+        assertFalse(publisher.contains("localTrips.any { local ->"))
+        assertTrue(publisher.contains(".distinctBy { it.trip.tripKey.ifBlank { it.trip.id } }"))
+    }
+
+    @Test
+    fun deliveredIncrementalPublicationUsesExistingReadbackAttestation() {
+        val outbox = source("TripPublicationOutbox0387.kt")
+        assertTrue(outbox.contains("deliveredCanonicalIds0429"))
+        assertTrue(outbox.contains("api.listDriverTripSyncStates0402().trips"))
+        assertTrue(outbox.contains("PublicMirrorAttestationCoordinator0411.attest("))
+        assertTrue(outbox.contains("force = true"))
     }
 
     @Test

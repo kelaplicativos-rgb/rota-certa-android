@@ -54,6 +54,44 @@ class AgendaPublicTimelineReflection0425Test {
     }
 
     @Test
+    fun partialCollectorCanRepairCanonicalProjectionWithoutAdvancingCapacitySnapshot() {
+        val remote = DriverTripSyncState0402(
+            remoteTripId = "remote-0436",
+            capacityReliable = true,
+            capacitySnapshotRevision = "older-capacity-revision",
+            publicProjectionHash = exactHash,
+        )
+
+        assertTrue(
+            remoteCanonicalProjectionMatches0436(
+                remote = remote,
+                expectedPublicProjectionHash = exactHash,
+                snapshotRevision = "newer-capacity-revision",
+                sourceComplete = false,
+            ),
+        )
+        assertFalse(
+            remoteCanonicalProjectionMatches0436(
+                remote = remote,
+                expectedPublicProjectionHash = exactHash,
+                snapshotRevision = "newer-capacity-revision",
+                sourceComplete = true,
+            ),
+        )
+
+        val sync = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val api = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
+        ).readText()
+        assertTrue(sync.contains("action=preserve_capacity_claims_project_canonical"))
+        assertFalse(sync.contains("action=preserve_previous_snapshot reason=incomplete_source previousBinding=true"))
+        assertTrue(sync.contains("preserveManagedClaims0436 = !synthesized.sourceComplete && existingBinding != null"))
+        assertTrue(api.contains("val preserveManagedClaims0436: Boolean = false"))
+        assertTrue(api.contains("sourceComplete = sourceComplete"))
+    }
+    @Test
     fun publicSyncCarriesByteProofAndPreservesCanonicalTimezone() {
         val sync = java.io.File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
@@ -61,13 +99,18 @@ class AgendaPublicTimelineReflection0425Test {
         val api = java.io.File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
         ).readText()
+        val attestation = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestation0411.kt",
+        ).readText()
 
         assertTrue(sync.contains("PUBLIC_CAPACITY_REMOTE_REVISION_REPAIR_REQUIRED_0425"))
         assertTrue(sync.contains("expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425()"))
+        assertTrue(sync.contains("expectedPublicProjectionJson0434"))
         assertTrue(sync.contains("if (response.stale)"))
-        assertTrue(sync.contains("publicTimezoneId0411 = canonical.publicTimezoneId0411.ifBlank"))
-        assertTrue(sync.contains("publicTimezoneId0411 = zoneId.id"))
+        assertTrue(attestation.contains("timezoneId = trip.publicTimezoneId0411.trim()"))
+        assertFalse(attestation.contains("ZoneId.systemDefault"))
         assertTrue(api.contains("val publicProjectionHash: String = \"\""))
         assertTrue(api.contains("val expectedPublicProjectionHash0425: String = \"\""))
+        assertTrue(api.contains("val expectedPublicProjectionJson0434: String = \"\""))
     }
 }

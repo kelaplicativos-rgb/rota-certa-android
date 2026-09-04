@@ -458,6 +458,60 @@ fun operationalSeatSummary(
     )
 }
 
+/**
+ * Immutable operational materialization produced by the canonical trip domain.
+ *
+ * Mirror/publication layers consume this value; they must not run a second
+ * capacity/status/segment interpretation of the same Trip + Booking aggregate.
+ */
+data class CanonicalOperationalSnapshot0434(
+    val capacity: Int,
+    val segmentLoads: List<Int>,
+    val segmentPassengerLoads: List<Int>,
+    val segmentBlockedLoads: List<Int>,
+    val availableSeatsMinimum: Int,
+    val availableSeatsMaximum: Int,
+    val operationalAvailableSeats: Int,
+    val confirmedPassengerSeats: Int,
+    val blockedSeats: Int,
+    val operationalOverbookingSeats: Int,
+)
+
+internal fun canonicalOperationalSnapshot0434(
+    trip: Trip,
+    bookings: List<Booking>,
+    nowMillis: Long = trip.updatedAtMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
+): CanonicalOperationalSnapshot0434 {
+    val domainInventory = operationalInventoryCapacity(trip, bookings)
+    require(trip.capacity == domainInventory) {
+        "CANONICAL_CAPACITY_INVARIANT_MISMATCH expected=$domainInventory actual=${trip.capacity}"
+    }
+    val loads = SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis)
+    val summary = operationalSeatSummary(trip, bookings, nowMillis)
+    val minimum = if (trip.capacityReliable) {
+        loads.minOfOrNull(SegmentLoad::availableSeats)?.coerceAtLeast(0) ?: trip.capacity.coerceAtLeast(0)
+    } else {
+        0
+    }
+    val maximum = if (trip.capacityReliable) {
+        loads.maxOfOrNull(SegmentLoad::availableSeats)?.coerceAtLeast(0) ?: trip.capacity.coerceAtLeast(0)
+    } else {
+        0
+    }
+    return CanonicalOperationalSnapshot0434(
+        capacity = trip.capacity.coerceAtLeast(0),
+        segmentLoads = loads.map { it.occupiedSeats.coerceAtLeast(0) },
+        segmentPassengerLoads = loads.map { it.passengerSeats.coerceAtLeast(0) },
+        segmentBlockedLoads = loads.map { it.blockedSeats.coerceAtLeast(0) },
+        availableSeatsMinimum = minimum,
+        availableSeatsMaximum = maximum,
+        operationalAvailableSeats = if (trip.capacityReliable) summary.availableSeats.coerceAtLeast(0) else 0,
+        confirmedPassengerSeats = summary.confirmedPassengerSeats.coerceAtLeast(0),
+        blockedSeats = summary.blockedSeats.coerceAtLeast(0),
+        operationalOverbookingSeats = summary.overbookingSeats.coerceAtLeast(0),
+    )
+}
+
 object DriverIdentityRules {
     // Reserve only paths that are actually owned by Firebase/API routing.
     // Human-facing words such as "agenda", "admin" or a driver's preferred name

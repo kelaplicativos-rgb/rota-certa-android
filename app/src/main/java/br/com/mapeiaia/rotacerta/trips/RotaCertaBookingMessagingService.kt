@@ -216,17 +216,35 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
                 DriverNotificationProjection0416.refresh(this@RotaCertaBookingMessagingService)
             }
         }
-        val syncReason0417 = when (event) {
-            "admin_update_now" -> "admin_update_now:$correlationId0417"
-            "admin_full_reconcile" -> "admin_full_reconcile:$correlationId0417"
-            "admin_sync_policy_changed" -> null
-            else -> "booking_push:${event.take(40)}"
-        }
-        syncReason0417?.let { reason ->
-            AgendaBackgroundSync0392.enqueueImmediate(
+        when (event) {
+            "admin_update_now" -> AgendaBackgroundSync0392.enqueueImmediate(
                 context = this,
-                reason = reason,
+                reason = "admin_update_now:$correlationId0417",
             )
+            "admin_full_reconcile" -> AgendaBackgroundSync0392.enqueueImmediate(
+                context = this,
+                reason = "admin_full_reconcile:$correlationId0417",
+            )
+            "admin_sync_policy_changed" -> Unit
+            else -> {
+                val reason = "booking_push:${event.take(40)}"
+                val targeted = AgendaBackgroundSync0392.enqueueCardDelta0431(
+                    context = this,
+                    reason = reason,
+                    remoteTripId = remoteTripId,
+                )
+                if (!targeted) {
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_CARD_DELTA_TARGET_MISSING_0431",
+                        packageName,
+                        "event=${event.take(40)} bookingPresent=${bookingId.isNotBlank()} fallback=tenant_delta",
+                    )
+                    AgendaBackgroundSync0392.enqueueImmediate(
+                        context = this,
+                        reason = reason,
+                    )
+                }
+            }
         }
     }
 

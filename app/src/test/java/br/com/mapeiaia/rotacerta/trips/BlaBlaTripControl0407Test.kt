@@ -98,9 +98,9 @@ class BlaBlaTripControl0407Test {
         assertFalse(shouldAwaitNetworkTripSource0407(sourcePresent = true, readAttempts = 0, maxReadAttempts = 2))
     }
     @Test
-    fun targetedReasonUsesCollectorReconcileWithoutFullCollectorSemantics() {
+    fun targetedReasonStaysDeltaOnlyAndDoesNotClaimCoverageRefresh() {
         assertEquals(
-            AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE,
+            AgendaBackgroundSyncMode0392.DELTA_ONLY,
             agendaBackgroundSyncMode0392("trip_reverify"),
         )
         assertEquals("TRIP_REVERIFY", agendaBackgroundSyncTrigger0397("trip_reverify"))

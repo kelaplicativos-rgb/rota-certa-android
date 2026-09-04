@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
+const vm = require("node:vm");
 const path = require("node:path");
 const test = require("node:test");
 
@@ -55,11 +57,239 @@ test("server verifies the candidate bytes before committing a repair", () => {
   assert.match(capacity, /canonicalPublicTripPayload0411\(token, nextProjectionData0425\)/);
 });
 
+test("canonical public stop normalization preserves explicit null optional timestamps", () => {
+  const stop = source.slice(
+    source.indexOf("function canonicalPublicStop0411"),
+    source.indexOf("function canonicalPublicTripPayloadFromStored0434"),
+  );
+  assert.match(stop, /stop\.plannedArrivalMillis == null[\s\S]*\? null/);
+  assert.match(stop, /stop\.plannedDepartureMillis == null[\s\S]*\? null/);
+  assert.doesNotMatch(
+    stop,
+    /plannedArrivalMillis:\s*Number\.isFinite\(Number\(stop\.plannedArrivalMillis\)\)/,
+  );
+  assert.doesNotMatch(
+    stop,
+    /plannedDepartureMillis:\s*Number\.isFinite\(Number\(stop\.plannedDepartureMillis\)\)/,
+  );
+});
+
+test("server canonical normalizer hashes explicit null stop timestamps byte for byte", () => {
+  const stopStart = source.indexOf("function canonicalPublicStop0411");
+  const payloadStart = source.indexOf("function canonicalPublicTripPayloadFromStored0434");
+  const payloadEnd = source.indexOf("function canonicalPublicTripPayload0411");
+  const hashStart = source.indexOf("function canonicalPublicTripHash0411");
+  const hashEnd = source.indexOf("function privateMirrorDocumentId0434");
+  assert.ok(stopStart >= 0 && payloadStart > stopStart && payloadEnd > payloadStart);
+  assert.ok(hashStart >= 0 && hashEnd > hashStart);
+
+  const context = {
+    cleanText(value, max = 240) {
+      return String(value || "").trim().slice(0, max);
+    },
+    normalizeBlaBlaPublicUrl(raw) {
+      return String(raw || "");
+    },
+    sha256Hex(value) {
+      return crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source.slice(stopStart, payloadEnd) +
+      source.slice(hashStart, hashEnd) +
+      ";this.normalizeProjection=canonicalPublicTripPayloadFromStored0434;" +
+      "this.hashProjection=canonicalPublicTripHash0411;",
+    context,
+  );
+
+  const payload = {
+    schemaVersion: "public-trip-v2",
+    canonicalTripId: "trip-key-0438",
+    canonicalRevision: 8,
+    blablaProfileUuid: "profile",
+    blablaTripId: "trip",
+    title: "São Paulo → São Tomé das Letras",
+    departureAtMillis: 1788528600000,
+    timezoneId: "America/Sao_Paulo",
+    status: "PUBLISHED",
+    capacity: 4,
+    stops: [
+      {
+        id: "stop-0",
+        order: 0,
+        name: "São Paulo",
+        address: "São Paulo",
+        plannedArrivalMillis: null,
+        plannedDepartureMillis: 1788528600000,
+      },
+      {
+        id: "stop-1",
+        order: 1,
+        name: "São Tomé das Letras",
+        address: "São Tomé das Letras",
+        plannedArrivalMillis: 1788541200000,
+        plannedDepartureMillis: null,
+      },
+    ],
+    segmentLoads: [0],
+    segmentPassengerLoads: [0],
+    segmentBlockedLoads: [0],
+    availableSeatsMinimum: 4,
+    availableSeatsMaximum: 4,
+    operationalAvailableSeats: 4,
+    publishedSeats: 4,
+    rotaCertaSeatAllocation: 0,
+    publicBookingEnabled: true,
+    capacityReliable: true,
+    itineraryAuthoritative: true,
+    publicUrl: "",
+    blablaPublicUrl: "",
+    publicationRevision: 8,
+    canonicalStateHash: "tripstate-v1:test",
+  };
+
+  const normalized = context.normalizeProjection(payload);
+  assert.equal(normalized.stops[0].plannedArrivalMillis, null);
+  assert.equal(normalized.stops[1].plannedDepartureMillis, null);
+
+  const semantic = { ...payload, publicationRevision: 0 };
+  const expectedHash = "public-v2:" +
+    crypto.createHash("sha256").update(JSON.stringify(semantic), "utf8").digest("hex");
+  assert.equal(context.hashProjection(normalized), expectedHash);
+});
+
+test("legacy two-endpoint booked shape migrates atomically to canonical stop ids", () => {
+  const start = source.indexOf("function canonicalEndpointStopShapeMigration0439");
+  const end = source.indexOf("function normalizeDriverTrip", start);
+  assert.ok(start >= 0 && end > start);
+  const context = {
+    cleanText(value, max = 240) {
+      return String(value || "").trim().slice(0, max);
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source.slice(start, end) + ";this.migrate=canonicalEndpointStopShapeMigration0439;",
+    context,
+  );
+
+  const result = context.migrate(
+    [
+      { id: "origin-public-id" },
+      { id: "destination-public-id" },
+    ],
+    [
+      { id: "stop-0-canonical" },
+      { id: "stop-1-canonical" },
+      { id: "stop-2-canonical" },
+    ],
+    [
+      {
+        id: "booking-1",
+        boardingStopId: "origin-public-id",
+        dropoffStopId: "destination-public-id",
+        passengerName: "Passenger",
+      },
+      {
+        id: "booking-2",
+        boardingStopId: "stop-0-canonical",
+        dropoffStopId: "stop-2-canonical",
+        passengerName: "Already canonical",
+      },
+    ],
+  );
+  assert.equal(result.changed, true);
+  assert.equal(result.changes.length, 1);
+  assert.equal(result.records[0].boardingStopId, "stop-0-canonical");
+  assert.equal(result.records[0].dropoffStopId, "stop-2-canonical");
+  assert.equal(result.records[1].boardingStopId, "stop-0-canonical");
+  assert.equal(result.records[1].dropoffStopId, "stop-2-canonical");
+});
+
+test("booked stop migration is authorized only by exact provider identity and canonical bytes", () => {
+  const capacity = source.slice(
+    source.indexOf("async function reconcileDriverCapacitySnapshot"),
+    source.indexOf("async function listDriverTripSyncState0402"),
+  );
+  assert.match(capacity, /sameStrongExternalIdentity0439/);
+  assert.match(capacity, /previousBlaBlaTripId0439 === incomingBlaBlaTripId0439/);
+  assert.match(capacity, /incomingPublicProjection0434/);
+  assert.match(capacity, /expectedPublicProjectionHash0425/);
+  assert.match(capacity, /canonicalEndpointStopShapeMigration0439/);
+  assert.match(capacity, /canonicalStopShapeMigrationCount0439/);
+  assert.doesNotMatch(capacity, /routeSimilarity|departureSimilarity|titleSimilarity/);
+});
+
+test("unsafe non-endpoint legacy shape still fails closed", () => {
+  const start = source.indexOf("function canonicalEndpointStopShapeMigration0439");
+  const end = source.indexOf("function normalizeDriverTrip", start);
+  const context = {
+    cleanText(value, max = 240) {
+      return String(value || "").trim().slice(0, max);
+    },
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source.slice(start, end) + ";this.migrate=canonicalEndpointStopShapeMigration0439;",
+    context,
+  );
+  assert.throws(
+    () => context.migrate(
+      [{ id: "old-0" }, { id: "old-1" }, { id: "old-2" }],
+      [{ id: "new-0" }, { id: "new-1" }, { id: "new-2" }],
+      [],
+    ),
+    /não é segura/,
+  );
+});
+
 test("public profile scope remains intact and independent from projection repair", () => {
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
-    source.indexOf("function projectionPlaceKey0421"),
+    source.indexOf("async function createDriverTrip"),
   );
   assert.match(agenda, /publicTripProfileUuids0417/);
   assert.match(agenda, /publicProfileScope0417\.has\(profileUuid\)/);
+});
+
+
+test("public agenda renders committed canonical projection without falsely granting blue attestation", () => {
+  const committed = source.slice(
+    source.indexOf("function publicProjectionCommittedCurrent0434"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(committed, /publicationTombstone === true/);
+  assert.match(committed, /canonicalTripId/);
+  assert.match(committed, /canonicalPublicProjection0434/);
+  assert.match(committed, /publicProjectionHash0434/);
+  assert.match(committed, /publicCommittedAt0422/);
+  assert.match(committed, /canonicalPublicTripHash0411/);
+  assert.doesNotMatch(committed, /publicAttestationState0417/);
+
+  const attested = source.slice(
+    source.indexOf("function publicProjectionAttestedCurrent0429"),
+    source.indexOf("function publicProjectionCommittedCurrent0434"),
+  );
+  assert.match(attested, /publicAttestationState0417[^\n]+VERIFIED/);
+  assert.match(attested, /publicAttestedHash0417/);
+
+  const agenda = source.slice(
+    source.indexOf("async function getPublicDriverAgenda"),
+    source.indexOf("async function createDriverTrip"),
+  );
+  assert.match(agenda, /publicProjectionCommittedCurrent0434\(doc\.id, doc\.data\(\)\)/);
+  assert.doesNotMatch(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
+});
+
+test("public adoption never uses route or time similarity as canonical identity", () => {
+  const create = source.slice(
+    source.indexOf("async function createDriverTrip"),
+    source.indexOf("async function processReferralCreditsForCompletedTrip"),
+  );
+  assert.match(create, /sameStrongIdentity/);
+  assert.match(create, /sameTripKey/);
+  assert.match(create, /sameCanonicalTrip/);
+  assert.doesNotMatch(create, /projectionPhysicalIdentityCompatible0421/);
+  assert.doesNotMatch(source, /function projectionPhysicalIdentityCompatible0421/);
 });

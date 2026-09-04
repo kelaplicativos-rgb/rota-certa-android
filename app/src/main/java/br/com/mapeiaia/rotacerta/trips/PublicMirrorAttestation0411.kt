@@ -1,7 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import java.security.MessageDigest
-import java.time.ZoneId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -84,29 +83,38 @@ private val publicProjectionJson0411 = Json {
     explicitNulls = true
 }
 
+internal fun serverPublicAttestationConfirmed0433(
+    expectedCanonicalRevision: Long,
+    expectedPublicationRevision: Long,
+    response: DriverPublicAttestationResponse0417?,
+): Boolean =
+    response != null &&
+        response.verified &&
+        response.state.equals("VERIFIED", ignoreCase = true) &&
+        expectedCanonicalRevision > 0L &&
+        expectedPublicationRevision > 0L &&
+        response.canonicalRevision == expectedCanonicalRevision &&
+        response.publicationRevision == expectedPublicationRevision
+
 internal fun canonicalPublicProjectionPayload0411(
     trip: Trip,
     bookings: List<Booking>,
     publicationRevision: Long,
     nowMillis: Long = System.currentTimeMillis(),
+    canonicalTripId: String = trip.id,
+    operationalSnapshot: CanonicalOperationalSnapshot0434 = canonicalOperationalSnapshot0434(trip, bookings, nowMillis),
 ): CanonicalPublicTripPayload0411 {
-    val capacity = operationalInventoryCapacity(trip, bookings)
-    val projectedTrip = trip.copy(capacity = capacity)
-    val loads = SeatAvailabilityEngine.segmentLoads(projectedTrip, bookings, nowMillis)
-    val summary = operationalSeatSummary(projectedTrip, bookings, nowMillis)
-    val status = SeatAvailabilityEngine.suggestedStatus(projectedTrip, bookings, nowMillis)
     val reliable = trip.capacityReliable
-    val available = if (reliable) summary.availableSeats.coerceAtLeast(0) else 0
     return CanonicalPublicTripPayload0411(
-        canonicalTripId = trip.id,
+        canonicalTripId = canonicalTripId.trim().ifBlank { trip.id },
         canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L),
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
         title = trip.title.trim(),
         departureAtMillis = trip.departureAtMillis,
-        timezoneId = trip.publicTimezoneId0411.ifBlank { ZoneId.systemDefault().id },
-        status = status.name,
-        capacity = capacity,
+        timezoneId = trip.publicTimezoneId0411.trim(),
+        status = trip.status.name,
+        capacity = operationalSnapshot.capacity,
         stops = trip.stops.sortedBy(TripStop::order).mapIndexed { index, stop ->
             CanonicalPublicStop0411(
                 id = stop.id.trim(),
@@ -117,12 +125,12 @@ internal fun canonicalPublicProjectionPayload0411(
                 plannedDepartureMillis = stop.plannedDepartureMillis,
             )
         },
-        segmentLoads = loads.map { it.occupiedSeats.coerceAtLeast(0) },
-        segmentPassengerLoads = loads.map { it.passengerSeats.coerceAtLeast(0) },
-        segmentBlockedLoads = loads.map { it.blockedSeats.coerceAtLeast(0) },
-        availableSeatsMinimum = available,
-        availableSeatsMaximum = available,
-        operationalAvailableSeats = available,
+        segmentLoads = operationalSnapshot.segmentLoads,
+        segmentPassengerLoads = operationalSnapshot.segmentPassengerLoads,
+        segmentBlockedLoads = operationalSnapshot.segmentBlockedLoads,
+        availableSeatsMinimum = operationalSnapshot.availableSeatsMinimum,
+        availableSeatsMaximum = operationalSnapshot.availableSeatsMaximum,
+        operationalAvailableSeats = operationalSnapshot.operationalAvailableSeats,
         publishedSeats = trip.publishedSeats?.coerceAtLeast(0),
         rotaCertaSeatAllocation = (trip.rotaCertaSeatAllocation ?: 0).coerceAtLeast(0),
         publicBookingEnabled = trip.publicBookingEnabled,
@@ -334,7 +342,7 @@ internal fun evaluatePublicMirrorReadback0411(
         actual.canonicalRevision > 0L
     if (!logicalRevisionValid) mismatch += "canonicalRevision"
     val transportRevisionValid = expected.publicationRevision > 0L &&
-        actual.publicationRevision >= expected.publicationRevision
+        actual.publicationRevision == expected.publicationRevision
     if (!transportRevisionValid) mismatch += "publicationRevision"
     val persistedCommitValid = readback.persistedAtMillis > 0L
     if (!persistedCommitValid) mismatch += "persistedAtMillis"
@@ -399,6 +407,9 @@ internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
         publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+        publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
+        publicMirrorAttemptedPublicationRevision0421 == publicationRevision &&
+        publicMirrorReadbackPublicationRevision0421 == publicationRevision &&
         publicMirrorLastReadbackAtMillis0421 > 0L &&
         publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&

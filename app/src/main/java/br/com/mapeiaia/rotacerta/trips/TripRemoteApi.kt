@@ -405,6 +405,43 @@ data class DriverPublicAttestationResponse0417(
     val state: String = "",
     val verified: Boolean = false,
     val publicationRevision: Long = 0L,
+    val canonicalRevision: Long = 0L,
+)
+
+@Serializable
+data class DriverPrivateMirrorWriteRequest0434(
+    val canonicalTripId: String,
+    val canonicalRevision: Long,
+    val privateStateHash: String,
+    val canonicalJson: String,
+    val correlationId: String = "",
+    val syncOperationId: String = "",
+    val idempotencyKey: String = "",
+)
+
+@Serializable
+data class DriverPrivateMirrorWriteResponse0434(
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val mirrorRevision: Long = 0L,
+    val privateStateHash: String = "",
+    val changed: Boolean = false,
+    val replayed: Boolean = false,
+)
+
+@Serializable
+data class DriverPrivateMirrorReadRequest0434(
+    val canonicalTripId: String,
+)
+
+@Serializable
+data class DriverPrivateMirrorReadback0434(
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val mirrorRevision: Long = 0L,
+    val privateStateHash: String = "",
+    val canonicalJson: String = "",
+    val persistedAtMillis: Long = 0L,
 )
 
 @Serializable
@@ -445,12 +482,14 @@ data class DriverCapacitySnapshotRequest(
     val claimNamespace: String,
     val snapshotRevision: String,
     val sourceComplete: Boolean = true,
+    val preserveManagedClaims0436: Boolean = false,
     val entityRevision: Long = 0L,
     val canonicalTripId: String = "",
     val outboxEventId: String = "",
     val mutationId0421: String = "",
     val idempotencyKey0421: String = "",
     val expectedPublicProjectionHash0425: String = "",
+    val expectedPublicProjectionJson0434: String = "",
 )
 
 @Serializable
@@ -511,6 +550,7 @@ data class DriverCapacitySnapshotResponse(
     val entityRevision: Long = 0L,
     val stale: Boolean = false,
     val logicalReplay: Boolean = false,
+    val stopShapeMigrationCount0439: Int = 0,
 )
 
 internal data class RemotePublicationEvidenceContext0421(
@@ -696,6 +736,24 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
+    internal suspend fun writePrivateAgendaMirror0434(
+        mirror: DriverPrivateMirrorWriteRequest0434,
+    ): DriverPrivateMirrorWriteResponse0434 = request(
+        method = "PUT",
+        path = "/v1/driver/private-mirror",
+        body = json.encodeToString(mirror),
+        requireDriverToken = true,
+    )
+
+    internal suspend fun readPrivateAgendaMirror0434(
+        canonicalTripId: String,
+    ): DriverPrivateMirrorReadback0434 = request(
+        method = "POST",
+        path = "/v1/driver/private-mirror/readback",
+        body = json.encodeToString(DriverPrivateMirrorReadRequest0434(canonicalTripId.trim())),
+        requireDriverToken = true,
+    )
+
     suspend fun reportPublicTripAttestation0417(
         remoteTripId: String,
         request: DriverPublicAttestationRequest0417,
@@ -763,12 +821,18 @@ class TripRemoteApi(
         mutationId0421: String = "",
         idempotencyKey0421: String = "",
         expectedPublicProjectionHash0425: String = "",
+        expectedPublicProjectionJson0434: String = "",
+        sourceComplete: Boolean = true,
+        preserveManagedClaims0436: Boolean = false,
     ): DriverCapacitySnapshotResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/$remoteTripId/capacity-snapshot",
         body = json.encodeToString(
             DriverCapacitySnapshotRequest(
-                trip = trip.copy(remoteId = remoteTripId, capacityReliable = true),
+                trip = trip.copy(
+                    remoteId = remoteTripId,
+                    capacityReliable = if (sourceComplete) true else trip.capacityReliable,
+                ),
                 claims = claims.map { booking ->
                     DriverCapacitySnapshotClaim(
                         id = booking.id,
@@ -804,13 +868,15 @@ class TripRemoteApi(
                 },
                 claimNamespace = claimNamespace,
                 snapshotRevision = snapshotRevision,
-                sourceComplete = true,
+                sourceComplete = sourceComplete,
+                preserveManagedClaims0436 = preserveManagedClaims0436,
                 entityRevision = entityRevision,
                 canonicalTripId = canonicalTripId,
                 outboxEventId = outboxEventId,
                 mutationId0421 = mutationId0421,
                 idempotencyKey0421 = idempotencyKey0421,
                 expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
+                expectedPublicProjectionJson0434 = expectedPublicProjectionJson0434,
             ),
         ),
         requireDriverToken = true,

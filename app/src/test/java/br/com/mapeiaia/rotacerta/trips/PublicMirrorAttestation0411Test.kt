@@ -40,6 +40,23 @@ class PublicMirrorAttestation0411Test {
         assertEquals(hash, decision.readbackHash)
     }
 
+
+    @Test
+    fun matchingReadbackIsNotPubliclyValidatedUntilServerCommitsSameRevisions() {
+        val committed = DriverPublicAttestationResponse0417(
+            state = "VERIFIED",
+            verified = true,
+            publicationRevision = 18,
+            canonicalRevision = 12,
+        )
+        assertTrue(serverPublicAttestationConfirmed0433(12, 18, committed))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(verified = false)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(state = "PENDING")))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(publicationRevision = 19)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(canonicalRevision = 13)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, null))
+    }
+
     @Test
     fun staleLogicalCanonicalRevisionPreventsBlue() {
         val trip = canonicalTrip()
@@ -141,6 +158,31 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
+    fun newerTransportRevisionAlsoPreventsBlueUntilExactSnapshotIsReadBack() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val newer = expected.copy(publicationRevision = expected.publicationRevision + 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = newer,
+                publicProjectionHash = canonicalPublicProjectionHash0411(newer),
+                persistedAtMillis = now,
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
+        assertTrue("publicationRevision" in decision.mismatchFields)
+    }
+
+    @Test
     fun BlaBlaLinkForAnotherTripPreventsBlueAndChangesPublicHash() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
@@ -233,6 +275,8 @@ class PublicMirrorAttestation0411Test {
             publicMirrorExpectedHash0411 = hash,
             publicMirrorReadbackHash0411 = hash,
             publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
+            publicMirrorAttemptedPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorReadbackPublicationRevision0421 = trip.publicationRevision,
             publicMirrorPublicIdentity0421 = "remote-0411",
             publicMirrorLastReadbackAtMillis0421 = now,
         )
@@ -245,7 +289,7 @@ class PublicMirrorAttestation0411Test {
         )
         assertTrue(validated.publicMirrorAttestationCurrent0411())
         assertFalse(validated.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorAttestationCurrent0411())
-        assertTrue(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
+        assertFalse(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
         assertFalse(validated.invalidatePublicMirror0411("TEST_MUTATION").publicMirrorAttestationCurrent0411())
     }
 

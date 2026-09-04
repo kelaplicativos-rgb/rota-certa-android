@@ -31,6 +31,154 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
+    fun targetedVerifyKeepsLogicalAndTransportRevisionsIndependent() {
+        assertEquals(
+            30L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 8L,
+                localPublicationRevision = 8L,
+                remotePublicationRevision = 30L,
+            ),
+        )
+        assertEquals(
+            39L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 14L,
+                localPublicationRevision = 14L,
+                remotePublicationRevision = 39L,
+            ),
+        )
+        assertEquals(
+            8L,
+            targetedReverifyTransportRevision0439(
+                canonicalRevision = 8L,
+                localPublicationRevision = 0L,
+                remotePublicationRevision = 0L,
+            ),
+        )
+        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 6L))
+        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 8L))
+        assertTrue(targetedReverifyRemoteLogicalAhead0439(8L, 9L))
+
+        val source = backgroundSource()
+        assertTrue(source.contains("val remoteBefore = api.listDriverTripSyncStates0402().trips"))
+        assertTrue(source.contains("remoteStateHint0402 = remoteBefore"))
+        assertTrue(source.contains("entityRevision = transportRevision0439"))
+        assertTrue(source.contains("publicationRevision = transportRevision0439"))
+        assertTrue(source.contains("REMOTE_LOGICAL_REVISION_AHEAD"))
+        assertFalse(source.contains("entityRevision = canonical.canonicalRevision"))
+    }
+
+    @Test
+    fun cardVerifyUsesCanonicalMirrorAndOnlyAcquiresMissingPublicUrlWithoutRetry() {
+        assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_reverify"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_reverify"))
+        assertTrue(AgendaBackgroundSync0392.staleDurableOneShot0435("trip_reverify", 0L, 1_000_000L))
+        assertTrue(AgendaBackgroundSync0392.staleDurableOneShot0435("admin_update_now:old", 0L, 1_000_000L))
+        assertFalse(
+            AgendaBackgroundSync0392.staleDurableOneShot0435(
+                reason = "trip_reverify",
+                requestedAtMillis = 900_000L,
+                nowMillis = 1_000_000L,
+            ),
+        )
+        assertTrue(
+            AgendaBackgroundSync0392.staleDurableOneShot0435(
+                reason = "admin_update_now:old",
+                requestedAtMillis = 1L,
+                nowMillis = AgendaBackgroundSync0392.ONE_SHOT_MAX_AGE_MILLIS_0435 + 2L,
+            ),
+        )
+
+        val source = backgroundSource()
+        assertTrue(source.contains("INPUT_REQUESTED_AT_0435 to requestedAtMillis"))
+        assertTrue(source.contains("STALE_DURABLE_WORK_0435"))
+        assertTrue(source.contains("reverifyCanonicalMirror0435"))
+        assertTrue(source.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
+        assertTrue(source.contains("PublicMirrorAttestationCoordinator0411.attest"))
+        assertTrue(source.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
+        assertTrue(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(source.contains("origin = \"card_verify_missing_public_url_0442\""))
+        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
+        assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
+        assertTrue(source.contains("val targetedRetryable = false"))
+    }
+    @Test
+    fun targetedCollectorPublicUrlAcceptsOnlyExactStrongTripAndAuthoritativeBinding() {
+        val target = BlaBlaTripTarget0407(
+            tenantId = "tenant-0442",
+            accountId = "account-0442",
+            profileUuid = "11111111-1111-4111-8111-111111111111",
+            tripId = "admin-trip-0442",
+            tripHref = "https://www.blablacar.com.br/rides/offer/admin-trip-0442",
+        )
+        val publicToken = "AaA1PublicToken0442DifferentFromAdmin"
+        val exact = BlaBlaCollectorTrip(
+            profile_uuid = target.profileUuid,
+            date = "2030-09-10",
+            trip_href = target.tripHref,
+            public_trip_href = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&search_uuid=temp",
+            public_trip_href_source = "network_structured",
+            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+            trip_id = target.tripId,
+        )
+        val unrelated = exact.copy(
+            trip_id = "other-admin-trip-0442",
+            trip_href = "https://www.blablacar.com.br/rides/offer/other-admin-trip-0442",
+        )
+
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken",
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(status = "validated", trips = listOf(exact)),
+                target,
+            ),
+        )
+        assertEquals(
+            null,
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(status = "validated", trips = listOf(unrelated)),
+                target,
+            ),
+        )
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken",
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(
+                    status = "validated",
+                    trips = listOf(
+                        exact.copy(
+                            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+                            public_trip_href_source = "orchestrator_navigation",
+                        ),
+                    ),
+                ),
+                target,
+            ),
+        )
+    }
+
+    @Test
+    fun canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector() {
+        assertEquals(
+            AgendaBackgroundSyncMode0392.FULL_RECONCILE,
+            agendaBackgroundSyncMode0392("admin_full_reconcile:physical-0429"),
+        )
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_full_reconcile:physical-0429"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("manual"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("recovery"))
+        assertTrue(agendaBackgroundSyncRequestsCollector0430("periodic"))
+        assertTrue(agendaBackgroundSyncRequestsCollector0430("admin_update_now:explicit-collector"))
+
+        val source = backgroundSource()
+        assertTrue(source.contains("val collectorRequested = agendaBackgroundSyncRequestsCollector0430(reason)"))
+        assertTrue(source.contains("collectorPending = collectorRequested && collectorState.pending"))
+        assertTrue(source.contains("val collectorWasRequested = agendaBackgroundSyncRequestsCollector0430(reason)"))
+        assertTrue(source.contains("val collectorAuthRequired = collectorWasRequested && collectorState.status == \"PENDING_AUTH\""))
+        assertTrue(source.contains("agendaBackgroundSyncMode0392(reason) == AgendaBackgroundSyncMode0392.FULL_RECONCILE -> true"))
+    }
+
+    @Test
     fun oneBackgroundModuleFeedsTimelineAndPublicAgenda() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
 
