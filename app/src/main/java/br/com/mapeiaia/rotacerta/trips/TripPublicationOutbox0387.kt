@@ -105,6 +105,17 @@ internal fun resolveExternalOutboxAccountId0454(
     return matchingAccounts.singleOrNull()?.id.orEmpty()
 }
 
+internal fun durableExternalCanonicalSnapshotNeedsRebase0456(
+    persistedSnapshot: Trip?,
+    currentCanonical: Trip,
+): Boolean {
+    val persisted = persistedSnapshot ?: return true
+    return persisted.tripKey != currentCanonical.tripKey ||
+        persisted.canonicalRevision != currentCanonical.canonicalRevision ||
+        persisted.canonicalStateHash != currentCanonical.canonicalStateHash ||
+        persisted.capacity != currentCanonical.capacity
+}
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -947,7 +958,7 @@ internal class TripMutationCoordinator0387(
                                 " persistedAccountIdPresent=" + event.snapshot.externalAccountId.isNotBlank() +
                                 " profileUuidPresent=" + sourceTrip.profile_uuid.isNotBlank() +
                                 " tripIdPresent=" + !sourceTrip.trip_id.isNullOrBlank() +
-                                " previousStage=OUTBOX_DEQUEUE nextStage=INCREMENTAL_IDENTITY_GUARD",
+                                " previousStage=OUTBOX_DEQUEUE nextStage=CANONICAL_REBASE_GUARD",
                         )
                         require(externalIdentityAccepted0455) {
                             "Identidade externa forte divergiu do snapshot persistido."
@@ -959,8 +970,132 @@ internal class TripMutationCoordinator0387(
                                 "accountRecovered=true profileUuidPresent=true tripIdPresent=true",
                             )
                         }
-                        val publicationCanonicalTripId0434 = event.snapshot.trip?.tripKey
-                            ?.takeIf(String::isNotBlank)
+                        val currentCanonicalMatches0456 = store.trips().filter { trip ->
+                            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                                !trip.deleted &&
+                                trip.tripKey == event.canonicalTripId &&
+                                trip.blablaProfileUuid?.trim()?.equals(sourceTrip.profile_uuid.trim(), ignoreCase = true) == true &&
+                                trip.blablaTripId?.trim() == sourceTrip.trip_id?.trim()
+                        }
+                        val currentCanonical0456 = currentCanonicalMatches0456.singleOrNull()
+                        if (currentCanonical0456 == null) {
+                            recordEvidence0421(
+                                stage = "CANONICAL_REBASE_GUARD",
+                                status = "FAILED",
+                                reason = "CANONICAL_REBASE_IDENTITY_NOT_UNIQUE",
+                                event = event,
+                                extra = "canonicalMatches=" + currentCanonicalMatches0456.size +
+                                    " previousStage=OUTBOX_IDENTITY_GUARD nextStage=INCREMENTAL_IDENTITY_GUARD",
+                            )
+                            error("CANONICAL_REBASE_IDENTITY_NOT_UNIQUE matches=" + currentCanonicalMatches0456.size)
+                        }
+                        val currentBookings0456 = store.bookingsFor(currentCanonical0456.id)
+                        val domainInventory0456 = operationalInventoryCapacity(currentCanonical0456, currentBookings0456)
+                        val legacyCapacityMismatch0456 = currentCanonical0456.capacity != domainInventory0456
+                        val repairedCanonical0456 = if (legacyCapacityMismatch0456) {
+                            store.saveTrip(currentCanonical0456.copy(capacity = domainInventory0456))
+                        } else {
+                            currentCanonical0456
+                        }
+                        if (repairedCanonical0456.capacity != domainInventory0456) {
+                            recordEvidence0421(
+                                stage = "CANONICAL_REBASE_GUARD",
+                                status = "FAILED",
+                                reason = "CANONICAL_CAPACITY_REPAIR_NOT_COMMITTED",
+                                event = event,
+                                extra = "actualCapacity=" + repairedCanonical0456.capacity +
+                                    " expectedCapacity=" + domainInventory0456 +
+                                    " previousStage=OUTBOX_IDENTITY_GUARD nextStage=INCREMENTAL_IDENTITY_GUARD",
+                            )
+                            error(
+                                "CANONICAL_CAPACITY_REPAIR_NOT_COMMITTED expected=" +
+                                    domainInventory0456 + " actual=" + repairedCanonical0456.capacity,
+                            )
+                        }
+                        val durableSnapshotNeedsRebase0456 = durableExternalCanonicalSnapshotNeedsRebase0456(
+                            persistedSnapshot = event.snapshot.trip,
+                            currentCanonical = repairedCanonical0456,
+                        )
+                        if (legacyCapacityMismatch0456 || durableSnapshotNeedsRebase0456) {
+                            val reason0456 = if (legacyCapacityMismatch0456) {
+                                "LEGACY_CANONICAL_CAPACITY_REBASED"
+                            } else {
+                                "DURABLE_CANONICAL_SNAPSHOT_REBASED"
+                            }
+                            recordEvidence0421(
+                                stage = "CANONICAL_REBASE_GUARD",
+                                status = "REBASED",
+                                reason = reason0456,
+                                event = event,
+                                extra = "oldLogicalRevision=" + (event.snapshot.trip?.canonicalRevision ?: 0L) +
+                                    " newLogicalRevision=" + repairedCanonical0456.canonicalRevision +
+                                    " oldCapacity=" + (event.snapshot.trip?.capacity ?: -1) +
+                                    " currentCapacity=" + repairedCanonical0456.capacity +
+                                    " domainInventory=" + domainInventory0456 +
+                                    " oldStateHash=" + event.snapshot.trip?.canonicalStateHash.orEmpty().takeLast(12) +
+                                    " newStateHash=" + repairedCanonical0456.canonicalStateHash.takeLast(12) +
+                                    " previousStage=OUTBOX_IDENTITY_GUARD nextStage=OUTBOX_ENQUEUE",
+                            )
+                            val repairedAllocation0456 = repairedCanonical0456.rotaCertaSeatAllocation
+                                ?.takeIf { it in 0..999 }
+                                ?: 0
+                            val repairedSignature0456 =
+                                PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(
+                                    sourceTrip,
+                                    repairedAllocation0456,
+                                ) + "|state:" + repairedCanonical0456.canonicalStateHash
+                            val rebasedEvent0456 = requireNotNull(
+                                outbox.enqueue(
+                                    canonicalTripId = repairedCanonical0456.tripKey,
+                                    operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                                    mutationType = event.mutationType,
+                                    source = event.source,
+                                    snapshot = event.snapshot.copy(
+                                        trip = repairedCanonical0456,
+                                        externalTrip = sourceTrip,
+                                        externalAccountId = effectiveExternalAccountId0454
+                                            .ifBlank { event.snapshot.externalAccountId },
+                                        configuredRotaCertaSeatAllocation = repairedAllocation0456,
+                                        seatAllocationVersion = maxOf(
+                                            event.snapshot.seatAllocationVersion,
+                                            repairedCanonical0456.seatAllocationVersionUsed,
+                                        ),
+                                        semanticSignature = repairedSignature0456,
+                                    ),
+                                    remoteProjectionDivergenceObserved = true,
+                                ),
+                            ) { "CANONICAL_REBASE_OUTBOX_ENQUEUE_FAILED" }
+                            recordEvent(
+                                "TRIP_MUTATION_OUTBOX_ENQUEUED",
+                                rebasedEvent0456,
+                                "previousRevision=" + event.revision +
+                                    " resultingRevision=" + rebasedEvent0456.revision +
+                                    " canonicalRebase0456=true",
+                            )
+                            recordEvent(
+                                "TRIP_MUTATION_OUTBOX_CANONICAL_REBASED_0456",
+                                rebasedEvent0456,
+                                "supersedesTrace=" + event.id +
+                                    " oldLogicalRevision=" + (event.snapshot.trip?.canonicalRevision ?: 0L) +
+                                    " newLogicalRevision=" + repairedCanonical0456.canonicalRevision +
+                                    " oldCapacity=" + (event.snapshot.trip?.capacity ?: -1) +
+                                    " newCapacity=" + repairedCanonical0456.capacity +
+                                    " domainInventory=" + domainInventory0456,
+                            )
+                            return@eventLoop
+                        }
+                        recordEvidence0421(
+                            stage = "CANONICAL_REBASE_GUARD",
+                            status = "OK",
+                            reason = "CANONICAL_SNAPSHOT_CURRENT",
+                            event = event,
+                            extra = "logicalRevision=" + repairedCanonical0456.canonicalRevision +
+                                " capacity=" + repairedCanonical0456.capacity +
+                                " domainInventory=" + domainInventory0456 +
+                                " previousStage=OUTBOX_IDENTITY_GUARD nextStage=INCREMENTAL_IDENTITY_GUARD",
+                        )
+                        val publicationCanonicalTripId0434 = repairedCanonical0456.tripKey
+                            .takeIf(String::isNotBlank)
                             ?: event.canonicalTripId
                         PublicAgendaAutoSync0300.syncExternalTripIncremental(
                             context = appContext,
@@ -974,7 +1109,7 @@ internal class TripMutationCoordinator0387(
                             externalAccountId = effectiveExternalAccountId0454,
                             canonicalTripId = publicationCanonicalTripId0434,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
-                            canonicalTripSnapshot = event.snapshot.trip,
+                            canonicalTripSnapshot = repairedCanonical0456,
                         )
                     }
                     TripPublicationOperation0387.TOMBSTONE -> {

@@ -922,6 +922,38 @@ internal object PublicAgendaAutoSync0300 {
         val canonicalTripId0434 = privateMirrorTrip0434.tripKey
             .ifBlank { resolvedInternalTripId }
             .ifBlank { privateMirrorTrip0434.id }
+        val domainInventory0456 = operationalInventoryCapacity(privateMirrorTrip0434, privateMirrorBookings0434)
+        val canonicalCapacityInvariant0456 = privateMirrorTrip0434.capacity == domainInventory0456
+        if (outboxEventId.isNotBlank()) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_EVIDENCE_0421",
+                context.packageName,
+                buildString {
+                    append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, privateMirrorTrip0434.canonicalRevision))
+                    append(" traceId=").append(outboxEventId)
+                    append(" correlationId=").append(outboxEventId)
+                    append(" stage=CANONICAL_OPERATIONAL_GUARD")
+                    append(" status=").append(if (canonicalCapacityInvariant0456) "OK" else "FAILED")
+                    append(" reasonCode=").append(
+                        if (canonicalCapacityInvariant0456) {
+                            "CANONICAL_CAPACITY_INVARIANT_CONFIRMED"
+                        } else {
+                            "CANONICAL_CAPACITY_INVARIANT_MISMATCH"
+                        },
+                    )
+                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(canonicalTripId0434))
+                    append(" logicalRevision=").append(privateMirrorTrip0434.canonicalRevision)
+                    append(" transportRevision=").append(entityRevision)
+                    append(" mutationId=").append(mutationId0421)
+                    append(" idempotencyKey=").append(idempotencyKey0421)
+                    append(" capacity=").append(privateMirrorTrip0434.capacity)
+                    append(" domainInventory=").append(domainInventory0456)
+                    append(" publishedSeats=").append(privateMirrorTrip0434.publishedSeats ?: -1)
+                    append(" rotaCertaSeatAllocation=").append(privateMirrorTrip0434.rotaCertaSeatAllocation ?: -1)
+                    append(" previousStage=INCREMENTAL_IDENTITY_GUARD nextStage=PRIVATE_MIRROR_REQUEST")
+                },
+            )
+        }
         val canonicalOperational0434 = canonicalOperationalSnapshot0434(
             trip = privateMirrorTrip0434,
             bookings = privateMirrorBookings0434,

@@ -130,6 +130,39 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun legacyCanonicalCapacityRequiresLogicalRebaseBeforeDurablePublication() {
+        val persisted = Trip(
+            id = "timeline-ext-capacity-legacy",
+            title = "External canonical",
+            departureAtMillis = 2_000_000_000_000L,
+            capacity = 5,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "Origem"),
+                TripStop(id = "b", order = 1, name = "Destino"),
+            ),
+            publishedSeats = 3,
+            rotaCertaSeatAllocation = 1,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "profile-a",
+            blablaTripId = "trip-a",
+            tripKey = "tripkey:capacity-legacy",
+            canonicalRevision = 10L,
+            canonicalStateHash = "tripstate-v1:legacy",
+        )
+        val domainInventory = operationalInventoryCapacity(persisted, emptyList())
+        assertEquals(4, domainInventory)
+
+        val repaired = persisted.copy(
+            capacity = domainInventory,
+            canonicalRevision = 11L,
+            canonicalStateHash = "tripstate-v1:repaired",
+        )
+        assertTrue(durableExternalCanonicalSnapshotNeedsRebase0456(persisted, repaired))
+        assertFalse(durableExternalCanonicalSnapshotNeedsRebase0456(repaired, repaired))
+        assertTrue(durableExternalCanonicalSnapshotNeedsRebase0456(null, repaired))
+    }
+
+    @Test
     fun publicationIdempotencyKeyContainsTenantTripAndRevision() {
         val r55 = publicationEventId0387("tenant-a", "trip-a", 55)
         assertEquals(r55, publicationEventId0387("tenant-a", "trip-a", 55))
@@ -206,7 +239,11 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_ACCOUNT_RECOVERED_0454"))
         assertTrue(outbox.contains("OUTBOX_IDENTITY_GUARD"))
         assertTrue(outbox.contains("externalIncrementalPublicationIdentityAccepted0455"))
+        assertTrue(outbox.contains("CANONICAL_REBASE_GUARD"))
+        assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_CANONICAL_REBASED_0456"))
+        assertTrue(outbox.contains("store.saveTrip(currentCanonical0456.copy(capacity = domainInventory0456))"))
         assertTrue(outbox.contains("externalAccountId = effectiveExternalAccountId0454"))
+        assertTrue(source("PublicAgendaAutoSync0300.kt").contains("CANONICAL_OPERATIONAL_GUARD"))
         assertTrue(outbox.contains("publicMirrorProjectionCurrent0411()"))
         assertFalse(outbox.contains("projection_replay_same_logical_revision"))
     }
