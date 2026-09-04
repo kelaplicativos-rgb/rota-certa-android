@@ -930,7 +930,11 @@ internal fun externalCollectorDeltaDecision0403(
 ): ExternalCollectorDeltaDecision0403 = when {
     incomingFingerprint.isNotBlank() && incomingFingerprint == existingFingerprint ->
         ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED
-    existingComplete && !incomingComplete ->
+    // A partial snapshot is already monotonic-merged by BlaBlaCollectorTimelineModule.
+    // Therefore a changed, non-blank semantic fingerprint contains positive evidence
+    // that must advance the canonical entity. Only an unusable/blank partial delta is
+    // held back behind the last complete snapshot.
+    existingComplete && !incomingComplete && incomingFingerprint.isBlank() ->
         ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL
     else -> ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL
 }
@@ -1614,6 +1618,11 @@ internal object AgendaBackgroundSync0392 {
                     context.packageName,
                     "profileUuidPresent=${profileUuid.isNotBlank()} tripIdPresent=${blablaTripId.isNotBlank()} identityConflict=${source.identity_conflict} reason=strong_identity_required",
                 )
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_DISPOSITION_0451",
+                    context.packageName,
+                    "profileKey=${seatSyncDiagnosticKey(profileUuid)} tripIdPresent=${blablaTripId.isNotBlank()} result=REJECTED reason=strong_identity_required",
+                )
                 return@forEach
             }
             observedStrongKeys += strongKey
@@ -1633,6 +1642,16 @@ internal object AgendaBackgroundSync0392 {
                         " incomingGeneration=" + collectionGeneration +
                         " currentGeneration=" + existing.lastCollectionGeneration +
                         " result=SKIP_STALE_RESULT",
+                )
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_DISPOSITION_0451",
+                    context.packageName,
+                    "profileKey=" + seatSyncDiagnosticKey(profileUuid) +
+                        " tripId=" + blablaTripId +
+                        " internalTripId=" + seatSyncDiagnosticKey(existing.id) +
+                        " previousRevision=" + existing.canonicalRevision +
+                        " resultingRevision=" + existing.canonicalRevision +
+                        " result=STALE reason=older_collection_generation",
                 )
                 return@forEach
             }
@@ -1684,7 +1703,9 @@ internal object AgendaBackgroundSync0392 {
                     existing
                 }
                 ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL -> {
-                    val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                    val blablaQuota = source.published_seats?.takeIf { it in 0..999 }
+                        ?: existing?.publishedSeats?.takeIf { it in 0..999 }
+                        ?: 0
                     val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
                         source = source,
                         capacity = (blablaQuota + perTripAllocation).coerceIn(0, 999),
@@ -1711,7 +1732,7 @@ internal object AgendaBackgroundSync0392 {
                                     source.public_trip_href_binding,
                                 ),
                                 publicBookingEnabled = existing?.publicBookingEnabled ?: true,
-                                capacityReliable = incomingComplete,
+                                capacityReliable = incomingComplete || existing?.capacityReliable == true,
                                 createdAtMillis = existing?.createdAtMillis ?: nowMillis,
                                 canonicalRevision = existing?.canonicalRevision ?: 0L,
                                 seatAllocationVersionUsed = maxOf(existing?.seatAllocationVersionUsed ?: 0L, seatAllocationVersion),
@@ -1721,7 +1742,7 @@ internal object AgendaBackgroundSync0392 {
                                 notes = existing?.notes.orEmpty(),
                                 externalSnapshot = source,
                                 externalSnapshotFingerprint = incomingFingerprint,
-                                externalSnapshotComplete = incomingComplete,
+                                externalSnapshotComplete = incomingComplete || existing?.externalSnapshotComplete == true,
                                 lastCollectionRunId = collectionRunId.take(160),
                                 lastCollectionGeneration = maxOf(existing?.lastCollectionGeneration ?: 0L, collectionGeneration),
                                 lastObservedAtMillis = nowMillis,
@@ -1777,8 +1798,29 @@ internal object AgendaBackgroundSync0392 {
                 )
             }
 
+            val disposition0451 = when {
+                canonicalTrip == null -> "REJECTED"
+                decision == ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED -> "UNCHANGED"
+                decision == ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL -> "PRESERVED_PARTIAL"
+                canonicalTrip.externalSnapshotFingerprint != incomingFingerprint -> "CONFLICT"
+                existing == null -> "INSERTED"
+                else -> "UPDATED"
+            }
+            UnifiedDebugEventStore.record(
+                "EXTERNAL_CANONICAL_DISPOSITION_0451",
+                context.packageName,
+                "profileKey=" + seatSyncDiagnosticKey(profileUuid) +
+                    " tripId=" + blablaTripId +
+                    " internalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                    " fingerprint=" + incomingFingerprint.takeLast(12) +
+                    " sourceComplete=" + incomingComplete +
+                    " scopeComplete=" + response.coverage.complete_for_scope +
+                    " previousRevision=" + (existing?.canonicalRevision ?: 0L) +
+                    " resultingRevision=" + (canonicalTrip?.canonicalRevision ?: existing?.canonicalRevision ?: 0L) +
+                    " result=" + disposition0451,
+            )
+
             if (
-                incomingComplete &&
                 canonicalTrip != null &&
                 canonicalTrip.externalSnapshotFingerprint == incomingFingerprint &&
                 canonicalTrip.departureAtMillis > nowMillis &&
@@ -2262,6 +2304,11 @@ internal object AgendaBackgroundSync0392 {
         )
         if (batch.changedTrips > 0 || batch.tombstonedTrips > 0) {
             BookingRealtimeEvents0356.notifyChanged()
+            UnifiedDebugEventStore.record(
+                "TIMELINE_STATE_EMITTED_0451",
+                appContext.packageName,
+                "tenantKey=${seatSyncDiagnosticKey(tenantId)} changed=${batch.changedTrips} tombstoned=${batch.tombstonedTrips} source=canonical_commit observer=BookingRealtimeEvents0356",
+            )
         }
         val delivered = TripMutationCoordinator0387(appContext, store).drainPending(
             canonicalTripIds = batch.publicationCanonicalTripIds0431,
