@@ -197,10 +197,16 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " transportRevisionSent=" + current.publicationRevision +
                 " transportRevisionReadback=" + readback.payload.publicationRevision,
         )
+        val stateBytesMatch =
+            diff.expectedLength == diff.actualLength &&
+                diff.firstDifferentByteOffset == -1 &&
+                diff.differentByteRanges.isEmpty() &&
+                diff.fieldDiffs.isEmpty() &&
+                decision.expectedHash == decision.readbackHash
         evidence(
             stage = "STATE_COMPARE",
-            status = if (decision.state == PublicMirrorAttestationState0411.VALIDATED) "MATCH" else "MISMATCH",
-            reason = decision.reason,
+            status = if (stateBytesMatch) "MATCH" else "MISMATCH",
+            reason = if (stateBytesMatch) "CANONICAL_STATE_MATCH" else "CANONICAL_STATE_MISMATCH",
             extra = "comparisonType=CANONICAL_JSON_UTF8 expectedHash=" + decision.expectedHash +
                 " actualHash=" + decision.readbackHash +
                 " expectedLength=" + diff.expectedLength +
@@ -209,6 +215,14 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " differentByteRanges=" + diff.differentByteRanges.joinToString(",") +
                 " mismatchFields=" + decision.mismatchFields.joinToString(",").take(240) +
                 " fieldDiffPaths=" + diff.fieldDiffs.joinToString(",") { it.fieldPath }.take(240),
+        )
+        evidence(
+            stage = "PUBLIC_URL_PRECONDITION",
+            status = if (decision.linkValid) "MATCH" else "FAILED",
+            reason = if (decision.linkValid) "BLABLACAR_PUBLIC_URL_RESOLVED" else decision.reason,
+            extra = "linkRequired=" + expected.blablaTripId.isNotBlank() +
+                " linkValid=" + decision.linkValid +
+                " canonicalBindingRequired=true",
         )
 
         var reportError: Throwable? = null
@@ -324,6 +338,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             failedStage0421 = when {
                 !finalDecision.identityValid -> "IDENTITY_COMPARE"
                 !finalDecision.revisionValid -> "REVISION_COMPARE"
+                !finalDecision.linkValid -> "PUBLIC_URL_PRECONDITION"
                 finalDecision.state == PublicMirrorAttestationState0411.PENDING -> "ATTESTATION_REPORT"
                 finalDecision.state != PublicMirrorAttestationState0411.VALIDATED -> "STATE_COMPARE"
                 else -> ""
