@@ -74,6 +74,65 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun exactPublicSearchBindsDifferentPublicTokenWhenVerifiedProfileAndTimeAreUnique() {
+        val resolved = resolveExactPublicSearchTripLink0448(
+            expectedAdministrativeTripId = adminA,
+            expectedDriverName = "Barbosa",
+            expectedDepartureTime = "19:00",
+            cards = listOf(
+                DynamicPublicSearchLinkCard(
+                    driverName = "Outro Motorista",
+                    departureTime = "19:00",
+                    href = href(publicB),
+                ),
+                DynamicPublicSearchLinkCard(
+                    driverName = "Barbosa",
+                    departureTime = "19:00",
+                    href = "/trip?id=$publicA",
+                ),
+            ),
+            providerOrigin = "https://www.blablacar.com.br/search?fn=origem&tn=destino",
+        )
+
+        assertEquals(href(publicA), resolved?.href)
+        assertEquals("exact_public_search", resolved?.source)
+        assertEquals(BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION, resolved?.binding)
+    }
+
+    @Test
+    fun exactPublicSearchFailsClosedWhenProfileAndTimeMatchMoreThanOnePublicCard() {
+        assertNull(
+            resolveExactPublicSearchTripLink0448(
+                expectedAdministrativeTripId = adminA,
+                expectedDriverName = "Barbosa",
+                expectedDepartureTime = "19:00",
+                cards = listOf(
+                    DynamicPublicSearchLinkCard(driverName = "Barbosa", departureTime = "19:00", href = href(publicA)),
+                    DynamicPublicSearchLinkCard(driverName = "Barbosa", departureTime = "19:00", href = href(publicB)),
+                ),
+                providerOrigin = "https://www.blablacar.com.br/search",
+            ),
+        )
+    }
+
+    @Test
+    fun exactPublicSearchRejectsWrongProfileWrongTimeAndForgedHost() {
+        assertNull(
+            resolveExactPublicSearchTripLink0448(
+                expectedAdministrativeTripId = adminA,
+                expectedDriverName = "Barbosa",
+                expectedDepartureTime = "19:00",
+                cards = listOf(
+                    DynamicPublicSearchLinkCard(driverName = "Outro", departureTime = "19:00", href = href(publicA)),
+                    DynamicPublicSearchLinkCard(driverName = "Barbosa", departureTime = "18:00", href = href(publicA)),
+                    DynamicPublicSearchLinkCard(driverName = "Barbosa", departureTime = "19:00", href = "https://example.com/trip?id=$publicA"),
+                ),
+                providerOrigin = "https://www.blablacar.com.br/search",
+            ),
+        )
+    }
+
+    @Test
     fun structuredNetworkBindingIsCaseExactForAdministrativeTripIdentity() {
         assertNull(
             BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
@@ -126,6 +185,8 @@ class BlaBlaNetworkPublicLink0423Test {
         assertTrue(persisted > dom)
         assertTrue(share > persisted)
         assertTrue(exactSearch > share)
+        assertTrue(source.contains("resolveExactPublicSearchTripLink0448"))
+        assertTrue(source.contains("PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION"))
     }
 
     @Test
