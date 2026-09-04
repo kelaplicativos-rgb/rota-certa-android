@@ -38,6 +38,10 @@ class AgendaHeadlessCollector0401Test {
         assertTrue(probe.contains("request = BlaBlaBrowserRequest.PAGE_STATE"))
         assertTrue(probe.contains("timeoutMs = SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447"))
         assertTrue(probe.contains("pageAccessInspectionInFlight0426 = false"))
+        assertTrue(probe.contains("sourceAccessInspectedSyncGeneration0448 == expectedSync"))
+        assertTrue(probe.contains("sourceAccessInspectedNavigationGeneration0448 == expectedNavigation"))
+        assertTrue(probe.contains("sourceAccessInspectedSyncGeneration0448 = expectedSync"))
+        assertTrue(probe.contains("sourceAccessInspectedNavigationGeneration0448 = expectedNavigation"))
         assertTrue(probe.contains("onAvailable()"))
     }
 
