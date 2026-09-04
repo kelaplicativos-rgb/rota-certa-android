@@ -1499,13 +1499,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
             }
             if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
                 currentCardTraversalKey = "id|$targetTripId"
-                candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
+                val hydration0451 = rehydrateExactCandidate0451(
+                    targetHref = targetTripHref,
+                    profileUuid = account.profileUuid.orEmpty(),
+                    tripId = targetTripId,
+                    canonicalTrips = TripStore(this).trips(),
+                    dynamicTrips = store.read(account)?.trips.orEmpty(),
+                    collectorTrips = BlaBlaCollectorStateStore(this).lastResponse()?.trips.orEmpty(),
+                )
+                val exactCandidate = hydration0451.candidate
+                candidates = listOf(exactCandidate)
                 candidateIndex = 0
                 enterBrowserPhase(Phase.DETAIL, BlaBlaBrowserRequest.TRIP_OPEN, "exact_trip_open")
                 UnifiedDebugEventStore.record(
+                    "BLABLACAR_EXACT_CANDIDATE_REHYDRATED_0451",
+                    packageName,
+                    "account=${account.displayLabel} tripKey=${seatSyncDiagnosticKey(targetTripId)} strongIdentity=true source=${hydration0451.sourceChain.joinToString("+").ifBlank { "none" }} datePresent=${exactCandidate.dateText.isNotBlank()} timePresent=${exactCandidate.departureTime.isNotBlank()} originPresent=${exactCandidate.origin.isNotBlank()} destinationPresent=${exactCandidate.destination.isNotBlank()} hrefOnly=${exactCandidate.dateText.isBlank() && exactCandidate.departureTime.isBlank() && exactCandidate.origin.isBlank() && exactCandidate.destination.isBlank()}",
+                )
+                UnifiedDebugEventStore.record(
                     "AGENDA_EXACT_CARD_SYNC_STARTED",
                     packageName,
-                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true",
+                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true contextRehydrated=${hydration0451.sourceChain.isNotEmpty()}",
                 )
                 loadCurrentCandidate()
             } else {
