@@ -1,61 +1,186 @@
 package br.com.mapeiaia.rotacerta.trips
 
+internal data class BlaBlaScriptGroup0449(
+    val title: String,
+    val description: String,
+    val requests: List<BlaBlaBrowserRequest>,
+)
+
 /**
- * User-selectable scripts that participate in the existing date/period authenticated collector.
+ * Complete UI inventory of the browser orchestrator.
  *
- * The selection controls which synchronization outputs are requested. Technical prerequisites
- * may still be executed to reach a requested downstream script, but their unselected data is not
- * committed. This keeps "Somente vagas" possible without creating a second collector.
+ * Every registered BlaBlaBrowserRequest is exposed exactly once. The date/period
+ * synchronization uses the selection as an execution/output permission set.
+ * Some selected downstream outputs need technical navigation/read prerequisites;
+ * those prerequisites never turn an unselected output into a committed field.
  */
 internal object BlaBlaDateScopeScriptCatalog0449 {
-    val selectableRequests: List<BlaBlaBrowserRequest> = listOf(
-        BlaBlaBrowserRequest.SESSION_IDENTITY,
-        BlaBlaBrowserRequest.RIDE_LIST,
-        BlaBlaBrowserRequest.TRIP_OPEN,
-        BlaBlaBrowserRequest.TRIP_DETAIL,
-        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
-        BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
-        BlaBlaBrowserRequest.PASSENGER_OPEN,
-        BlaBlaBrowserRequest.PASSENGER_CONTACT,
-        BlaBlaBrowserRequest.TRIP_EDIT,
-        BlaBlaBrowserRequest.SEAT_OPTIONS,
-        BlaBlaBrowserRequest.PAGE_STATE,
+    val groups: List<BlaBlaScriptGroup0449> = listOf(
+        BlaBlaScriptGroup0449(
+            title = "Conta e perfil",
+            description = "Identidade autenticada, perfil do motorista e avaliações.",
+            requests = listOf(
+                BlaBlaBrowserRequest.SESSION_IDENTITY,
+                BlaBlaBrowserRequest.DRIVER_PROFILE,
+                BlaBlaBrowserRequest.DRIVER_REVIEWS,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Viagem",
+            description = "Lista, abertura, detalhes, URL pública, itinerário e edição.",
+            requests = listOf(
+                BlaBlaBrowserRequest.RIDE_LIST,
+                BlaBlaBrowserRequest.TRIP_OPEN,
+                BlaBlaBrowserRequest.TRIP_DETAIL,
+                BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+                BlaBlaBrowserRequest.TRIP_ITINERARY,
+                BlaBlaBrowserRequest.TRIP_EDIT,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Passageiros",
+            description = "Lista, abertura, identidade, contato, tarifa, trecho e endereços.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PASSENGER_ROSTER,
+                BlaBlaBrowserRequest.PASSENGER_OPEN,
+                BlaBlaBrowserRequest.PASSENGER_IDENTITY,
+                BlaBlaBrowserRequest.PASSENGER_CONTACT,
+                BlaBlaBrowserRequest.PASSENGER_FARE,
+                BlaBlaBrowserRequest.PASSENGER_SEGMENT,
+                BlaBlaBrowserRequest.PASSENGER_ADDRESSES,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Vagas",
+            description = "Leitura de vagas e operações remotas de alteração/salvamento.",
+            requests = listOf(
+                BlaBlaBrowserRequest.SEAT_OPTIONS,
+                BlaBlaBrowserRequest.SEAT_CHANGE,
+                BlaBlaBrowserRequest.SEAT_SAVE,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Pesquisa pública BlaBlaCar",
+            description = "Busca pública, abertura de resultado e perfil público.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM,
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL,
+                BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+                BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE_OPEN,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE,
+                BlaBlaBrowserRequest.PUBLIC_DRIVER_REVIEWS,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Mensagens",
+            description = "Abertura do passageiro na conversa e leitura da thread.",
+            requests = listOf(
+                BlaBlaBrowserRequest.MESSAGE_PASSENGER_OPEN,
+                BlaBlaBrowserRequest.MESSAGE_THREAD,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Viagens arquivadas",
+            description = "Lista e abertura de viagens arquivadas/passadas.",
+            requests = listOf(
+                BlaBlaBrowserRequest.ARCHIVED_RIDE_LIST,
+                BlaBlaBrowserRequest.ARCHIVED_RIDE_OPEN,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
+            title = "Diagnóstico",
+            description = "Estado da página e snapshot do DOM para evidência técnica.",
+            requests = listOf(
+                BlaBlaBrowserRequest.PAGE_STATE,
+                BlaBlaBrowserRequest.DOM_SNAPSHOT,
+            ),
+        ),
     )
 
+    val selectableRequests: List<BlaBlaBrowserRequest> = groups.flatMap(BlaBlaScriptGroup0449::requests)
     val all: Set<BlaBlaBrowserRequest> = selectableRequests.toSet()
 
+    val remoteWriteRequests: Set<BlaBlaBrowserRequest> =
+        all.filterTo(linkedSetOf()) { it.operation == BlaBlaBrowserOperation.REMOTE_WRITE }
+
+    /** Public permalink acquisition path. */
     val publicUrlRequests: Set<BlaBlaBrowserRequest> = setOf(
         BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM,
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL,
         BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS,
+        BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN,
     )
 
+    /** Passenger-related outputs. */
     val passengerRequests: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.PASSENGER_ROSTER,
         BlaBlaBrowserRequest.PASSENGER_OPEN,
+        BlaBlaBrowserRequest.PASSENGER_IDENTITY,
         BlaBlaBrowserRequest.PASSENGER_CONTACT,
+        BlaBlaBrowserRequest.PASSENGER_FARE,
+        BlaBlaBrowserRequest.PASSENGER_SEGMENT,
+        BlaBlaBrowserRequest.PASSENGER_ADDRESSES,
     )
 
+    /** Read-only seat output used by "Só vagas". Writes remain separately authorized. */
     val seatRequests: Set<BlaBlaBrowserRequest> = setOf(
         BlaBlaBrowserRequest.SEAT_OPTIONS,
     )
 
     val coreTripRequests: Set<BlaBlaBrowserRequest> = setOf(
         BlaBlaBrowserRequest.RIDE_LIST,
+        BlaBlaBrowserRequest.TRIP_OPEN,
         BlaBlaBrowserRequest.TRIP_DETAIL,
+        BlaBlaBrowserRequest.TRIP_ITINERARY,
     )
+
+    init {
+        check(selectableRequests.size == 32) { "Expected 32 orchestrator scripts, got ${selectableRequests.size}" }
+        check(selectableRequests.distinct().size == selectableRequests.size) { "Duplicate orchestrator script in UI catalog" }
+        check(all == BlaBlaBrowserRequest.values().toSet()) { "UI catalog must expose every registered browser request" }
+    }
 
     fun label(request: BlaBlaBrowserRequest): String = when (request) {
         BlaBlaBrowserRequest.SESSION_IDENTITY -> "Identidade da sessão"
+        BlaBlaBrowserRequest.DRIVER_PROFILE -> "Perfil do motorista"
+        BlaBlaBrowserRequest.DRIVER_REVIEWS -> "Avaliações do motorista"
         BlaBlaBrowserRequest.RIDE_LIST -> "Lista de viagens"
-        BlaBlaBrowserRequest.TRIP_OPEN -> "Abrir card da viagem"
+        BlaBlaBrowserRequest.TRIP_OPEN -> "Abrir viagem"
         BlaBlaBrowserRequest.TRIP_DETAIL -> "Detalhes da viagem"
-        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE -> "URL pública"
-        BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS -> "URL pública · busca de fallback"
+        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE -> "URL pública · compartilhar"
+        BlaBlaBrowserRequest.TRIP_ITINERARY -> "Itinerário e paradas"
+        BlaBlaBrowserRequest.TRIP_EDIT -> "Edição da viagem"
+        BlaBlaBrowserRequest.PASSENGER_ROSTER -> "Lista de passageiros"
         BlaBlaBrowserRequest.PASSENGER_OPEN -> "Abrir passageiro"
-        BlaBlaBrowserRequest.PASSENGER_CONTACT -> "Dados do passageiro"
-        BlaBlaBrowserRequest.TRIP_EDIT -> "Abrir edição da viagem"
+        BlaBlaBrowserRequest.PASSENGER_IDENTITY -> "Identidade do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_CONTACT -> "Contato do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_FARE -> "Tarifa do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_SEGMENT -> "Trecho do passageiro"
+        BlaBlaBrowserRequest.PASSENGER_ADDRESSES -> "Endereços do passageiro"
         BlaBlaBrowserRequest.SEAT_OPTIONS -> "Vagas publicadas"
-        BlaBlaBrowserRequest.PAGE_STATE -> "Estado/segurança da página"
-        else -> request.name
+        BlaBlaBrowserRequest.SEAT_CHANGE -> "Alterar vagas"
+        BlaBlaBrowserRequest.SEAT_SAVE -> "Salvar alteração de vagas"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM -> "Formulário da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL -> "Scroll da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS -> "Resultados da busca pública"
+        BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN -> "Abrir resultado público"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE_OPEN -> "Abrir perfil público"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE -> "Perfil público do motorista"
+        BlaBlaBrowserRequest.PUBLIC_DRIVER_REVIEWS -> "Avaliações públicas"
+        BlaBlaBrowserRequest.MESSAGE_PASSENGER_OPEN -> "Abrir conversa do passageiro"
+        BlaBlaBrowserRequest.MESSAGE_THREAD -> "Conversa / mensagens"
+        BlaBlaBrowserRequest.ARCHIVED_RIDE_LIST -> "Lista de viagens arquivadas"
+        BlaBlaBrowserRequest.ARCHIVED_RIDE_OPEN -> "Abrir viagem arquivada"
+        BlaBlaBrowserRequest.PAGE_STATE -> "Estado da página"
+        BlaBlaBrowserRequest.DOM_SNAPSHOT -> "Snapshot do DOM"
+    }
+
+    fun operationLabel(request: BlaBlaBrowserRequest): String = when (request.operation) {
+        BlaBlaBrowserOperation.CAPTURE -> "CAPTURE"
+        BlaBlaBrowserOperation.NAVIGATION -> "NAVIGATION"
+        BlaBlaBrowserOperation.REMOTE_WRITE -> "REMOTE_WRITE"
     }
 }
 
