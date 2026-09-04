@@ -133,6 +133,13 @@ class AgendaImmediateCardDelta0431Test {
         assertTrue(checkpointScope.contains("publishCurrentSessions("))
         assertTrue(checkpointScope.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431("))
         assertTrue(checkpointScope.contains("\"card_checkpoint:\" + reason"))
+        val finalSnapshotScope = dynamic.substring(
+            dynamic.indexOf("private fun saveFinalSnapshotOnce(verified: Boolean)"),
+            dynamic.indexOf("private fun captureTripDetail("),
+        )
+        assertTrue(finalSnapshotScope.contains("if (targetTripId.isNotBlank())"))
+        assertTrue(finalSnapshotScope.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431("))
+        assertTrue(finalSnapshotScope.contains("\"exact_card_final\""))
         assertTrue(background.contains("TIMELINE_STATE_EMITTED_0451"))
         assertTrue(background.contains("observer=BookingRealtimeEvents0356"))
         assertTrue(background.contains("collectorCardAttestationIntegrity0433"))
