@@ -108,6 +108,39 @@ class AgendaPrivateMirror0434Test {
     }
 
     @Test
+    fun privateMirrorPreservesCanonicalBoundPublicTokenDifferentFromAdministrativeId() {
+        val trip = Trip(
+            id = "timeline-ext-private-link-0434",
+            title = "Origem → Destino",
+            departureAtMillis = 1_900_000_000_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "Origem"),
+                TripStop(id = "b", order = 1, name = "Destino"),
+            ),
+            blablaProfileUuid = "11111111-1111-4111-8111-111111111111",
+            blablaTripId = "admin-trip-0434",
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=PublicTokenDifferent0434&search_uuid=temp&requested_seats=2",
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = 2L,
+            canonicalStateHash = "state-0434",
+        )
+        val operational = canonicalOperationalSnapshot0434(trip, emptyList(), trip.departureAtMillis - 1L)
+        val payload = privateAgendaMirrorPayload0434(
+            trip = trip,
+            bookings = emptyList(),
+            operationalSnapshot = operational,
+            canonicalTripId = trip.id,
+        )
+
+        assertEquals(
+            "https://www.blablacar.fr/trip?id=PublicTokenDifferent0434&requested_seats=2",
+            payload.blablaPublicUrl,
+        )
+    }
+
+    @Test
     fun privateMirrorDoesNotRecalculateCanonicalCapacityStatusOrItinerary() {
         val source = java.io.File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt",
