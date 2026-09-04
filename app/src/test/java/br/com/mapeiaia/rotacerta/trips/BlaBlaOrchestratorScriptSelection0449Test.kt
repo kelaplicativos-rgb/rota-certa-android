@@ -170,7 +170,9 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     @Test
     fun explicitScriptSelectionTravelsThroughIntentAndSelectiveSnapshotCannotDeleteSiblings() {
         assertTrue(dynamic.contains("EXTRA_ENABLED_SCRIPTS_0449"))
-        assertTrue(dynamic.contains("enabledScripts: Collection<BlaBlaBrowserRequest>? = null"))
+        assertTrue(dynamic.contains("internal fun syncDates("))
+        assertTrue(dynamic.contains("enabledScripts: Collection<BlaBlaBrowserRequest>"))
+        assertTrue(dynamic.contains("private fun syncDatesInternal0449("))
         assertTrue(dynamic.contains("BlaBlaDateScopeScriptSelection0449.fromNames"))
         assertTrue(dynamic.contains("selectiveScriptSync0449 = scriptSelection0449.selective"))
         assertTrue(session.contains("selectiveScriptSync0449: Boolean = false"))
