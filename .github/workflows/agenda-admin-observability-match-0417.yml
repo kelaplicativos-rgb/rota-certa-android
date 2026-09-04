@@ -135,7 +135,8 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test.evidenceSanitizationComparesEveryUtf8ByteWithoutExportingRawSecrets' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test.structuredPublicationEvidenceCoversSerializationSanitizationAndCausalFailure' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
