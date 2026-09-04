@@ -784,7 +784,12 @@ internal object PublicAgendaAutoSync0300 {
         canonicalTripSnapshot: Trip? = null,
         remoteStateHint0402: DriverTripSyncState0402? = null,
     ): Boolean = withContext(Dispatchers.IO) {
-        if (source.identity_conflict) return@withContext false
+        if (source.identity_conflict) {
+            if (outboxEventId.isNotBlank()) {
+                error("EXTERNAL_SOURCE_IDENTITY_CONFLICT")
+            }
+            return@withContext false
+        }
         val profileUuid = source.profile_uuid.trim()
         val tripId = source.trip_id?.trim().orEmpty()
         val boundInternalTripId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
@@ -968,7 +973,12 @@ internal object PublicAgendaAutoSync0300 {
         ) {
             store.onlineSettings()
         }
-        if (!settings.configured) return@withContext false
+        if (!settings.configured) {
+            if (outboxEventId.isNotBlank()) {
+                error("AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY")
+            }
+            return@withContext false
+        }
         val canonical = preOperationalEvidenceStep0457(
             stage = "CANONICAL_SOURCE_RESOLUTION",
             previousStage = "ONLINE_SETTINGS_READ",
@@ -1009,18 +1019,22 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
         if (synthesized == null) {
+            val projectionReason0460 = if (canonical != null) {
+                "CANONICAL_PROJECTION_UNAVAILABLE"
+            } else {
+                "RAW_SOURCE_NOT_PUBLISHABLE"
+            }
             recordPreOperationalEvidence0458(
                 stage = "CANONICAL_PROJECTION_RESULT",
                 status = "FAILED",
-                reasonCode = if (canonical != null) {
-                    "CANONICAL_PROJECTION_UNAVAILABLE"
-                } else {
-                    "RAW_SOURCE_NOT_PUBLISHABLE"
-                },
+                reasonCode = projectionReason0460,
                 previousStage = "CANONICAL_PROJECTION_BUILD",
                 nextStage = "STOP",
                 startedNs = System.nanoTime(),
             )
+            if (outboxEventId.isNotBlank()) {
+                error(projectionReason0460)
+            }
             return@withContext false
         }
         val startedAt = System.nanoTime()
