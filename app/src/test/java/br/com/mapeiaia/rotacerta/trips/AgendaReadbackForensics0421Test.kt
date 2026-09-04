@@ -221,6 +221,16 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun publicEvidenceExportsAuthoritativeCanonicalTripKeyInsteadOfProjectionId() {
+        val timeline = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt",
+        ).readText()
+        assertTrue(timeline.contains("Identidade canônica: \" + trip.tripKey.ifBlank { trip.id }"))
+        assertTrue(timeline.contains("q(trip.tripKey.ifBlank { trip.id })"))
+        assertFalse(timeline.contains("q(trip.id)).append(',')"))
+    }
+
+    @Test
     fun publicUrlPreconditionIsReportedSeparatelyFromCanonicalStateComparison() {
         val source = java.io.File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt",
