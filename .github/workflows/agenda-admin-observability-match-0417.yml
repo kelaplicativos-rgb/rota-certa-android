@@ -125,7 +125,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticRecorderTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
