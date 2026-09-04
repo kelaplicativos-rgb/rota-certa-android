@@ -47,7 +47,7 @@ class BlaBlaPublicTripLink0364Test {
         assertTrue(dynamic.contains("BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS"))
         assertTrue(dynamic.contains("exactPublicTripHrefForTrip"))
         assertTrue(dynamic.contains("source=exact_public_search exactTrip=true"))
-        assertTrue(dynamic.contains("reason=no_exact_trip_id_match action=continue_without_inventing_link"))
+        assertTrue(dynamic.contains("reason=no_unique_verified_public_card_match action=continue_without_inventing_link"))
     }
 
     @Test
