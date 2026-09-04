@@ -202,7 +202,8 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 diff.firstDifferentByteOffset == -1 &&
                 diff.differentByteRanges.isEmpty() &&
                 diff.fieldDiffs.isEmpty() &&
-                decision.expectedHash == decision.readbackHash
+                decision.expectedHash == decision.readbackHash &&
+                readback.publicProjectionHash == decision.readbackHash
         evidence(
             stage = "STATE_COMPARE",
             status = if (stateBytesMatch) "MATCH" else "MISMATCH",
