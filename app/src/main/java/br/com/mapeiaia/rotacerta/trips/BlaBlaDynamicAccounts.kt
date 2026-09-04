@@ -3045,7 +3045,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             blockCurrentCard(expectedSync, expectedCandidate, "trip_fields_unparseable")
             return
         }
-        val trip = normalizedTrip.copy(
+        val freshTrip = normalizedTrip.copy(
             itinerary_stops = result.itineraryStops
                 .map(String::trim)
                 .filter(String::isNotBlank)
@@ -3060,6 +3060,26 @@ internal class BlaBlaDynamicAccountSessionController0401(
             public_trip_href_binding = result.publicTripHrefBinding,
             published_seats = pendingPublishedSeats,
         )
+        val previousTrip0449 = candidateTripId?.let { strongTripId ->
+            store.read(account)?.trips?.singleOrNull { previous ->
+                previous.trip_id?.trim() == strongTripId
+            }
+        }
+        val trip = mergeSelectiveCollectorTrip0449(
+            previous = previousTrip0449,
+            fresh = freshTrip,
+            selection = scriptSelection0449,
+        )
+        if (trip == null) {
+            skipped++
+            UnifiedDebugEventStore.record(
+                "SELECTIVE_SYNC_REQUIRES_EXISTING_TRIP_0449",
+                packageName,
+                "account=${account.displayLabel} tripId=${candidateTripId.orEmpty()} requestedScripts=${scriptSelection0449.requestedNames().joinToString(",")} action=preserve_previous_skip_new_card",
+            )
+            blockCurrentCard(expectedSync, expectedCandidate, "selective_sync_requires_existing_trip")
+            return
+        }
         collected += trip
         UnifiedDebugEventStore.record(
             "TRIP_ACCEPTED",
