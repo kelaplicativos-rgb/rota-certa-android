@@ -566,7 +566,8 @@ fun BlaBlaCollectorPanel(
                         context = context,
                         account = account,
                         targetDates = dateScope,
-                        enabledScripts = syncScriptSelection0449?.requested,
+                        enabledScripts = syncScriptSelection0449?.requested
+                            ?: BlaBlaDateScopeScriptCatalog0449.all,
                     ),
                 )
             } else {
