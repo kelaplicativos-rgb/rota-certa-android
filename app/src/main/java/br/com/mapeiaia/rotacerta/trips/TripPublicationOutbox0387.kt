@@ -1399,12 +1399,15 @@ internal class TripMutationCoordinator0387(
             val hash = if (bytes.isEmpty()) "" else MessageDigest.getInstance("SHA-256")
                 .digest(bytes)
                 .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+            val canonicalByteEvidence0458 = AgendaFailureEvidence.byteSanitizationEvidence0458(bytes)
             recordEvidence0421(
                 stage = "CANONICAL_SERIALIZATION",
                 status = "OK",
                 reason = "SNAPSHOT_SERIALIZED",
                 event = event,
-                extra = "inputHash=${event.snapshot.trip?.canonicalStateHash.orEmpty()} outputHash=$hash outputBytes=${bytes.size} charset=UTF-8 serialization=kotlinx-json canonicalization=semantic-signature previousStage=CANONICAL_READ nextStage=OUTBOX_ENQUEUE",
+                extra = "inputHash=${event.snapshot.trip?.canonicalStateHash.orEmpty()} outputHash=$hash outputBytes=${bytes.size} " +
+                    canonicalByteEvidence0458.compactDetails0458() +
+                    " charset=UTF-8 serialization=kotlinx-json canonicalization=semantic-signature previousStage=CANONICAL_READ nextStage=OUTBOX_ENQUEUE",
             )
             recordEvidence0421(
                 stage = "OUTBOX_ENQUEUE",
