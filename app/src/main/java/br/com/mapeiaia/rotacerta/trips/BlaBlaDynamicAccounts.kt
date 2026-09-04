@@ -1831,6 +1831,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             context = this,
             reason = "final_snapshot",
         )
+        if (targetTripId.isNotBlank()) {
+            AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+                context = this,
+                reason = "exact_card_final",
+            )
+        }
         return true
     }
 
