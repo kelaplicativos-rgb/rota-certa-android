@@ -29,6 +29,19 @@ class AgendaHeadlessCollector0401Test {
     }
 
     @Test
+    fun sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished() {
+        assertEquals(4_000L, BlaBlaDynamicAccountSessionController0401.SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447)
+        val start = dynamic.indexOf("private fun inspectSourceAccess0426")
+        val end = dynamic.indexOf("private fun handleTemporaryRestriction0426", start)
+        assertTrue(start >= 0 && end > start)
+        val probe = dynamic.substring(start, end)
+        assertTrue(probe.contains("request = BlaBlaBrowserRequest.PAGE_STATE"))
+        assertTrue(probe.contains("timeoutMs = SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447"))
+        assertTrue(probe.contains("pageAccessInspectionInFlight0426 = false"))
+        assertTrue(probe.contains("onAvailable()"))
+    }
+
+    @Test
     fun headlessStateMachineDelaysDoNotDependOnViewAttachment() {
         assertTrue(dynamic.contains("private val headlessDelayedHandler0405 = Handler(Looper.getMainLooper())"))
         assertTrue(dynamic.contains("headlessDelayedHandler0405.postDelayed(guarded, delayMs)"))
