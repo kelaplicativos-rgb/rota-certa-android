@@ -988,7 +988,7 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
             trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "DIVERGENTE / ERRO"
             else -> "NÃO VERIFICADO"
         })
-        appendLine("Identidade canônica: " + trip.id)
+        appendLine("Identidade canônica: " + trip.tripKey.ifBlank { trip.id })
         appendLine("Identidade pública: " + trip.publicMirrorPublicIdentity0421.ifBlank { "não comprovada" })
         appendLine("Revisão canônica: " + trip.canonicalRevision)
         appendLine("Revisão enviada (transporte): " + (trip.publicMirrorAttemptedPublicationRevision0421.takeIf { it > 0L } ?: trip.publicationRevision))
@@ -1094,7 +1094,7 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"schemaVersion\":\"public-evidence-v2\",")
         append("\"evidenceId\":").append(q(trip.publicMirrorEvidenceId0421)).append(',')
         append("\"traceId\":").append(q(trip.publicMirrorTraceId0421)).append(',')
-        append("\"canonicalTripId\":").append(q(trip.id)).append(',')
+        append("\"canonicalTripId\":").append(q(trip.tripKey.ifBlank { trip.id })).append(',')
         append("\"publicIdentity\":").append(q(trip.publicMirrorPublicIdentity0421)).append(',')
         append("\"logicalRevisionExpected\":").append(trip.canonicalRevision).append(',')
         append("\"logicalRevisionActual\":").append(trip.publicMirrorReadbackCanonicalRevision0421).append(',')
