@@ -175,7 +175,7 @@ internal object BlaBlaCollectorPassengerModule {
             currentValue?.takeIf(String::isNotBlank) ?: previousValue?.takeIf(String::isNotBlank)
 
         val previousItinerary = previous?.itinerary_stops.orEmpty()
-        val effectiveItinerary = current.itinerary_stops.takeIf(List<String>::isNotEmpty) ?: previousItinerary
+        val effectiveItinerary = current.itinerary_stops.takeIf { it.isNotEmpty() } ?: previousItinerary
         val sameObservedItinerary = previous != null &&
             effectiveItinerary.map(::normalizeEvidence) == previousItinerary.map(::normalizeEvidence)
         val effectiveAvailability = current.availability
