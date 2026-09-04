@@ -135,6 +135,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
@@ -225,6 +226,13 @@ jobs:
           grep -Fq 'DIAGNOSTIC_CONTEXT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PRIVATE_MIRROR_INPUT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PRE_OPERATIONAL_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'DIAGNOSTIC_CONTEXT_FALLBACK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CANONICAL_OPERATIONAL_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PRIVATE_MIRROR_CANONICAL_SERIALIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt
+          grep -Fq 'REQUEST_SERIALIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'REQUEST_SANITIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'firstSanitizedDiffOffset' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'UNCAUGHT_PUBLICATION_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
           echo "STRUCTURED_BYTE_EVIDENCE_0458_LIVE=PASS"
           echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
