@@ -1166,10 +1166,59 @@ internal class TripMutationCoordinator0387(
                 throw cancelled
             } catch (error: Throwable) {
                 val retryable = publicationFailureRetryable0387(error)
-                val remote = generateSequence(error) { it.cause }
-                    .filterIsInstance<TripRemoteApiException>()
-                    .firstOrNull()
+                val chain0458 = generateSequence(error) { it.cause }.toList()
+                val root0458 = chain0458.lastOrNull() ?: error
+                val remote = chain0458.filterIsInstance<TripRemoteApiException>().firstOrNull()
+                val message0458 = runCatching { UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()) }
+                    .getOrDefault("<sanitization-failed>")
+                    .replace('"', '\'')
+                    .take(240)
+                val rootMessage0458 = runCatching { UnifiedDebugEventStore.sanitizeForExport(root0458.message.orEmpty()) }
+                    .getOrDefault("<sanitization-failed>")
+                    .replace('"', '\'')
+                    .take(240)
+                val source0458 = error.stackTrace.firstOrNull {
+                    it.className.startsWith("br.com.mapeiaia.rotacerta")
+                }
+                recordEvidence0421(
+                    stage = "OUTBOX_FAILURE",
+                    status = "FAILED",
+                    reason = "UNCAUGHT_PUBLICATION_EXCEPTION",
+                    event = event,
+                    extra = buildString {
+                        append("exceptionClass=").append(error.javaClass.name)
+                        append(" exceptionMessage=\"").append(message0458).append('\"')
+                        append(" rootCauseClass=").append(root0458.javaClass.name)
+                        append(" rootCauseMessage=\"").append(rootMessage0458).append('\"')
+                        remote?.let { value ->
+                            append(" networkCallId=").append(value.networkCallId)
+                            append(" transportPhase=").append(value.transportPhase)
+                            append(" httpStatus=").append(value.httpStatus)
+                            append(" backendErrorCode=").append(value.backendErrorCode)
+                            append(" requestBytes=").append(value.requestBytes)
+                            append(" responseBytes=").append(value.responseBytes)
+                            append(" requestSha256=").append(value.requestSha256)
+                            append(" responseSha256=").append(value.responseSha256)
+                        }
+                        if (source0458 != null) {
+                            append(" exceptionSource=")
+                                .append(source0458.fileName ?: source0458.className.substringAfterLast('.'))
+                                .append(':').append(source0458.methodName).append(':').append(source0458.lineNumber)
+                        }
+                        append(" previousStage=PIPELINE nextStage=")
+                            .append(if (retryable) "OUTBOX_RETRY" else "STOP")
+                    },
+                )
                 outbox.markFailure(event.id, error, retryable)
+                val persistedFailureStage0458 = when {
+                    remote?.httpStatus?.let { it > 0 } == true -> "HTTP_RESPONSE"
+                    remote?.networkCallId?.isNotBlank() == true || (remote?.requestBytes ?: 0) > 0 -> "HTTP_SEND"
+                    else -> "OUTBOX_FAILURE"
+                }
+                val persistedReason0458 = buildString {
+                    append(error.javaClass.simpleName.ifBlank { error.javaClass.name })
+                    if (message0458.isNotBlank()) append(':').append(message0458)
+                }.take(160)
                 store.recordPublicMirrorPublicationFailure0421(
                     canonicalTripId = event.snapshot.trip?.id?.takeIf(String::isNotBlank)
                         ?: event.canonicalTripId,
@@ -1185,7 +1234,8 @@ internal class TripMutationCoordinator0387(
                     responseBytes = remote?.responseBytes ?: 0,
                     requestHash = remote?.requestSha256.orEmpty(),
                     responseHash = remote?.responseSha256.orEmpty(),
-                    reason = error::class.java.simpleName,
+                    reason = persistedReason0458,
+                    failedStage = persistedFailureStage0458,
                 )
                 recordEvent(
                     "TRIP_MUTATION_OUTBOX_FAILED",
@@ -1373,27 +1423,31 @@ internal class TripMutationCoordinator0387(
         event: TripPublicationOutboxEvent0387,
         extra: String = "",
     ) {
-        UnifiedDebugEventStore.record(
-            "PUBLIC_EVIDENCE_0421",
-            appContext.packageName,
-            buildString {
-                append("evidenceId=").append(publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L))
-                append(" traceId=").append(event.id)
-                append(" correlationId=").append(event.id)
-                append(" tenantScope=").append(seatSyncDiagnosticKey(event.tenantId))
-                append(" stage=").append(stage)
-                append(" status=").append(status)
-                append(" reasonCode=").append(reason)
-                append(" canonicalTripId=").append(seatSyncDiagnosticKey(event.canonicalTripId))
-                append(" logicalRevision=").append(event.snapshot.trip?.canonicalRevision ?: 0L)
-                append(" transportRevision=").append(event.revision)
-                append(" canonicalStateHash=").append(event.snapshot.trip?.canonicalStateHash.orEmpty())
-                append(" mutationId=").append(event.resolvedMutationId0421())
-                append(" idempotencyKey=").append(event.resolvedIdempotencyKey0421())
-                append(" durationMs=0")
-                if (extra.isNotBlank()) append(' ').append(extra)
-            },
-        )
+        // The flight recorder is intentionally fail-open: evidence collection
+        // must not alter the outbox result it is observing.
+        runCatching {
+            UnifiedDebugEventStore.recordAlways(
+                "PUBLIC_EVIDENCE_0421",
+                appContext.packageName,
+                buildString {
+                    append("evidenceId=").append(publicationEvidenceId0421(event.id, event.snapshot.trip?.canonicalRevision ?: 0L))
+                    append(" traceId=").append(event.id)
+                    append(" correlationId=").append(event.id)
+                    append(" tenantScope=").append(seatSyncDiagnosticKey(event.tenantId))
+                    append(" stage=").append(stage)
+                    append(" status=").append(status)
+                    append(" reasonCode=").append(reason)
+                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(event.canonicalTripId))
+                    append(" logicalRevision=").append(event.snapshot.trip?.canonicalRevision ?: 0L)
+                    append(" transportRevision=").append(event.revision)
+                    append(" canonicalStateHash=").append(event.snapshot.trip?.canonicalStateHash.orEmpty())
+                    append(" mutationId=").append(event.resolvedMutationId0421())
+                    append(" idempotencyKey=").append(event.resolvedIdempotencyKey0421())
+                    append(" durationMs=0")
+                    if (extra.isNotBlank()) append(' ').append(extra)
+                },
+            )
+        }
     }
 }
 
@@ -1478,8 +1532,12 @@ internal fun failureSummary0387(error: Throwable): String {
     val chain = generateSequence(error) { it.cause }.toList()
     val root = chain.last()
     val remote = chain.filterIsInstance<TripRemoteApiException>().firstOrNull()
-    val exceptionMessage = UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()).take(240)
-    val rootMessage = UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()).take(240)
+    val exceptionMessage = runCatching { UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()) }
+        .getOrDefault("<sanitization-failed>")
+        .take(240)
+    val rootMessage = runCatching { UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()) }
+        .getOrDefault("<sanitization-failed>")
+        .take(240)
     return buildString {
         append("exceptionClass=").append(error.javaClass.name)
         append(" exceptionMessage=").append(exceptionMessage)
