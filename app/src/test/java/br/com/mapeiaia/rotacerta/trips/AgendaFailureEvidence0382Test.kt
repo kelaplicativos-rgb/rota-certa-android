@@ -155,8 +155,8 @@ class AgendaFailureEvidence0382Test {
         assertTrue(autoSync.contains("CANONICAL_OPERATIONAL_BUILD"))
         assertTrue(outbox.contains("stage = \"OUTBOX_FAILURE\""))
         assertTrue(outbox.contains("UNCAUGHT_PUBLICATION_EXCEPTION"))
-        assertTrue(timeline.contains("\\"failure\\":{"))
-        assertTrue(timeline.contains("\\"firstSanitizedDiffOffset\\":"))
+        assertTrue(timeline.contains("\"failure\":{"))
+        assertTrue(timeline.contains("\"firstSanitizedDiffOffset\":"))
         assertTrue(timeline.contains("causalFailureEvent0458"))
     }
 
