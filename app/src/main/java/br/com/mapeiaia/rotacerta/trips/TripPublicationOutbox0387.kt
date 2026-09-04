@@ -70,6 +70,21 @@ internal fun shouldDeduplicatePublicationEvent0410(
     return true
 }
 
+internal fun strongExternalSnapshotIdentityMatches0387(
+    canonicalTripId: String,
+    snapshotTrip: Trip?,
+    sourceTrip: BlaBlaCollectorTrip,
+): Boolean {
+    val canonical = snapshotTrip ?: return false
+    val profileUuid = sourceTrip.profile_uuid.trim()
+    val tripId = sourceTrip.trip_id?.trim().orEmpty()
+    if (canonicalTripId.isBlank() || profileUuid.isBlank() || tripId.isBlank()) return false
+    return resolvedTripRecordOrigin(canonical) == TripRecordOrigin.EXTERNAL_BACKING &&
+        canonical.tripKey == canonicalTripId &&
+        canonical.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+        canonical.blablaTripId?.trim() == tripId
+}
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -1019,6 +1034,15 @@ internal class TripMutationCoordinator0387(
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
         if (profileUuid.isBlank() || tripId.isBlank() || event.snapshot.externalAccountId.isBlank()) return false
+        if (
+            strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = event.canonicalTripId,
+                snapshotTrip = event.snapshot.trip,
+                sourceTrip = sourceTrip,
+            )
+        ) {
+            return true
+        }
         val boundCanonicalId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId
         if (!boundCanonicalId.isNullOrBlank() && boundCanonicalId == event.canonicalTripId) return true
         return strongExternalCanonicalTripId0387(
