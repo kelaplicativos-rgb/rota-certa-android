@@ -236,6 +236,69 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
+    fun authoritativePublicTokenDifferentFromAdministrativeTripIdCanBeAttested() {
+        val publicToken = "AaA1PublicTokenDifferentFromAdmin0411"
+        val trip = canonicalTrip().copy(
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary&requested_seats=2",
+        )
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+
+        assertEquals(
+            "https://www.blablacar.fr/trip?id=$publicToken&requested_seats=2",
+            expected.blablaPublicUrl,
+        )
+
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
+        assertTrue(decision.linkValid)
+        assertEquals("PUBLIC_READBACK_MATCH", decision.reason)
+        assertTrue(decision.mismatchFields.isEmpty())
+    }
+
+    @Test
+    fun differentCanonicalPublicPermalinkStillFailsExactReadbackComparison() {
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = canonicalTrip().copy(
+                blablaPublicUrl = "https://www.blablacar.co.uk/trip?id=PublicTokenExpected0411",
+            ),
+            bookings = emptyList(),
+            publicationRevision = canonicalTrip().publicationRevision,
+            nowMillis = now,
+        )
+        val actual = expected.copy(
+            blablaPublicUrl = "https://www.blablacar.co.uk/trip?id=PublicTokenOther0411",
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = actual,
+                publicProjectionHash = canonicalPublicProjectionHash0411(actual),
+                persistedAtMillis = now,
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.linkValid)
+        assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
     fun serverHashMustDescribeTheActualPersistedReadback() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
