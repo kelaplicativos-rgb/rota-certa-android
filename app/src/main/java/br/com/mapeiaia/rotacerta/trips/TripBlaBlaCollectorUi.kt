@@ -11,11 +11,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +28,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -133,6 +137,9 @@ fun BlaBlaCollectorPanel(
     var handledSeatQueueContinuationToken by remember { mutableIntStateOf(0) }
     var targetedSyncTripId by remember { mutableStateOf<String?>(null) }
     var syncDateScope by remember { mutableStateOf<List<LocalDate>?>(null) }
+    var syncScriptSelection0449 by remember { mutableStateOf<BlaBlaDateScopeScriptSelection0449?>(null) }
+    var dateScopeSelectedAccountIds0449 by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var dateScopeSelectedScripts0449 by remember { mutableStateOf(BlaBlaDateScopeScriptCatalog0449.all) }
     var message by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -192,6 +199,7 @@ fun BlaBlaCollectorPanel(
             "scope=${if (scopeDates.isEmpty()) "all" else "selected"} dateCount=${scopeDates.size} targetStart=${scopeDates.firstOrNull() ?: "none"} targetEnd=${scopeDates.lastOrNull() ?: "none"} source=normalized_trip_date publishedTrips=${published.trips.size} outsideScopePreserved=true",
         )
         syncDateScope = null
+        syncScriptSelection0449 = null
     }
 
     fun advanceSyncQueue() {
@@ -279,6 +287,7 @@ fun BlaBlaCollectorPanel(
                 syncing = false
                 archiving = false
                 syncDateScope = null
+                syncScriptSelection0449 = null
                 val account = registry.get(accountId)
                 val failure = result.data?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407).orEmpty()
                 message = if (failure == "TEMPORARILY_RESTRICTED") {
@@ -481,6 +490,7 @@ fun BlaBlaCollectorPanel(
         }
         handledAutoSyncToken = autoSyncToken
         syncDateScope = null
+        syncScriptSelection0449 = null
         targetedSyncTripId = autoSyncTripId?.trim()?.takeIf(String::isNotEmpty)
         syncQueue = selectedAccounts.map { it.id }
         syncCursor = 0
@@ -551,7 +561,14 @@ fun BlaBlaCollectorPanel(
                     "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=false dateScoped=true dateCount=${dateScope.size} targetStart=${dateScope.first()} targetEnd=${dateScope.last()} sequentialGate=true",
                 )
                 syncSessionInFlight = true
-                sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncDates(context, account, dateScope))
+                sessionLauncher.launch(
+                    BlaBlaDynamicSessionIntents.syncDates(
+                        context = context,
+                        account = account,
+                        targetDates = dateScope,
+                        enabledScripts = syncScriptSelection0449?.requested,
+                    ),
+                )
             } else {
                 UnifiedDebugEventStore.record(
                     "AGENDA_SYNC_SESSION_LAUNCH",
@@ -645,6 +662,8 @@ fun BlaBlaCollectorPanel(
             OutlinedButton(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
+                    dateScopeSelectedAccountIds0449 = accounts.map { it.id }.toSet()
+                    dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all
                     showDateScopeSelector = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -689,7 +708,10 @@ fun BlaBlaCollectorPanel(
             },
             title = { Text("Sincronizar por data/período") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     Text("Escolha exatamente o escopo temporal que o coletor existente deve processar.")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (syncDateMode == RotaCertaDateSelectionMode.SINGLE) {
@@ -727,15 +749,121 @@ fun BlaBlaCollectorPanel(
                             locale = dateLocale,
                         )
                     }
+
+                    Text("Perfis", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    Text("Ligue os perfis que devem participar desta execução. Os demais ficam totalmente fora da fila.")
+                    accounts.forEach { account ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(account.displayLabel)
+                                Text(
+                                    account.profileUuid ?: "UUID ainda não confirmado",
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Switch(
+                                checked = account.id in dateScopeSelectedAccountIds0449,
+                                onCheckedChange = { enabled ->
+                                    dateScopeSelectedAccountIds0449 = if (enabled) {
+                                        dateScopeSelectedAccountIds0449 + account.id
+                                    } else {
+                                        dateScopeSelectedAccountIds0449 - account.id
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    Text("Scripts do orquestrador", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Ligado = sincroniza esse script. Desligado = pula esse resultado. " +
+                            "Dependências técnicas mínimas podem ser usadas apenas para alcançar um script ligado; " +
+                            "os dados dos scripts desligados não são gravados.",
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = {
+                            dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all
+                        }) { Text("Todos") }
+                        TextButton(onClick = {
+                            dateScopeSelectedScripts0449 = emptySet()
+                        }) { Text("Nenhum") }
+                        TextButton(onClick = {
+                            dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.seatRequests
+                        }) { Text("Só vagas") }
+                    }
+
+                    val publicUrlEnabled0449 =
+                        BlaBlaDateScopeScriptCatalog0449.publicUrlRequests.all(dateScopeSelectedScripts0449::contains)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("URL pública")
+                            Text(
+                                "Desligado impede captura, fallback e atualização do link público.",
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Switch(
+                            checked = publicUrlEnabled0449,
+                            onCheckedChange = { enabled ->
+                                dateScopeSelectedScripts0449 = if (enabled) {
+                                    dateScopeSelectedScripts0449 + BlaBlaDateScopeScriptCatalog0449.publicUrlRequests
+                                } else {
+                                    dateScopeSelectedScripts0449 - BlaBlaDateScopeScriptCatalog0449.publicUrlRequests
+                                }
+                            },
+                        )
+                    }
+
+                    BlaBlaDateScopeScriptCatalog0449.selectableRequests.forEach { request ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(BlaBlaDateScopeScriptCatalog0449.label(request))
+                                Text(
+                                    request.assetName,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Switch(
+                                checked = request in dateScopeSelectedScripts0449,
+                                onCheckedChange = { enabled ->
+                                    dateScopeSelectedScripts0449 = if (enabled) {
+                                        dateScopeSelectedScripts0449 + request
+                                    } else {
+                                        dateScopeSelectedScripts0449 - request
+                                    }
+                                },
+                            )
+                        }
+                    }
+
                     validation.error?.let { Text("⚠️ $it") }
+                    if (dateScopeSelectedAccountIds0449.isEmpty()) {
+                        Text("⚠️ Selecione pelo menos um perfil.")
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
-                    enabled = validation.error == null && validation.dates.isNotEmpty(),
+                    enabled = validation.error == null &&
+                        validation.dates.isNotEmpty() &&
+                        dateScopeSelectedAccountIds0449.isNotEmpty(),
                     onClick = {
                         val dates = validation.dates.distinct().sorted()
                         if (dates.isEmpty()) return@TextButton
+                        val selectedAccounts0449 = accounts.filter { it.id in dateScopeSelectedAccountIds0449 }
+                        if (selectedAccounts0449.isEmpty()) return@TextButton
                         val summary = rotaCertaDateSelectionSummary(
                             RotaCertaDateSelection(mode = syncDateMode, dates = dates),
                             locale = dateLocale,
@@ -743,12 +871,25 @@ fun BlaBlaCollectorPanel(
                         showDateScopeSelector = false
                         datePickerTarget = null
                         targetedSyncTripId = null
+                        if (dateScopeSelectedScripts0449.isEmpty()) {
+                            syncDateScope = null
+                            syncScriptSelection0449 = null
+                            message = "Nenhum script ligado • nada foi sincronizado."
+                            onChanged(message.orEmpty())
+                            UnifiedDebugEventStore.record(
+                                "AGENDA_DATE_SCOPE_SYNC_SKIPPED_0449",
+                                context.packageName,
+                                "reason=no_scripts_selected profiles=${selectedAccounts0449.size} dateCount=${dates.size}",
+                            )
+                            return@TextButton
+                        }
                         syncDateScope = dates
-                        syncQueue = accounts.map { it.id }
+                        syncScriptSelection0449 = BlaBlaDateScopeScriptSelection0449.explicit(dateScopeSelectedScripts0449)
+                        syncQueue = selectedAccounts0449.map { it.id }
                         syncCursor = 0
                         syncing = true
                         archiving = false
-                        message = "Sincronizando $summary • 0/${accounts.size} contas processadas…"
+                        message = "Sincronizando $summary • 0/${selectedAccounts0449.size} perfis processados…"
                         if (shouldExposeDateScopedCollectorStatusOutsideDialog0391(dateScoped = true)) {
                             onChanged(message.orEmpty())
                         } else {
@@ -761,7 +902,7 @@ fun BlaBlaCollectorPanel(
                         UnifiedDebugEventStore.record(
                             "AGENDA_DATE_SCOPE_SYNC_REQUESTED",
                             context.packageName,
-                            "accounts=${accounts.size} mode=${syncDateMode.name} dateCount=${dates.size} targetStart=${dates.first()} targetEnd=${dates.last()} inclusive=true authority=normalized_trip_date outsideScopeMutationAllowed=false pendingSeatQueueDoesNotBlock=true",
+                            "accounts=${selectedAccounts0449.size} mode=${syncDateMode.name} dateCount=${dates.size} targetStart=${dates.first()} targetEnd=${dates.last()} inclusive=true scripts=${dateScopeSelectedScripts0449.size}/${BlaBlaDateScopeScriptCatalog0449.all.size} selectiveScripts=${dateScopeSelectedScripts0449 != BlaBlaDateScopeScriptCatalog0449.all} authority=normalized_trip_date outsideScopeMutationAllowed=false pendingSeatQueueDoesNotBlock=true",
                         )
                     },
                 ) {
