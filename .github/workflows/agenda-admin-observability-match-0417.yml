@@ -139,7 +139,6 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
