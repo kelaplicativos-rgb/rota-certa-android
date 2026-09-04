@@ -1925,70 +1925,89 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterComplete=true piiLogged=false",
                 )
             }
-            val rosterSignature = directRosterSignature(sourceBackedResult)
-            if (rosterSignature == lastTripRosterSignature) {
-                tripRosterStablePasses++
-            } else {
-                lastTripRosterSignature = rosterSignature
-                tripRosterStablePasses = 1
-            }
-            val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
-                networkResolved = networkResolution != null,
-                passengerCount = sourceBackedResult.detail.passengers.size,
-                readAttempts = tripRosterReadAttempts,
-                maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
-            )
-            val confirmedRosterComplete = networkResolution != null ||
-                (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+            val acceptedResult = if (scriptSelection0449.wantsPassengerData()) {
+                val rosterSignature = directRosterSignature(sourceBackedResult)
+                if (rosterSignature == lastTripRosterSignature) {
+                    tripRosterStablePasses++
+                } else {
+                    lastTripRosterSignature = rosterSignature
+                    tripRosterStablePasses = 1
+                }
+                val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
+                    networkResolved = networkResolution != null,
                     passengerCount = sourceBackedResult.detail.passengers.size,
-                    structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
-                    explicitEmpty = sourceBackedResult.explicitEmptyRoster,
-                    hasMore = sourceBackedResult.rosterHasMore,
-                    terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
-                    stablePasses = tripRosterStablePasses,
-                ))
-            val acceptedResult = sourceBackedResult.copy(
-                detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
-            )
-            val rosterState = BlaBlaCollectorPassengerModule.rosterState(
-                passengerCount = acceptedResult.detail.passengers.size,
-                rosterComplete = acceptedResult.detail.passengerRosterComplete,
-                explicitEmpty = acceptedResult.explicitEmptyRoster,
-            )
-            UnifiedDebugEventStore.record(
-                "TRIP_ROSTER_PROBE",
-                packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${acceptedResult.detail.passengers.size} bookingLinks=${acceptedResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${acceptedResult.detail.passengerRosterComplete} explicitEmpty=${acceptedResult.explicitEmptyRoster} hasMore=${acceptedResult.rosterHasMore} terminalEvidence=${acceptedResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
-            )
-            if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
-                if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
-                    tripRosterReadAttempts++
-                    statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
-                    val retryRoster = {
+                    readAttempts = tripRosterReadAttempts,
+                    maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
+                )
+                val confirmedRosterComplete = networkResolution != null ||
+                    (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                        passengerCount = sourceBackedResult.detail.passengers.size,
+                        structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
+                        explicitEmpty = sourceBackedResult.explicitEmptyRoster,
+                        hasMore = sourceBackedResult.rosterHasMore,
+                        terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
+                        stablePasses = tripRosterStablePasses,
+                    ))
+                val passengerResult = sourceBackedResult.copy(
+                    detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
+                )
+                val rosterState = BlaBlaCollectorPassengerModule.rosterState(
+                    passengerCount = passengerResult.detail.passengers.size,
+                    rosterComplete = passengerResult.detail.passengerRosterComplete,
+                    explicitEmpty = passengerResult.explicitEmptyRoster,
+                )
+                UnifiedDebugEventStore.record(
+                    "TRIP_ROSTER_PROBE",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${passengerResult.detail.passengers.size} bookingLinks=${passengerResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${passengerResult.detail.passengerRosterComplete} explicitEmpty=${passengerResult.explicitEmptyRoster} hasMore=${passengerResult.rosterHasMore} terminalEvidence=${passengerResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
+                )
+                if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
+                    if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
+                        tripRosterReadAttempts++
+                        statusView.text = "${account.displayLabel} • confirmando passageiros ${tripRosterReadAttempts + 1}/$MAX_TRIP_ROSTER_READ_ATTEMPTS…"
+                        if (passengerResult.rosterHasMore) {
+                            UnifiedDebugEventStore.record(
+                                "ROSTER_EXPANSION_NOT_AUTOMATED",
+                                packageName,
+                                "account=${account.displayLabel} tripId=$candidateTripId reason=interaction_not_documented passiveRetry=true",
+                            )
+                        }
                         postSessionDelayed0405({
                             captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
                         }, ROSTER_RETRY_MS)
+                        return@evaluateRequest
                     }
-                    if (acceptedResult.rosterHasMore) {
-                        UnifiedDebugEventStore.record(
-                            "ROSTER_EXPANSION_NOT_AUTOMATED",
-                            packageName,
-                            "account=${account.displayLabel} tripId=$candidateTripId reason=interaction_not_documented passiveRetry=true",
-                        )
-                    }
-                    retryRoster()
+                    skipped++
+                    UnifiedDebugEventStore.record(
+                        "TRIP_REJECTED",
+                        packageName,
+                        "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
+                    )
+                    advanceCandidate(expectedSync, expectedCandidate)
                     return@evaluateRequest
                 }
-                skipped++
+                passengerResult
+            } else {
                 UnifiedDebugEventStore.record(
-                    "TRIP_REJECTED",
+                    "ORCHESTRATOR_SCRIPT_SKIPPED_0449",
                     packageName,
-                    "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
+                    "account=${account.displayLabel} tripId=$candidateTripId group=passengers requested=false action=preserve_previous",
                 )
-                advanceCandidate(expectedSync, expectedCandidate)
-                return@evaluateRequest
+                sourceBackedResult.copy(
+                    detail = sourceBackedResult.detail.copy(
+                        passengers = emptyList(),
+                        passengerRosterComplete = true,
+                    ),
+                    passengerHrefs = emptyList(),
+                    explicitEmptyRoster = true,
+                    rosterHasMore = false,
+                    rosterTerminalEvidence = true,
+                )
             }
-            if (BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP) {
+            if (
+                BlaBlaHarvestPolicy.AUTOMATIC_PUBLISHED_SEAT_LOOKUP &&
+                scriptSelection0449.wantsSeatData()
+            ) {
                 val editLinkMatches = BlaBlaHarvestAssociation.editPageMatches(candidateTripId, acceptedResult.editHref)
                 if (!editLinkMatches && tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
                     tripRosterReadAttempts++
