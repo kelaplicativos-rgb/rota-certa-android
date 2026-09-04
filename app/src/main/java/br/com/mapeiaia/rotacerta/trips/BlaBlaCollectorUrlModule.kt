@@ -109,11 +109,12 @@ internal object BlaBlaCollectorUrlModule {
     }
 
     /**
-     * Structured network responses may authoritatively bind an administrative trip id to a
-     * passenger-facing permalink whose public token is different. This is the only path where
-     * an id mismatch is accepted, and the returned value is always HTTPS.
+     * Authoritative acquisition may bind an administrative trip id to a passenger-facing
+     * permalink whose public token is different. The binding itself must already be proven by
+     * the acquisition context; this method only validates that exact administrative binding and
+     * the official /trip URL.
      */
-    fun publicTripFromAuthoritativeNetwork(
+    private fun publicTripFromAuthoritativeBinding(
         raw: String?,
         expectedAdministrativeTripId: String?,
         boundAdministrativeTripId: String?,
@@ -127,10 +128,22 @@ internal object BlaBlaCollectorUrlModule {
         return value
     }
 
+    fun publicTripFromAuthoritativeNetwork(
+        raw: String?,
+        expectedAdministrativeTripId: String?,
+        boundAdministrativeTripId: String?,
+    ): String? = publicTripFromAuthoritativeBinding(raw, expectedAdministrativeTripId, boundAdministrativeTripId)
+
+    fun publicTripFromAuthoritativeOrchestratorNavigation(
+        raw: String?,
+        expectedAdministrativeTripId: String?,
+        boundAdministrativeTripId: String?,
+    ): String? = publicTripFromAuthoritativeBinding(raw, expectedAdministrativeTripId, boundAdministrativeTripId)
+
     /**
-     * Revalidates a permalink already carried by collector state. A network-authoritative
-     * binding remains tied to the same canonical administrative trip id; every other source
-     * keeps the historical strict same-id contract.
+     * Revalidates a permalink already carried by collector state. Authoritatively bound sources
+     * remain tied to the same canonical administrative trip id; every other source keeps the
+     * historical strict same-id contract.
      */
     fun publicTripForCollectorState(
         raw: String?,
@@ -139,6 +152,8 @@ internal object BlaBlaCollectorUrlModule {
     ): String? = when (binding?.trim()) {
         PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE ->
             publicTripFromAuthoritativeNetwork(raw, expectedTripId, expectedTripId)
+        PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION ->
+            publicTripFromAuthoritativeOrchestratorNavigation(raw, expectedTripId, expectedTripId)
         else -> publicTrip(raw, expectedTripId)
     }
 
@@ -190,6 +205,7 @@ internal object BlaBlaCollectorUrlModule {
 
     const val PUBLIC_TRIP_BINDING_SAME_ID = "same_trip_id"
     const val PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE = "network_authoritative"
+    const val PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION = "orchestrator_navigation_authoritative"
 
     /** URLs the authenticated management browser may open on explicit user action. */
     fun isManageTarget(raw: String?): Boolean =

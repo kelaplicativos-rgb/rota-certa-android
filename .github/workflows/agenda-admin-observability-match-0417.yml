@@ -1,4 +1,4 @@
-name: Rota Certa Agenda canonical B2B mirror 0.1.442
+name: Rota Certa Agenda canonical B2B mirror 0.1.443
 
 on:
   push:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5735' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.442"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5736' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.443"' app/build.gradle.kts
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           if git diff --name-only "$BASE"..HEAD | grep -Eq 'LiveRideAccessibilityService\.kt|FarolNotification|Farol'; then
             echo "Protected FAROL scope changed unexpectedly."
@@ -125,12 +125,15 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerAdminSelectionPerformance0419Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticRecorderTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.canonicalFullReconcileProjectsTimelineWithoutWaitingForExternalCollector' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.cardVerifyUsesCanonicalMirrorWithoutBrowserOrAutomaticRetry' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.cardVerifyUsesCanonicalMirrorAndOnlyAcquiresMissingPublicUrlWithoutRetry' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -150,8 +153,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5735'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.442'" /tmp/aapt.txt
+          grep -Fq "versionCode='5736'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.443'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -230,18 +233,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0442
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0442/rota-certa-0.1.442-agenda-canonical-b2b-mirror.apk
-          cp /tmp/source-head.txt /tmp/0442/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0442/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0442/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0442/apk.sha256
-          cp /tmp/aapt.txt /tmp/0442/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0442/apksigner.txt
+          mkdir -p /tmp/0443
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0443/rota-certa-0.1.443-agenda-canonical-b2b-mirror.apk
+          cp /tmp/source-head.txt /tmp/0443/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0443/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0443/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0443/apk.sha256
+          cp /tmp/aapt.txt /tmp/0443/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0443/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.442-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.443-agenda-canonical-b2b-mirror-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0442
+          path: /tmp/0443

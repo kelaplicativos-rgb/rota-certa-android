@@ -281,11 +281,40 @@ internal data class ResolvedPublicTripLink0423(
     val binding: String,
 )
 
+internal fun bindOrchestratorPublicTripNavigation0443(
+    rawUrl: String?,
+    expectedAdministrativeTripId: String?,
+    requestedAdministrativeTripId: String?,
+): ResolvedPublicTripLink0423? {
+    val expected = expectedAdministrativeTripId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    val requested = requestedAdministrativeTripId?.trim()?.takeIf(String::isNotEmpty) ?: return null
+    if (expected != requested) return null
+    val href = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+        raw = rawUrl,
+        expectedAdministrativeTripId = expected,
+        boundAdministrativeTripId = requested,
+    ) ?: return null
+    return ResolvedPublicTripLink0423(
+        href = href,
+        source = "orchestrator_navigation",
+        binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+    )
+}
+
+private data class BoundPublicTripNavigation0443(
+    val syncGeneration: Long,
+    val navigationGeneration: Long,
+    val candidateIndex: Int,
+    val administrativeTripId: String,
+    val resolved: ResolvedPublicTripLink0423,
+)
+
 internal fun resolvePreferredPublicTripLink0423(
     network: ResolvedPublicTripLink0423?,
     passiveDom: ResolvedPublicTripLink0423?,
     persistedCanonical: ResolvedPublicTripLink0423?,
-): ResolvedPublicTripLink0423? = network ?: passiveDom ?: persistedCanonical
+    authoritativeNavigation: ResolvedPublicTripLink0423? = null,
+): ResolvedPublicTripLink0423? = network ?: authoritativeNavigation ?: passiveDom ?: persistedCanonical
 
 @Serializable
 private data class DynamicPublicTripShareEvidence(
@@ -459,6 +488,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesBottomStablePasses = 0
     private var tripRosterReadAttempts = 0
     private var networkTripSourceReadAttempts0407 = 0
+    private var publicTripNavigation0443: BoundPublicTripNavigation0443? = null
     private var targetedSnapshotSaved0407 = false
     private var lastTripRosterSignature = ""
     private var tripRosterStablePasses = 0
@@ -685,6 +715,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return if (interceptPhoneNavigation(url)) true else super.shouldOverrideUrlLoading(view, url)
             }
 
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                captureAuthoritativePublicTripNavigation0443(url)
+            }
+
             override fun onReceivedError(
                 view: WebView,
                 request: WebResourceRequest,
@@ -783,6 +818,79 @@ internal class BlaBlaDynamicAccountSessionController0401(
             Phase.EDIT -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleEditCapture(view)
             Phase.OPTIONS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleOptionsCapture(view)
             Phase.IDLE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ probeIdentity() }, 500)
+        }
+    }
+
+    private fun captureAuthoritativePublicTripNavigation0443(rawUrl: String?) {
+        if (
+            mode != BlaBlaDynamicSessionIntents.MODE_SYNC ||
+            targetTripId.isBlank() ||
+            (phase != Phase.DETAIL && phase != Phase.PUBLIC_SHARE)
+        ) return
+        val capturedSync = syncGeneration
+        val capturedNavigation = navigationGeneration
+        val expectedCandidate = candidateIndex
+        val candidate = candidates.getOrNull(expectedCandidate) ?: return
+        val administrativeTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+        if (administrativeTripId.isBlank() || administrativeTripId != targetTripId) return
+        val requestedAdministrativeTripId = BlaBlaCollectorUrlModule.tripId(lastRequestedUrl0426)
+        val resolved = bindOrchestratorPublicTripNavigation0443(
+            rawUrl = rawUrl,
+            expectedAdministrativeTripId = administrativeTripId,
+            requestedAdministrativeTripId = requestedAdministrativeTripId,
+        ) ?: return
+        val existing = publicTripNavigation0443
+        if (
+            existing != null &&
+            existing.syncGeneration == capturedSync &&
+            existing.navigationGeneration == capturedNavigation &&
+            existing.candidateIndex == expectedCandidate &&
+            existing.administrativeTripId == administrativeTripId &&
+            existing.resolved.href == resolved.href
+        ) return
+
+        publicTripNavigation0443 = BoundPublicTripNavigation0443(
+            syncGeneration = capturedSync,
+            navigationGeneration = capturedNavigation,
+            candidateIndex = expectedCandidate,
+            administrativeTripId = administrativeTripId,
+            resolved = resolved,
+        )
+        val publicTripId = BlaBlaCollectorUrlModule.publicTripPublicId(resolved.href).orEmpty()
+        val relation = if (publicTripId == administrativeTripId) "same" else "different"
+        UnifiedDebugEventStore.record(
+            "PUBLIC_TRIP_LINK_NAVIGATION_DISCOVERED",
+            packageName,
+            "account=${account.displayLabel} tripId=$administrativeTripId source=${resolved.source} sync=$capturedSync nav=$capturedNavigation candidate=${expectedCandidate + 1} publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.href)} piiLogged=false",
+        )
+        UnifiedDebugEventStore.record(
+            "PUBLIC_TRIP_LINK_NAVIGATION_BOUND",
+            packageName,
+            "account=${account.displayLabel} tripId=$administrativeTripId binding=${resolved.binding} sync=$capturedSync nav=$capturedNavigation candidate=${expectedCandidate + 1} requestedAdministrativeTrip=true publicIdRelation=$relation fingerprint=${publicTripHrefFingerprint0423(resolved.href)}",
+        )
+
+        if (phase == Phase.PUBLIC_SHARE && pendingTripIsCurrent(capturedSync, expectedCandidate)) {
+            pendingTripDetail = pendingTripDetail?.copy(
+                publicTripHref = resolved.href,
+                publicTripHrefSource = resolved.source,
+                publicTripHrefBinding = resolved.binding,
+            )
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_CAPTURED",
+                packageName,
+                "account=${account.displayLabel} tripId=$administrativeTripId source=${resolved.source} binding=${resolved.binding} sync=$capturedSync nav=$capturedNavigation candidate=${expectedCandidate + 1} fingerprint=${publicTripHrefFingerprint0423(resolved.href)} networkFirst=false",
+            )
+            postSessionDelayed0405({
+                if (
+                    capturedSync == syncGeneration &&
+                    capturedNavigation == navigationGeneration &&
+                    phase == Phase.PUBLIC_SHARE &&
+                    pendingTripIsCurrent(capturedSync, expectedCandidate) &&
+                    pendingTripDetail?.publicTripHref == resolved.href
+                ) {
+                    loadNextPassengerContact(capturedSync, expectedCandidate)
+                }
+            }, 0L)
         }
     }
 
@@ -1109,6 +1217,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesBottomStablePasses = 0
         tripRosterReadAttempts = 0
         networkTripSourceReadAttempts0407 = 0
+        publicTripNavigation0443 = null
         targetedSnapshotSaved0407 = false
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
@@ -1901,6 +2010,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     binding = resolved.binding,
                 )
             }
+            val authoritativeNavigationPublicLink = publicTripNavigation0443
+                ?.takeIf { captured ->
+                    captured.syncGeneration == expectedSync &&
+                        captured.navigationGeneration == expectedNavigation &&
+                        captured.candidateIndex == expectedCandidate &&
+                        captured.administrativeTripId == candidateTripId
+                }
+                ?.resolved
             val passivePublicLink = BlaBlaCollectorUrlModule.publicTrip(
                 identityAcceptedResult.publicTripHref,
                 candidateTripId,
@@ -1911,7 +2028,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
                 )
             }
-            val persistedPublicLink = if (networkPublicLink == null && passivePublicLink == null) {
+            val persistedPublicLink = if (
+                networkPublicLink == null &&
+                authoritativeNavigationPublicLink == null &&
+                passivePublicLink == null
+            ) {
                 persistedCanonicalPublicTrip0423(candidateTripId)
             } else {
                 null
@@ -1920,6 +2041,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 network = networkPublicLink,
                 passiveDom = passivePublicLink,
                 persistedCanonical = persistedPublicLink,
+                authoritativeNavigation = authoritativeNavigationPublicLink,
             )
             pendingTripDetail = identityAcceptedResult.copy(
                 publicTripHref = resolvedPublicLink?.href.orEmpty(),
@@ -2974,6 +3096,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
         networkTripSourceReadAttempts0407 = 0
+        publicTripNavigation0443 = null
         lastTripRosterSignature = ""
         tripRosterStablePasses = 0
         publicTripShareReadAttempts = 0

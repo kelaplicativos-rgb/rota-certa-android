@@ -48,6 +48,32 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun orchestratorNavigationBindsDifferentPublicTokenOnlyToTheRequestedAdministrativeTrip() {
+        val bound = bindOrchestratorPublicTripNavigation0443(
+            rawUrl = href(publicA),
+            expectedAdministrativeTripId = adminA,
+            requestedAdministrativeTripId = adminA,
+        )
+        assertEquals(href(publicA), bound?.href)
+        assertEquals("orchestrator_navigation", bound?.source)
+        assertEquals(BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION, bound?.binding)
+        assertNull(
+            bindOrchestratorPublicTripNavigation0443(
+                rawUrl = href(publicA),
+                expectedAdministrativeTripId = adminB,
+                requestedAdministrativeTripId = adminA,
+            ),
+        )
+        assertNull(
+            bindOrchestratorPublicTripNavigation0443(
+                rawUrl = "https://example.com/trip?id=$publicA",
+                expectedAdministrativeTripId = adminA,
+                requestedAdministrativeTripId = adminA,
+            ),
+        )
+    }
+
+    @Test
     fun structuredNetworkBindingIsCaseExactForAdministrativeTripIdentity() {
         assertNull(
             BlaBlaCollectorNetworkSourceModule.resolvePublicTrip(
@@ -67,28 +93,36 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
-    fun acquisitionOrderIsNetworkThenDomThenPersisted() {
+    fun acquisitionOrderIsNetworkThenAuthoritativeNavigationThenDomThenPersisted() {
         val network = link("network")
+        val navigation = ResolvedPublicTripLink0423(
+            href = href(publicA),
+            source = "orchestrator_navigation",
+            binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+        )
         val dom = link("dom")
         val persisted = link("persisted")
 
-        assertEquals(network, resolvePreferredPublicTripLink0423(network, dom, persisted))
-        assertEquals(dom, resolvePreferredPublicTripLink0423(null, dom, persisted))
-        assertEquals(persisted, resolvePreferredPublicTripLink0423(null, null, persisted))
-        assertNull(resolvePreferredPublicTripLink0423(null, null, null))
+        assertEquals(network, resolvePreferredPublicTripLink0423(network, dom, persisted, navigation))
+        assertEquals(navigation, resolvePreferredPublicTripLink0423(null, dom, persisted, navigation))
+        assertEquals(dom, resolvePreferredPublicTripLink0423(null, dom, persisted, null))
+        assertEquals(persisted, resolvePreferredPublicTripLink0423(null, null, persisted, null))
+        assertNull(resolvePreferredPublicTripLink0423(null, null, null, null))
     }
 
     @Test
     fun browserFlowKeepsDomShareAndExactSearchAsOrderedFallbacks() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         val network = source.indexOf("val networkPublicLink =")
+        val navigation = source.indexOf("val authoritativeNavigationPublicLink =")
         val dom = source.indexOf("val passivePublicLink =")
         val persisted = source.indexOf("val persistedPublicLink =")
         val share = source.indexOf("PUBLIC_TRIP_LINK_SHARE_FALLBACK")
         val exactSearch = source.indexOf("beginExactPublicTripSearch")
 
         assertTrue(network >= 0)
-        assertTrue(dom > network)
+        assertTrue(navigation > network)
+        assertTrue(dom > navigation)
         assertTrue(persisted > dom)
         assertTrue(share > persisted)
         assertTrue(exactSearch > share)
@@ -101,6 +135,9 @@ class BlaBlaNetworkPublicLink0423Test {
         assertTrue(source.contains("expectedNavigation != navigationGeneration"))
         assertTrue(source.contains("expectedCandidate != candidateIndex"))
         assertTrue(source.contains("!pendingTripIsCurrent(expectedSync, expectedCandidate)"))
+        assertTrue(source.contains("targetTripId.isBlank()"))
+        assertTrue(source.contains("capturedSync == syncGeneration"))
+        assertTrue(source.contains("capturedNavigation == navigationGeneration"))
         assertTrue(source.contains("STALE_CALLBACK_IGNORED"))
     }
 

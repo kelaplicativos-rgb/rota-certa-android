@@ -141,6 +141,21 @@ class AgendaBackgroundSync0392Test {
                 target,
             ),
         )
+        assertEquals(
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken",
+            targetedCollectorPublicUrl0442(
+                BlaBlaCollectorMonthResponse(
+                    status = "validated",
+                    trips = listOf(
+                        exact.copy(
+                            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+                            public_trip_href_source = "orchestrator_navigation",
+                        ),
+                    ),
+                ),
+                target,
+            ),
+        )
     }
 
     @Test
