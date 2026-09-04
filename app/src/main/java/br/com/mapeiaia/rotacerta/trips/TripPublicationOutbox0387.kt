@@ -87,6 +87,24 @@ internal fun strongExternalSnapshotIdentityMatches0387(
         canonical.blablaTripId?.trim() == tripId
 }
 
+internal fun resolveExternalOutboxAccountId0454(
+    persistedAccountId: String,
+    profileUuid: String,
+    accounts: List<BlaBlaDynamicAccount>,
+): String {
+    val normalizedProfileUuid = profileUuid.trim()
+    if (normalizedProfileUuid.isBlank()) return ""
+    val matchingAccounts = accounts.filter { account ->
+        account.id.isNotBlank() &&
+            account.profileUuid?.trim()?.equals(normalizedProfileUuid, ignoreCase = true) == true
+    }
+    val persisted = persistedAccountId.trim()
+    if (persisted.isNotBlank()) {
+        return persisted.takeIf { wanted -> matchingAccounts.count { it.id == wanted } == 1 }.orEmpty()
+    }
+    return matchingAccounts.singleOrNull()?.id.orEmpty()
+}
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -904,8 +922,20 @@ internal class TripMutationCoordinator0387(
                     }
                     TripPublicationOperation0387.UPSERT_EXTERNAL -> {
                         val sourceTrip = requireNotNull(event.snapshot.externalTrip) { "Snapshot externo ausente." }
-                        require(strongExternalIdentityMatches(event, sourceTrip)) {
+                        val effectiveExternalAccountId0454 = resolveExternalOutboxAccountId0454(
+                            persistedAccountId = event.snapshot.externalAccountId,
+                            profileUuid = sourceTrip.profile_uuid,
+                            accounts = BlaBlaDynamicAccountRegistry(appContext).list(),
+                        )
+                        require(strongExternalIdentityMatches(event, sourceTrip, effectiveExternalAccountId0454)) {
                             "Identidade externa forte divergiu do snapshot persistido."
+                        }
+                        if (event.snapshot.externalAccountId.isBlank()) {
+                            recordEvent(
+                                "TRIP_MUTATION_OUTBOX_ACCOUNT_RECOVERED_0454",
+                                event,
+                                "accountRecovered=true profileUuidPresent=true tripIdPresent=true",
+                            )
                         }
                         val publicationCanonicalTripId0434 = event.snapshot.trip?.tripKey
                             ?.takeIf(String::isNotBlank)
@@ -919,7 +949,7 @@ internal class TripMutationCoordinator0387(
                             outboxEventId = event.id,
                             mutationId0421 = event.resolvedMutationId0421(),
                             idempotencyKey0421 = event.resolvedIdempotencyKey0421(),
-                            externalAccountId = event.snapshot.externalAccountId,
+                            externalAccountId = effectiveExternalAccountId0454,
                             canonicalTripId = publicationCanonicalTripId0434,
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
                             canonicalTripSnapshot = event.snapshot.trip,
@@ -1104,10 +1134,14 @@ internal class TripMutationCoordinator0387(
 
     internal fun outboxSnapshot(): List<TripPublicationOutboxEvent0387> = outbox.snapshot()
 
-    private fun strongExternalIdentityMatches(event: TripPublicationOutboxEvent0387, sourceTrip: BlaBlaCollectorTrip): Boolean {
+    private fun strongExternalIdentityMatches(
+        event: TripPublicationOutboxEvent0387,
+        sourceTrip: BlaBlaCollectorTrip,
+        effectiveExternalAccountId: String,
+    ): Boolean {
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
-        if (profileUuid.isBlank() || tripId.isBlank() || event.snapshot.externalAccountId.isBlank()) return false
+        if (profileUuid.isBlank() || tripId.isBlank() || effectiveExternalAccountId.isBlank()) return false
         if (
             strongExternalSnapshotIdentityMatches0387(
                 canonicalTripId = event.canonicalTripId,
@@ -1121,7 +1155,7 @@ internal class TripMutationCoordinator0387(
         if (!boundCanonicalId.isNullOrBlank() && boundCanonicalId == event.canonicalTripId) return true
         return strongExternalCanonicalTripId0387(
             event.tenantId,
-            event.snapshot.externalAccountId,
+            effectiveExternalAccountId,
             profileUuid,
             tripId,
         ) == event.canonicalTripId
