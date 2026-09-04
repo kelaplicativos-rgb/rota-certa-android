@@ -152,7 +152,7 @@ internal fun privateAgendaMirrorPayload0434(
         itineraryAuthoritative = trip.itineraryAuthoritative,
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
-        blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty(),
+        blablaPublicUrl = canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty(),
         notes = trip.notes,
         bookings = bookings.sortedBy(Booking::id).map { booking ->
             PrivateAgendaMirrorBooking0434(
