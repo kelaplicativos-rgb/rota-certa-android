@@ -388,8 +388,18 @@ internal fun evaluatePublicMirrorReadback0411(
 
     val uniqueMismatch = mismatch.distinct()
     val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
+    val optionalLinkOnlyUnproven =
+        identityValid &&
+            revisionValid &&
+            linkRequired &&
+            expectedLink.isBlank() &&
+            uniqueMismatch.all { it == "blablaPublicUrl" }
     return PublicMirrorAttestationDecision0411(
-        state = if (validated) PublicMirrorAttestationState0411.VALIDATED else PublicMirrorAttestationState0411.DIVERGENT,
+        state = when {
+            validated -> PublicMirrorAttestationState0411.VALIDATED
+            optionalLinkOnlyUnproven -> PublicMirrorAttestationState0411.UNPROVEN
+            else -> PublicMirrorAttestationState0411.DIVERGENT
+        },
         expectedHash = expectedHash,
         readbackHash = readbackHash,
         mismatchFields = uniqueMismatch,
@@ -418,6 +428,26 @@ internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
         publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&
         publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
+
+/**
+ * The public projection can be fully read back while the optional BlaBlaCar /trip
+ * enrichment is still unavailable. This never grants blue attestation.
+ */
+internal fun Trip.publicMirrorProjectionCurrent0411(): Boolean =
+    publicMirrorAttestationCurrent0411() ||
+        (
+            publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.UNPROVEN &&
+                publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_UNRESOLVED" &&
+                publicMirrorMismatchFields0411.isNotEmpty() &&
+                publicMirrorMismatchFields0411.all { it == "blablaPublicUrl" } &&
+                publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+                publicMirrorAttemptedPublicationRevision0421 == publicationRevision &&
+                publicMirrorReadbackPublicationRevision0421 == publicationRevision &&
+                publicMirrorLastReadbackAtMillis0421 > 0L &&
+                publicMirrorPublicIdentity0421.isNotBlank() &&
+                publicMirrorExpectedHash0411.isNotBlank() &&
+                publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
+        )
 
 internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorAttestationState0411 = if (deleted || publicationTombstone) {
