@@ -137,7 +137,7 @@ internal fun canonicalPublicProjectionPayload0411(
         capacityReliable = reliable,
         itineraryAuthoritative = trip.itineraryAuthoritative,
         publicUrl = trip.publicUrl.orEmpty().trim(),
-        blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(
+        blablaPublicUrl = canonicalBoundBlaBlaPublicUrl0423(
             trip.blablaPublicUrl,
             trip.blablaTripId,
         ).orEmpty(),
@@ -370,8 +370,12 @@ internal fun evaluatePublicMirrorReadback0411(
     if (actual.publicUrl.isBlank() || actual.publicUrl != expected.publicUrl) mismatch += "publicUrl"
 
     val expectedTripId = expected.blablaTripId.takeIf(String::isNotBlank)
-    val expectedLink = BlaBlaCollectorUrlModule.publicTrip(expected.blablaPublicUrl, expectedTripId).orEmpty()
-    val actualLink = BlaBlaCollectorUrlModule.publicTrip(actual.blablaPublicUrl, expectedTripId).orEmpty()
+    // By this stage the canonical URL was already bound upstream to the strong
+    // administrative trip identity. The public /trip token may legitimately
+    // differ from that administrative ID, so downstream validation must preserve
+    // the proven canonical binding and then require readback byte-equivalence.
+    val expectedLink = canonicalBoundBlaBlaPublicUrl0423(expected.blablaPublicUrl, expectedTripId).orEmpty()
+    val actualLink = canonicalBoundBlaBlaPublicUrl0423(actual.blablaPublicUrl, expectedTripId).orEmpty()
     val linkRequired = expectedTripId != null
     val linkValid = if (linkRequired) expectedLink.isNotBlank() && actualLink == expectedLink else true
     if (!linkValid) mismatch += "blablaPublicUrl"
