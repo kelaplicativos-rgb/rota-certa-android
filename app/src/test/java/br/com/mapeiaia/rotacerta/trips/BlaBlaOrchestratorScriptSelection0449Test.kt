@@ -45,19 +45,45 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     }
 
     @Test
-    fun datePeriodUiExposesEveryScriptInTheActiveCollectorChainAndUsefulShortcuts() {
-        assertEquals(11, BlaBlaDateScopeScriptCatalog0449.selectableRequests.size)
+    fun datePeriodUiExposesAll32RegisteredScriptsGroupedByFunctionWithToggles() {
+        assertEquals(32, BlaBlaDateScopeScriptCatalog0449.selectableRequests.size)
+        assertEquals(32, BlaBlaDateScopeScriptCatalog0449.selectableRequests.distinct().size)
         assertEquals(
-            BlaBlaDateScopeScriptCatalog0449.selectableRequests.toSet(),
+            BlaBlaBrowserRequest.values().toSet(),
             BlaBlaDateScopeScriptCatalog0449.all,
         )
+        assertEquals(
+            listOf(
+                "Conta e perfil",
+                "Viagem",
+                "Passageiros",
+                "Vagas",
+                "Pesquisa pública BlaBlaCar",
+                "Mensagens",
+                "Viagens arquivadas",
+                "Diagnóstico",
+            ),
+            BlaBlaDateScopeScriptCatalog0449.groups.map { it.title },
+        )
+        assertEquals(22, BlaBlaDateScopeScriptCatalog0449.all.count { it.operation == BlaBlaBrowserOperation.CAPTURE })
+        assertEquals(8, BlaBlaDateScopeScriptCatalog0449.all.count { it.operation == BlaBlaBrowserOperation.NAVIGATION })
+        assertEquals(2, BlaBlaDateScopeScriptCatalog0449.all.count { it.operation == BlaBlaBrowserOperation.REMOTE_WRITE })
+        assertEquals(
+            setOf(BlaBlaBrowserRequest.SEAT_CHANGE, BlaBlaBrowserRequest.SEAT_SAVE),
+            BlaBlaDateScopeScriptCatalog0449.remoteWriteRequests,
+        )
+
         assertTrue(ui.contains("Scripts do orquestrador"))
-        assertTrue(ui.contains("BlaBlaDateScopeScriptCatalog0449.selectableRequests.forEach"))
+        assertTrue(ui.contains("32 scripts registrados • 22 CAPTURE • 8 NAVIGATION • 2 REMOTE_WRITE"))
+        assertTrue(ui.contains("BlaBlaDateScopeScriptCatalog0449.groups.forEach"))
+        assertTrue(ui.contains("group.requests.forEach"))
         assertTrue(ui.contains("Text(\"Todos\")"))
         assertTrue(ui.contains("Text(\"Nenhum\")"))
         assertTrue(ui.contains("Text(\"Só vagas\")"))
         assertTrue(ui.contains("Text(\"URL pública\")"))
         assertTrue(ui.contains("request.assetName"))
+        assertTrue(ui.contains("operationLabel(request)"))
+        assertTrue(ui.contains("Escrita remota: o toggle autoriza o script"))
     }
 
     @Test
