@@ -290,6 +290,18 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun durableReplayCannotSilentlyAcceptPreTransportAbort() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+
+        assertTrue(source.contains("EXTERNAL_SOURCE_IDENTITY_CONFLICT"))
+        assertTrue(source.contains("AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY"))
+        assertTrue(source.contains("CANONICAL_PROJECTION_RESULT"))
+        assertTrue(source.contains("error(projectionReason0460)"))
+    }
+
+    @Test
     fun externalPublicationFailuresExposeStageWithoutPassengerPii() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
