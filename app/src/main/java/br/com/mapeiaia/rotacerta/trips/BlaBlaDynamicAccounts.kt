@@ -1811,6 +1811,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
             targetedTripId = targetTripId.takeIf(String::isNotBlank),
+            selectiveScriptSync0449 = scriptSelection0449.selective,
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
@@ -3108,11 +3109,31 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val prior = existing.firstOrNull { it.tripId == tripId }
         val evidence = BlaBlaHarvestTripEvidence(
             tripId = tripId,
-            publishedSeats = pendingPublishedSeats ?: prior?.publishedSeats,
-            views = detail.views ?: prior?.views,
-            itineraryStops = detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() },
-            passengers = pendingTripPassengers.toList(),
-            passengerRosterComplete = detail.detail.passengerRosterComplete,
+            publishedSeats = if (scriptSelection0449.wantsSeatData()) {
+                pendingPublishedSeats ?: prior?.publishedSeats
+            } else {
+                prior?.publishedSeats
+            },
+            views = if (scriptSelection0449.wantsCoreTripData()) {
+                detail.views ?: prior?.views
+            } else {
+                prior?.views
+            },
+            itineraryStops = if (scriptSelection0449.wantsCoreTripData()) {
+                detail.itineraryStops.ifEmpty { prior?.itineraryStops.orEmpty() }
+            } else {
+                prior?.itineraryStops.orEmpty()
+            },
+            passengers = if (scriptSelection0449.wantsPassengerData()) {
+                pendingTripPassengers.toList()
+            } else {
+                prior?.passengers.orEmpty()
+            },
+            passengerRosterComplete = if (scriptSelection0449.wantsPassengerData()) {
+                detail.detail.passengerRosterComplete
+            } else {
+                prior?.passengerRosterComplete ?: false
+            },
         )
         evidenceStore.replace(account.id, existing.filterNot { it.tripId == tripId } + evidence)
         UnifiedDebugEventStore.record(
@@ -3180,6 +3201,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             identityVerified = verified,
             dateScope = targetDates.takeIf { it.isNotEmpty() },
             targetedTripId = targetTripId.takeIf(String::isNotBlank),
+            selectiveScriptSync0449 = scriptSelection0449.selective,
         )
         BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
             context = this,
