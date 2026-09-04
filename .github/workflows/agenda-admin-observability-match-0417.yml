@@ -219,7 +219,7 @@ jobs:
           grep -Fq 'INCREMENTAL_IDENTITY_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'privateMirrorEvidence0455' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'CANONICAL_REBASE_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
-          grep -Fq 'TRIP_MUTATION_OUTBOX_CANONICAL_REBASED_0457' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'TRIP_MUTATION_OUTBOX_CANONICAL_REBASED_0456' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
           grep -Fq 'CANONICAL_OPERATIONAL_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'CANONICAL_PROJECTION_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'DIAGNOSTIC_CONTEXT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
