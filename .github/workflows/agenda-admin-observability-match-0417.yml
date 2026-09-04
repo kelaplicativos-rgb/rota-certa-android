@@ -1,19 +1,19 @@
-name: Rota Certa 0.1.449 BlaBlaCar orchestrator UI
+name: Rota Certa 0.1.450 BlaBlaCar public URL attestation
 
 on:
   push:
     branches:
-      - agent/blablacar-orchestrator-ui-0.1.449
+      - agent/blablacar-public-url-attestation-0.1.450
   pull_request:
     branches:
-      - agent/agenda-canonical-b2b-mirror-0.1.429
+      - agent/blablacar-orchestrator-ui-0.1.449
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-orchestrator-ui-0449-${{ github.ref }}
+  group: blablacar-public-url-attestation-0450-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5742' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.449"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5743' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.450"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -96,6 +96,21 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate canonical public URL backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/agenda-admin-0417.js
+          node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
+          node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
+          node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -117,6 +132,9 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -137,28 +155,73 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5742'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.449'" /tmp/aapt.txt
+          grep -Fq "versionCode='5743'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.450'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
+
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Deploy exact SHA Agenda service
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+          fi
+
+      - name: Live Agenda health smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+          grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_URL_PRECONDITION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
+          echo "BLABLACAR_PUBLIC_URL_ATTESTATION_0450_LIVE=PASS"
+          echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0449
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0449/rota-certa-0.1.449-blablacar-orchestrator-ui.apk
-          cp /tmp/source-head.txt /tmp/0449/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0449/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0449/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0449/apk.sha256
-          cp /tmp/aapt.txt /tmp/0449/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0449/apksigner.txt
+          mkdir -p /tmp/0450
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0450/rota-certa-0.1.450-blablacar-public-url-attestation.apk
+          cp /tmp/source-head.txt /tmp/0450/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0450/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0450/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0450/apk.sha256
+          cp /tmp/aapt.txt /tmp/0450/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0450/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.449-blablacar-orchestrator-ui-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.450-blablacar-public-url-attestation-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0449
+          path: /tmp/0450
