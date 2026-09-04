@@ -158,6 +158,24 @@ class AgendaPrivateMirror0434Test {
     }
 
     @Test
+    fun privateMirrorTransportIsCorrelatedWithPublicationEvidence() {
+        val mirror = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt",
+        ).readText()
+        val remote = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
+        ).readText()
+        assertTrue(mirror.contains("evidence0421: RemotePublicationEvidenceContext0421? = null"))
+        assertTrue(mirror.contains("evidence0421 = evidence0421"))
+        assertTrue(mirror.contains("PRIVATE_MIRROR_WRITE_IDENTITY_MISMATCH"))
+        assertTrue(mirror.contains("PRIVATE_MIRROR_WRITE_REVISION_MISMATCH"))
+        assertTrue(mirror.contains("PRIVATE_MIRROR_WRITE_HASH_MISMATCH"))
+        assertTrue(remote.contains("writePrivateAgendaMirror0434("))
+        assertTrue(remote.contains("readPrivateAgendaMirror0434("))
+        assertTrue(remote.contains("evidence0421 = evidence0421"))
+    }
+
+    @Test
     fun everyTripAndBookingFieldHasAnExplicitMirrorPolicy() {
         fun instanceFields(type: Class<*>): Set<String> = type.declaredFields
             .filterNot { it.isSynthetic || Modifier.isStatic(it.modifiers) }

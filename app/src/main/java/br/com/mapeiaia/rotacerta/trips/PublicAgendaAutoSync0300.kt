@@ -89,23 +89,41 @@ internal fun canonicalMirrorBookings0441(
             .toList()
     }
 
+internal fun externalIncrementalPublicationIdentityAccepted0455(
+    resolvedInternalTripId: String,
+    expectedStrongId: String,
+    boundInternalTripId: String,
+    canonicalTripSnapshot: Trip?,
+    source: BlaBlaCollectorTrip,
+    accountIdentityConfirmed: Boolean,
+): Boolean {
+    val resolved = resolvedInternalTripId.trim()
+    if (resolved.isBlank()) return false
+    if (
+        strongExternalSnapshotIdentityMatches0387(
+            canonicalTripId = resolved,
+            snapshotTrip = canonicalTripSnapshot,
+            sourceTrip = source,
+        )
+    ) return true
+    if (!accountIdentityConfirmed) return false
+    return resolved == expectedStrongId || resolved == boundInternalTripId
+}
+
 internal fun externalIncrementalCanonicalIdentityMatches0452(
     resolvedInternalTripId: String,
     expectedStrongId: String,
     boundInternalTripId: String,
     canonicalTripSnapshot: Trip?,
     source: BlaBlaCollectorTrip,
-): Boolean {
-    val resolved = resolvedInternalTripId.trim()
-    if (resolved.isBlank()) return false
-    return resolved == expectedStrongId ||
-        resolved == boundInternalTripId ||
-        strongExternalSnapshotIdentityMatches0387(
-            canonicalTripId = resolved,
-            snapshotTrip = canonicalTripSnapshot,
-            sourceTrip = source,
-        )
-}
+): Boolean = externalIncrementalPublicationIdentityAccepted0455(
+    resolvedInternalTripId = resolvedInternalTripId,
+    expectedStrongId = expectedStrongId,
+    boundInternalTripId = boundInternalTripId,
+    canonicalTripSnapshot = canonicalTripSnapshot,
+    source = source,
+    accountIdentityConfirmed = true,
+)
 
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
@@ -772,7 +790,12 @@ internal object PublicAgendaAutoSync0300 {
         val boundInternalTripId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
         val resolvedInternalTripId = canonicalTripId.takeIf(String::isNotBlank)
             ?: boundInternalTripId.takeIf(String::isNotBlank)
-            ?: if (entityRevision > 0L) {
+            ?: if (
+                entityRevision > 0L &&
+                externalAccountId.isNotBlank() &&
+                profileUuid.isNotBlank() &&
+                tripId.isNotBlank()
+            ) {
                 strongExternalCanonicalTripId0387(
                     TripPublicationOutbox0387(context).tenantId,
                     externalAccountId,
@@ -781,27 +804,64 @@ internal object PublicAgendaAutoSync0300 {
                 )
             } else ""
         if (entityRevision > 0L) {
-            val accounts = BlaBlaDynamicAccountRegistry(context).list().filter { account ->
-                account.id == externalAccountId && account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+            val accounts = if (externalAccountId.isBlank()) emptyList() else {
+                BlaBlaDynamicAccountRegistry(context).list().filter { account ->
+                    account.id == externalAccountId &&
+                        account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+                }
             }
-            val expectedStrongId = strongExternalCanonicalTripId0387(
-                TripPublicationOutbox0387(context).tenantId,
-                externalAccountId,
-                profileUuid,
-                tripId,
+            val accountIdentityConfirmed0455 = externalAccountId.isNotBlank() && accounts.size == 1
+            val expectedStrongId0455 = if (
+                accountIdentityConfirmed0455 &&
+                profileUuid.isNotBlank() &&
+                tripId.isNotBlank()
+            ) {
+                strongExternalCanonicalTripId0387(
+                    TripPublicationOutbox0387(context).tenantId,
+                    externalAccountId,
+                    profileUuid,
+                    tripId,
+                )
+            } else ""
+            val canonicalSnapshotIdentityAccepted0455 = strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = resolvedInternalTripId,
+                snapshotTrip = canonicalTripSnapshot,
+                sourceTrip = source,
             )
-            val canonicalIdentityAccepted0452 = externalIncrementalCanonicalIdentityMatches0452(
+            val canonicalIdentityAccepted0455 = externalIncrementalPublicationIdentityAccepted0455(
                 resolvedInternalTripId = resolvedInternalTripId,
-                expectedStrongId = expectedStrongId,
+                expectedStrongId = expectedStrongId0455,
                 boundInternalTripId = boundInternalTripId,
                 canonicalTripSnapshot = canonicalTripSnapshot,
                 source = source,
+                accountIdentityConfirmed = accountIdentityConfirmed0455,
             )
-            require(
-                profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1 &&
-                    canonicalIdentityAccepted0452
-            ) {
-                "Sincronização externa determinística exige internalTripId + conta + profile UUID + tripId fortes."
+            if (outboxEventId.isNotBlank()) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_EVIDENCE_0421",
+                    context.packageName,
+                    buildString {
+                        append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                        append(" traceId=").append(outboxEventId)
+                        append(" correlationId=").append(outboxEventId)
+                        append(" stage=INCREMENTAL_IDENTITY_GUARD")
+                        append(" status=").append(if (canonicalIdentityAccepted0455) "OK" else "FAILED")
+                        append(" reasonCode=").append(if (canonicalIdentityAccepted0455) "CANONICAL_PUBLICATION_IDENTITY_ACCEPTED" else "CANONICAL_PUBLICATION_IDENTITY_REJECTED")
+                        append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                        append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                        append(" transportRevision=").append(entityRevision)
+                        append(" mutationId=").append(mutationId0421)
+                        append(" idempotencyKey=").append(idempotencyKey0421)
+                        append(" snapshotIdentity=").append(canonicalSnapshotIdentityAccepted0455)
+                        append(" accountIdentity=").append(accountIdentityConfirmed0455)
+                        append(" profileUuidPresent=").append(profileUuid.isNotBlank())
+                        append(" tripIdPresent=").append(tripId.isNotBlank())
+                        append(" previousStage=OUTBOX_IDENTITY_GUARD nextStage=PRIVATE_MIRROR_REQUEST")
+                    },
+                )
+            }
+            require(profileUuid.isNotBlank() && tripId.isNotBlank() && canonicalIdentityAccepted0455) {
+                "Sincronização externa determinística exige snapshot canônico forte ou conta + profile UUID + tripId fortes."
             }
         }
         val settings = store.onlineSettings()
@@ -867,6 +927,17 @@ internal object PublicAgendaAutoSync0300 {
             bookings = privateMirrorBookings0434,
             nowMillis = privateMirrorTrip0434.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
         )
+        val privateMirrorEvidence0455 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+            RemotePublicationEvidenceContext0421(
+                evidenceId = publicationEvidenceId0421(traceId, privateMirrorTrip0434.canonicalRevision),
+                traceId = traceId,
+                canonicalTripId = canonicalTripId0434,
+                logicalRevision = privateMirrorTrip0434.canonicalRevision,
+                transportRevision = entityRevision,
+                mutationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+            )
+        }
         syncPrivateAgendaMirror0434(
             api = api,
             trip = privateMirrorTrip0434,
@@ -876,6 +947,7 @@ internal object PublicAgendaAutoSync0300 {
             correlationId = outboxEventId,
             syncOperationId = mutationId0421,
             idempotencyKey = idempotencyKey0421,
+            evidence0421 = privateMirrorEvidence0455,
         )
         val result = try {
             syncExternalCapacitySnapshot(

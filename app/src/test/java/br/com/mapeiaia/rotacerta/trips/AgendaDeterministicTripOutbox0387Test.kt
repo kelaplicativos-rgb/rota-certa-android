@@ -204,6 +204,8 @@ class AgendaDeterministicTripOutbox0387Test {
         assertTrue(outbox.contains("MAX_STALE_REBASES_0453"))
         assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_READBACK_PENDING_0453"))
         assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_ACCOUNT_RECOVERED_0454"))
+        assertTrue(outbox.contains("OUTBOX_IDENTITY_GUARD"))
+        assertTrue(outbox.contains("externalIncrementalPublicationIdentityAccepted0455"))
         assertTrue(outbox.contains("externalAccountId = effectiveExternalAccountId0454"))
         assertTrue(outbox.contains("publicMirrorProjectionCurrent0411()"))
         assertFalse(outbox.contains("projection_replay_same_logical_revision"))

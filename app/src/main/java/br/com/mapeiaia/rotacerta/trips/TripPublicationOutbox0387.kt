@@ -927,10 +927,32 @@ internal class TripMutationCoordinator0387(
                             profileUuid = sourceTrip.profile_uuid,
                             accounts = BlaBlaDynamicAccountRegistry(appContext).list(),
                         )
-                        require(strongExternalIdentityMatches(event, sourceTrip, effectiveExternalAccountId0454)) {
+                        val canonicalSnapshotIdentityAccepted0455 = strongExternalSnapshotIdentityMatches0387(
+                            canonicalTripId = event.canonicalTripId,
+                            snapshotTrip = event.snapshot.trip,
+                            sourceTrip = sourceTrip,
+                        )
+                        val externalIdentityAccepted0455 = strongExternalIdentityMatches(
+                            event = event,
+                            sourceTrip = sourceTrip,
+                            effectiveExternalAccountId = effectiveExternalAccountId0454,
+                        )
+                        recordEvidence0421(
+                            stage = "OUTBOX_IDENTITY_GUARD",
+                            status = if (externalIdentityAccepted0455) "OK" else "FAILED",
+                            reason = if (externalIdentityAccepted0455) "OUTBOX_CANONICAL_IDENTITY_ACCEPTED" else "OUTBOX_CANONICAL_IDENTITY_REJECTED",
+                            event = event,
+                            extra = "snapshotIdentity=" + canonicalSnapshotIdentityAccepted0455 +
+                                " accountIdentity=" + effectiveExternalAccountId0454.isNotBlank() +
+                                " persistedAccountIdPresent=" + event.snapshot.externalAccountId.isNotBlank() +
+                                " profileUuidPresent=" + sourceTrip.profile_uuid.isNotBlank() +
+                                " tripIdPresent=" + !sourceTrip.trip_id.isNullOrBlank() +
+                                " previousStage=OUTBOX_DEQUEUE nextStage=INCREMENTAL_IDENTITY_GUARD",
+                        )
+                        require(externalIdentityAccepted0455) {
                             "Identidade externa forte divergiu do snapshot persistido."
                         }
-                        if (event.snapshot.externalAccountId.isBlank()) {
+                        if (event.snapshot.externalAccountId.isBlank() && effectiveExternalAccountId0454.isNotBlank()) {
                             recordEvent(
                                 "TRIP_MUTATION_OUTBOX_ACCOUNT_RECOVERED_0454",
                                 event,
@@ -1141,24 +1163,25 @@ internal class TripMutationCoordinator0387(
     ): Boolean {
         val profileUuid = sourceTrip.profile_uuid.trim()
         val tripId = sourceTrip.trip_id?.trim().orEmpty()
-        if (profileUuid.isBlank() || tripId.isBlank() || effectiveExternalAccountId.isBlank()) return false
-        if (
-            strongExternalSnapshotIdentityMatches0387(
-                canonicalTripId = event.canonicalTripId,
-                snapshotTrip = event.snapshot.trip,
-                sourceTrip = sourceTrip,
+        if (profileUuid.isBlank() || tripId.isBlank()) return false
+        val accountIdentityConfirmed = effectiveExternalAccountId.isNotBlank()
+        val boundCanonicalId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
+        val expectedStrongId = if (accountIdentityConfirmed) {
+            strongExternalCanonicalTripId0387(
+                event.tenantId,
+                effectiveExternalAccountId,
+                profileUuid,
+                tripId,
             )
-        ) {
-            return true
-        }
-        val boundCanonicalId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId
-        if (!boundCanonicalId.isNullOrBlank() && boundCanonicalId == event.canonicalTripId) return true
-        return strongExternalCanonicalTripId0387(
-            event.tenantId,
-            effectiveExternalAccountId,
-            profileUuid,
-            tripId,
-        ) == event.canonicalTripId
+        } else ""
+        return externalIncrementalPublicationIdentityAccepted0455(
+            resolvedInternalTripId = event.canonicalTripId,
+            expectedStrongId = expectedStrongId,
+            boundInternalTripId = boundCanonicalId,
+            canonicalTripSnapshot = event.snapshot.trip,
+            source = sourceTrip,
+            accountIdentityConfirmed = accountIdentityConfirmed,
+        )
     }
 
     private fun recordEvent(stage: String, event: TripPublicationOutboxEvent0387, extra: String) {

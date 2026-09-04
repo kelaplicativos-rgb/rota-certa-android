@@ -206,6 +206,7 @@ internal suspend fun syncPrivateAgendaMirror0434(
     correlationId: String = "",
     syncOperationId: String = "",
     idempotencyKey: String = "",
+    evidence0421: RemotePublicationEvidenceContext0421? = null,
 ): DriverPrivateMirrorReadback0434 {
     val payload = privateAgendaMirrorPayload0434(
         trip = trip,
@@ -225,11 +226,12 @@ internal suspend fun syncPrivateAgendaMirror0434(
             syncOperationId = syncOperationId,
             idempotencyKey = idempotencyKey,
         ),
+        evidence0421 = evidence0421,
     )
-    require(write.canonicalTripId == payload.canonicalTripId)
-    require(write.canonicalRevision == payload.canonicalRevision)
-    require(write.privateStateHash == privateHash)
-    val readback = api.readPrivateAgendaMirror0434(payload.canonicalTripId)
+    require(write.canonicalTripId == payload.canonicalTripId) { "PRIVATE_MIRROR_WRITE_IDENTITY_MISMATCH" }
+    require(write.canonicalRevision == payload.canonicalRevision) { "PRIVATE_MIRROR_WRITE_REVISION_MISMATCH" }
+    require(write.privateStateHash == privateHash) { "PRIVATE_MIRROR_WRITE_HASH_MISMATCH" }
+    val readback = api.readPrivateAgendaMirror0434(payload.canonicalTripId, evidence0421 = evidence0421)
     require(readback.canonicalTripId == payload.canonicalTripId) { "PRIVATE_MIRROR_IDENTITY_MISMATCH" }
     require(readback.canonicalRevision == payload.canonicalRevision) { "PRIVATE_MIRROR_STALE_LOGICAL_REVISION" }
     require(readback.privateStateHash == privateHash) { "PRIVATE_MIRROR_HASH_MISMATCH" }

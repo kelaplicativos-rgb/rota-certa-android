@@ -738,20 +738,24 @@ class TripRemoteApi(
 
     internal suspend fun writePrivateAgendaMirror0434(
         mirror: DriverPrivateMirrorWriteRequest0434,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
     ): DriverPrivateMirrorWriteResponse0434 = request(
         method = "PUT",
         path = "/v1/driver/private-mirror",
         body = json.encodeToString(mirror),
         requireDriverToken = true,
+        evidence0421 = evidence0421,
     )
 
     internal suspend fun readPrivateAgendaMirror0434(
         canonicalTripId: String,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
     ): DriverPrivateMirrorReadback0434 = request(
         method = "POST",
         path = "/v1/driver/private-mirror/readback",
         body = json.encodeToString(DriverPrivateMirrorReadRequest0434(canonicalTripId.trim())),
         requireDriverToken = true,
+        evidence0421 = evidence0421,
     )
 
     suspend fun reportPublicTripAttestation0417(

@@ -132,6 +132,64 @@ class AgendaImmediateCardDelta0431Test {
     }
 
     @Test
+    fun durableCanonicalSnapshotDoesNotDependOnCurrentBlaBlaAccountRegistry() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-a",
+            date = "2030-09-04",
+            trip_id = "trip-a",
+        )
+        val canonical = Trip(
+            title = "External canonical",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "PROFILE-A",
+            blablaTripId = "trip-a",
+            tripKey = "tripkey:durable-a",
+        )
+        assertTrue(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "tripkey:durable-a",
+                expectedStrongId = "",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source,
+                accountIdentityConfirmed = false,
+            ),
+        )
+        assertFalse(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "tripkey:durable-a",
+                expectedStrongId = "",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source.copy(trip_id = "trip-b"),
+                accountIdentityConfirmed = false,
+            ),
+        )
+        assertTrue(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "strong-account-id",
+                expectedStrongId = "strong-account-id",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = null,
+                source = source,
+                accountIdentityConfirmed = true,
+            ),
+        )
+        assertFalse(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "strong-account-id",
+                expectedStrongId = "strong-account-id",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = null,
+                source = source,
+                accountIdentityConfirmed = false,
+            ),
+        )
+    }
+
+    @Test
     fun timelineLazyCardsDoNotDeserializePersistentStoresWhileScrolling() {
         val ui = source("TripTimelineUi.kt")
         val capacity = source("TripGlobalPassengerFlow0256.kt")
