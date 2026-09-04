@@ -1834,7 +1834,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (targetTripId.isNotBlank()) {
             AgendaBackgroundSync0392.enqueueCollectorDelta0431(
                 context = this,
-                reason = "exact_card_final",
+                source = "exact_card_final",
             )
         }
         return true
@@ -3309,7 +3309,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         // resolves strong identity, performs semantic upsert and emits Timeline changes.
         AgendaBackgroundSync0392.enqueueCollectorDelta0431(
             context = this,
-            reason = "card_checkpoint:" + reason,
+            source = "card_checkpoint:" + reason,
         )
         UnifiedDebugEventStore.record(
             "TIMELINE_CARD_CHECKPOINT_SAVED",
