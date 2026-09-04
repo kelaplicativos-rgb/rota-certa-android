@@ -25,6 +25,53 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun canonicalExternalSnapshotIdentityAllowsExistingTripKeyBeforePublicBinding() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-a",
+            date = "2030-09-04",
+            trip_id = "trip-a",
+        )
+        val canonical = Trip(
+            title = "External canonical",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "PROFILE-A",
+            blablaTripId = "trip-a",
+            tripKey = "timeline-ext-existing",
+        )
+
+        assertTrue(
+            strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = "timeline-ext-existing",
+                snapshotTrip = canonical,
+                sourceTrip = source,
+            ),
+        )
+        assertFalse(
+            strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = "timeline-ext-existing",
+                snapshotTrip = canonical,
+                sourceTrip = source.copy(trip_id = "trip-b"),
+            ),
+        )
+        assertFalse(
+            strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = "timeline-ext-existing",
+                snapshotTrip = canonical.copy(recordOrigin = TripRecordOrigin.LOCAL),
+                sourceTrip = source,
+            ),
+        )
+        assertFalse(
+            strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = "different-canonical-id",
+                snapshotTrip = canonical,
+                sourceTrip = source,
+            ),
+        )
+    }
+
+    @Test
     fun publicationIdempotencyKeyContainsTenantTripAndRevision() {
         val r55 = publicationEventId0387("tenant-a", "trip-a", 55)
         assertEquals(r55, publicationEventId0387("tenant-a", "trip-a", 55))
