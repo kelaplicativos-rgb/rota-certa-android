@@ -12,7 +12,7 @@ class AgendaCanonicalCentralSync0403Test {
         File("src/main/java/br/com/mapeiaia/rotacerta/trips/$name").readText()
 
     @Test
-    fun unchangedFingerprintSkipsAndPartialCannotReplaceCompleteSnapshot() {
+    fun unchangedFingerprintSkipsButSafePartialSemanticDeltaAdvancesCanonical() {
         assertEquals(
             ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED,
             externalCollectorDeltaDecision0403(
@@ -23,10 +23,19 @@ class AgendaCanonicalCentralSync0403Test {
             ),
         )
         assertEquals(
-            ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL,
+            ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL,
             externalCollectorDeltaDecision0403(
                 existingFingerprint = "old",
                 incomingFingerprint = "partial-new",
+                existingComplete = true,
+                incomingComplete = false,
+            ),
+        )
+        assertEquals(
+            ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL,
+            externalCollectorDeltaDecision0403(
+                existingFingerprint = "old",
+                incomingFingerprint = "",
                 existingComplete = true,
                 incomingComplete = false,
             ),
