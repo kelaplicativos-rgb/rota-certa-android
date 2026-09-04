@@ -221,6 +221,18 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
+    fun publicUrlPreconditionIsReportedSeparatelyFromCanonicalStateComparison() {
+        val source = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt",
+        ).readText()
+        assertTrue(source.contains("stage = \"STATE_COMPARE\""))
+        assertTrue(source.contains("CANONICAL_STATE_MATCH"))
+        assertTrue(source.contains("stage = \"PUBLIC_URL_PRECONDITION\""))
+        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_RESOLVED"))
+        assertTrue(source.contains("!finalDecision.linkValid -> \"PUBLIC_URL_PRECONDITION\""))
+    }
+
+    @Test
     fun publicEvidenceHeaderAggregatesObservedStagesAndKeepsStageCountExact() {
         val source = java.io.File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertTrue(source.contains("lastStageDetail"))
