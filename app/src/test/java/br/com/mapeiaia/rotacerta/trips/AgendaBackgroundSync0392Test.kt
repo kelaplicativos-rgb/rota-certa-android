@@ -174,7 +174,7 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("tenantMutexes.computeIfAbsent"))
         assertTrue(source.contains("BackoffPolicy.EXPONENTIAL"))
         assertTrue(source.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
-        assertTrue(source.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(source.contains("TripMutationCoordinator0387(appContext, store).drainPending("))
         assertTrue(source.contains("PublicAgendaAutoSync0300.sync"))
         assertTrue(source.contains("BookingRealtimeEvents0356.notifyChanged()"))
         assertTrue(source.contains("TripWidgetProvider.updateAll(appContext)"))
@@ -233,7 +233,7 @@ class AgendaBackgroundSync0392Test {
         val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
 
         assertTrue(background.contains("PublicAgendaAutoSync0300.sync("))
-        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending("))
         assertFalse(background.contains("TripsActivity"))
         assertFalse(activity.contains("PublicAgendaAutoSync0300.sync("))
     }
