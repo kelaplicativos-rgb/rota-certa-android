@@ -3297,6 +3297,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
             context = this,
             reason = reason,
         )
+        // A persisted per-card checkpoint is already safe collector state. Promote it
+        // through the existing canonical delta worker immediately instead of waiting
+        // for the whole account/run to finish. The worker remains the only writer that
+        // resolves strong identity, performs semantic upsert and emits Timeline changes.
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+            context = this,
+            reason = "card_checkpoint:" + reason,
+        )
         UnifiedDebugEventStore.record(
             "TIMELINE_CARD_CHECKPOINT_SAVED",
             packageName,
