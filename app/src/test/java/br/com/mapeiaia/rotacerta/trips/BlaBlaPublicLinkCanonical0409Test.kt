@@ -153,6 +153,28 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
+    fun canonicalHashPreservesAuthoritativelyBoundPublicTokenDifferentFromAdministrativeId() {
+        val publicToken = "AaA1CanonicalPublicTokenDifferent0409"
+        val linked = trip(
+            tripIdA,
+            "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary&requested_seats=2",
+        )
+        val tracked = linked.copy(
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=another&requested_seats=2",
+        )
+        val missing = linked.copy(blablaPublicUrl = null)
+
+        assertEquals(
+            canonicalTripStateHash0406(linked, emptyList()),
+            canonicalTripStateHash0406(tracked, emptyList()),
+        )
+        assertNotEquals(
+            canonicalTripStateHash0406(linked, emptyList()),
+            canonicalTripStateHash0406(missing, emptyList()),
+        )
+    }
+
+    @Test
     fun collectorFingerprintChangesOnlyForTheTripWhosePermalinkChanges() {
         val a1 = source(tripIdA, "https://www.blablacar.com.br/trip?id=$tripIdA")
         val a2 = a1.copy(public_trip_href = "https://www.blablacar.fr/trip?id=$tripIdA")
