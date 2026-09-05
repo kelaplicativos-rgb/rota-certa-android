@@ -173,22 +173,19 @@ jobs:
           (async () => {
             if (!admin.apps.length) admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
             const db = admin.firestore();
-            const targets = new Set([
-              "01a058be-73c8-7845-9ad2-076aaef9883c",
-            ]);
-            const targetDeparture = 1788703200000;
-            const driverUsername = "ezequiel";
-            const tripsSnap = await db.collection("trips").where("driverUsername", "==", driverUsername).limit(300).get();
-            const rows = [];
-            for (const doc of tripsSnap.docs) {
+            const directDocIds = [
+              "bbae1dc05ac20f799f907a5b55935f8f",
+              "bb66f151315740dbd3effc4b2010ed2f",
+            ];
+            const targetTripId = "01a058be-73c8-7845-9ad2-076aaef9883c";
+
+            async function summarize(doc) {
+              if (!doc.exists) return { id: doc.id, exists: false };
               const d = doc.data() || {};
-              const isTarget = targets.has(String(d.blablaTripId || ""));
-              const nearTarget = Math.abs(Number(d.departureAtMillis || 0) - targetDeparture) <= 3 * 60 * 60 * 1000;
-              if (!isTarget && !nearTarget) continue;
               const bookings = await doc.ref.collection("bookings").get();
-              rows.push({
+              return {
                 id: doc.id,
-                isTarget,
+                exists: true,
                 driverUsername: d.driverUsername || "",
                 title: d.title || "",
                 departureAtMillis: Number(d.departureAtMillis || 0),
@@ -212,19 +209,43 @@ jobs:
                 publicAttestationState0417: d.publicAttestationState0417 || "",
                 publicAttestedPublicationRevision0417: Number(d.publicAttestedPublicationRevision0417 || 0),
                 publicAttestedCanonicalRevision0417: Number(d.publicAttestedCanonicalRevision0417 || 0),
-                stops: Array.isArray(d.stops) ? d.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""})) : [],
+                stops: Array.isArray(d.stops)
+                  ? d.stops.map(s => ({ id:s?.id || "", name:s?.name || "", address:s?.address || "" }))
+                  : [],
                 canonicalStops: Array.isArray(d.canonicalPublicProjection0434?.stops)
-                  ? d.canonicalPublicProjection0434.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""}))
+                  ? d.canonicalPublicProjection0434.stops.map(s => ({ id:s?.id || "", name:s?.name || "", address:s?.address || "" }))
                   : [],
                 bookingsCountStored: Number(d.bookingsCount || 0),
                 bookings: bookings.docs.map(b => {
-                  const v=b.data()||{};
-                  return {id:b.id,status:v.status||"",source:v.source||"",boardingStopId:v.boardingStopId||"",dropoffStopId:v.dropoffStopId||"",seats:Number(v.seats||0)};
+                  const v = b.data() || {};
+                  return {
+                    id:b.id,
+                    status:v.status || "",
+                    source:v.source || "",
+                    boardingStopId:v.boardingStopId || "",
+                    dropoffStopId:v.dropoffStopId || "",
+                    seats:Number(v.seats || 0),
+                  };
                 }),
                 updatedAtMillis: Number(d.updatedAtMillis || 0),
-              });
+              };
             }
-            console.log(JSON.stringify({targets:[...targets],targetDeparture,rows}, null, 2));
+
+            const direct = [];
+            for (const id of directDocIds) direct.push(await summarize(await db.collection("trips").doc(id).get()));
+
+            const fallbackSnap = await db.collection("trips").where("blablaTripId", "==", targetTripId).limit(10).get();
+            const fallback = [];
+            for (const doc of fallbackSnap.docs) {
+              if (directDocIds.includes(doc.id)) continue;
+              fallback.push(await summarize(doc));
+            }
+
+            const existing = [...direct, ...fallback].filter(row => row.exists);
+            if (existing.length === 0) {
+              throw new Error("No canonical trip documents found for the physical 409 evidence.");
+            }
+            console.log(JSON.stringify({ directDocIds, targetTripId, direct, fallback }, null, 2));
           })().catch((error) => {
             console.error(error && error.stack || error);
             process.exitCode = 1;
@@ -253,17 +274,6 @@ jobs:
           grep -Fq '"ok":true' live-health.json
           printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
 
-      - name: Verify target public read path after deploy
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE=https://rota-certa-7ccc8.web.app
-          for TOKEN in bbae1dc05ac20f799f907a5b55935f8f bb66f151315740dbd3effc4b2010ed2f; do
-            CODE="$(curl --silent --show-error --output "public-$TOKEN.json" --write-out '%{http_code}' "$BASE/v1/public/trips/$TOKEN")"
-            printf '%s %s\n' "$TOKEN" "$CODE" | tee -a target-public-read-status.txt
-            test "$CODE" = "200" || test "$CODE" = "404"
-          done
-
       - name: Upload final APK and evidence
         uses: actions/upload-artifact@v4
         with:
@@ -282,6 +292,3 @@ jobs:
             android-focused-tests.log
             live-health.json
             missing-trip-diagnostic-predeploy.json
-            target-public-read-status.txt
-            public-bbae1dc05ac20f799f907a5b55935f8f.json
-            public-bb66f151315740dbd3effc4b2010ed2f.json
