@@ -1,16 +1,16 @@
-name: Agenda online/offline Home 0.1.471
+name: Recuperação identidade BlaBlaCar 0.1.472
 
 on:
   push:
     branches:
-      - agent/agenda-public-online-toggle-0.1.471
+      - agent/blablacar-identity-recovery-0.1.472
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-public-online-toggle-0471-${{ github.ref }}
+  group: blablacar-identity-recovery-0472-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -79,14 +79,14 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Validate backend syntax and 0.1.471 visibility contracts
+      - name: Validate backend syntax and 0.1.472 identity contracts
         shell: bash
         run: |
           set -euo pipefail
           cd trip-platform/functions
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
-          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js test/agenda-public-online-toggle-0471.test.js
+          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js test/agenda-public-online-toggle-0471.test.js test/agenda-blablacar-identity-recovery-0472.test.js
           cd ../..
           rm -rf /tmp/rota-certa-base-0468
           git worktree add --detach /tmp/rota-certa-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
@@ -156,6 +156,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace --info
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
 
@@ -208,8 +209,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -F 'versionCode = 5764' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.471"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5765' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.472"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -258,17 +259,21 @@ jobs:
           grep -Fq 'Administração da Agenda' live-public.html
           grep -Fq 'adminTripBookings0468' live-public.html
           grep -Fq 'adminTripContext0470' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.471" > live-app.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.472" > live-app.js
           grep -Fq 'Administrar esta viagem' live-app.js
           grep -Fq '/v1/admin/card-capabilities' live-app.js
           grep -Fq '/public-visibility' live-app.js
           grep -Fq 'agendaVisibilityToggle0471' live-app.js
+          grep -Fq 'adminTripIdentityRecovery0472' live-public.html
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.472" > live-admin.js
+          grep -Fq 'blablacar-identity-recovery' live-admin.js
+          grep -Fq 'scheduleTripIdentityRecovery0472' live-admin.js
           printf '%s\n' "${GITHUB_SHA}" > deployed-source-head.txt
 
       - name: Upload installable APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-public-online-toggle-0471-${{ github.sha }}
+          name: rota-certa-blablacar-identity-recovery-0472-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -292,4 +297,5 @@ jobs:
             live-health.json
             live-public.html
             live-app.js
+            live-admin.js
             deployed-source-head.txt
