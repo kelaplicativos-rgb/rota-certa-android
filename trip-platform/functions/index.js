@@ -3329,7 +3329,7 @@ async function createDriverTrip(req, res) {
       if (existingByToken.exists) {
         throw Object.assign(new Error("Token público já existe."), { httpStatus: 409, code: "token_collision" });
       }
-      tx.create(ref, {
+      const initialTripPatch0468 = {
         ...normalized,
         publicToken: token,
         publicUrl,
@@ -3342,14 +3342,36 @@ async function createDriverTrip(req, res) {
         bookingsCount: 0,
         createdAtMillis: now,
         updatedAtMillis: now,
-      });
-      return { created: true, adopted: false, tripId: token, publicToken: token, publicUrl };
+      };
+      const initialCanonicalPatch0468 = canonicalServerProjectionPatch0468(
+        token,
+        {},
+        initialTripPatch0468,
+        Math.max(1, Number(normalized.publicationRevision || 0)),
+        now,
+      );
+      tx.create(ref, initialCanonicalPatch0468);
+      return {
+        created: true,
+        adopted: false,
+        tripId: token,
+        publicToken: token,
+        publicUrl,
+        canonicalTripId: initialCanonicalPatch0468.canonicalTripId,
+        canonicalRevision: initialCanonicalPatch0468.canonicalRevision,
+        canonicalStateHash: initialCanonicalPatch0468.canonicalStateHash,
+        publicProjectionHash: initialCanonicalPatch0468.publicProjectionHash0434,
+      };
     });
     return json(res, result.created ? 201 : 200, {
       tripId: result.tripId,
       publicToken: result.publicToken,
       publicUrl: result.publicUrl,
       adoptedCanonicalIdentity: result.adopted === true,
+      canonicalTripId: cleanText(result.canonicalTripId, 180),
+      canonicalRevision: Math.max(0, Number(result.canonicalRevision || 0)),
+      canonicalStateHash: cleanText(result.canonicalStateHash, 160),
+      publicProjectionHash: cleanText(result.publicProjectionHash, 160),
     });
   } catch (error) {
     return fail(
@@ -3630,15 +3652,37 @@ async function updateDriverTrip(req, res, token) {
         ? Math.max(0, Number(previous.changeVersion || 0)) + 1
         : Math.max(0, Number(previous.changeVersion || 0));
       const now = Date.now();
-      tx.update(ref, {
+      const baseTripPatch0468 = {
         ...normalized,
         ...capacityPersistence,
         publicUrl,
         driverUsername: ownerUsername,
         driverDisplayName: ownerDisplayName,
         changeVersion,
+        canonicalRevision: Math.max(0, Number(previous.canonicalRevision || 0)),
+        canonicalStateHash: cleanText(previous.canonicalStateHash, 160),
         updatedAtMillis: now,
-      });
+      };
+      const semanticServerChange0468 =
+        changes.length > 0 ||
+        externalCapacityChanged ||
+        (previous.publicationTombstone === true) !== requestedTombstone;
+      const effectivePublicationRevision0468 = Math.max(
+        1,
+        currentPublicationRevision,
+        requestedPublicationRevision,
+        Math.max(0, Number(normalized.publicationRevision || 0)),
+      );
+      const committedTripPatch0468 = semanticServerChange0468
+        ? canonicalServerProjectionPatch0468(
+            token,
+            previous,
+            baseTripPatch0468,
+            effectivePublicationRevision0468,
+            now,
+          )
+        : baseTripPatch0468;
+      tx.update(ref, committedTripPatch0468);
 
       let eventType = "";
       let notifiedPassengers = 0;
@@ -3679,7 +3723,11 @@ async function updateDriverTrip(req, res, token) {
         eventType,
         notifiedPassengers,
         stale: false,
-        entityRevision: Math.max(0, Number(normalized.publicationRevision || currentPublicationRevision)),
+        entityRevision: Math.max(0, Number(committedTripPatch0468.publicationRevision || currentPublicationRevision)),
+        canonicalTripId: cleanText(committedTripPatch0468.canonicalTripId || previous.canonicalTripId, 180),
+        canonicalRevision: Math.max(0, Number(committedTripPatch0468.canonicalRevision || previous.canonicalRevision || 0)),
+        canonicalStateHash: cleanText(committedTripPatch0468.canonicalStateHash || previous.canonicalStateHash, 160),
+        publicProjectionHash: cleanText(committedTripPatch0468.publicProjectionHash0434 || previous.publicProjectionHash0434, 160),
       };
     });
     if (result.becameCompleted) await processReferralCreditsForCompletedTrip(token, result.ownerUsername);
@@ -3699,6 +3747,10 @@ async function updateDriverTrip(req, res, token) {
       passengerNotificationsCreated: result.notifiedPassengers,
       entityRevision: Math.max(0, Number(result.entityRevision || 0)),
       stale: result.stale === true,
+      canonicalTripId: cleanText(result.canonicalTripId, 180),
+      canonicalRevision: Math.max(0, Number(result.canonicalRevision || 0)),
+      canonicalStateHash: cleanText(result.canonicalStateHash, 160),
+      publicProjectionHash: cleanText(result.publicProjectionHash, 160),
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "update_failed", error.message || "Falha ao atualizar viagem.");
@@ -7399,15 +7451,27 @@ async function reconcileDriverAgendaSeatAllocation(req, res) {
           return { processed: true, changed: false, failClosed: !capacityKnown };
         }
 
-        tx.update(tripRef, {
+        const entityRevision = Math.max(0, Number(previous.publicationRevision || 0)) + 1;
+        const changedAt0468 = Date.now();
+        writeDeliveredTripPublicationOutbox(tx, {
+          tenantId: driver.username,
+          canonicalTripId: cleanText(previous.canonicalTripId || previous.localTripId, 180) || token,
+          revision: entityRevision,
+          operation: "UPSERT",
+          mutationType: "ROTA_CERTA_SEAT_ALLOCATION_CHANGED",
+          source: "SERVER_SETTINGS",
+          sourceEventId: "",
+        });
+        tx.update(tripRef, canonicalServerProjectionPatch0468(token, previous, {
           rotaCertaSeatAllocation: allocation,
           seatAllocationConfigVersion: configVersion,
           capacity: Math.max(0, Number(candidate.capacity || 0)),
           capacityReliable: candidate.capacityReliable !== false,
           status: nextStatus,
           ...canonicalUpdate,
-          updatedAtMillis: Date.now(),
-        });
+          publicationRevision: entityRevision,
+          publicationTombstone: false,
+        }, entityRevision, changedAt0468));
         return { processed: true, changed: true, failClosed: !capacityKnown };
       });
       if (!result.processed) continue;
