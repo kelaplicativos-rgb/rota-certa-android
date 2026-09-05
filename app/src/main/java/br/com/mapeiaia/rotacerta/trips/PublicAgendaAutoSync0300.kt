@@ -1343,10 +1343,6 @@ internal object PublicAgendaAutoSync0300 {
                     published = true,
                     changed = true,
                     remoteTripId = response.tripId,
-                    canonicalTripId = response.canonicalTripId,
-                    canonicalRevision = response.canonicalRevision,
-                    canonicalStateHash = response.canonicalStateHash,
-                    publicProjectionHash = response.publicProjectionHash,
                     publicationRevision = response.entityRevision,
                 )
             }
