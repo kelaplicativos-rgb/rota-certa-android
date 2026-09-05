@@ -897,6 +897,7 @@ internal class TripMutationCoordinator0387(
                 extra = "attempt=${event.attempts} previousStage=OUTBOX_ENQUEUE nextStage=REQUEST_BUILD",
             )
             try {
+                var backendCanonicalVerified0468 = false
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot local ausente." }
