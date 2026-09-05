@@ -224,15 +224,6 @@ internal data class BlaBlaDateScopeScriptSelection0449(
                 requested = BlaBlaDateScopeScriptCatalog0449.all,
             )
 
-        /**
-         * 0.1.476: the unattended collector that feeds the read-only public Agenda
-         * must materialize every strong-identity trip before optional administrative
-         * enrichment. Passenger, seat and public-link probes remain available to
-         * explicit/manual syncs and existing values are preserved by selective merge.
-         */
-        fun automaticAgendaListing0476(): BlaBlaDateScopeScriptSelection0449 =
-            explicit(BlaBlaDateScopeScriptCatalog0449.coreTripRequests)
-
         fun explicit(requested: Collection<BlaBlaBrowserRequest>): BlaBlaDateScopeScriptSelection0449 =
             BlaBlaDateScopeScriptSelection0449(
                 explicit = true,
