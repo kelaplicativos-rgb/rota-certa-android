@@ -119,6 +119,11 @@ jobs:
           comm -13 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-new-failures.txt
           comm -23 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-resolved-failures.txt
           printf 'base=%s\ncurrent=%s\n' "$BASE_FAIL" "$CURRENT_FAIL" | tee historical-counts.txt
+          if [ -s historical-new-failures.txt ]; then
+            echo "New Node historical-contract failures require classification before deploy." >&2
+            cat historical-new-failures.txt >&2
+            exit 4
+          fi
           cp /tmp/base-node-tests.log baseline-node-tests.log
           cp /tmp/current-node-tests.log current-node-tests.log
           git worktree remove /tmp/rota-certa-base-0468 --force
