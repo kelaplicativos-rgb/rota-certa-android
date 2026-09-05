@@ -200,6 +200,7 @@ internal enum class BlaBlaCommandStatus0407 {
     QUEUED,
     NO_OP_ALREADY_MATCHED,
     VERIFIED_SUCCESS,
+    PUBLISHED_URL_PENDING,
     NOT_AVAILABLE,
     NOT_ELIGIBLE,
     TRIP_NOT_FOUND,
@@ -376,6 +377,7 @@ internal fun blaBlaVerificationLabel0407(
         BlaBlaCommandStatus0407.TRIP_NOT_FOUND,
     ) -> "⚠ Recurso indisponível"
     audit?.status in setOf(BlaBlaCommandStatus0407.FAILED, BlaBlaCommandStatus0407.UNVERIFIED) -> "⚠ Falha na verificação"
+    audit?.status == BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING -> "✓ Publicado • URL pendente"
     audit?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS -> "✓ Verificado agora"
     lastObservedAtMillis > 0L -> "✓ Verificado"
     strongTargetAvailable -> "Dados desatualizados"
