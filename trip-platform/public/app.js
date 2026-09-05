@@ -45,6 +45,7 @@ const requestedSeats = Math.max(1, Math.min(999, Math.floor(Number(params.get("l
 const referralCode = (params.get("ref") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 80);
 const directReserveRequested = params.get("reservar") === "1";
 const testerBootstrapToken = (params.get("tester") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 240);
+const requestedAdminTripIdentity0470 = String(params.get("administrar") || "").trim().slice(0, 180);
 
 let driverDisplayName = "";
 let driverProfile = {};
@@ -87,7 +88,9 @@ const passengerSessionContextId0427 = (() => {
   }
 })();
 let agendaTripsCache = [];
-let pendingAuthDestination = portalMode ? "portal" : (tripToken ? "trip" : "agenda");
+const agendaAdminCardCapabilities0470 = new Map();
+let agendaReturnScrollY0470 = 0;
+let pendingAuthDestination = (portalMode || requestedAdminTripIdentity0470) ? "portal" : (tripToken ? "trip" : "agenda");
 let calendarPickerTarget = "departure";
 let seatPickerDraft = 1;
 let seatPickerMode = "search";
@@ -448,6 +451,10 @@ function saveAgendaViewSession(token) {
 function updateAuthenticatedChrome() {
   show("openPassengerPortal", Boolean(isTesterMode() || !agendaAuthenticationRequired0428 || passengerAgendaViewToken || passengerSessionToken));
   show("passengerNotificationsBell", Boolean(isTesterMode() || passengerSessionToken));
+  const areaTitle = document.querySelector("#openPassengerPortal .passengerAreaTitle");
+  const areaSub = document.querySelector("#openPassengerPortal .passengerAreaSub");
+  if (areaTitle) areaTitle.textContent = "Minha Área";
+  if (areaSub) areaSub.textContent = passengerAgendaAdmin0418 ? "Administrador" : "Reservas e conta";
   show("portalLogout", Boolean(!isTesterMode() && passengerSessionToken));
   show("portalAgendaAdminCard0418", Boolean(
     !isTesterMode() && (!agendaAuthenticationRequired0428 || (passengerSessionToken && passengerAgendaAdmin0418))
@@ -575,6 +582,11 @@ async function continueAfterAuthentication() {
     window.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
+  if (pendingAuthDestination === "portal" && passengerAgendaAdmin0418 && (agendaToken || publicSlug)) {
+    await loadAgenda({ restoreScrollY: agendaReturnScrollY0470 });
+    if (requestedAdminTripIdentity0470) setTimeout(() => openRequestedAdminTrip0470(), 0);
+    return;
+  }
   if (pendingAuthDestination === "portal") return openPassengerPortal();
   if (pendingAuthDestination === "booking") return openBookingFlow();
   if (pendingAuthDestination === "review") {
@@ -591,6 +603,9 @@ async function loginAccessGate() {
 }
 
 function showPrivateAuthGate(destination = "portal", resumeAction = "") {
+  if (destination === "portal" && (agendaToken || publicSlug)) {
+    agendaReturnScrollY0470 = Math.max(0, Math.floor(window.scrollY || 0));
+  }
   if (isTesterMode()) {
     pendingAuthDestination = destination;
     pendingPrivateAction = resumeAction;
@@ -762,7 +777,47 @@ async function requestReferralInvite() {
   }
 }
 
-async function loadAgenda() {
+async function hydrateAgendaAdminCapabilities0470() {
+  agendaAdminCardCapabilities0470.clear();
+  if (isTesterMode() || !passengerSessionToken || !passengerAgendaAdmin0418 || !driverUsername) return false;
+  try {
+    const response = await fetch("/v1/admin/card-capabilities", {
+      headers: authenticatedHeaders({
+        Accept: "application/json",
+        "X-Rota-Certa-Admin-Driver": driverUsername,
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      if (response.status === 401) {
+        savePassengerSession("");
+        passengerAgendaAdmin0418 = false;
+        updateAuthenticatedChrome();
+      } else if (response.status === 403) {
+        passengerAgendaAdmin0418 = false;
+        updateAuthenticatedChrome();
+      }
+      return false;
+    }
+    (Array.isArray(body.cards) ? body.cards : []).forEach((card) => {
+      const canonicalTripId = String(card && card.canonicalTripId || "").trim();
+      if (canonicalTripId) agendaAdminCardCapabilities0470.set(canonicalTripId, card);
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function applyAgendaAdminCapabilities0470(trips) {
+  return (Array.isArray(trips) ? trips : []).map((item) => {
+    const canonicalTripId = String(item && item.canonicalTripId || "").trim();
+    const adminContext0470 = canonicalTripId ? agendaAdminCardCapabilities0470.get(canonicalTripId) || null : null;
+    return { ...item, adminContext0470 };
+  });
+}
+
+async function loadAgenda(options = {}) {
   if (driverUsername.length < 3 || (!publicSlug && agendaToken.length < 16)) return setError("Link de agenda inválido.");
   let statusCode = 0;
   try {
@@ -794,9 +849,14 @@ async function loadAgenda() {
     updateAuthenticatedChrome();
     tracePublicAction("PUBLIC_AGENDA_LOADED", { statusCode });
     agendaTripsCache = Array.isArray(body.trips) ? body.trips : [];
+    await hydrateAgendaAdminCapabilities0470();
+    agendaTripsCache = applyAgendaAdminCapabilities0470(agendaTripsCache);
     if (publicSlug) $("subscribeCalendar").textContent = "Compartilhar link da Agenda";
-    if (portalMode) return openPassengerPortal();
+    if (portalMode && !passengerAgendaAdmin0418) return openPassengerPortal();
     renderAgenda(agendaTripsCache);
+    if (Number.isFinite(Number(options.restoreScrollY))) {
+      window.scrollTo({ top: Math.max(0, Number(options.restoreScrollY)), behavior: "auto" });
+    }
   } catch (error) {
     tracePublicAction("PUBLIC_AGENDA_LOAD_FAILED", { statusCode, reason: "client_load_error" });
     setError(error.message || "Não foi possível carregar a agenda.");
@@ -1659,6 +1719,8 @@ function renderAgendaCards(entries, container, filtered = false) {
     const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
     const card = document.createElement("article");
     card.className = (full || soldOut) ? "agendaTrip agendaTripFull" : "agendaTrip";
+    const canonicalTripId0470 = String(item.canonicalTripId || "").trim();
+    if (canonicalTripId0470) card.dataset.canonicalTripId = canonicalTripId0470;
 
     const owner = item.driverUsername || driverUsername;
     const detailsParams = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
@@ -1731,6 +1793,24 @@ function renderAgendaCards(entries, container, filtered = false) {
 
     card.append(date, routeFrom, arrow, routeTo, meta, bottom);
 
+    const adminContext0470 = item.adminContext0470;
+    if (adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true) {
+      const state = String(adminContext0470.attestationState || "UNPROVEN").toUpperCase();
+      const stateLabel = {
+        VERIFIED: "🔵 Validada",
+        PUBLISHED: "🟢 Publicada",
+        PENDING: "🟠 Sincronizando",
+        DIVERGENT: "🔴 Divergente",
+        ERROR: "🔴 Erro",
+      }[state] || "⚪ Não comprovada";
+      const adminState = document.createElement("div");
+      adminState.className = "agendaAdminState0470";
+      adminState.setAttribute("role", "status");
+      adminState.setAttribute("aria-label", "Estado administrativo da viagem: " + stateLabel.replace(/^[^ ]+ /, ""));
+      adminState.textContent = stateLabel;
+      card.appendChild(adminState);
+    }
+
     const details = document.createElement("a");
     details.className = "agendaDetailsLink";
     details.href = `/?${detailsParams.toString()}`;
@@ -1784,6 +1864,26 @@ function renderAgendaCards(entries, container, filtered = false) {
         choices.appendChild(whatsapp);
       }
       card.appendChild(choices);
+    }
+
+    if (adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true && canonicalTripId0470) {
+      const administer = document.createElement("button");
+      administer.type = "button";
+      administer.className = "adminCardAction0470";
+      administer.textContent = "⚙ Administrar esta viagem";
+      administer.setAttribute("aria-label", "Administrar esta viagem: " + from + " para " + to + ", " + formatDateOnly(item.departureAtMillis) + " às " + formatTime(item.departureAtMillis));
+      administer.addEventListener("click", () => {
+        const api = globalThis.RotaCertaAgendaAdmin0470;
+        if (!api || typeof api.openTrip !== "function") {
+          return setError("A administração desta viagem ainda não está disponível.");
+        }
+        api.openTrip(canonicalTripId0470, {
+          source: "home",
+          returnScrollY: Math.max(0, Math.floor(window.scrollY || 0)),
+          returnFocusElement: administer,
+        });
+      });
+      card.appendChild(administer);
     }
     container.appendChild(card);
   });
@@ -3049,6 +3149,10 @@ function savePassengerSession(token) {
 
 function openPassengerPortal() {
   if (!hasPrivatePortalSession() && agendaAuthenticationRequired0428) return showPrivateAuthGate("portal");
+  if (!isTesterMode() && passengerSessionToken && passengerAgendaAdmin0418 && (agendaToken || publicSlug)) {
+    agendaReturnScrollY0470 = Math.max(0, Math.floor(window.scrollY || 0));
+    return loadAgenda({ restoreScrollY: agendaReturnScrollY0470 });
+  }
   tracePublicAction("PUBLIC_PASSENGER_PORTAL_OPENED", {
     reason: isTesterMode() ? "tester" : (hasPrivatePortalSession() ? "identified" : "authentication_disabled"),
   });
@@ -3755,6 +3859,28 @@ async function bootstrapTesterExperience() {
   return true;
 }
 
+function openRequestedAdminTrip0470() {
+  if (!requestedAdminTripIdentity0470 || !passengerAgendaAdmin0418) return false;
+  const api = globalThis.RotaCertaAgendaAdmin0470;
+  if (!api || typeof api.openTrip !== "function") return false;
+  api.openTrip(requestedAdminTripIdentity0470, { source: "deep-link", returnScrollY: 0 });
+  return true;
+}
+
+globalThis.RotaCertaAgendaHome0470 = {
+  refreshTrip: async (canonicalTripId, options = {}) => {
+    const restoreScrollY = Number.isFinite(Number(options.restoreScrollY)) ? Number(options.restoreScrollY) : window.scrollY;
+    await loadAgenda({ restoreScrollY });
+    const target = [...document.querySelectorAll("[data-canonical-trip-id]")]
+      .find((node) => node.dataset.canonicalTripId === String(canonicalTripId || ""));
+    if (target && options.focus !== false) {
+      const button = target.querySelector(".adminCardAction0470");
+      if (button) button.focus({ preventScroll: true });
+    }
+    return Boolean(target);
+  },
+};
+
 async function bootstrapAuthenticatedExperience() {
   updateAuthenticatedChrome();
   updateTesterChrome();
@@ -3763,7 +3889,14 @@ async function bootstrapAuthenticatedExperience() {
   if (referralCode && !tripToken && !agendaToken && !publicSlug) return showAccessGate("agenda");
   await validatePassengerSession();
   if (tripToken) return loadTrip();
-  if (agendaToken || publicSlug) return loadAgenda();
+  if (agendaToken || publicSlug) {
+    if (requestedAdminTripIdentity0470 && !passengerAgendaAdmin0418 && agendaAuthenticationRequired0428) {
+      return showPrivateAuthGate("portal");
+    }
+    await loadAgenda();
+    if (requestedAdminTripIdentity0470 && passengerAgendaAdmin0418) setTimeout(() => openRequestedAdminTrip0470(), 0);
+    return;
+  }
   const accessMessage = $("accessMessage").textContent;
   showAccessGate(pendingAuthDestination, accessMessage);
 }
