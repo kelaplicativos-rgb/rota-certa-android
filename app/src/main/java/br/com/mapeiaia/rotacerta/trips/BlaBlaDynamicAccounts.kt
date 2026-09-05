@@ -2298,17 +2298,29 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val captured = BlaBlaCollectorUrlModule.publicTrip(evidence?.publicTripHref, tripId)
+            val captured = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = evidence?.publicTripHref,
+                expectedAdministrativeTripId = tripId,
+                boundAdministrativeTripId = tripId,
+            )
             if (captured != null) {
                 pendingTripDetail = pendingTripDetail?.copy(
                     publicTripHref = captured,
                     publicTripHrefSource = "share_action",
-                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
                 )
+                val sharedPublicTripId = BlaBlaCollectorUrlModule.publicTripPublicId(captured).orEmpty()
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId source=share_action exactTrip=true shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0}",
+                    "account=${account.displayLabel} tripId=$tripId source=share_action binding=" +
+                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION +
+                        " exactAdministrativeTrip=true publicIdRelation=" +
+                        if (sharedPublicTripId == tripId) "same" else "different" +
+                        " shareControlPresent=${evidence?.shareControlPresent == true}" +
+                        " shareInterceptInstalled=${evidence?.shareInterceptInstalled == true}" +
+                        " shareInvoked=${evidence?.shareInvoked == true}" +
+                        " clickCount=${evidence?.clickCount ?: 0}",
                 )
                 loadNextPassengerContact(expectedSync, expectedCandidate)
                 return@evaluateRequest
