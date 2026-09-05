@@ -978,6 +978,22 @@ internal fun targetedCollectorPublicUrl0442(
     )
 }
 
+
+internal fun adminBlaBlaIdentitySource0472(
+    assignment: DriverAdminIdentityAssignment0472,
+    sources: List<BlaBlaCollectorTrip>,
+): BlaBlaCollectorTrip? {
+    val expectedTripId = assignment.candidateTripId.trim()
+    val expectedProfile = assignment.expectedProfileUuid.trim()
+    if (expectedTripId.isBlank()) return null
+    return sources.filter { source ->
+        !source.identity_conflict &&
+            source.trip_id?.trim() == expectedTripId &&
+            source.profile_uuid.trim().isNotBlank() &&
+            (expectedProfile.isBlank() || source.profile_uuid.trim().equals(expectedProfile, ignoreCase = true))
+    }.singleOrNull()
+}
+
 internal object AgendaBackgroundSync0392 {
     private const val PERIODIC_WORK = "agenda-background-sync-0392-periodic"
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
@@ -2242,6 +2258,172 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+
+    private suspend fun applyAdminBlaBlaIdentityRecoveries0472(
+        appContext: Context,
+        store: TripStore,
+        response: BlaBlaCollectorMonthResponse?,
+        rotaCertaSeatAllocation: Int,
+    ): Int {
+        val settings = store.onlineSettings()
+        if (!settings.configured) return 0
+        val api = TripRemoteApi(settings)
+        val assignments = api.adminSyncPolicy0417().manualIdentityAssignments0472
+        if (assignments.isEmpty()) return 0
+        val sources = response?.trips.orEmpty()
+        var promotedCount = 0
+
+        assignments.forEach { assignment ->
+            try {
+                val source = adminBlaBlaIdentitySource0472(assignment, sources)
+                if (source == null) {
+                    UnifiedDebugEventStore.record(
+                        "ADMIN_BLABLACAR_IDENTITY_PENDING_0472",
+                        appContext.packageName,
+                        "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) +
+                            " requestRevision=" + assignment.requestRevision +
+                            " reason=strong_candidate_not_unique_or_not_observed forced=false",
+                    )
+                    return@forEach
+                }
+                val providerTripId = source.trip_id?.trim().orEmpty()
+                val profileUuid = source.profile_uuid.trim()
+                val canonicalManageUrl = BlaBlaCollectorUrlModule.canonical(assignment.blablaManageUrl)
+                if (
+                    canonicalManageUrl.isBlank() ||
+                    BlaBlaCollectorUrlModule.editTripId(canonicalManageUrl)?.trim() != providerTripId
+                ) {
+                    UnifiedDebugEventStore.record(
+                        "ADMIN_BLABLACAR_IDENTITY_REJECTED_0472",
+                        appContext.packageName,
+                        "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) +
+                            " reason=manage_url_identity_mismatch forced=false",
+                    )
+                    return@forEach
+                }
+
+                val bindingTripId = store.publicExternalBinding(assignment.remoteTripId)?.bookingTripId.orEmpty()
+                val targets = store.trips().filter { trip ->
+                    !trip.deleted && (
+                        (bindingTripId.isNotBlank() && trip.id == bindingTripId) ||
+                            trip.remoteId?.trim() == assignment.remoteTripId.trim() ||
+                            trip.publicToken.trim() == assignment.remoteTripId.trim() ||
+                            (assignment.canonicalTripId.isNotBlank() &&
+                                trip.tripKey.trim() == assignment.canonicalTripId.trim())
+                    )
+                }.distinctBy(Trip::id)
+                if (targets.size != 1) {
+                    UnifiedDebugEventStore.record(
+                        "ADMIN_BLABLACAR_IDENTITY_REJECTED_0472",
+                        appContext.packageName,
+                        "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) +
+                            " targetCount=" + targets.size +
+                            " reason=exact_canonical_target_not_unique forced=false",
+                    )
+                    return@forEach
+                }
+                val target = targets.single()
+                val candidateProjection = PublicAgendaAutoSync0300.toPublicTrip(
+                    source = source,
+                    capacity = target.capacity.coerceAtLeast(0),
+                    nowMillis = System.currentTimeMillis(),
+                    rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                )?.trip
+                if (
+                    candidateProjection == null ||
+                    !canonicalProjectionPhysicalIdentityCompatible0421(target, candidateProjection)
+                ) {
+                    UnifiedDebugEventStore.record(
+                        "ADMIN_BLABLACAR_IDENTITY_REJECTED_0472",
+                        appContext.packageName,
+                        "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) +
+                            " reason=physical_projection_mismatch forced=false routeHeuristicUsed=false",
+                    )
+                    return@forEach
+                }
+
+                val firstConfirmation = api.confirmAdminBlaBlaIdentity0472(
+                    DriverAdminIdentityConfirmRequest0472(
+                        remoteTripId = assignment.remoteTripId.trim(),
+                        blablaProfileUuid = profileUuid,
+                        blablaTripId = providerTripId,
+                        blablaManageUrl = canonicalManageUrl,
+                        requestRevision = assignment.requestRevision,
+                        localApplied = false,
+                    ),
+                )
+                if (!firstConfirmation.accepted) return@forEach
+
+                val promoted = store.promoteExternalIdentity0472(
+                    targetTripId = target.id,
+                    profileUuid = profileUuid,
+                    blablaTripId = providerTripId,
+                    blablaManageUrl = canonicalManageUrl,
+                ) ?: throw IllegalStateException("ADMIN_BLABLACAR_IDENTITY_LOCAL_PROMOTION_FAILED_0472")
+
+                val existingBinding = store.publicExternalBinding(assignment.remoteTripId)
+                store.savePublicExternalBinding(
+                    (existingBinding ?: PublicExternalTripBinding(
+                        remoteTripId = assignment.remoteTripId.trim(),
+                        publicToken = promoted.publicToken.ifBlank { assignment.remoteTripId.trim() },
+                        bookingTripId = promoted.id,
+                        title = promoted.title,
+                        departureAtMillis = promoted.departureAtMillis,
+                        capacity = promoted.capacity,
+                        stops = promoted.stops,
+                    )).copy(
+                        bookingTripId = promoted.id,
+                        profileUuid = profileUuid,
+                        blablaTripId = providerTripId,
+                        blablaTripHref = canonicalManageUrl,
+                        blablaPublicHref = promoted.blablaPublicUrl.orEmpty(),
+                        canonicalRevision = promoted.canonicalRevision,
+                        stateHash = promoted.canonicalStateHash,
+                    ),
+                )
+
+                val acknowledgement = api.confirmAdminBlaBlaIdentity0472(
+                    DriverAdminIdentityConfirmRequest0472(
+                        remoteTripId = assignment.remoteTripId.trim(),
+                        blablaProfileUuid = profileUuid,
+                        blablaTripId = providerTripId,
+                        blablaManageUrl = canonicalManageUrl,
+                        requestRevision = assignment.requestRevision,
+                        localApplied = true,
+                    ),
+                )
+                if (!acknowledgement.accepted || !acknowledgement.localApplied) {
+                    throw IllegalStateException("ADMIN_BLABLACAR_IDENTITY_ACK_NOT_COMMITTED_0472")
+                }
+                promotedCount++
+                UnifiedDebugEventStore.record(
+                    "ADMIN_BLABLACAR_IDENTITY_CONFIRMED_0472",
+                    appContext.packageName,
+                    "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) +
+                        " canonicalTripKey=" + seatSyncDiagnosticKey(promoted.tripKey) +
+                        " requestRevision=" + assignment.requestRevision +
+                        " serverCanonicalRevision=" + firstConfirmation.canonicalRevision +
+                        " source=authenticated_collector physicalMatch=true localAck=true forced=false",
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                UnifiedDebugEventStore.record(
+                    "ADMIN_BLABLACAR_IDENTITY_ITEM_FAILED_0472",
+                    appContext.packageName,
+                    "remoteTripKey=" + seatSyncDiagnosticKey(assignment.remoteTripId) + " " +
+                        AgendaFailureEvidence.describe(
+                            error = error,
+                            operation = "ADMIN_BLABLACAR_IDENTITY_ITEM",
+                            component = "AgendaBackgroundSync0392",
+                            method = "applyAdminBlaBlaIdentityRecoveries0472",
+                        ),
+                )
+            }
+        }
+        return promotedCount
+    }
+
     private suspend fun runAdminPublicUrlDelta0465(
         appContext: Context,
         tenantId: String,
@@ -2531,6 +2713,19 @@ internal object AgendaBackgroundSync0392 {
                 "BLABLACAR_AUTOMATIC_COLLECTION_REQUEST_0401", appContext.packageName,
                 "tenantKey=${seatSyncDiagnosticKey(tenantId)} generation=${collectorState.generation} status=${collectorState.status} pending=${collectorState.pending} accounts=${collectorState.targetAccountIds.size} executionHost=worker_headless_webview activityLaunch=false browserOpened=false source=AgendaBackgroundSync0392",
             )
+        }
+
+        // 0472 runs after authenticated collection but before fresh materialization.
+        // The existing canonical record receives the strong identity before a parallel
+        // collector-backed trip can be created.
+        if (collectorRequested && collectorTarget0407 == null) {
+            val recoveredIdentities0472 = applyAdminBlaBlaIdentityRecoveries0472(
+                appContext = appContext,
+                store = store,
+                response = collectorResponseForThisCycle0407(),
+                rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+            )
+            if (recoveredIdentities0472 > 0) BookingRealtimeEvents0356.notifyChanged()
         }
 
         // Reconcile again after collection so the same canonical TripStore receives only

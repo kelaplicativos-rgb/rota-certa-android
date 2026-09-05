@@ -221,6 +221,10 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
                 context = this,
                 reason = "admin_update_now:$correlationId0417",
             )
+            "admin_blablacar_identity_requested" -> AgendaBackgroundSync0392.enqueueImmediate(
+                context = this,
+                reason = "admin_update_now:$correlationId0417",
+            )
             "admin_full_reconcile" -> AgendaBackgroundSync0392.enqueueImmediate(
                 context = this,
                 reason = "admin_full_reconcile:$correlationId0417",

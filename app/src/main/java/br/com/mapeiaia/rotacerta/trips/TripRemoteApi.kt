@@ -462,9 +462,45 @@ data class DriverAdminPublicUrlAssignment0465(
 )
 
 @Serializable
+data class DriverAdminIdentityAssignment0472(
+    val remoteTripId: String = "",
+    val canonicalTripId: String = "",
+    val expectedProfileUuid: String = "",
+    val candidateTripId: String = "",
+    val blablaManageUrl: String = "",
+    val requestRevision: Long = 0L,
+    val updatedAtMillis: Long = 0L,
+)
+
+@Serializable
+data class DriverAdminIdentityConfirmRequest0472(
+    val remoteTripId: String,
+    val blablaProfileUuid: String,
+    val blablaTripId: String,
+    val blablaManageUrl: String,
+    val requestRevision: Long,
+    val localApplied: Boolean = false,
+)
+
+@Serializable
+data class DriverAdminIdentityConfirmResponse0472(
+    val accepted: Boolean = false,
+    val changed: Boolean = false,
+    val localApplied: Boolean = false,
+    val remoteTripId: String = "",
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val blablaProfileUuid: String = "",
+    val blablaTripId: String = "",
+    val blablaManageUrl: String = "",
+    val requestRevision: Long = 0L,
+)
+
+@Serializable
 data class DriverAdminSyncPolicyResponse0417(
     val syncPolicy: DriverAdminSyncPolicy0417 = DriverAdminSyncPolicy0417(),
     val manualPublicUrlAssignments0465: List<DriverAdminPublicUrlAssignment0465> = emptyList(),
+    val manualIdentityAssignments0472: List<DriverAdminIdentityAssignment0472> = emptyList(),
 )
 
 @Serializable
@@ -812,6 +848,15 @@ class TripRemoteApi(
     suspend fun adminSyncPolicy0417(): DriverAdminSyncPolicyResponse0417 = request(
         method = "GET",
         path = "/v1/driver/admin/sync-policy",
+        requireDriverToken = true,
+    )
+
+    suspend fun confirmAdminBlaBlaIdentity0472(
+        request0472: DriverAdminIdentityConfirmRequest0472,
+    ): DriverAdminIdentityConfirmResponse0472 = request(
+        method = "POST",
+        path = "/v1/driver/admin/identity-recovery",
+        body = json.encodeToString(request0472),
         requireDriverToken = true,
     )
 

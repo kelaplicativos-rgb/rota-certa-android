@@ -250,6 +250,73 @@ class TripStore(context: Context) {
         normalized
     }
 
+
+    internal fun promoteExternalIdentity0472(
+        targetTripId: String,
+        profileUuid: String,
+        blablaTripId: String,
+        blablaManageUrl: String,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Trip? {
+        val staged = synchronized(CANONICAL_LOCK) {
+            val profile = profileUuid.trim()
+            val providerTripId = blablaTripId.trim()
+            val targetId = targetTripId.trim()
+            val strongKey = canonicalBlaBlaTripKey0406(tenantScope.tenantId, profile, providerTripId)
+                ?: return@synchronized null
+            val current = trips()
+            val target = current.firstOrNull { it.id == targetId } ?: return@synchronized null
+            val sameStrongIdentity = current.filter { candidate ->
+                candidate.id != target.id && candidate.tripKey == strongKey
+            }
+            if (sameStrongIdentity.any { candidate ->
+                    !canonicalProjectionPhysicalIdentityCompatible0421(target, candidate)
+                }
+            ) {
+                throw IllegalStateException("BLABLACAR_IDENTITY_PHYSICAL_CONFLICT_0472")
+            }
+            val canonicalManage = blablaManageUrl.trim()
+            val alreadyStrong =
+                target.blablaProfileUuid?.trim()?.equals(profile, ignoreCase = true) == true &&
+                    target.blablaTripId?.trim() == providerTripId &&
+                    target.blablaManageUrl.orEmpty().trim() == canonicalManage
+            if (alreadyStrong && sameStrongIdentity.isEmpty()) return@synchronized target
+
+            val nextRevision = maxOf(
+                target.canonicalRevision,
+                sameStrongIdentity.maxOfOrNull(Trip::canonicalRevision) ?: 0L,
+            ) + 1L
+            val promotedWithoutHash = canonicalizeTripIdentity0406(
+                target.copy(
+                    recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+                    blablaProfileUuid = profile,
+                    blablaTripId = providerTripId,
+                    blablaManageUrl = canonicalManage.takeIf(String::isNotBlank),
+                    canonicalRevision = nextRevision,
+                    canonicalStateHash = "",
+                    updatedAtMillis = nowMillis,
+                ).invalidatePublicMirror0411("BLABLACAR_IDENTITY_PROMOTED_0472"),
+            )
+            val promoted = promotedWithoutHash.copy(
+                canonicalStateHash = canonicalTripStateHash0406(
+                    promotedWithoutHash,
+                    bookingsFor(target.id),
+                ),
+            )
+            // Preserve any pre-existing strong candidate for one reconciliation pass.
+            // The established reconciler deterministically keeps this higher-revision
+            // target and remaps duplicate bookings/bindings instead of orphaning them.
+            val stagedTrips = listOf(promoted) + current.filterNot { it.id == target.id }
+            require(prefs.edit().putString(tripsKey, json.encodeToString(stagedTrips)).commit()) {
+                "Falha ao preparar promoção da identidade externa."
+            }
+            promoted
+        } ?: return null
+
+        reconcileCanonicalIntegrity0406(nowMillis)
+        return getTrip(staged.id)
+    }
+
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
         val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin()).let { keyed ->
             if (keyed.publicTimezoneId0411.isBlank()) keyed.copy(publicTimezoneId0411 = ZoneId.systemDefault().id) else keyed
