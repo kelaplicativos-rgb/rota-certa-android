@@ -66,9 +66,17 @@ internal fun shouldDeduplicatePublicationEvent0410(
     if (latest == null || latest.operation != operation) return false
     if (latest.snapshot.semanticSignature != snapshot.semanticSignature) return false
     if (latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion) return false
-    // A delivered transport event is not eternal proof of the public projection.
-    // Repair keeps the logical snapshot but must receive a fresh transport revision.
-    if (remoteProjectionDivergenceObserved && latest.status == TripPublicationStatus0387.DELIVERED) return false
+    // A terminal transport event is not eternal proof of the public projection.
+    // Explicit repair must receive a fresh transport revision after either a previous
+    // delivery or a final failure produced by an older projection/precondition rule.
+    // Active/retryable work still deduplicates so the same snapshot never runs in parallel.
+    if (
+        remoteProjectionDivergenceObserved &&
+        latest.status in setOf(
+            TripPublicationStatus0387.DELIVERED,
+            TripPublicationStatus0387.FAILED_FINAL,
+        )
+    ) return false
     return true
 }
 
@@ -1345,7 +1353,7 @@ internal class TripMutationCoordinator0387(
                                 "TRIP_MUTATION_OUTBOX_DELIVERED",
                                 event,
                                 "publicationResult=readback_confirmed blue=" + (refreshed?.publicMirrorAttestationCurrent0411() == true) +
-                                    " optionalUrlUnproven=" + (refreshed?.publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_UNRESOLVED"),
+                                    " optionalUrlUnproven=" + (refreshed?.publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466"),
                             )
                         } else {
                             val retryable = attestation.pending > 0 || attestation.readbackFailures > 0

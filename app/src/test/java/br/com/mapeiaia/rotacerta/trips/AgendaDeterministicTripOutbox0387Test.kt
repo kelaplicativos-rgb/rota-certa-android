@@ -217,6 +217,14 @@ class AgendaDeterministicTripOutbox0387Test {
                 remoteProjectionDivergenceObserved = true,
             ),
         )
+        assertFalse(
+            shouldDeduplicatePublicationEvent0410(
+                latest = delivered.copy(status = TripPublicationStatus0387.FAILED_FINAL),
+                operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
+                snapshot = snapshot,
+                remoteProjectionDivergenceObserved = true,
+            ),
+        )
     }
 
     @Test
