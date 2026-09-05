@@ -77,8 +77,8 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("drainPending(canonicalTripIds = setOf(canonicalTripId))"))
         assertTrue(source.contains("publicMirrorProjectionCurrent0411()"))
         assertTrue(source.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
-        assertTrue(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
-        assertTrue(source.contains("origin = \"card_verify_missing_public_url_0442\""))
+        assertFalse(source.substring(source.indexOf("internal suspend fun reverifyCanonicalMirror0435"), source.indexOf("fun enqueueRecoveryIfNeeded")).contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(source.contains("PUBLIC_TRIP_LINK_OPTIONAL_0465"))
         assertTrue(source.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
         assertTrue(source.contains("publicationBlocked=false"))
         assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
@@ -263,6 +263,19 @@ class AgendaBackgroundSync0392Test {
         assertFalse(timeline.contains("manual_card_shortcut"))
         assertFalse(background.contains("BlaBlaReliableSeatSyncActivity"))
         assertFalse(background.contains("BlaBlaManualSeatSyncActivity"))
+    }
+
+
+    @Test
+    fun manualPublicUrlUsesExistingTargetedPushCanonicalStoreAndOutbox0465() {
+        val source = backgroundSource()
+        assertTrue(source.contains("booking_push:admin_public_url_saved"))
+        assertTrue(source.contains("manualPublicUrlAssignments0465"))
+        assertTrue(source.contains("ADMIN_PUBLIC_URL_CANONICAL_APPLIED_0465"))
+        assertTrue(source.contains("store.saveTrip("))
+        assertTrue(source.contains("recordExternalCollectionMutation("))
+        assertTrue(source.contains("drainPending(canonicalTripIds = setOf(canonicalTripId))"))
+        assertTrue(source.contains("PUBLISHED_URL_PENDING"))
     }
 
 }
