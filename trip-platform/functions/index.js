@@ -1428,6 +1428,41 @@ async function getDriverPublicTripReadback0411(req, res, token) {
   });
 }
 
+async function validatePublicAttestationCurrent0468({
+  driverUsername,
+  tripId,
+  tripData,
+  expectedHash,
+  readbackHash,
+}) {
+  const token = cleanText(tripId, 120);
+  const data = tripData && typeof tripData === "object" ? tripData : {};
+  const owner = normalizeUsername(driverUsername || "");
+  if (!token || !owner || normalizeUsername(data.driverUsername || "") !== owner) {
+    return { committed: false, visible: false, currentHash: "", reason: "ATTESTATION_OWNER_MISMATCH_0468" };
+  }
+  const payload = canonicalPublicTripPayload0411(token, data);
+  const currentHash = canonicalPublicTripHash0411(payload);
+  const committed = publicProjectionCommittedCurrent0434(token, data);
+  const driverSnap = await db.collection("tripDrivers").doc(owner).get();
+  const visibility = publicAgendaTripVisibility0466(
+    driverSnap.exists ? driverSnap.data() : null,
+    token,
+    data,
+  );
+  const suppliedMatchesCurrent =
+    cleanText(expectedHash, 160) === currentHash &&
+    cleanText(readbackHash, 160) === currentHash;
+  return {
+    committed: committed && suppliedMatchesCurrent,
+    visible: visibility.visible === true,
+    currentHash,
+    reason: visibility.visible === true
+      ? (committed && suppliedMatchesCurrent ? "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0468" : "PUBLIC_HASH_NOT_CURRENT_0468")
+      : cleanText(visibility.reason, 160) || "PUBLIC_AGENDA_NOT_VISIBLE_0468",
+  };
+}
+
 function clientIp(req) {
   const forwarded = req.get("x-forwarded-for") || "";
   return cleanText(forwarded.split(",")[0] || req.ip || "unknown", 96);
@@ -7593,6 +7628,7 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   passengerAccessIsAuthorized,
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
+  validatePublicAttestationCurrent0468,
 });
 
 exports.assistantApi = onRequest(
