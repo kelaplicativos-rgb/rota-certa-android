@@ -1,16 +1,16 @@
-name: Recuperação identidade BlaBlaCar 0.1.472
+name: Paridade visual dos cards da Agenda 0.1.473
 
 on:
   push:
     branches:
-      - agent/blablacar-identity-recovery-0.1.472
+      - agent/agenda-card-visual-parity-0.1.473
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-identity-recovery-0472-${{ github.ref }}
+  group: agenda-card-visual-parity-0473-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -79,14 +79,14 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Validate backend syntax and 0.1.472 identity contracts
+      - name: Validate backend syntax and 0.1.473 card parity contracts
         shell: bash
         run: |
           set -euo pipefail
           cd trip-platform/functions
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
-          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js test/agenda-public-online-toggle-0471.test.js test/agenda-blablacar-identity-recovery-0472.test.js
+          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js test/agenda-public-online-toggle-0471.test.js test/agenda-blablacar-identity-recovery-0472.test.js test/agenda-card-visual-parity-0473.test.js
           cd ../..
           rm -rf /tmp/rota-certa-base-0468
           git worktree add --detach /tmp/rota-certa-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
@@ -209,8 +209,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -F 'versionCode = 5765' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.472"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5766' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.473"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -235,7 +235,7 @@ jobs:
             exit 3
           fi
 
-      - name: Deploy exact SHA canonical backend and public Admin
+      - name: Deploy exact SHA canonical backend and unified Agenda cards
         shell: bash
         run: |
           set -euo pipefail
@@ -259,13 +259,16 @@ jobs:
           grep -Fq 'Administração da Agenda' live-public.html
           grep -Fq 'adminTripBookings0468' live-public.html
           grep -Fq 'adminTripContext0470' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.472" > live-app.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.473" > live-app.js
           grep -Fq 'Administrar esta viagem' live-app.js
           grep -Fq '/v1/admin/card-capabilities' live-app.js
           grep -Fq '/public-visibility' live-app.js
           grep -Fq 'agendaVisibilityToggle0471' live-app.js
+          grep -Fq 'agendaCanonicalVisual0473' live-app.js
+          grep -Fq 'agendaJourney0473' live-app.js
+          grep -Fq 'agendaCanonicalVisual0473' live-public.html
           grep -Fq 'adminTripIdentityRecovery0472' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.472" > live-admin.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.473" > live-admin.js
           grep -Fq 'blablacar-identity-recovery' live-admin.js
           grep -Fq 'scheduleTripIdentityRecovery0472' live-admin.js
           printf '%s\n' "${GITHUB_SHA}" > deployed-source-head.txt
@@ -273,7 +276,7 @@ jobs:
       - name: Upload installable APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-blablacar-identity-recovery-0472-${{ github.sha }}
+          name: rota-certa-agenda-card-visual-parity-0473-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
