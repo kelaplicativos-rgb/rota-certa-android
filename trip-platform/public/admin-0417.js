@@ -162,6 +162,125 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#039;");
   }
 
+  function bookingStatusLabel0468(value) {
+    const normalized = String(value || "").toUpperCase();
+    return ({
+      REQUESTED: "AGUARDANDO APROVAÇÃO",
+      HELD: "PENDENTE",
+      CONFIRMED: "CONFIRMADO",
+      CANCELLED: "CANCELADO",
+      REJECTED: "RECUSADO",
+      EXPIRED: "EXPIRADO",
+      AT_LOCATION: "NO LOCAL",
+      IN_CAR: "NO CARRO",
+      COMPLETED: "CONCLUÍDO",
+      PAID: "PAGO",
+      UNPAID: "PAGAMENTO PENDENTE",
+    })[normalized] || normalized || "—";
+  }
+
+  function nextOperational0468(booking) {
+    const operational = String(booking && booking.operationalStatus || "CONFIRMED").toUpperCase();
+    const payment = String(booking && booking.paymentStatus || "UNPAID").toUpperCase();
+    if (operational === "CONFIRMED") return ["AT_LOCATION", "NO LOCAL"];
+    if (operational === "AT_LOCATION") return ["IN_CAR", "NO CARRO"];
+    if (operational === "IN_CAR" && payment !== "PAID") return ["PAID", "PAGO"];
+    if (operational === "IN_CAR" && payment === "PAID") return ["COMPLETED", "CONCLUÍDO"];
+    return null;
+  }
+
+  function renderAdminTripBookings0468(tripId, bookings) {
+    const host = byId("adminTripBookings0468");
+    const list = Array.isArray(bookings) ? bookings : [];
+    if (!host) return;
+    if (!list.length) {
+      host.innerHTML = '<p class="muted">Nenhum passageiro ou reserva nesta viagem.</p>';
+      return;
+    }
+    host.innerHTML = list.map((booking) => {
+      const id = encodeURIComponent(String(booking.id || ""));
+      const status = String(booking.status || "").toUpperCase();
+      const operational = String(booking.operationalStatus || "CONFIRMED").toUpperCase();
+      const payment = String(booking.paymentStatus || "UNPAID").toUpperCase();
+      const requested = status === "REQUESTED";
+      const inactive = ["CANCELLED", "REJECTED", "EXPIRED"].includes(status);
+      const next = !requested && !inactive ? nextOperational0468(booking) : null;
+      const canCancel = !requested && !inactive && operational !== "IN_CAR" && operational !== "COMPLETED";
+      const actions = [];
+      if (requested) {
+        actions.push('<button type="button" class="primary" data-admin-decision0468="APPROVE" data-booking0468="'+id+'">Aprovar</button>');
+        actions.push('<button type="button" class="secondary" data-admin-decision0468="REJECT" data-booking0468="'+id+'">Recusar</button>');
+      } else if (next) {
+        actions.push('<button type="button" class="primary" data-admin-operational0468="'+next[0]+'" data-booking0468="'+id+'">'+next[1]+'</button>');
+      }
+      if (canCancel) {
+        actions.push('<button type="button" class="secondary" data-admin-operational0468="CANCELLED" data-booking0468="'+id+'">Cancelar</button>');
+      }
+      const contact = String(booking.passengerContact || "").replace(/\D/g, "");
+      if (contact.length >= 10 && contact.length <= 15) {
+        actions.push('<a class="secondary buttonLike" target="_blank" rel="noopener noreferrer" href="https://wa.me/'+contact+'">WhatsApp</a>');
+      }
+      return '<div class="adminLogItem0417">' +
+        '<strong>'+escapeHtml0417(booking.passengerName || "Passageiro")+'</strong>' +
+        '<small>'+bookingStatusLabel0468(status)+' • '+bookingStatusLabel0468(operational)+' • '+bookingStatusLabel0468(payment)+
+          ' • '+Number(booking.seats || 1)+' vaga(s)</small>' +
+        '<div class="adminToolbar0417">'+actions.join("")+'</div>' +
+        '</div>';
+    }).join("");
+
+    host.querySelectorAll("[data-admin-decision0468]").forEach((button) => {
+      button.addEventListener("click", () => mutateAdminBookingDecision0468(
+        tripId,
+        decodeURIComponent(button.dataset.booking0468 || ""),
+        button.dataset.adminDecision0468 || "",
+        button,
+      ));
+    });
+    host.querySelectorAll("[data-admin-operational0468]").forEach((button) => {
+      button.addEventListener("click", () => mutateAdminBookingOperational0468(
+        tripId,
+        decodeURIComponent(button.dataset.booking0468 || ""),
+        button.dataset.adminOperational0468 || "",
+        button,
+      ));
+    });
+  }
+
+  async function loadAdminTripBookings0468(tripId) {
+    const host = byId("adminTripBookings0468");
+    if (host) host.innerHTML = '<p class="muted">Carregando reservas canônicas…</p>';
+    const response = await api0417("/v1/admin/trips/" + encodeURIComponent(tripId) + "/bookings");
+    renderAdminTripBookings0468(tripId, response.bookings);
+  }
+
+  async function mutateAdminBookingDecision0468(tripId, bookingId, action, button) {
+    return runAdminAction0427("decision-"+bookingId, button, async () => {
+      setMessage0417(action === "APPROVE" ? "Aprovando reserva…" : "Recusando reserva…");
+      try {
+        await api0417(
+          "/v1/admin/trips/" + encodeURIComponent(tripId) + "/bookings/" + encodeURIComponent(bookingId) + "/decision",
+          { method: "POST", operationId: newAdminOperationId0427("booking_decision"), body: JSON.stringify({ action }) },
+        );
+        setMessage0417(action === "APPROVE" ? "Reserva aprovada no estado canônico." : "Reserva recusada no estado canônico.");
+        await Promise.all([loadAdminTripBookings0468(tripId), loadDashboard0417()]);
+      } catch (error) { setMessage0417(error.message, true); }
+    });
+  }
+
+  async function mutateAdminBookingOperational0468(tripId, bookingId, selection, button) {
+    return runAdminAction0427("operational-"+bookingId, button, async () => {
+      setMessage0417("Atualizando estado operacional…");
+      try {
+        await api0417(
+          "/v1/admin/trips/" + encodeURIComponent(tripId) + "/bookings/" + encodeURIComponent(bookingId) + "/operational",
+          { method: "POST", operationId: newAdminOperationId0427("booking_status"), body: JSON.stringify({ selection }) },
+        );
+        setMessage0417("Estado atualizado no backend canônico.");
+        await Promise.all([loadAdminTripBookings0468(tripId), loadDashboard0417()]);
+      } catch (error) { setMessage0417(error.message, true); }
+    });
+  }
+
   function renderSettings0417(settings) {
     currentSettings = settings || {};
     const visibility = currentSettings.publicVisibility || {};
@@ -267,8 +386,8 @@
     byId("adminTripPublicUrlTitle0465").textContent =
       "URL pública BlaBlaCar • " + (trip.title || trip.blablaTripId);
     byId("adminTripPublicUrlHint0465").textContent = trip.attestationState === "PUBLISHED"
-      ? "Esta viagem está verde: a Agenda já confere. Cole o link público BlaBlaCar e salve para a Timeline republicar e atestar em azul."
-      : "O link salvo entra primeiro na Timeline canônica; azul só aparece depois do novo readback público.";
+      ? "Esta viagem está publicada no Rota Certa. Cole o link público BlaBlaCar opcional para enriquecer a referência externa."
+      : "O link é opcional. A viagem permanece canônica no servidor; o selo depende do readback público atual.";
     byId("adminTripPublicUrlInput0465").value =
       trip.blablaPublicUrl || trip.manualBlaBlaPublicUrl0465 || "";
   }
@@ -278,7 +397,10 @@
     selectTripPublicUrlEditor0465(remoteTripId);
     setMessage0417("Carregando histórico da viagem…");
     try {
-      const response = await api0417("/v1/admin/trips/" + encodeURIComponent(remoteTripId) + "/history");
+      const [response] = await Promise.all([
+        api0417("/v1/admin/trips/" + encodeURIComponent(remoteTripId) + "/history"),
+        loadAdminTripBookings0468(remoteTripId),
+      ]);
       const events = Array.isArray(response.events) ? response.events : [];
       byId("adminTripHistoryTitle0417").textContent = "Histórico da viagem";
       byId("adminTripHistory0417").innerHTML = events.length
@@ -298,7 +420,7 @@
       if (!trip) return setMessage0417("Selecione uma viagem.", true);
       const blablaPublicUrl = byId("adminTripPublicUrlInput0465").value.trim();
       if (!blablaPublicUrl) return setMessage0417("Cole a URL pública BlaBlaCar da viagem.", true);
-      setMessage0417("Salvando na Timeline canônica…");
+      setMessage0417("Salvando referência externa no Backend Rota Certa…");
       try {
         const result = await api0417(
           "/v1/admin/trips/" + encodeURIComponent(trip.remoteTripId) + "/blablacar-public-url",
@@ -309,7 +431,7 @@
           },
         );
         setMessage0417(result.changed
-          ? "URL salva. O card foi enviado à Timeline; o azul aparecerá após o readback confirmar a nova revisão."
+          ? "URL salva no Backend Rota Certa. O selo será atualizado após o readback confirmar a revisão pública."
           : "Esta URL já está aplicada à viagem.");
         setTimeout(loadDashboard0417, 1200);
         setTimeout(loadDashboard0417, 3500);
