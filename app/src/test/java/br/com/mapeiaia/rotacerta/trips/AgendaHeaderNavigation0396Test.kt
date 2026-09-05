@@ -14,7 +14,7 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
-        assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
+        assertTrue(header.contains("ALL_TRIPS(\"Timeline antiga\")"))\n        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")\n        assertFalse(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))\n        assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))\n        assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
         assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
@@ -29,7 +29,7 @@ class AgendaHeaderNavigation0396Test {
     fun headerSeparatesRootNavigationContextAndOverflow() {
         assertTrue(header.contains("text = if (root) \"☰\" else \"←\""))
         assertTrue(header.contains("Text(\"⋮\""))
-        assertTrue(header.contains("\"Agenda de Viagens\""))
+        assertTrue(header.contains("Text(\n                        \"Rota Certa\""))
         assertTrue(header.contains("sectionLabel"))
         assertTrue(header.contains("contentDescription = navigationDescription"))
         assertTrue(header.contains("\"Notificações, \$unread não lidas\""))
