@@ -222,7 +222,7 @@ test("Agenda authentication requirement defaults on and can be explicitly disabl
   assert.equal(authenticationRequired0417({ agendaAuthenticationRequired0428: false }), false);
 });
 
-test("0.1.428 open mode removes public and admin login gates without creating a second session store", () => {
+test("0.1.470 public passwordless mode keeps administration server-authenticated without a second session store", () => {
   const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
   const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
   const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
@@ -232,16 +232,18 @@ test("0.1.428 open mode removes public and admin login gates without creating a 
   assert.match(source, /function agendaAuthenticationRequired0428/);
   assert.match(source, /passwordBypassed: !authenticationRequired/);
   assert.match(source, /sessionType: tester \? "TESTER" : \(authenticationRequired \? "PASSENGER" : "OPEN"\)/);
-  assert.match(admin, /agendaAuthenticationRequired0428/);
-  assert.match(admin, /actorId: "agenda-open-0428"/);
+  assert.match(admin, /public Agenda access may be passwordless, but administration is never anonymous/);
+  assert.match(admin, /requirePassengerSession\(req, res\)/);
+  assert.match(admin, /access\.agendaAdmin !== true/);
+  assert.doesNotMatch(admin, /actorId: "agenda-open-0428"/);
   assert.match(browser, /adminAuthenticationRequired0428/);
   assert.match(browser, /token \? \{ "Authorization": "Bearer " \+ token \} : \{\}/);
   assert.match(app, /Continuar sem senha/);
-  assert.match(app, /authentication_disabled/);
+  assert.match(app, /passengerSessionToken && passengerAgendaAdmin0418/);
   assert.match(html, /Exigir autenticação na Agenda/);
 
   assert.equal((source.match(/db\.collection\("passengerSessions"\)/g) || []).length > 0, true);
-  assert.doesNotMatch(source, /openPassengerSessions|noAuthSessions|bypassSessions/);
+  assert.doesNotMatch(source, /openPassengerSessions|noAuthSessions|bypassSessions|tripAdminSessions/);
 });
 
 
