@@ -217,7 +217,7 @@ jobs:
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
           grep -Fq '"ok":true' /tmp/health.json
           grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
-          grep -Fq 'PUBLIC_URL_PRECONDITION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
+          grep -Fq 'PUBLIC_URL_ENRICHMENT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
           grep -Fq 'PUBLIC_IDENTITY_RESOLUTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
           grep -Fq 'samePublisher=true directHttp=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'TRIP_MUTATION_OUTBOX_READBACK_PENDING_0453' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
