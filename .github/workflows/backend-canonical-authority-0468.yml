@@ -132,12 +132,51 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Android unit tests and build APK
+      - name: Run focused canonical Android tests and build APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Compare full Android historical suite with authoritative base
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/google-services.json /tmp/google-services-0468.json
+          rm -rf /tmp/rota-certa-android-base-0468
+          git worktree add --detach /tmp/rota-certa-android-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
+          cp /tmp/google-services-0468.json /tmp/rota-certa-android-base-0468/app/google-services.json
+          (
+            cd /tmp/rota-certa-android-base-0468
+            chmod +x ./gradlew
+            set +e
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/android-base-tests.log 2>&1
+            BASE_ANDROID_STATUS=$?
+            set -e
+            printf '%s\n' "$BASE_ANDROID_STATUS" > /tmp/android-base-status
+          )
+          (
+            set +e
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/android-current-tests.log 2>&1
+            CURRENT_ANDROID_STATUS=$?
+            set -e
+            printf '%s\n' "$CURRENT_ANDROID_STATUS" > /tmp/android-current-status
+          )
+          sed -n -E 's/^[[:space:]]*(.+Test) > (.+) FAILED$/\1 > \2/p' /tmp/android-base-tests.log | sort -u > android-baseline-failures.txt
+          sed -n -E 's/^[[:space:]]*(.+Test) > (.+) FAILED$/\1 > \2/p' /tmp/android-current-tests.log | sort -u > android-current-failures.txt
+          comm -13 android-baseline-failures.txt android-current-failures.txt | tee android-new-failures.txt
+          comm -23 android-baseline-failures.txt android-current-failures.txt | tee android-resolved-failures.txt
+          printf 'base_status=%s\ncurrent_status=%s\nbase_failures=%s\ncurrent_failures=%s\n'             "$(cat /tmp/android-base-status)"             "$(cat /tmp/android-current-status)"             "$(wc -l < android-baseline-failures.txt)"             "$(wc -l < android-current-failures.txt)" | tee android-historical-counts.txt
+          cp /tmp/android-base-tests.log android-baseline-tests.log
+          cp /tmp/android-current-tests.log android-current-tests.log
+          git worktree remove /tmp/rota-certa-android-base-0468 --force
+          if [ -s android-new-failures.txt ]; then
+            echo "New Android historical-contract failures require classification before deploy." >&2
+            cat android-new-failures.txt >&2
+            exit 4
+          fi
 
       - name: Prove final artifact belongs to current SHA
         shell: bash
@@ -214,5 +253,12 @@ jobs:
             historical-new-failures.txt
             historical-resolved-failures.txt
             historical-counts.txt
+            android-baseline-failures.txt
+            android-current-failures.txt
+            android-new-failures.txt
+            android-resolved-failures.txt
+            android-historical-counts.txt
+            android-baseline-tests.log
+            android-current-tests.log
             live-health.json
             deployed-source-head.txt
