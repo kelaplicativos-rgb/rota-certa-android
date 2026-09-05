@@ -79,8 +79,13 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
         assertFalse(source.substring(source.indexOf("internal suspend fun reverifyCanonicalMirror0435"), source.indexOf("fun enqueueRecoveryIfNeeded")).contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
         assertTrue(source.contains("PUBLIC_TRIP_LINK_OPTIONAL_0465"))
-        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
-        assertTrue(source.contains("publicationBlocked=false"))
+        val reverify = source.substring(
+            source.indexOf("internal suspend fun reverifyCanonicalMirror0435"),
+            source.indexOf("fun enqueueRecoveryIfNeeded"),
+        )
+        assertFalse(reverify.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
+        assertTrue(reverify.contains("publicationBlocked=false"))
+        assertTrue(reverify.contains("PUBLISHED_URL_PENDING"))
         assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
         assertTrue(source.contains("val targetedRetryable = false"))
     }
