@@ -231,7 +231,7 @@ class PublicMirrorAttestation0411Test {
 
         assertEquals(PublicMirrorAttestationState0411.UNPROVEN, decision.state)
         assertFalse(decision.linkValid)
-        assertEquals("BLABLACAR_PUBLIC_URL_UNRESOLVED", decision.reason)
+        assertEquals("BLABLACAR_PUBLIC_URL_PENDING", decision.reason)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
         assertFalse(decision.mismatchFields.any { it != "blablaPublicUrl" })
     }
@@ -357,7 +357,7 @@ class PublicMirrorAttestation0411Test {
             publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
             publicMirrorAttestedCanonicalRevision0411 = 0L,
             publicMirrorAttestedPublicationRevision0411 = 0L,
-            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_UNRESOLVED",
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING",
             publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
         )
         assertFalse(linkOnlyUnproven.publicMirrorAttestationCurrent0411())
@@ -451,4 +451,30 @@ class PublicMirrorAttestation0411Test {
         )
         return base.copy(canonicalStateHash = canonicalTripStateHash0406(base, emptyList()))
     }
+
+    @Test
+    fun publishedWithoutUrlIsGreenOnlyForExactCurrentProjection0465() {
+        val trip = canonicalTrip()
+        val hash = canonicalPublicProjectionHash0411(
+            canonicalPublicProjectionPayload0411(trip, emptyList(), trip.publicationRevision, now),
+        )
+        val green = trip.copy(
+            publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING",
+            publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
+            publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
+            publicMirrorAttemptedPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorReadbackPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorPublicIdentity0421 = "remote-green-0465",
+            publicMirrorLastReadbackAtMillis0421 = now,
+            publicMirrorExpectedHash0411 = hash,
+            publicMirrorReadbackHash0411 = hash,
+            blablaPublicUrl = null,
+        )
+        assertTrue(green.publicMirrorPublishedWithoutBlaBlaUrl0465())
+        assertFalse(green.publicMirrorAttestationCurrent0411())
+        assertFalse(green.copy(publicMirrorReadbackHash0411 = "public-v2:wrong").publicMirrorPublishedWithoutBlaBlaUrl0465())
+        assertFalse(green.copy(canonicalRevision = green.canonicalRevision + 1L).publicMirrorPublishedWithoutBlaBlaUrl0465())
+    }
+
 }
