@@ -172,21 +172,21 @@ internal fun AgendaAutomaticSyncScreen0397(
                     onClick = {
                         val url = store.onlineSettings().publicAgendaUrl
                         if (url.isNullOrBlank()) {
-                            message = "Configure a integração online para abrir a Área Administrativa."
+                            message = "Configure a integração online para abrir a Agenda Pública."
                         } else {
                             runCatching {
                                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
                             }.onSuccess {
-                                message = "Abrindo o Rota Certa. Entre em Área Administrativa para operar viagens e passageiros."
+                                message = "Abrindo a Agenda Pública do Rota Certa."
                             }.onFailure {
-                                message = "Não foi possível abrir a Área Administrativa neste aparelho."
+                                message = "Não foi possível abrir a Agenda Pública neste aparelho."
                             }
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = onlineSettings.configured,
                 ) {
-                    Text("ABRIR ÁREA ADMINISTRATIVA")
+                    Text("ABRIR AGENDA PÚBLICA")
                 }
             }
         }
@@ -205,7 +205,7 @@ internal fun AgendaAutomaticSyncScreen0397(
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         Text(
-            "Esta é a central de coleta BlaBlaCar do Android. O resultado confirmado é persistido no Backend Rota Certa; a administração e a Agenda Pública leem o mesmo estado canônico. O Android mantém apenas cache, sessão e transporte offline. O WorkManager pode ser adiado por Doze, App Standby, economia de bateria ou restrições do fabricante.",
+            "Esta é a central de coleta BlaBlaCar do Android. O resultado confirmado é persistido no Backend Rota Certa; a Agenda Pública somente leitura exibe o mesmo estado canônico. O Android mantém apenas cache, sessão e transporte offline. O WorkManager pode ser adiado por Doze, App Standby, economia de bateria ou restrições do fabricante.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
