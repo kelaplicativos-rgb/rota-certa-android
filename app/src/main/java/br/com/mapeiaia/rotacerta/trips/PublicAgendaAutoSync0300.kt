@@ -801,12 +801,11 @@ internal object PublicAgendaAutoSync0300 {
                 profileUuid.isNotBlank() &&
                 tripId.isNotBlank()
             ) {
-                strongExternalCanonicalTripId0387(
-                    TripPublicationOutbox0387(context).tenantId,
-                    externalAccountId,
-                    profileUuid,
-                    tripId,
-                )
+                canonicalBlaBlaTripKey0406(
+                    tenantId = TripPublicationOutbox0387(context).tenantId,
+                    profileUuid = profileUuid,
+                    providerTripId = tripId,
+                ).orEmpty()
             } else ""
         if (entityRevision > 0L) {
             val accounts = if (externalAccountId.isBlank()) emptyList() else {
@@ -821,12 +820,11 @@ internal object PublicAgendaAutoSync0300 {
                 profileUuid.isNotBlank() &&
                 tripId.isNotBlank()
             ) {
-                strongExternalCanonicalTripId0387(
-                    TripPublicationOutbox0387(context).tenantId,
-                    externalAccountId,
-                    profileUuid,
-                    tripId,
-                )
+                canonicalBlaBlaTripKey0406(
+                    tenantId = TripPublicationOutbox0387(context).tenantId,
+                    profileUuid = profileUuid,
+                    providerTripId = tripId,
+                ).orEmpty()
             } else ""
             val canonicalSnapshotIdentityAccepted0455 = strongExternalSnapshotIdentityMatches0387(
                 canonicalTripId = resolvedInternalTripId,
