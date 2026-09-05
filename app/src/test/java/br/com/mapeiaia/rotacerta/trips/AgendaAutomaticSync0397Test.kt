@@ -79,12 +79,12 @@ class AgendaAutomaticSync0397Test {
 
     @Test
     fun drawerSeparatesPersistentDestinationsFromContextActions() {
-        assertTrue(header.contains("AUTOMATIC_SYNC(\"Sincronização automática\")"))
+        assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
         assertTrue(header.contains("INTEGRATIONS(\"Integrações\")"))
         assertTrue(header.contains("APP_SETTINGS(\"Configurações\")"))
-        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397()"))
+        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))\n        assertTrue(activity.contains("store = store"))
         assertTrue(activity.contains("TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416("))
 
         val overflow = activity
@@ -101,7 +101,7 @@ class AgendaAutomaticSync0397Test {
     @Test
     fun immediateAndPeriodicStillShareCanonicalSingleFlightPipeline() {
         assertTrue(background.contains("tenantMutexes.computeIfAbsent"))
-        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending("))\n        assertTrue(background.contains("canonicalTripIds = collectorCardDeltaIds0431"))
         assertTrue(background.contains("PublicAgendaAutoSync0300.sync("))
         assertTrue(background.contains("AgendaBackgroundSyncMode0392.DELTA_ONLY"))
         assertTrue(background.contains("stale"))
