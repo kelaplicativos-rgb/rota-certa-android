@@ -107,7 +107,7 @@ test("0468 outbox completes only after independent public readback and server at
   assert.match(direct, /canonicalPublicProjectionHash0411\(readback0468\.payload\)/);
   assert.match(direct, /readback0468\.agendaVisible/);
   assert.match(direct, /reportPublicTripAttestation0417/);
-  assert.match(direct, /serverPublicAttestationConfirmed0433/);
+  assert.match(direct, /serverPublicProjectionConfirmed0469/);
   assert.doesNotMatch(direct, /store\.getTrip/);
   assert.doesNotMatch(direct, /store\.trips\(\)/);
 
