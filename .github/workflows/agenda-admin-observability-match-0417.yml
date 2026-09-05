@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.466 async public share capture evidence
+name: Rota Certa 0.1.467 terminal projection repair evidence
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blablacar-public-url-attestation-0466-${{ github.ref }}
+  group: blablacar-public-url-attestation-0467-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5759' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.466"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5760' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.467"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -170,8 +170,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5759'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.466'" /tmp/aapt.txt
+          grep -Fq "versionCode='5760'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.467'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -270,25 +270,25 @@ jobs:
           grep -Fq 'admin_public_url_saved' trip-platform/functions/agenda-admin-0417.js
           grep -Fq 'adminStateGreen0465' trip-platform/public/admin-0417.js
           grep -Fq 'manualPublicUrlAssignments0465' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
-          echo "PUBLIC_AGENDA_VISIBLE_GREEN_0466_LIVE=PASS"
+          echo "PUBLIC_AGENDA_VISIBLE_GREEN_0467_LIVE=PASS"
           echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0466
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0466/rota-certa-0.1.466-agenda-visible-green-manual-url.apk
-          cp /tmp/source-head.txt /tmp/0466/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0466/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0466/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0466/apk.sha256
-          cp /tmp/aapt.txt /tmp/0466/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0466/apksigner.txt
+          mkdir -p /tmp/0467
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0467/rota-certa-0.1.467-terminal-projection-repair.apk
+          cp /tmp/source-head.txt /tmp/0467/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0467/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0467/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0467/apk.sha256
+          cp /tmp/aapt.txt /tmp/0467/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0467/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.466-agenda-visible-green-manual-url-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.467-terminal-projection-repair-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0466
+          path: /tmp/0467
