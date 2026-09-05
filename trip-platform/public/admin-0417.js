@@ -314,6 +314,18 @@
     renderAdminTripBookings0468(tripId, response.bookings);
   }
 
+  async function refreshAfterBookingMutation0470(tripId) {
+    await loadAdminTripBookings0468(tripId);
+    if (currentContextTrip0470) {
+      await Promise.all([
+        refreshTripContext0470({ silent: true }),
+        loadHistory0417(currentContextTrip0470.canonicalTripId || tripId),
+      ]);
+      return;
+    }
+    await loadDashboard0417();
+  }
+
   async function mutateAdminBookingDecision0468(tripId, bookingId, action, button) {
     return runAdminAction0427("decision-"+bookingId, button, async () => {
       setMessage0417(action === "APPROVE" ? "Aprovando reserva…" : "Recusando reserva…");
@@ -323,7 +335,7 @@
           { method: "POST", operationId: newAdminOperationId0427("booking_decision"), body: JSON.stringify({ action }) },
         );
         setMessage0417(action === "APPROVE" ? "Reserva aprovada no estado canônico." : "Reserva recusada no estado canônico.");
-        await Promise.all([loadAdminTripBookings0468(tripId), loadDashboard0417()]);
+        await refreshAfterBookingMutation0470(tripId);
       } catch (error) { setMessage0417(error.message, true); }
     });
   }
@@ -337,7 +349,7 @@
           { method: "POST", operationId: newAdminOperationId0427("booking_status"), body: JSON.stringify({ selection }) },
         );
         setMessage0417("Estado atualizado no backend canônico.");
-        await Promise.all([loadAdminTripBookings0468(tripId), loadDashboard0417()]);
+        await refreshAfterBookingMutation0470(tripId);
       } catch (error) { setMessage0417(error.message, true); }
     });
   }
@@ -610,6 +622,10 @@
         if (error.status === 409 && error.code === "trip_revision_conflict") {
           setMessage0417("Conflito de versão: outra alteração chegou primeiro. A versão atual foi preservada e será recarregada.", true);
           await refreshTripContext0470({ silent: true });
+          return;
+        }
+        if (error.status === 401) {
+          setMessage0417("Sua sessão expirou. A URL digitada foi preservada; autentique-se novamente antes de salvar.", true);
           return;
         }
         setMessage0417(error.message, true);
