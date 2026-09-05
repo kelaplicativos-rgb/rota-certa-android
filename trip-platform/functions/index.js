@@ -892,35 +892,78 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
     return { changed: false, records, changes: [] };
   }
 
-  const idsValid0477 =
+  const idsValid0478 =
     previousStops.length >= 2 &&
     nextStops.length >= 2 &&
     previousIds.every(Boolean) &&
     nextIds.every(Boolean) &&
     new Set(previousIds).size === previousIds.length &&
     new Set(nextIds).size === nextIds.length;
-  const previousSemantic0477 = previousStops.map(canonicalStopSemanticKey0477);
-  const nextSemantic0477 = nextStops.map(canonicalStopSemanticKey0477);
+  const previousSemantic0478 = previousStops.map(canonicalStopSemanticKey0477);
+  const nextSemantic0478 = nextStops.map(canonicalStopSemanticKey0477);
+  const semanticKeysValid0478 =
+    previousSemantic0478.every(Boolean) &&
+    nextSemantic0478.every(Boolean);
   const sameOrderedSemanticShape0477 =
     previousStops.length === nextStops.length &&
-    previousSemantic0477.every((key, index) => Boolean(key) && key === nextSemantic0477[index]);
+    semanticKeysValid0478 &&
+    previousSemantic0478.every((key, index) => key === nextSemantic0478[index]);
   const legacyEndpointExpansion0439 =
     previousStops.length === 2 &&
     nextStops.length >= 2;
 
-  if (!idsValid0477 || (!sameOrderedSemanticShape0477 && !legacyEndpointExpansion0439)) {
+  const uniquePreviousSemantic0478 =
+    semanticKeysValid0478 &&
+    new Set(previousSemantic0478).size === previousSemantic0478.length;
+  const uniqueNextSemantic0478 =
+    semanticKeysValid0478 &&
+    new Set(nextSemantic0478).size === nextSemantic0478.length;
+  const sameSemanticEndpoints0478 =
+    semanticKeysValid0478 &&
+    previousSemantic0478[0] === nextSemantic0478[0] &&
+    previousSemantic0478[previousSemantic0478.length - 1] === nextSemantic0478[nextSemantic0478.length - 1];
+  const nextSemanticIndex0478 = new Map(
+    nextSemantic0478.map((key, index) => [key, index]),
+  );
+  const sharedNextIndexes0478 = previousSemantic0478
+    .map((key) => nextSemanticIndex0478.has(key) ? nextSemanticIndex0478.get(key) : -1)
+    .filter((index) => index >= 0);
+  const sharedOrderPreserved0478 = sharedNextIndexes0478.every(
+    (index, position) => position === 0 || index > sharedNextIndexes0478[position - 1],
+  );
+  const orderedEndpointPreservingMigration0478 =
+    previousStops.length > 2 &&
+    idsValid0478 &&
+    uniquePreviousSemantic0478 &&
+    uniqueNextSemantic0478 &&
+    sameSemanticEndpoints0478 &&
+    sharedOrderPreserved0478;
+
+  if (
+    !idsValid0478 ||
+    (!sameOrderedSemanticShape0477 &&
+      !legacyEndpointExpansion0439 &&
+      !orderedEndpointPreservingMigration0478)
+  ) {
     throw Object.assign(
       new Error("A migração canônica de paradas não é segura para esta estrutura."),
       { httpStatus: 409, code: "canonical_stop_shape_migration_unsafe" },
     );
   }
 
-  const mappedStopIds0477 = new Map();
+  const mappedStopIds0478 = new Map();
   if (sameOrderedSemanticShape0477) {
-    previousIds.forEach((id, index) => mappedStopIds0477.set(id, nextIds[index]));
+    previousIds.forEach((id, index) => mappedStopIds0478.set(id, nextIds[index]));
+  } else if (legacyEndpointExpansion0439) {
+    mappedStopIds0478.set(previousIds[0], nextIds[0]);
+    mappedStopIds0478.set(previousIds[previousIds.length - 1], nextIds[nextIds.length - 1]);
   } else {
-    mappedStopIds0477.set(previousIds[0], nextIds[0]);
-    mappedStopIds0477.set(previousIds[previousIds.length - 1], nextIds[nextIds.length - 1]);
+    previousIds.forEach((id, index) => {
+      const nextIndex = nextSemanticIndex0478.get(previousSemantic0478[index]);
+      if (Number.isInteger(nextIndex) && nextIndex >= 0) {
+        mappedStopIds0478.set(id, nextIds[nextIndex]);
+      }
+    });
   }
   const nextIdSet = new Set(nextIds);
 
@@ -928,7 +971,7 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
     const id = cleanText(rawId, 80);
     if (!id) return "";
     if (nextIdSet.has(id)) return id;
-    const mapped = mappedStopIds0477.get(id);
+    const mapped = mappedStopIds0478.get(id);
     if (mapped) return mapped;
     throw Object.assign(
       new Error("Reserva existente referencia uma parada que não pode ser migrada com segurança."),
