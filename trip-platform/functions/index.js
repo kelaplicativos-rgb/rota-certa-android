@@ -7081,6 +7081,9 @@ async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
   const now = Date.now();
+  const includePastForVerification = String(
+    req.query && req.query.includePastForVerification || "",
+  ).trim().toLowerCase() === "1";
   try {
     const snapshot = await db.collection("trips")
       .where("driverUsername", "==", driver.username)
@@ -7122,7 +7125,10 @@ async function listDriverTripSyncState0402(req, res) {
           occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
         };
       })
-      .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.departureAtMillis > now)
+      .filter((trip) =>
+        PUBLIC_STATUSES.has(trip.status) &&
+        (includePastForVerification || trip.departureAtMillis > now)
+      )
       .sort((a, b) => a.departureAtMillis - b.departureAtMillis);
     return json(res, 200, { trips });
   } catch (error) {
