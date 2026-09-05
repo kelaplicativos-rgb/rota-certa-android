@@ -451,8 +451,20 @@ data class DriverAdminSyncPolicy0417(
 )
 
 @Serializable
+data class DriverAdminPublicUrlAssignment0465(
+    val remoteTripId: String = "",
+    val canonicalTripId: String = "",
+    val blablaProfileUuid: String = "",
+    val blablaTripId: String = "",
+    val blablaPublicUrl: String = "",
+    val requestRevision: Long = 0L,
+    val updatedAtMillis: Long = 0L,
+)
+
+@Serializable
 data class DriverAdminSyncPolicyResponse0417(
     val syncPolicy: DriverAdminSyncPolicy0417 = DriverAdminSyncPolicy0417(),
+    val manualPublicUrlAssignments0465: List<DriverAdminPublicUrlAssignment0465> = emptyList(),
 )
 
 @Serializable
