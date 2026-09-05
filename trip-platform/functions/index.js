@@ -3359,14 +3359,14 @@ function tripPublicOnline0471(data) {
 }
 
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
+  // 0475: legacy online/offline and per-profile publication switches no longer
+  // decide the public list. A future, committed canonical trip is listed from
+  // every synchronized BlaBlaCar profile belonging to this driver.
   if (!driverData || typeof driverData !== "object") {
     return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
   }
   if (!data || data.publicationTombstone === true) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
-  }
-  if (!tripPublicOnline0471(data)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_OFFLINE_0471" };
   }
   if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
@@ -3377,18 +3377,6 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   if (!publicProjectionCommittedCurrent0434(token, data)) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_NOT_COMMITTED" };
   }
-  const publicProfileScope0417 = new Set(
-    (Array.isArray(driverData.publicTripProfileUuids0417) ? driverData.publicTripProfileUuids0417 : [])
-      .map((value) => cleanText(value, 160).toLowerCase())
-      .filter(Boolean),
-  );
-  if (publicProfileScope0417.size) {
-    const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
-    if (profileUuid && !publicProfileScope0417.has(profileUuid)) {
-      return { visible: false, reason: "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED" };
-    }
-  }
-
   // 0469: visibility is not merely "stored in the public collection". It must
   // describe the exact payload that the public browser can render as an Agenda card.
   const rendered0469 = applyPublicTripVisibility0434(
@@ -3401,9 +3389,6 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   }
   if (Number(rendered0469.departureAtMillis || 0) <= Number(nowMillis || 0)) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469" };
-  }
-  if (rendered0469.publicBookingEnabled !== true) {
-    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_BOOKING_DISABLED_0469" };
   }
   if (!Array.isArray(rendered0469.stops) || rendered0469.stops.length < 2) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ITINERARY_UNAVAILABLE_0469" };
@@ -3432,14 +3417,12 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     }
   }
   const driver = driverSnap.data();
-  const authenticationRequired = agendaAuthenticationRequired0428(driver);
+  // 0475: the public Agenda is deliberately read-only and never asks for
+  // passenger/admin credentials. Canonical integrity gates remain below.
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
-  } else if (authenticationRequired) {
-    const view = await requirePassengerAgendaView(req, res, username);
-    if (!view) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const sourceDocs = snapshot.docs
@@ -3465,7 +3448,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   return json(res, 200, {
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
-    authenticationRequired,
+    authenticationRequired: false,
+    readOnly: true,
   });
 }
 
