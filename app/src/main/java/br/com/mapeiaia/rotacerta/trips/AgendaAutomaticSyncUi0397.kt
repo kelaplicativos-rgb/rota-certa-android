@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.Intent
+import android.net.Uri
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,7 @@ internal fun agendaAutomaticSyncIntervalLabel0397(minutes: Long): String = when 
 @Composable
 internal fun AgendaAutomaticSyncScreen0397(
     trips: List<Trip>,
+    store: TripStore,
     onChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
@@ -53,6 +56,7 @@ internal fun AgendaAutomaticSyncScreen0397(
     }
     var intervalMenuExpanded by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    val onlineSettings = remember(status) { store.onlineSettings() }
 
     fun reload() {
         status = AgendaBackgroundSyncConfig0392.status(context)
@@ -154,6 +158,39 @@ internal fun AgendaAutomaticSyncScreen0397(
             }
         }
 
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Backend Rota Certa", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "O servidor é a fonte canônica. Este aparelho coleta dados da BlaBlaCar e envia operações idempotentes ao backend.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedButton(
+                    onClick = {
+                        val url = store.onlineSettings().publicAgendaUrl
+                        if (url.isNullOrBlank()) {
+                            message = "Configure a integração online para abrir a Área Administrativa."
+                        } else {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                            }.onSuccess {
+                                message = "Abrindo o Rota Certa. Entre em Área Administrativa para operar viagens e passageiros."
+                            }.onFailure {
+                                message = "Não foi possível abrir a Área Administrativa neste aparelho."
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = onlineSettings.configured,
+                ) {
+                    Text("ABRIR ÁREA ADMINISTRATIVA")
+                }
+            }
+        }
+
         BlaBlaAccountsAndBrowsersScreen0399()
 
         BlaBlaCollectorPanel(
@@ -168,7 +205,7 @@ internal fun AgendaAutomaticSyncScreen0397(
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         Text(
-            "Esta é a única central de sincronização. O funcionamento é automático e os resultados ficam visíveis na Timeline. O Android executa o trabalho periódico com WorkManager; o horário exibido é uma previsão: Doze, App Standby, economia de bateria e restrições do fabricante podem adiar a execução. Após “Forçar parada” nas configurações do Android, a execução automática pode ficar bloqueada até o app ser aberto novamente.",
+            "Esta é a central de coleta BlaBlaCar do Android. O resultado confirmado é persistido no Backend Rota Certa; a administração e a Agenda Pública leem o mesmo estado canônico. O Android mantém apenas cache, sessão e transporte offline. O WorkManager pode ser adiado por Doze, App Standby, economia de bateria ou restrições do fabricante.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
