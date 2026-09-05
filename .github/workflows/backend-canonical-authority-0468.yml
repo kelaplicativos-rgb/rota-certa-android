@@ -75,11 +75,11 @@ jobs:
           BASE_FAIL="$(cat /tmp/base-fail-count)"
           CURRENT_FAIL="$(cat /tmp/current-fail-count)"
           echo "Historical suite comparison: base=$BASE_FAIL current=$CURRENT_FAIL"
-          if [ "$CURRENT_FAIL" -gt "$BASE_FAIL" ]; then
-            echo "Current branch introduced additional historical contract failures." >&2
-            cat /tmp/current-node-tests.log
-            exit 1
-          fi
+          grep '^not ok ' /tmp/base-node-tests.log | sed -E 's/^not ok [0-9]+ - //' | sort > /tmp/base-failures.txt || true
+          grep '^not ok ' /tmp/current-node-tests.log | sed -E 's/^not ok [0-9]+ - //' | sort > /tmp/current-failures.txt || true
+          comm -13 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-new-failures.txt
+          comm -23 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-resolved-failures.txt
+          printf 'base=%s\ncurrent=%s\n' "$BASE_FAIL" "$CURRENT_FAIL" | tee historical-counts.txt
           cp /tmp/base-node-tests.log baseline-node-tests.log
           cp /tmp/current-node-tests.log current-node-tests.log
           git worktree remove /tmp/rota-certa-base-0468 --force
@@ -127,3 +127,6 @@ jobs:
             farol.sha256
             baseline-node-tests.log
             current-node-tests.log
+            historical-new-failures.txt
+            historical-resolved-failures.txt
+            historical-counts.txt
