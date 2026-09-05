@@ -137,9 +137,11 @@ class AgendaCanonicalProjectionConvergence0408Test {
         assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
         assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
         assertTrue(outbox.contains("remoteProjectionDivergenceObserved &&"))
-        assertTrue(outbox.contains("sameLogicalSnapshot &&"))
-        assertTrue(outbox.contains("latest?.status == TripPublicationStatus0387.DELIVERED"))
-        assertTrue(outbox.contains("return replay"))
+        assertTrue(outbox.contains("latest.status in setOf("))
+        assertTrue(outbox.contains("TripPublicationStatus0387.DELIVERED"))
+        assertTrue(outbox.contains("TripPublicationStatus0387.FAILED_FINAL"))
+        assertTrue(outbox.contains(") return false"))
+        assertTrue(outbox.contains("return true"))
         assertFalse(outbox.contains("class ProjectionPublicationOutbox0410"))
     }
 
@@ -186,9 +188,15 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
-    fun deliveredIncrementalPublicationUsesExistingReadbackAttestation() {
+    fun deliveredIncrementalPublicationUsesServerCanonicalReadbackBeforeLegacyVerification() {
         val outbox = source("TripPublicationOutbox0387.kt")
-        assertTrue(outbox.contains("deliveredCanonicalIds0429"))
+        assertTrue(outbox.contains("backendCanonicalVerified0468"))
+        assertTrue(outbox.contains("readPublicTripProjection0411("))
+        assertTrue(outbox.contains("canonicalPublicProjectionHash0411(readback0468.payload)"))
+        assertTrue(outbox.contains("reportPublicTripAttestation0417("))
+        assertTrue(outbox.contains("serverPublicAttestationConfirmed0433("))
+        assertTrue(outbox.contains("publicationResult=server_canonical_readback_confirmed_0468"))
+        assertTrue(outbox.contains("return@eventLoop"))
         assertTrue(outbox.contains("includePastForVerification0429 = true"))
         assertTrue(outbox.contains("PublicMirrorAttestationCoordinator0411.attest("))
         assertTrue(outbox.contains("force = true"))
