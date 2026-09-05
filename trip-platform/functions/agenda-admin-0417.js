@@ -137,6 +137,10 @@ function createAgendaAdmin0417({
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
+  mutateDriverBookingDecision0468,
+  mutateDriverPassengerOperationalStatus0468,
+  mutateProtectedBooking0468,
+  listDriverBookings0468,
 }) {
   async function appendAdminAudit0417({
     driverUsername,
@@ -289,6 +293,66 @@ function createAgendaAdmin0417({
       lastActivityAtMillis: Number(passengerSession.lastActivityAtMillis || passengerSession.createdAtMillis || 0),
       expiresAtMillis: Number(passengerSession.expiresAtMillis || 0),
     };
+  }
+
+  function adminDriverOverride0468(session) {
+    return {
+      username: session.driverUsername,
+      displayName: "",
+      adminActor0468: true,
+    };
+  }
+
+  async function listAdminTripBookings0468(req, res, tripId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    await touchAdminSession0417(session);
+    return listDriverBookings0468(
+      req,
+      res,
+      clean0417(tripId, 120),
+      adminDriverOverride0468(session),
+    );
+  }
+
+  async function mutateAdminBookingDecision0468(req, res, tripId, bookingId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    await touchAdminSession0417(session);
+    return mutateDriverBookingDecision0468(
+      req,
+      res,
+      clean0417(tripId, 120),
+      clean0417(bookingId, 120),
+      adminDriverOverride0468(session),
+    );
+  }
+
+  async function mutateAdminBookingOperational0468(req, res, tripId, bookingId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    await touchAdminSession0417(session);
+    return mutateDriverPassengerOperationalStatus0468(
+      req,
+      res,
+      clean0417(tripId, 120),
+      clean0417(bookingId, 120),
+      adminDriverOverride0468(session),
+    );
+  }
+
+  async function mutateAdminProtectedBooking0468(req, res, tripId, bookingId, cancelOnly = false) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    await touchAdminSession0417(session);
+    return mutateProtectedBooking0468(
+      req,
+      res,
+      clean0417(tripId, 120),
+      clean0417(bookingId, 120),
+      cancelOnly,
+      adminDriverOverride0468(session),
+    );
   }
 
   async function getAdminMe0417(req, res) {
@@ -903,6 +967,10 @@ function createAgendaAdmin0417({
     getAdminTripHistory0417,
     exportAdminLogs0417,
     listAdminSessions0417,
+    listAdminTripBookings0468,
+    mutateAdminBookingDecision0468,
+    mutateAdminBookingOperational0468,
+    mutateAdminProtectedBooking0468,
   };
 }
 
