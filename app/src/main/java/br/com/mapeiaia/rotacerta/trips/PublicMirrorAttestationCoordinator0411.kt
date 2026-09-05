@@ -242,6 +242,15 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " transportRevisionSent=" + current.publicationRevision +
                 " transportRevisionReadback=" + readback.payload.publicationRevision,
         )
+        evidence(
+            stage = "PUBLIC_AGENDA_VISIBILITY",
+            status = if (readback.agendaVisible) "MATCH" else "MISMATCH",
+            reason = readback.agendaVisibilityReason.ifBlank {
+                if (readback.agendaVisible) "PUBLIC_AGENDA_VISIBLE" else "PUBLIC_AGENDA_NOT_VISIBLE_0466"
+            },
+            extra = "agendaVisible=" + readback.agendaVisible +
+                " sameVisibilityPredicate=true",
+        )
         val stateBytesMatch =
             diff.expectedLength == diff.actualLength &&
                 diff.firstDifferentByteOffset == -1 &&
@@ -250,8 +259,9 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 decision.expectedHash == decision.readbackHash &&
                 readback.publicProjectionHash == decision.readbackHash
         val publishedWithoutUrl0465 =
-            decision.state == PublicMirrorAttestationState0411.UNPROVEN &&
-                decision.reason in setOf("BLABLACAR_PUBLIC_URL_PENDING", "BLABLACAR_PUBLIC_URL_UNRESOLVED") &&
+            readback.agendaVisible &&
+                decision.state == PublicMirrorAttestationState0411.UNPROVEN &&
+                decision.reason == "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466" &&
                 decision.mismatchFields.isNotEmpty() &&
                 decision.mismatchFields.all { it == "blablaPublicUrl" } &&
                 stateBytesMatch
@@ -399,6 +409,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             failedStage0421 = when {
                 !finalDecision.identityValid -> "IDENTITY_COMPARE"
                 !finalDecision.revisionValid -> "REVISION_COMPARE"
+                !readback.agendaVisible -> "PUBLIC_AGENDA_VISIBILITY"
                 publishedWithoutUrl0465 -> ""
                 !finalDecision.linkValid -> "PUBLIC_URL_ENRICHMENT"
                 finalDecision.state == PublicMirrorAttestationState0411.PENDING -> "ATTESTATION_REPORT"
@@ -418,6 +429,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
             },
             reason = finalDecision.reason,
             extra = "agendaMatch=" + (finalDecision.state == PublicMirrorAttestationState0411.VALIDATED) +
+                " agendaVisible=" + readback.agendaVisible +
                 " linkValid=" + finalDecision.linkValid +
                 " serverAck=" + serverConfirmed +
                 " attestationFresh=true durationMs=" + elapsed,
@@ -435,6 +447,7 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " canonicalHash=" + finalDecision.expectedHash.takeLast(24) +
                 " publicHash=" + finalDecision.readbackHash.takeLast(24) +
                 " identity=" + finalDecision.identityValid +
+                " agendaVisible=" + readback.agendaVisible +
                 " link=" + finalDecision.linkValid +
                 " revision=" + finalDecision.revisionValid +
                 " serverAck=" + serverConfirmed +
