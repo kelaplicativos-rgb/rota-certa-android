@@ -457,7 +457,7 @@ function updateAuthenticatedChrome() {
   if (areaSub) areaSub.textContent = passengerAgendaAdmin0418 ? "Administrador" : "Reservas e conta";
   show("portalLogout", Boolean(!isTesterMode() && passengerSessionToken));
   show("portalAgendaAdminCard0418", Boolean(
-    !isTesterMode() && (!agendaAuthenticationRequired0428 || (passengerSessionToken && passengerAgendaAdmin0418))
+    !isTesterMode() && passengerSessionToken && passengerAgendaAdmin0418
   ));
   show("portalPasswordWrap0428", Boolean(agendaAuthenticationRequired0428));
   show("portalPasswordCard0428", Boolean(agendaAuthenticationRequired0428 && !isTesterMode()));
