@@ -984,7 +984,7 @@ internal class TripMutationCoordinator0387(
                                 event = event,
                                 extra = "localCanonicalRead=false previousStage=OUTBOX_IDENTITY_GUARD nextStage=INCREMENTAL_IDENTITY_GUARD",
                             )
-                            PublicAgendaAutoSync0300.syncExternalTripIncremental(
+                            val canonicalAck0468 = PublicAgendaAutoSync0300.syncExternalTripIncremental(
                                 context = appContext,
                                 store = store,
                                 source = sourceTrip,
@@ -998,6 +998,90 @@ internal class TripMutationCoordinator0387(
                                 seatAllocationVersion = event.snapshot.seatAllocationVersion,
                                 canonicalTripSnapshot = event.snapshot.trip,
                             )
+                            require(canonicalAck0468.published) { "BACKEND_CANONICAL_WRITE_NOT_CONFIRMED_0468" }
+                            require(canonicalAck0468.canonicalTripId == event.canonicalTripId) {
+                                "BACKEND_CANONICAL_IDENTITY_MISMATCH_0468"
+                            }
+                            require(canonicalAck0468.canonicalRevision > 0L) {
+                                "BACKEND_CANONICAL_REVISION_MISSING_0468"
+                            }
+                            require(canonicalAck0468.canonicalStateHash.startsWith("server-canonical-v1:")) {
+                                "BACKEND_CANONICAL_HASH_MISSING_0468"
+                            }
+                            require(canonicalAck0468.publicProjectionHash.startsWith("public-v2:")) {
+                                "BACKEND_PUBLIC_HASH_MISSING_0468"
+                            }
+                            val settings0468 = store.onlineSettings()
+                            require(settings0468.configured) { "Agenda Pública não configurada." }
+                            val api0468 = TripRemoteApi(settings0468)
+                            val remoteTripId0468 = canonicalAck0468.remoteTripId
+                                .ifBlank { event.snapshot.trip?.publicToken.orEmpty() }
+                                .ifBlank { event.canonicalTripId }
+                            val proofContext0468 = RemotePublicationEvidenceContext0421(
+                                evidenceId = publicationEvidenceId0421(event.id, canonicalAck0468.canonicalRevision),
+                                traceId = event.id,
+                                canonicalTripId = event.canonicalTripId,
+                                logicalRevision = canonicalAck0468.canonicalRevision,
+                                transportRevision = canonicalAck0468.publicationRevision,
+                                mutationId = event.resolvedMutationId0421(),
+                                idempotencyKey = event.resolvedIdempotencyKey0421(),
+                            )
+                            val readback0468 = api0468.readPublicTripProjection0411(
+                                remoteTripId = remoteTripId0468,
+                                evidence0421 = proofContext0468,
+                            )
+                            val readbackComputedHash0468 = canonicalPublicProjectionHash0411(readback0468.payload)
+                            val mismatch0468 = buildList {
+                                if (readback0468.payload.canonicalTripId != event.canonicalTripId) add("identity")
+                                if (readback0468.payload.canonicalRevision != canonicalAck0468.canonicalRevision) add("canonicalRevision")
+                                if (readback0468.payload.publicationRevision != canonicalAck0468.publicationRevision) add("publicationRevision")
+                                if (readback0468.payload.canonicalStateHash != canonicalAck0468.canonicalStateHash) add("canonicalStateHash")
+                                if (readback0468.publicProjectionHash != canonicalAck0468.publicProjectionHash) add("publicProjectionHash")
+                                if (readbackComputedHash0468 != readback0468.publicProjectionHash) add("serverHash")
+                                if (!readback0468.agendaVisible) add("agendaVisibility")
+                                if (readback0468.persistedAtMillis <= 0L) add("persistedAtMillis")
+                            }
+                            val proofOk0468 = mismatch0468.isEmpty()
+                            recordEvidence0421(
+                                stage = "SERVER_CANONICAL_PUBLIC_READBACK_0468",
+                                status = if (proofOk0468) "OK" else "FAILED",
+                                reason = if (proofOk0468) "SERVER_CANONICAL_PUBLIC_MATCH_0468" else "SERVER_CANONICAL_PUBLIC_MISMATCH_0468",
+                                event = event,
+                                extra = "remoteTripId=" + seatSyncDiagnosticKey(remoteTripId0468) +
+                                    " canonicalRevision=" + canonicalAck0468.canonicalRevision +
+                                    " publicationRevision=" + canonicalAck0468.publicationRevision +
+                                    " agendaVisible=" + readback0468.agendaVisible +
+                                    " mismatchFields=" + mismatch0468.joinToString(",") +
+                                    " previousStage=SERVER_ACK nextStage=ATTESTATION",
+                            )
+                            val attestation0468 = api0468.reportPublicTripAttestation0417(
+                                remoteTripId = remoteTripId0468,
+                                request = DriverPublicAttestationRequest0417(
+                                    state = if (proofOk0468) "VERIFIED" else "DIVERGENT",
+                                    canonicalRevision = canonicalAck0468.canonicalRevision,
+                                    publicationRevision = canonicalAck0468.publicationRevision,
+                                    canonicalStateHash = canonicalAck0468.canonicalStateHash,
+                                    expectedHash = canonicalAck0468.publicProjectionHash,
+                                    readbackHash = readback0468.publicProjectionHash,
+                                    mismatchFields = mismatch0468,
+                                    reason = if (proofOk0468) {
+                                        "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0468"
+                                    } else {
+                                        readback0468.agendaVisibilityReason.ifBlank { "PUBLIC_READBACK_MISMATCH_0468" }
+                                    },
+                                    correlationId = event.id,
+                                ),
+                            )
+                            backendCanonicalVerified0468 =
+                                proofOk0468 &&
+                                    serverPublicAttestationConfirmed0433(
+                                        expectedCanonicalRevision = canonicalAck0468.canonicalRevision,
+                                        expectedPublicationRevision = canonicalAck0468.publicationRevision,
+                                        response = attestation0468,
+                                    )
+                            require(backendCanonicalVerified0468) {
+                                "BACKEND_CANONICAL_ATTESTATION_NOT_VERIFIED_0468"
+                            }
                         } else {
                         val currentCanonicalMatches0456 = store.trips().filter { trip ->
                             resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
