@@ -137,6 +137,7 @@ function createAgendaAdmin0417({
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
+  classifyPublicTripState0469,
   mutateDriverBookingDecision0468,
   mutateDriverPassengerOperationalStatus0468,
   mutateProtectedBooking0468,
@@ -382,8 +383,20 @@ function createAgendaAdmin0417({
     };
   }
 
-  function safeTripAdminSummary0417(trip) {
-    const state = clean0417(trip.publicAttestationState0417, 24) || "UNPROVEN";
+  function effectivePublicState0469(driver, trip) {
+    if (typeof classifyPublicTripState0469 !== "function") {
+      return {
+        state: clean0417(trip.publicAttestationState0417, 24) || "UNPROVEN",
+        visible: false,
+        reason: "PUBLIC_STATE_CLASSIFIER_UNAVAILABLE_0469",
+      };
+    }
+    return classifyPublicTripState0469(driver || {}, trip.id, trip);
+  }
+
+  function safeTripAdminSummary0417(trip, driver = {}) {
+    const effective0469 = effectivePublicState0469(driver, trip);
+    const state = clean0417(effective0469.state, 24) || "UNPROVEN";
     const blablaTripId = clean0417(trip.blablaTripId, 160);
     const blablaPublicUrl = validatedBlaBlaPublicUrl0417(trip.blablaPublicUrl, blablaTripId);
     return {
@@ -398,7 +411,8 @@ function createAgendaAdmin0417({
       canonicalStateHash: clean0417(trip.canonicalStateHash, 160),
       attestationState: state,
       attestedAtMillis: Math.max(0, Number(trip.publicAttestedAtMillis0417 || 0)),
-      attestationReason: clean0417(trip.publicAttestationReason0417, 160),
+      attestationReason: clean0417(effective0469.reason || trip.publicAttestationReason0417, 160),
+      agendaVisible0469: effective0469.visible === true,
       mismatchFields: Array.isArray(trip.publicAttestationMismatchFields0417)
         ? trip.publicAttestationMismatchFields0417.map((v) => clean0417(v, 80)).slice(0, 24)
         : [],
@@ -420,7 +434,7 @@ function createAgendaAdmin0417({
     const active = activeAdminTrips0417(trips);
     const counts = { verified: 0, published: 0, pending: 0, divergent: 0, unproven: 0, linksValid: 0, linksPending: 0 };
     active.forEach((trip) => {
-      const state = clean0417(trip.publicAttestationState0417, 24);
+      const state = clean0417(effectivePublicState0469(driver, trip).state, 24);
       if (state === "VERIFIED") counts.verified++;
       else if (state === "PUBLISHED") counts.published++;
       else if (state === "PENDING") counts.pending++;
@@ -459,13 +473,13 @@ function createAgendaAdmin0417({
   async function listAdminTrips0417(req, res) {
     const session = await requireAdminSession0417(req, res);
     if (!session) return;
-    const { trips } = await readDriverAndTrips0417(session.driverUsername);
+    const { driver, trips } = await readDriverAndTrips0417(session.driverUsername);
     const active = activeAdminTrips0417(trips);
     return json0417(res, 200, {
       scope: "ACTIVE_PUBLIC_TRIPS",
       total: active.length,
       trips: active
-        .map(safeTripAdminSummary0417)
+        .map((trip) => safeTripAdminSummary0417(trip, driver))
         .sort((a, b) => a.departureAtMillis - b.departureAtMillis),
     });
   }
