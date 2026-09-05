@@ -37,8 +37,8 @@ test("0473 shared card reproduces compact journey hierarchy without duplicating 
   assert.match(cards, /agendaDurationBetween0473/);
   assert.match(cards, /startStop0473 = stops\[fromIndex\]/);
   assert.match(cards, /endStop0473 = stops\[toIndex\]/);
-  assert.match(cards, /startCity0473\\.textContent = from/);
-  assert.match(cards, /endCity0473\\.textContent = to/);
+  assert.match(cards, /startCity0473\.textContent = from/);
+  assert.match(cards, /endCity0473\.textContent = to/);
 });
 
 test("0473 date heading has yesterday today tomorrow and compact weekday fallback", () => {
