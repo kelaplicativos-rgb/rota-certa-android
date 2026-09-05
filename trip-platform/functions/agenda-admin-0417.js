@@ -93,19 +93,35 @@ function activeAdminTrips0417(trips, nowMillis = Date.now()) {
   );
 }
 
+function isOfficialBlaBlaHost0417(hostname) {
+  const labels = clean0417(hostname, 253).toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
+}
+
 function validatedBlaBlaPublicUrl0417(raw, expectedTripId) {
   const value = clean0417(raw, 1200);
   const expected = clean0417(expectedTripId, 160);
   if (!value || !expected) return "";
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:") return "";
-    if (!/(^|\.)blablacar\.[a-z.]+$/i.test(url.hostname)) return "";
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost0417(url.hostname)) return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
     const path = url.pathname.replace(/\/+$/, "");
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
     const pathId = path.startsWith("/trip/") ? decodeURIComponent(path.slice("/trip/".length)).split("/")[0] : "";
     const actual = clean0417(url.searchParams.get("id") || pathId, 160);
-    return actual === expected ? value : "";
+    if (!actual) return "";
+    // This is a read-only view over canonical state whose public URL was
+    // previously bound by the orchestrator. Public token != administrative ID
+    // is valid; equality is not re-imposed here.
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
+    return url.toString();
   } catch (_) {
     return "";
   }
@@ -323,6 +339,7 @@ function createAgendaAdmin0417({
         : [],
       publicUrl: clean0417(trip.publicUrl, 1200),
       blablaPublicUrl,
+      manualBlaBlaPublicUrl0465: validatedBlaBlaPublicUrl0417(trip.manualBlaBlaPublicUrl0465, blablaTripId),
       capacityReliable: trip.capacityReliable === true,
       availableSeatsMinimum: Math.max(0, Number(trip.availableSeatsMinimum || 0)),
       availableSeatsMaximum: Math.max(0, Number(trip.availableSeatsMaximum || 0)),
@@ -336,10 +353,11 @@ function createAgendaAdmin0417({
     if (!session) return;
     const { driver, trips } = await readDriverAndTrips0417(session.driverUsername);
     const active = activeAdminTrips0417(trips);
-    const counts = { verified: 0, pending: 0, divergent: 0, unproven: 0, linksValid: 0, linksPending: 0 };
+    const counts = { verified: 0, published: 0, pending: 0, divergent: 0, unproven: 0, linksValid: 0, linksPending: 0 };
     active.forEach((trip) => {
       const state = clean0417(trip.publicAttestationState0417, 24);
       if (state === "VERIFIED") counts.verified++;
+      else if (state === "PUBLISHED") counts.published++;
       else if (state === "PENDING") counts.pending++;
       else if (state === "DIVERGENT" || state === "ERROR") counts.divergent++;
       else counts.unproven++;
@@ -567,9 +585,85 @@ function createAgendaAdmin0417({
   async function getDriverAdminSyncPolicy0417(req, res) {
     const driver = await requireDriver(req, res);
     if (!driver || !driver.username) return;
-    const snap = await db.collection("tripDrivers").doc(driver.username).get();
+    const [snap, tripSnap] = await Promise.all([
+      db.collection("tripDrivers").doc(driver.username).get(),
+      db.collection("trips").where("driverUsername", "==", driver.username).limit(300).get(),
+    ]);
+    const manualPublicUrlAssignments0465 = tripSnap.docs.map((doc) => {
+      const data = doc.data();
+      const blablaTripId = clean0417(data.blablaTripId, 160);
+      const requested = validatedBlaBlaPublicUrl0417(data.manualBlaBlaPublicUrl0465, blablaTripId);
+      const applied = validatedBlaBlaPublicUrl0417(data.blablaPublicUrl, blablaTripId);
+      if (!requested || requested === applied) return null;
+      return {
+        remoteTripId: doc.id,
+        canonicalTripId: clean0417(data.canonicalTripId || data.localTripId, 180),
+        blablaProfileUuid: clean0417(data.blablaProfileUuid, 160),
+        blablaTripId,
+        blablaPublicUrl: requested,
+        requestRevision: Math.max(0, Number(data.manualBlaBlaPublicUrlRevision0465 || 0)),
+        updatedAtMillis: Math.max(0, Number(data.manualBlaBlaPublicUrlUpdatedAtMillis0465 || 0)),
+      };
+    }).filter(Boolean);
     return json0417(res, 200, {
       syncPolicy: normalizeSyncPolicy0417(snap.exists && snap.data().adminSyncPolicy0417),
+      manualPublicUrlAssignments0465,
+    });
+  }
+
+  async function updateAdminTripBlaBlaPublicUrl0465(req, res, tripId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    const safeTripId = clean0417(tripId, 120);
+    const ref = db.collection("trips").doc(safeTripId);
+    const snap = await ref.get();
+    if (!snap.exists || clean0417(snap.data().driverUsername, 40) !== session.driverUsername) {
+      return fail0417(res, 404, "trip_not_found", "Viagem não encontrada.");
+    }
+    const before = snap.data();
+    const blablaTripId = clean0417(before.blablaTripId, 160);
+    if (!blablaTripId) {
+      return fail0417(res, 409, "blablacar_trip_identity_missing", "Esta viagem não possui identidade forte BlaBlaCar.");
+    }
+    const requested = validatedBlaBlaPublicUrl0417(req.body && req.body.blablaPublicUrl, blablaTripId);
+    if (!requested) {
+      return fail0417(res, 400, "invalid_blablacar_public_url", "Informe uma URL pública HTTPS oficial da viagem BlaBlaCar.");
+    }
+    const previousRequested = validatedBlaBlaPublicUrl0417(before.manualBlaBlaPublicUrl0465, blablaTripId);
+    const applied = validatedBlaBlaPublicUrl0417(before.blablaPublicUrl, blablaTripId);
+    const nextRevision = Math.max(0, Number(before.manualBlaBlaPublicUrlRevision0465 || 0)) +
+      (requested === previousRequested ? 0 : 1);
+    await ref.set({
+      manualBlaBlaPublicUrl0465: requested,
+      manualBlaBlaPublicUrlRevision0465: nextRevision,
+      manualBlaBlaPublicUrlUpdatedAtMillis0465: Date.now(),
+    }, { merge: true });
+    const correlationId = crypto.randomUUID();
+    await touchAdminSession0417(session);
+    await appendAdminAudit0417({
+      driverUsername: session.driverUsername,
+      actorId: session.actorId,
+      eventType: "BLABLACAR_PUBLIC_URL_MANUAL_SAVED_0465",
+      correlationId,
+      tripId: safeTripId,
+      changes: [{ field: "blablaPublicUrl", before: applied || previousRequested, after: requested }],
+    });
+    if (requested !== applied) {
+      await sendDriverBookingPush({
+        driverUsername: session.driverUsername,
+        event: "admin_public_url_saved",
+        tripToken: safeTripId,
+        tripTitle: clean0417(before.title, 180),
+        correlationId,
+      });
+    }
+    return json0417(res, 202, {
+      accepted: true,
+      changed: requested !== applied,
+      correlationId,
+      remoteTripId: safeTripId,
+      requestRevision: nextRevision,
+      blablaPublicUrl: requested,
     });
   }
 
@@ -624,7 +718,10 @@ function createAgendaAdmin0417({
     const expectedHash = clean0417(body.expectedHash, 160);
     const canonicalHash = clean0417(data.canonicalStateHash, 160);
     const requestedCanonicalHash = clean0417(body.canonicalStateHash, 160);
-    const verified = requestedState === "VERIFIED" &&
+    const requestedMismatchFields = Array.isArray(body.mismatchFields)
+      ? body.mismatchFields.map((item) => clean0417(item, 80)).filter(Boolean).slice(0, 24)
+      : [];
+    const proofCurrent =
       requestedRevision > 0 &&
       requestedRevision === currentRevision &&
       requestedCanonicalRevision > 0 &&
@@ -633,9 +730,17 @@ function createAgendaAdmin0417({
       expectedHash &&
       readbackHash === expectedHash &&
       (!requestedCanonicalHash || requestedCanonicalHash === canonicalHash);
+    const verified = requestedState === "VERIFIED" && proofCurrent;
+    const publishedWithoutUrl = requestedState === "PUBLISHED" &&
+      proofCurrent &&
+      clean0417(body.reason, 160).toUpperCase().startsWith("BLABLACAR_PUBLIC_URL_") &&
+      requestedMismatchFields.length > 0 &&
+      requestedMismatchFields.every((item) => item === "blablaPublicUrl");
     const state = verified
       ? "VERIFIED"
-      : (requestedState === "DIVERGENT" || requestedState === "ERROR" ? "DIVERGENT" : "PENDING");
+      : (publishedWithoutUrl
+        ? "PUBLISHED"
+        : (requestedState === "DIVERGENT" || requestedState === "ERROR" ? "DIVERGENT" : "PENDING"));
     const now = Date.now();
     await ref.set({
       publicAttestationState0417: state,
@@ -644,9 +749,7 @@ function createAgendaAdmin0417({
       publicAttestedHash0417: verified ? readbackHash : "",
       publicAttestedAtMillis0417: verified ? now : 0,
       publicAttestationReason0417: clean0417(body.reason, 160),
-      publicAttestationMismatchFields0417: Array.isArray(body.mismatchFields)
-        ? body.mismatchFields.map((item) => clean0417(item, 80)).filter(Boolean).slice(0, 24)
-        : [],
+      publicAttestationMismatchFields0417: requestedMismatchFields,
       publicAttestationCorrelationId0417: clean0417(body.correlationId, 100),
     }, { merge: true });
     return json0417(res, 200, { state, verified, publicationRevision: currentRevision, canonicalRevision: currentCanonicalRevision });
@@ -771,6 +874,7 @@ function createAgendaAdmin0417({
     getDriverAdminSyncPolicy0417,
     reportDriverAdminSyncHealth0417,
     recordDriverPublicAttestation0417,
+    updateAdminTripBlaBlaPublicUrl0465,
     listAdminLogs0417,
     getAdminTripHistory0417,
     exportAdminLogs0417,

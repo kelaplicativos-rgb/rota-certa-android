@@ -44,6 +44,7 @@ class AgendaImmediateCardDelta0431Test {
     fun collectorPublishesOnlyCanonicalCardsWhoseSnapshotChanged() {
         val background = source("AgendaBackgroundSync0392.kt")
         val collector = source("BlaBlaAutomaticCollection0400.kt")
+        val dynamic = source("BlaBlaDynamicAccounts.kt")
 
         assertTrue(background.contains("publicationCanonicalTripIds0431"))
         assertTrue(background.contains("publicationCanonicalTripIds0431 += event.canonicalTripId"))
@@ -53,10 +54,139 @@ class AgendaImmediateCardDelta0431Test {
         assertTrue(collector.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431"))
         assertTrue(collector.contains("account_" + '$' + "{normalizedResult.lowercase()}"))
         assertTrue(collector.contains("run_terminal:" + '$' + "result"))
+        val checkpointScope = dynamic.substring(
+            dynamic.indexOf("private fun saveProgressSnapshot(reason: String)"),
+            dynamic.indexOf("private fun clearPendingCardState()"),
+        )
+        assertTrue(checkpointScope.contains("publishCurrentSessions("))
+        assertTrue(checkpointScope.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431("))
+        assertTrue(checkpointScope.contains("\"card_checkpoint:\" + reason"))
+        val finalSnapshotScope = dynamic.substring(
+            dynamic.indexOf("private fun saveFinalSnapshotOnce(verified: Boolean)"),
+            dynamic.indexOf("private fun captureTripDetail("),
+        )
+        assertTrue(finalSnapshotScope.contains("if (targetTripId.isNotBlank())"))
+        assertTrue(finalSnapshotScope.contains("AgendaBackgroundSync0392.enqueueCollectorDelta0431("))
+        assertTrue(finalSnapshotScope.contains("\"exact_card_final\""))
+        assertTrue(background.contains("TIMELINE_STATE_EMITTED_0451"))
+        assertTrue(background.contains("observer=BookingRealtimeEvents0356"))
         assertTrue(background.contains("collectorCardAttestationIntegrity0433"))
         assertTrue(background.contains("serverAckRequired=true"))
         assertTrue(background.contains("cycle.projectionValidated0411 == cycle.projectionExpected0411"))
         assertTrue(background.contains("publicUpdated=\$publicUpdated"))
+    }
+
+    @Test
+    fun externalIncrementalAcceptsCanonicalSnapshotTripKeyBeforePublicBinding() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-a",
+            date = "2030-09-04",
+            trip_id = "trip-a",
+        )
+        val canonical = Trip(
+            title = "External canonical",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "PROFILE-A",
+            blablaTripId = "trip-a",
+            tripKey = "timeline-ext-existing",
+        )
+
+        assertTrue(
+            externalIncrementalCanonicalIdentityMatches0452(
+                resolvedInternalTripId = "timeline-ext-existing",
+                expectedStrongId = "ext-strong-other",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source,
+            ),
+        )
+        assertFalse(
+            externalIncrementalCanonicalIdentityMatches0452(
+                resolvedInternalTripId = "timeline-ext-existing",
+                expectedStrongId = "ext-strong-other",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source.copy(trip_id = "trip-b"),
+            ),
+        )
+        assertTrue(
+            externalIncrementalCanonicalIdentityMatches0452(
+                resolvedInternalTripId = "ext-strong-other",
+                expectedStrongId = "ext-strong-other",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = null,
+                source = source,
+            ),
+        )
+        assertTrue(
+            externalIncrementalCanonicalIdentityMatches0452(
+                resolvedInternalTripId = "timeline-bound",
+                expectedStrongId = "ext-strong-other",
+                boundInternalTripId = "timeline-bound",
+                canonicalTripSnapshot = null,
+                source = source,
+            ),
+        )
+    }
+
+    @Test
+    fun durableCanonicalSnapshotDoesNotDependOnCurrentBlaBlaAccountRegistry() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-a",
+            date = "2030-09-04",
+            trip_id = "trip-a",
+        )
+        val canonical = Trip(
+            title = "External canonical",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = "PROFILE-A",
+            blablaTripId = "trip-a",
+            tripKey = "tripkey:durable-a",
+        )
+        assertTrue(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "tripkey:durable-a",
+                expectedStrongId = "",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source,
+                accountIdentityConfirmed = false,
+            ),
+        )
+        assertFalse(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "tripkey:durable-a",
+                expectedStrongId = "",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = canonical,
+                source = source.copy(trip_id = "trip-b"),
+                accountIdentityConfirmed = false,
+            ),
+        )
+        assertTrue(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "strong-account-id",
+                expectedStrongId = "strong-account-id",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = null,
+                source = source,
+                accountIdentityConfirmed = true,
+            ),
+        )
+        assertFalse(
+            externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = "strong-account-id",
+                expectedStrongId = "strong-account-id",
+                boundInternalTripId = "",
+                canonicalTripSnapshot = null,
+                source = source,
+                accountIdentityConfirmed = false,
+            ),
+        )
     }
 
     @Test

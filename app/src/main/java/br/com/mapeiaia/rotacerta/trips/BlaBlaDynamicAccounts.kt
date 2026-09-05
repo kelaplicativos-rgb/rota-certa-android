@@ -1499,13 +1499,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
             }
             if (targetTripId.isNotBlank() && targetTripHref.isNotBlank()) {
                 currentCardTraversalKey = "id|$targetTripId"
-                candidates = listOf(BlaBlaDomRideCandidate(href = targetTripHref))
+                val hydration0451 = rehydrateExactCandidate0451(
+                    targetHref = targetTripHref,
+                    profileUuid = account.profileUuid.orEmpty(),
+                    tripId = targetTripId,
+                    canonicalTrips = TripStore(this).trips(),
+                    dynamicTrips = store.read(account)?.trips.orEmpty(),
+                    collectorTrips = BlaBlaCollectorStateStore(this).lastResponse()?.trips.orEmpty(),
+                )
+                val exactCandidate = hydration0451.candidate
+                candidates = listOf(exactCandidate)
                 candidateIndex = 0
                 enterBrowserPhase(Phase.DETAIL, BlaBlaBrowserRequest.TRIP_OPEN, "exact_trip_open")
                 UnifiedDebugEventStore.record(
+                    "BLABLACAR_EXACT_CANDIDATE_REHYDRATED_0451",
+                    packageName,
+                    "account=${account.displayLabel} tripKey=${seatSyncDiagnosticKey(targetTripId)} strongIdentity=true source=${hydration0451.sourceChain.joinToString("+").ifBlank { "none" }} datePresent=${exactCandidate.dateText.isNotBlank()} timePresent=${exactCandidate.departureTime.isNotBlank()} originPresent=${exactCandidate.origin.isNotBlank()} destinationPresent=${exactCandidate.destination.isNotBlank()} hrefOnly=${exactCandidate.dateText.isBlank() && exactCandidate.departureTime.isBlank() && exactCandidate.origin.isBlank() && exactCandidate.destination.isBlank()}",
+                )
+                UnifiedDebugEventStore.record(
                     "AGENDA_EXACT_CARD_SYNC_STARTED",
                     packageName,
-                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true",
+                    "account=${account.displayLabel} profileUuidPresent=${!account.profileUuid.isNullOrBlank()} tripIdPresent=true directTarget=true contextRehydrated=${hydration0451.sourceChain.isNotEmpty()}",
                 )
                 loadCurrentCandidate()
             } else {
@@ -1831,6 +1845,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             context = this,
             reason = "final_snapshot",
         )
+        if (targetTripId.isNotBlank()) {
+            AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+                context = this,
+                source = "exact_card_final",
+            )
+        }
         return true
     }
 
@@ -2278,17 +2298,29 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val captured = BlaBlaCollectorUrlModule.publicTrip(evidence?.publicTripHref, tripId)
+            val captured = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = evidence?.publicTripHref,
+                expectedAdministrativeTripId = tripId,
+                boundAdministrativeTripId = tripId,
+            )
             if (captured != null) {
                 pendingTripDetail = pendingTripDetail?.copy(
                     publicTripHref = captured,
                     publicTripHrefSource = "share_action",
-                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID,
+                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
                 )
+                val sharedPublicTripId = BlaBlaCollectorUrlModule.publicTripPublicId(captured).orEmpty()
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId source=share_action exactTrip=true shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0}",
+                    "account=${account.displayLabel} tripId=$tripId source=share_action binding=" +
+                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION +
+                        " exactAdministrativeTrip=true publicIdRelation=" +
+                        (if (sharedPublicTripId == tripId) "same" else "different") +
+                        " shareControlPresent=${evidence?.shareControlPresent == true}" +
+                        " shareInterceptInstalled=${evidence?.shareInterceptInstalled == true}" +
+                        " shareInvoked=${evidence?.shareInvoked == true}" +
+                        " clickCount=${evidence?.clickCount ?: 0}",
                 )
                 loadNextPassengerContact(expectedSync, expectedCandidate)
                 return@evaluateRequest
@@ -3297,6 +3329,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
             context = this,
             reason = reason,
         )
+        // A persisted per-card checkpoint is already safe collector state. Promote it
+        // through the existing canonical delta worker immediately instead of waiting
+        // for the whole account/run to finish. The worker remains the only writer that
+        // resolves strong identity, performs semantic upsert and emits Timeline changes.
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+            context = this,
+            source = "card_checkpoint:" + reason,
+        )
         UnifiedDebugEventStore.record(
             "TIMELINE_CARD_CHECKPOINT_SAVED",
             packageName,
@@ -3723,7 +3763,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
-        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 0
+        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2
         private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
         private const val MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS = 3
         private const val PUBLIC_TRIP_SEARCH_SETTLE_MS = 2_500L

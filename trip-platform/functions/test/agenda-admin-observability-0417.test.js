@@ -67,15 +67,23 @@ test("admin aggregates and technical list share the same active public scope", (
   assert.equal(activeAdminTrips0417(trips, now).length, 2);
 });
 
-test("BlaBla link is valid only for concrete public trip URL matching strong trip id", () => {
+test("Agenda admin accepts only concrete official canonical public trip URLs even when public token differs", () => {
   const valid = validatedBlaBlaPublicUrl0417(
-    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123",
-    "trip-123",
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=public-token&search_uuid=temporary",
+    "admin-trip-123",
   );
-  assert.match(valid, /^https:\/\/www\.blablacar\.com\.br\/trip/);
-  assert.equal(validatedBlaBlaPublicUrl0417("https://www.blablacar.com.br/trip?id=other", "trip-123"), "");
-  assert.equal(validatedBlaBlaPublicUrl0417("https://example.com/trip?id=trip-123", "trip-123"), "");
-  assert.equal(validatedBlaBlaPublicUrl0417("", "trip-123"), "");
+  assert.equal(
+    valid,
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=public-token",
+  );
+  assert.match(
+    validatedBlaBlaPublicUrl0417("https://www.blablacar.fr/trip?id=another-public-token", "admin-trip-123"),
+    /^https:\/\/www\.blablacar\.fr\/trip/,
+  );
+  assert.equal(validatedBlaBlaPublicUrl0417("https://example.com/trip?id=public-token", "admin-trip-123"), "");
+  assert.equal(validatedBlaBlaPublicUrl0417("https://blablacar.fr.evil.test/trip?id=public-token", "admin-trip-123"), "");
+  assert.equal(validatedBlaBlaPublicUrl0417("https://www.blablacar.fr/search?id=public-token", "admin-trip-123"), "");
+  assert.equal(validatedBlaBlaPublicUrl0417("", "admin-trip-123"), "");
 });
 
 test("admin sync request is REQUESTED and SUCCESS health is guarded by attestation metrics", () => {
@@ -244,4 +252,19 @@ test("0.1.428 open sessions stay within one Agenda", () => {
   assert.match(source, /scopedDocs/);
   assert.match(source, /passenger_auth_restored/);
   assert.match(source, /password_change_unavailable/);
+});
+
+test("green published state and manual BlaBlaCar URL use the canonical targeted push corridor 0465", () => {
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
+  assert.match(admin, /publishedWithoutUrl/);
+  assert.match(admin, /manualBlaBlaPublicUrl0465/);
+  assert.match(admin, /event: "admin_public_url_saved"/);
+  assert.match(admin, /manualPublicUrlAssignments0465/);
+  assert.match(source, /blablacar-public-url/);
+  assert.match(browser, /adminStateGreen0465/);
+  assert.match(browser, /save-trip-public-url/);
+  assert.match(html, /adminTripPublicUrlInput0465/);
 });

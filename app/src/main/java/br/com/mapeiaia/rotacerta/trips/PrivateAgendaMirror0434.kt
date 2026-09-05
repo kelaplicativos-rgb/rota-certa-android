@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -152,7 +153,7 @@ internal fun privateAgendaMirrorPayload0434(
         itineraryAuthoritative = trip.itineraryAuthoritative,
         blablaProfileUuid = trip.blablaProfileUuid.orEmpty().trim().lowercase(),
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
-        blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty(),
+        blablaPublicUrl = canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty(),
         notes = trip.notes,
         bookings = bookings.sortedBy(Booking::id).map { booking ->
             PrivateAgendaMirrorBooking0434(
@@ -206,6 +207,7 @@ internal suspend fun syncPrivateAgendaMirror0434(
     correlationId: String = "",
     syncOperationId: String = "",
     idempotencyKey: String = "",
+    evidence0421: RemotePublicationEvidenceContext0421? = null,
 ): DriverPrivateMirrorReadback0434 {
     val payload = privateAgendaMirrorPayload0434(
         trip = trip,
@@ -213,7 +215,84 @@ internal suspend fun syncPrivateAgendaMirror0434(
         operationalSnapshot = operationalSnapshot,
         canonicalTripId = canonicalTripId,
     )
-    val canonicalJson = privateAgendaMirrorCanonicalJson0434(payload)
+    val canonicalSerializationStarted0458 = System.nanoTime()
+    val canonicalJson = try {
+        privateAgendaMirrorCanonicalJson0434(payload).also { json ->
+            evidence0421?.let { evidence ->
+                val bytes = json.toByteArray(Charsets.UTF_8)
+                val byteEvidence = AgendaFailureEvidence.byteSanitizationEvidence0458(bytes)
+                runCatching {
+                    UnifiedDebugEventStore.recordAlways(
+                        "PUBLIC_EVIDENCE_0421",
+                        "br.com.mapeiaia.rotacerta.trips",
+                        buildString {
+                            append("evidenceId=").append(evidence.evidenceId)
+                            append(" traceId=").append(evidence.traceId)
+                            append(" correlationId=").append(evidence.traceId)
+                            append(" stage=PRIVATE_MIRROR_CANONICAL_SERIALIZATION")
+                            append(" status=OK reasonCode=PRIVATE_CANONICAL_JSON_UTF8")
+                            append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
+                            append(" logicalRevision=").append(evidence.logicalRevision)
+                            append(" transportRevision=").append(evidence.transportRevision)
+                            append(" mutationId=").append(evidence.mutationId)
+                            append(" idempotencyKey=").append(evidence.idempotencyKey)
+                            append(' ').append(byteEvidence.compactDetails0458())
+                            append(" durationMs=").append(
+                                ((System.nanoTime() - canonicalSerializationStarted0458).coerceAtLeast(0L)) / 1_000_000L,
+                            )
+                            append(" previousStage=CANONICAL_OPERATIONAL_BUILD nextStage=REQUEST_SERIALIZATION")
+                        },
+                    )
+                }
+            }
+        }
+    } catch (error: Throwable) {
+        evidence0421?.let { evidence ->
+            val resolution = AgendaFailureEvidence.resolveCauseChain(error)
+            val root = resolution.chain.lastOrNull() ?: error
+            val message = runCatching { UnifiedDebugEventStore.sanitizeForExport(error.message.orEmpty()) }
+                .getOrDefault("<sanitization-failed>")
+                .replace('"', '\'')
+                .take(240)
+            val rootMessage = runCatching { UnifiedDebugEventStore.sanitizeForExport(root.message.orEmpty()) }
+                .getOrDefault("<sanitization-failed>")
+                .replace('"', '\'')
+                .take(240)
+            val source = error.stackTrace.firstOrNull { it.className.startsWith("br.com.mapeiaia.rotacerta") }
+            runCatching {
+                UnifiedDebugEventStore.recordAlways(
+                    "PUBLIC_EVIDENCE_0421",
+                    "br.com.mapeiaia.rotacerta.trips",
+                    buildString {
+                        append("evidenceId=").append(evidence.evidenceId)
+                        append(" traceId=").append(evidence.traceId)
+                        append(" correlationId=").append(evidence.traceId)
+                        append(" stage=PRIVATE_MIRROR_CANONICAL_SERIALIZATION")
+                        append(" status=FAILED reasonCode=PRIVATE_CANONICAL_SERIALIZATION_EXCEPTION")
+                        append(" canonicalTripId=").append(seatSyncDiagnosticKey(evidence.canonicalTripId))
+                        append(" logicalRevision=").append(evidence.logicalRevision)
+                        append(" transportRevision=").append(evidence.transportRevision)
+                        append(" mutationId=").append(evidence.mutationId)
+                        append(" idempotencyKey=").append(evidence.idempotencyKey)
+                        append(" exceptionClass=").append(error.javaClass.name)
+                        append(" exceptionMessage=\"").append(message).append('\"')
+                        append(" rootCauseClass=").append(root.javaClass.name)
+                        append(" rootCauseMessage=\"").append(rootMessage).append('\"')
+                        if (source != null) {
+                            append(" exceptionSource=")
+                                .append(source.fileName ?: source.className.substringAfterLast('.'))
+                                .append(':').append(source.methodName).append(':').append(source.lineNumber)
+                        }
+                        append(" durationMs=").append(
+                            ((System.nanoTime() - canonicalSerializationStarted0458).coerceAtLeast(0L)) / 1_000_000L,
+                        )
+                        append(" previousStage=CANONICAL_OPERATIONAL_BUILD nextStage=STOP")
+                    },
+                )
+            }
+        }
+        throw error
+    }
     val privateHash = privateAgendaMirrorHash0434(canonicalJson)
     val write = api.writePrivateAgendaMirror0434(
         DriverPrivateMirrorWriteRequest0434(
@@ -225,11 +304,12 @@ internal suspend fun syncPrivateAgendaMirror0434(
             syncOperationId = syncOperationId,
             idempotencyKey = idempotencyKey,
         ),
+        evidence0421 = evidence0421,
     )
-    require(write.canonicalTripId == payload.canonicalTripId)
-    require(write.canonicalRevision == payload.canonicalRevision)
-    require(write.privateStateHash == privateHash)
-    val readback = api.readPrivateAgendaMirror0434(payload.canonicalTripId)
+    require(write.canonicalTripId == payload.canonicalTripId) { "PRIVATE_MIRROR_WRITE_IDENTITY_MISMATCH" }
+    require(write.canonicalRevision == payload.canonicalRevision) { "PRIVATE_MIRROR_WRITE_REVISION_MISMATCH" }
+    require(write.privateStateHash == privateHash) { "PRIVATE_MIRROR_WRITE_HASH_MISMATCH" }
+    val readback = api.readPrivateAgendaMirror0434(payload.canonicalTripId, evidence0421 = evidence0421)
     require(readback.canonicalTripId == payload.canonicalTripId) { "PRIVATE_MIRROR_IDENTITY_MISMATCH" }
     require(readback.canonicalRevision == payload.canonicalRevision) { "PRIVATE_MIRROR_STALE_LOGICAL_REVISION" }
     require(readback.privateStateHash == privateHash) { "PRIVATE_MIRROR_HASH_MISMATCH" }

@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -108,6 +109,66 @@ class AgendaFailureEvidence0382Test {
             assertTrue(report.contains(marker), "AgendaForensicReport missing $marker")
         }
         assertTrue(report.contains("event.details.contains(\"failureFingerprint=\")"))
+    }
+
+    @Test
+    fun evidenceSanitizationComparesEveryUtf8ByteWithoutExportingRawSecrets() {
+        val raw = (
+            "authorization=Bearer super-secret-token " +
+                "email=passenger@example.com " +
+                "url=https://example.com/private?token=abc " +
+                "phone=11999998888\u0000"
+            ).toByteArray(Charsets.UTF_8)
+
+        val evidence = AgendaFailureEvidence.byteSanitizationEvidence0458(raw)
+
+        assertTrue(evidence.utf8RoundTrip)
+        assertTrue(evidence.sanitizerSucceeded)
+        assertTrue(evidence.sanitizationChanged)
+        assertTrue(evidence.changedByteCount > 0)
+        assertTrue(evidence.firstSanitizedDiffOffset >= 0)
+        assertTrue(evidence.sanitizedDiffRanges.isNotEmpty())
+        assertEquals(1, evidence.nulByteCount)
+        assertTrue(evidence.rawSha256 != evidence.sanitizedSha256)
+        val compact = evidence.compactDetails0458()
+        assertFalse(compact.contains("super-secret-token"))
+        assertFalse(compact.contains("passenger@example.com"))
+        assertFalse(compact.contains("example.com/private"))
+    }
+
+    @Test
+    fun structuredPublicationEvidenceCoversSerializationSanitizationAndCausalFailure() {
+        val remote = source("TripRemoteApi.kt")
+        val outbox = source("TripPublicationOutbox0387.kt")
+        val timeline = source("TripTimelineUi.kt")
+        val privateMirror = source("PrivateAgendaMirror0434.kt")
+        val autoSync = source("PublicAgendaAutoSync0300.kt")
+        val unifiedDebug = File("src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt").readText()
+
+        listOf(
+            "stage = \"REQUEST_SERIALIZATION\"",
+            "stage = \"REQUEST_SANITIZATION\"",
+            "byteSanitizationEvidence0458",
+            "EVIDENCE_REDACTION_APPLIED",
+        ).forEach { marker -> assertTrue(remote.contains(marker), "TripRemoteApi missing $marker") }
+        assertTrue(privateMirror.contains("PRIVATE_MIRROR_CANONICAL_SERIALIZATION"))
+        assertTrue(autoSync.contains("DIAGNOSTIC_CONTEXT_FALLBACK"))
+        assertTrue(autoSync.contains("CANONICAL_OPERATIONAL_BUILD"))
+        assertTrue(autoSync.contains("DIAGNOSTIC_KEY_BUILD"))
+        assertTrue(autoSync.contains("REMOTE_API_CONTEXT_BUILD"))
+        assertTrue(outbox.contains("stage = \"OUTBOX_FAILURE\""))
+        assertTrue(outbox.contains("UNCAUGHT_PUBLICATION_EXCEPTION"))
+        assertTrue(outbox.contains("canonicalByteEvidence0458.compactDetails0458()"))
+        assertTrue(timeline.contains("\\\"failure\\\":{"))
+        assertTrue(timeline.contains("\\\"firstSanitizedDiffOffset\\\":"))
+        assertTrue(timeline.contains("\\\"attemptState\\\":"))
+        assertTrue(timeline.contains("\\\"stalePersistedFailureIgnored\\\":"))
+        assertTrue(timeline.contains("latestOutboxDequeueIndex0459"))
+        assertTrue(timeline.contains("causalFailureEvent0458"))
+        assertTrue(unifiedDebug.contains("private fun sanitizeForRecord"))
+        assertTrue(unifiedDebug.contains("runCatching { sanitizeForExport(value) }"))
+        assertTrue(unifiedDebug.contains("details = safeDetails"))
+        assertFalse(unifiedDebug.contains("recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)"))
     }
 
     @Test

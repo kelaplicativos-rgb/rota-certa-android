@@ -170,6 +170,7 @@ class TripStore(context: Context) {
         requestHash: String,
         responseHash: String,
         reason: String,
+        failedStage: String = "",
     ): Trip? = synchronized(CANONICAL_LOCK) {
         val current = trips()
         val existing = current.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
@@ -203,7 +204,9 @@ class TripStore(context: Context) {
             publicMirrorDifferentByteRanges0421 = emptyList(),
             publicMirrorHttpStatus0421 = httpStatus.coerceAtLeast(0),
             publicMirrorBackendErrorCode0421 = backendErrorCode.take(80),
-            publicMirrorFailedStage0421 = if (httpStatus > 0) "HTTP_RESPONSE" else "HTTP_SEND",
+            publicMirrorFailedStage0421 = failedStage.ifBlank {
+                if (httpStatus > 0) "HTTP_RESPONSE" else if (networkCallId.isNotBlank() || requestBytes > 0) "HTTP_SEND" else "OUTBOX_FAILURE"
+            }.take(80),
             publicMirrorNetworkCallId0421 = networkCallId.take(120),
             publicMirrorRequestBytes0421 = requestBytes.coerceAtLeast(0),
             publicMirrorResponseBytes0421 = responseBytes.coerceAtLeast(0),

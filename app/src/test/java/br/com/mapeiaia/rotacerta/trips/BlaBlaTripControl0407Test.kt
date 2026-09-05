@@ -166,6 +166,72 @@ class BlaBlaTripControl0407Test {
     }
 
     @Test
+    fun queuedVerificationIsPendingOnlyForCurrentBuildAndLiveLease() {
+        val now = 2_000_000L
+        val currentVersion = 5756L
+        assertTrue(
+            commandPendingLeaseCurrent0463(
+                status = BlaBlaCommandStatus0407.QUEUED,
+                requestedAtMillis = now - 1_000L,
+                queuedVersionCode = currentVersion,
+                currentVersionCode = currentVersion,
+                nowMillis = now,
+            ),
+        )
+        assertFalse(
+            commandPendingLeaseCurrent0463(
+                status = BlaBlaCommandStatus0407.QUEUED,
+                requestedAtMillis = now - 1_000L,
+                queuedVersionCode = 5755L,
+                currentVersionCode = currentVersion,
+                nowMillis = now,
+            ),
+        )
+        assertFalse(
+            commandPendingLeaseCurrent0463(
+                status = BlaBlaCommandStatus0407.QUEUED,
+                requestedAtMillis = now - BLA_BLA_COMMAND_PENDING_LEASE_MILLIS_0463,
+                queuedVersionCode = currentVersion,
+                currentVersionCode = currentVersion,
+                nowMillis = now,
+            ),
+        )
+        assertFalse(
+            commandPendingLeaseCurrent0463(
+                status = BlaBlaCommandStatus0407.QUEUED,
+                requestedAtMillis = now + 1L,
+                queuedVersionCode = currentVersion,
+                currentVersionCode = currentVersion,
+                nowMillis = now,
+            ),
+        )
+        assertFalse(
+            commandPendingLeaseCurrent0463(
+                status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
+                requestedAtMillis = now - 1_000L,
+                queuedVersionCode = currentVersion,
+                currentVersionCode = currentVersion,
+                nowMillis = now,
+            ),
+        )
+        assertEquals(
+            "⚠ Verificação anterior interrompida",
+            blaBlaVerificationLabel0407(
+                audit = BlaBlaCommandAuditSnapshot0407(
+                    commandId = "old-build",
+                    status = BlaBlaCommandStatus0407.QUEUED,
+                    requestedAtMillis = now - 1_000L,
+                    finishedAtMillis = 0L,
+                    queuedVersionCode = 5755L,
+                    pending = false,
+                ),
+                lastObservedAtMillis = now - 2_000L,
+                strongTargetAvailable = true,
+            ),
+        )
+    }
+
+    @Test
     fun verificationLabelUsesTerminalCommandResultInsteadOfStaleObservedTimestamp() {
         val previouslyObserved = 1_700_000_000_000L
         assertEquals(

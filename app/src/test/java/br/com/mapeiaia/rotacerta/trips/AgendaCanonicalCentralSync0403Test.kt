@@ -12,7 +12,7 @@ class AgendaCanonicalCentralSync0403Test {
         File("src/main/java/br/com/mapeiaia/rotacerta/trips/$name").readText()
 
     @Test
-    fun unchangedFingerprintSkipsAndPartialCannotReplaceCompleteSnapshot() {
+    fun unchangedFingerprintSkipsButSafePartialSemanticDeltaAdvancesCanonical() {
         assertEquals(
             ExternalCollectorDeltaDecision0403.SKIP_UNCHANGED,
             externalCollectorDeltaDecision0403(
@@ -23,10 +23,19 @@ class AgendaCanonicalCentralSync0403Test {
             ),
         )
         assertEquals(
-            ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL,
+            ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL,
             externalCollectorDeltaDecision0403(
                 existingFingerprint = "old",
                 incomingFingerprint = "partial-new",
+                existingComplete = true,
+                incomingComplete = false,
+            ),
+        )
+        assertEquals(
+            ExternalCollectorDeltaDecision0403.PRESERVE_PARTIAL,
+            externalCollectorDeltaDecision0403(
+                existingFingerprint = "old",
+                incomingFingerprint = "",
                 existingComplete = true,
                 incomingComplete = false,
             ),
@@ -190,7 +199,11 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(background.contains("val reconcileAllCanonicalTrips = mode == AgendaBackgroundSyncMode0392.FULL_RECONCILE"))
         assertTrue(background.contains("canonicalTrip.externalSnapshotFingerprint == incomingFingerprint"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_WRITE_DEFERRED_0403"))
-        assertTrue(background.contains("binding?.externalFingerprint != incomingFingerprint"))
+        assertTrue(background.contains("val publicationAlreadyCurrent0453 ="))
+        assertTrue(background.contains("!publicationAlreadyCurrent0453"))
+        assertTrue(background.contains("publicMirrorProjectionCurrent0411()"))
+        assertTrue(background.contains("remoteProjectionDivergenceObserved = true"))
+        assertTrue(background.contains("result=UNCHANGED_SKIP publicationAlreadyCurrent=\$publicationAlreadyCurrent0453"))
         assertTrue(background.contains("EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403"))
         assertTrue(background.contains("store.bookingsFor(previousBookingTripId)"))
         assertTrue(background.contains("binding.copy("))

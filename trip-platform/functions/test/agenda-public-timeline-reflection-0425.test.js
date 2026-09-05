@@ -57,6 +57,39 @@ test("server verifies the candidate bytes before committing a repair", () => {
   assert.match(capacity, /canonicalPublicTripPayload0411\(token, nextProjectionData0425\)/);
 });
 
+test("canonical projection accepts a structurally valid bound public token distinct from the administrative id", () => {
+  const start = source.indexOf("function blaBlaExternalTripId");
+  const end = source.indexOf("function normalizeStops", start);
+  assert.ok(start >= 0 && end > start);
+
+  const context = {
+    cleanText(value, max = 240) {
+      return String(value || "").trim().slice(0, max);
+    },
+    URL,
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    source.slice(start, end) +
+      ";this.strictPublic=normalizeBlaBlaPublicUrl;" +
+      "this.canonicalBound=normalizeCanonicalBoundBlaBlaPublicUrl0423;",
+    context,
+  );
+
+  const adminId = "admin-trip-0423";
+  const publicToken = "AaA1DifferentPublicToken0423";
+  const raw = "https://www.blablacar.fr/trip?source=CARPOOLING&id=" + publicToken +
+    "&search_uuid=temporary&requested_seats=2";
+
+  assert.equal(context.strictPublic(raw, adminId), "");
+  assert.equal(
+    context.canonicalBound(raw, adminId),
+    "https://www.blablacar.fr/trip?source=CARPOOLING&id=" + publicToken + "&requested_seats=2",
+  );
+  assert.equal(context.canonicalBound("https://blablacar.fr.evil.test/trip?id=" + publicToken, adminId), "");
+  assert.equal(context.canonicalBound("https://www.blablacar.fr/search?id=" + publicToken, adminId), "");
+});
+
 test("canonical public stop normalization preserves explicit null optional timestamps", () => {
   const stop = source.slice(
     source.indexOf("function canonicalPublicStop0411"),
@@ -87,7 +120,7 @@ test("server canonical normalizer hashes explicit null stop timestamps byte for 
     cleanText(value, max = 240) {
       return String(value || "").trim().slice(0, max);
     },
-    normalizeBlaBlaPublicUrl(raw) {
+    normalizeCanonicalBoundBlaBlaPublicUrl0423(raw) {
       return String(raw || "");
     },
     sha256Hex(value) {
@@ -245,12 +278,12 @@ test("unsafe non-endpoint legacy shape still fails closed", () => {
 });
 
 test("public profile scope remains intact and independent from projection repair", () => {
-  const agenda = source.slice(
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
     source.indexOf("async function getPublicDriverAgenda"),
-    source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicTripProfileUuids0417/);
-  assert.match(agenda, /publicProfileScope0417\.has\(profileUuid\)/);
+  assert.match(visibility, /publicTripProfileUuids0417/);
+  assert.match(visibility, /publicProfileScope0417\.has\(profileUuid\)/);
 });
 
 
@@ -274,11 +307,18 @@ test("public agenda renders committed canonical projection without falsely grant
   assert.match(attested, /publicAttestationState0417[^\n]+VERIFIED/);
   assert.match(attested, /publicAttestedHash0417/);
 
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(visibility, /publicProjectionCommittedCurrent0434\(token, data\)/);
+  assert.doesNotMatch(visibility, /publicProjectionAttestedCurrent0429\(token, data\)/);
+
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
     source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicProjectionCommittedCurrent0434\(doc\.id, doc\.data\(\)\)/);
+  assert.match(agenda, /publicAgendaTripVisibility0466\(driver, doc\.id, doc\.data\(\)\)\.visible/);
   assert.doesNotMatch(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
 });
 
@@ -292,4 +332,31 @@ test("public adoption never uses route or time similarity as canonical identity"
   assert.match(create, /sameCanonicalTrip/);
   assert.doesNotMatch(create, /projectionPhysicalIdentityCompatible0421/);
   assert.doesNotMatch(source, /function projectionPhysicalIdentityCompatible0421/);
+});
+
+
+test("readback and public agenda share one visibility predicate 0466", () => {
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(visibility, /PUBLIC_STATUSES\.has/);
+  assert.match(visibility, /departureAtMillis/);
+  assert.match(visibility, /publicProjectionCommittedCurrent0434/);
+  assert.match(visibility, /publicTripProfileUuids0417/);
+  assert.match(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
+
+  const readback = source.slice(
+    source.indexOf("async function getDriverPublicTripReadback0411"),
+    source.indexOf("function clientIp"),
+  );
+  assert.match(readback, /publicAgendaTripVisibility0466/);
+  assert.match(readback, /agendaVisible:\s*agendaVisibility0466\.visible/);
+  assert.match(readback, /agendaVisibilityReason:\s*agendaVisibility0466\.reason/);
+
+  const agenda = source.slice(
+    source.indexOf("async function getPublicDriverAgenda"),
+    source.indexOf("async function createDriverTrip"),
+  );
+  assert.match(agenda, /filter\(\(doc\) => publicAgendaTripVisibility0466\(driver, doc\.id, doc\.data\(\)\)\.visible\)/);
 });

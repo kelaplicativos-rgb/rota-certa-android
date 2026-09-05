@@ -75,13 +75,16 @@ object UnifiedDebugEventStore {
         details: String = "",
         nowMillis: Long = System.currentTimeMillis(),
     ) {
-        recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)
-        if (!runCatching { DiagnosticRuntimeGate.isEnabled(nowMillis) }.getOrDefault(false)) return
+        // Diagnostics are observational only. A sanitizer/recorder failure must
+        // never escape into the business path being observed.
         runCatching {
+            val safeDetails = sanitizeForRecord(details)
+            recordFlight(stage, packageName, safeDetails, nowMillis)
+            if (!runCatching { DiagnosticRuntimeGate.isEnabled(nowMillis) }.getOrDefault(false)) return@runCatching
             recordInMemory(
                 stage = stage,
                 packageName = packageName,
-                details = details,
+                details = safeDetails,
                 nowMillis = nowMillis,
                 monotonicNs = SystemClock.elapsedRealtimeNanos(),
             )
@@ -100,12 +103,16 @@ object UnifiedDebugEventStore {
         nowMillis: Long = System.currentTimeMillis(),
         monotonicNs: Long = SystemClock.elapsedRealtimeNanos(),
     ) {
-        recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)
+        // Always-on evidence must also be fail-open. If the export sanitizer is
+        // the failing component, preserve a non-sensitive fallback marker and
+        // keep the publication pipeline alive.
         runCatching {
+            val safeDetails = sanitizeForRecord(details)
+            recordFlight(stage, packageName, safeDetails, nowMillis)
             recordInMemory(
                 stage = stage,
                 packageName = packageName,
-                details = details,
+                details = safeDetails,
                 nowMillis = nowMillis,
                 monotonicNs = monotonicNs,
             )
@@ -156,6 +163,12 @@ object UnifiedDebugEventStore {
     /** Export-only sanitizer shared by report builders and regression tests. */
     fun sanitizeForExport(value: String): String = maskSensitive(sanitize(value))
 
+    private fun sanitizeForRecord(value: String): String =
+        runCatching { sanitizeForExport(value) }
+            .getOrElse { error ->
+                "[sanitization failed chars=${value.length} error=${error.javaClass.simpleName.ifBlank { "Throwable" }}]"
+            }
+
     private fun recordFlight(stage: String, packageName: String?, details: String, nowMillis: Long) {
         runCatching {
             FarolFlightRecorder0163.record(
@@ -180,7 +193,9 @@ object UnifiedDebugEventStore {
             monotonicNs = monotonicNs,
             stage = sanitize(stage).ifBlank { "EVENT" }.take(140),
             packageName = sanitize(packageName.orEmpty()).ifBlank { "nao informado" }.take(140),
-            details = sanitizeForExport(details).take(MAX_DETAILS),
+            // [details] is already sanitized by the fail-open entrypoints.
+            // Do not invoke the regex sanitizer a second time here.
+            details = details.take(MAX_DETAILS),
             threadName = sanitize(Thread.currentThread().name).ifBlank { "unknown" }.take(100),
         )
         synchronized(lock) {

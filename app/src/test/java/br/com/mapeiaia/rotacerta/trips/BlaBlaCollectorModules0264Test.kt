@@ -85,6 +85,72 @@ class BlaBlaCollectorModules0264Test {
     }
 
     @Test
+    fun exactSyncRehydratesCanonicalContextBeforeNormalizationAndPublicSearch() {
+        val profileUuid = "7371f028-9c55-4903-8444-308015823efd"
+        val tripId = "trip-exact"
+        val targetHref = "https://www.blablacar.com.br/rides?id=$tripId"
+        val canonicalObservation = BlaBlaCollectorTrip(
+            profile_uuid = profileUuid,
+            date = "2026-09-04",
+            departure_time = "11:30",
+            arrival_time = "14:30",
+            actual_departure = "São Paulo",
+            actual_arrival = "São Tomé das Letras",
+            price = "75",
+            trip_href = targetHref,
+            trip_id = tripId,
+        )
+        val canonicalTrip = Trip(
+            title = "Canonical exact trip",
+            departureAtMillis = 0L,
+            stops = emptyList(),
+            blablaProfileUuid = profileUuid,
+            blablaTripId = tripId,
+            blablaManageUrl = targetHref,
+            externalSnapshot = canonicalObservation,
+            canonicalRevision = 8L,
+        )
+
+        val hydration = rehydrateExactCandidate0451(
+            targetHref = targetHref,
+            profileUuid = profileUuid,
+            tripId = tripId,
+            canonicalTrips = listOf(canonicalTrip),
+            dynamicTrips = emptyList(),
+            collectorTrips = emptyList(),
+        )
+
+        val candidate = hydration.candidate
+        assertEquals(listOf("trip_store"), hydration.sourceChain)
+        assertEquals(targetHref, candidate.href)
+        assertEquals("2026-09-04", candidate.dateText)
+        assertEquals("11:30", candidate.departureTime)
+        assertEquals("São Paulo", candidate.origin)
+        assertEquals("São Tomé das Letras", candidate.destination)
+        assertTrue(BlaBlaPublicPlaceDirectory.supported(candidate.origin))
+        assertTrue(BlaBlaPublicPlaceDirectory.supported(candidate.destination))
+
+        val normalized = BlaBlaDomNormalizer.diagnoseTrip(
+            account = BlaBlaAccountDefinition(
+                slot = "test",
+                label = "Test account",
+                uuid = profileUuid,
+                dataDirectorySuffix = "test",
+            ),
+            candidate = candidate,
+            detail = BlaBlaDomTripDetail(url = targetHref),
+            today = LocalDate.of(2026, 9, 4),
+            authenticatedProfileSessionVerified = true,
+        )
+
+        assertEquals(null, normalized.rejectionReason)
+        assertEquals("2026-09-04", normalized.trip?.date)
+        assertEquals("11:30", normalized.trip?.departure_time)
+        assertEquals("São Paulo", normalized.trip?.actual_departure)
+        assertEquals("São Tomé das Letras", normalized.trip?.actual_arrival)
+    }
+
+    @Test
     fun completeRosterStillPreservesConfirmedPhoneForMatchingPassenger() {
         val currentPassenger = passenger.copy(phone = null)
         val merged = BlaBlaCollectorPassengerModule.mergeMonotonic(
@@ -202,6 +268,89 @@ class BlaBlaCollectorModules0264Test {
         assertEquals(passenger.phone, afterMhtml.passengers.single().phone)
         assertEquals(passenger.booking_href, afterMhtml.passengers.single().booking_href)
         assertEquals(1, afterMhtml.booked_seats)
+    }
+
+    @Test
+    fun partialFieldEnrichmentPreservesUnobservedConfirmedMetadata() {
+        val previous = trip().copy(
+            profile_name = "Driver",
+            arrival_time = "13:00",
+            search_from = "Origin",
+            search_to = "Destination",
+            actual_departure = "Origin terminal",
+            actual_arrival = "Destination terminal",
+            price = "R$ 70,00",
+            availability = "available",
+            uuid_validation = "verified_from_authenticated_profile_session",
+            itinerary_stops = listOf("Origin terminal", "Middle", "Destination terminal"),
+            itinerary_authoritative = true,
+            published_seats = 3,
+        )
+        val partial = previous.copy(
+            profile_name = "",
+            arrival_time = null,
+            search_from = null,
+            search_to = null,
+            actual_departure = null,
+            actual_arrival = null,
+            price = "R$ 75,00",
+            availability = "unknown",
+            trip_href = null,
+            uuid_validation = "unknown",
+            passengers = emptyList(),
+            itinerary_stops = emptyList(),
+            itinerary_authoritative = false,
+            booked_seats = 0,
+            published_seats = null,
+            passenger_roster_complete = false,
+        )
+
+        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(previous),
+            current = listOf(partial),
+            authoritativeComplete = false,
+        ).trips.single()
+
+        assertEquals("R$ 75,00", merged.price)
+        assertEquals(previous.actual_departure, merged.actual_departure)
+        assertEquals(previous.actual_arrival, merged.actual_arrival)
+        assertEquals(previous.search_from, merged.search_from)
+        assertEquals(previous.search_to, merged.search_to)
+        assertEquals(previous.arrival_time, merged.arrival_time)
+        assertEquals(previous.trip_href, merged.trip_href)
+        assertEquals(previous.availability, merged.availability)
+        assertEquals(previous.uuid_validation, merged.uuid_validation)
+        assertEquals(previous.itinerary_stops, merged.itinerary_stops)
+        assertTrue(merged.itinerary_authoritative)
+        assertEquals(previous.published_seats, merged.published_seats)
+        assertEquals(previous.passengers, merged.passengers)
+        assertEquals(previous.booked_seats, merged.booked_seats)
+        assertTrue(merged.passenger_roster_complete)
+    }
+
+    @Test
+    fun partialNewOccupancyAdvancesWithoutPretendingRosterIsComplete() {
+        val previous = trip()
+        val second = passenger.copy(
+            name = "Passenger B",
+            phone = "5511888888888",
+            booking_href = "https://www.blablacar.com.br/rides/offer/passenger/reservation-b",
+        )
+        val partial = previous.copy(
+            passengers = listOf(passenger, second),
+            booked_seats = 2,
+            passenger_roster_complete = false,
+        )
+
+        val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+            previous = listOf(previous),
+            current = listOf(partial),
+            authoritativeComplete = false,
+        ).trips.single()
+
+        assertEquals(2, merged.passengers.size)
+        assertEquals(2, merged.booked_seats)
+        assertFalse(merged.passenger_roster_complete)
     }
 
     @Test

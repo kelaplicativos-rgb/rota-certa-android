@@ -1,19 +1,19 @@
-name: Rota Certa 0.1.449 BlaBlaCar orchestrator UI
+name: Rota Certa 0.1.467 terminal projection repair evidence
 
 on:
   push:
     branches:
-      - agent/blablacar-orchestrator-ui-0.1.449
+      - agent/blablacar-public-url-attestation-0.1.450
   pull_request:
     branches:
-      - agent/agenda-canonical-b2b-mirror-0.1.429
+      - agent/blablacar-orchestrator-ui-0.1.449
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-orchestrator-ui-0449-${{ github.ref }}
+  group: blablacar-public-url-attestation-0467-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5742' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.449"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5760' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.467"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -96,6 +96,23 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate canonical public URL backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/agenda-admin-0417.js
+          node --test trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js
+          node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
+          node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
+          node --test trip-platform/functions/test/public-blablacar-link-0409.test.js
+          node --test trip-platform/functions/test/driver-trip-sync-state-0402.test.js
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -116,7 +133,23 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripShare0363Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test.evidenceSanitizationComparesEveryUtf8ByteWithoutExportingRawSecrets' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test.structuredPublicationEvidenceCoversSerializationSanitizationAndCausalFailure' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test.canonicalReplayUsesAuthoritativeTripEvenWhenRawCollectorIsNoLongerDiscoverable' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test.durableReplayCannotSilentlyAcceptPreTransportAbort' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test.durableReadbackIdentityResolutionDoesNotReuseFutureDiscoveryFilter' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test.sourceAccessProbeIsBoundedSoExactTripCannotHangAfterPageFinished' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTemporaryRestriction0426Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -137,28 +170,125 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5742'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.449'" /tmp/aapt.txt
+          grep -Fq "versionCode='5760'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.467'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
+
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Deploy exact SHA Agenda service
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+          fi
+
+      - name: Live Agenda health smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
+          grep -Fq '"ok":true' /tmp/health.json
+          grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_URL_ENRICHMENT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
+          grep -Fq 'PUBLIC_AGENDA_VISIBILITY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
+          grep -Fq 'publicAgendaTripVisibility0466' trip-platform/functions/index.js
+          grep -Fq 'agendaVisible: agendaVisibility0466.visible' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_IDENTITY_RESOLUTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt
+          grep -Fq 'samePublisher=true directHttp=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'TRIP_MUTATION_OUTBOX_READBACK_PENDING_0453' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'TRIP_MUTATION_OUTBOX_ACCOUNT_RECOVERED_0454' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'externalAccountId = effectiveExternalAccountId0454' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'OUTBOX_IDENTITY_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'INCREMENTAL_IDENTITY_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'privateMirrorEvidence0455' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CANONICAL_REBASE_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'TRIP_MUTATION_OUTBOX_CANONICAL_REBASED_0456' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'CANONICAL_OPERATIONAL_GUARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CANONICAL_PROJECTION_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'DIAGNOSTIC_CONTEXT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'DIAGNOSTIC_KEY_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'REMOTE_API_CONTEXT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CANONICAL_PROJECTION_RESULT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'includePastForVerification0429 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'includePastForVerification' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_IDENTITY_LOOKUP_FAILED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'successNextStage0421 = "PUBLIC_READBACK_RESPONSE"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'authoritativeSharedPublicTripUrl' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'acceptCandidate(piece, true)' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'publicTripFromAuthoritativeOrchestratorNavigation(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'commandPendingLeaseCurrent0463' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          grep -Fq '_version_code' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          grep -Fq 'queuedVersionCode' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'currentVersionCode' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'PUBLIC_TRIP_SHARE_RETRY_MS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PRIVATE_MIRROR_INPUT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PRE_OPERATIONAL_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'DIAGNOSTIC_CONTEXT_FALLBACK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'CANONICAL_OPERATIONAL_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PRIVATE_MIRROR_CANONICAL_SERIALIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt
+          grep -Fq 'REQUEST_SERIALIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'REQUEST_SANITIZATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'firstSanitizedDiffOffset' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'attemptState' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'stalePersistedFailureIgnored' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'private fun sanitizeForRecord' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
+          ! grep -Fq 'recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
+          grep -Fq 'UNCAUGHT_PUBLICATION_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'PUBLIC_TRIP_LINK_OPTIONAL_0465' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'PUBLISHED_URL_PENDING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          grep -Fq 'admin_public_url_saved' trip-platform/functions/agenda-admin-0417.js
+          grep -Fq 'adminStateGreen0465' trip-platform/public/admin-0417.js
+          grep -Fq 'manualPublicUrlAssignments0465' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          echo "PUBLIC_AGENDA_VISIBLE_GREEN_0467_LIVE=PASS"
+          echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0449
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0449/rota-certa-0.1.449-blablacar-orchestrator-ui.apk
-          cp /tmp/source-head.txt /tmp/0449/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0449/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0449/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0449/apk.sha256
-          cp /tmp/aapt.txt /tmp/0449/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0449/apksigner.txt
+          mkdir -p /tmp/0467
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0467/rota-certa-0.1.467-terminal-projection-repair.apk
+          cp /tmp/source-head.txt /tmp/0467/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0467/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0467/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0467/apk.sha256
+          cp /tmp/aapt.txt /tmp/0467/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0467/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.449-blablacar-orchestrator-ui-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.467-terminal-projection-repair-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0449
+          path: /tmp/0467

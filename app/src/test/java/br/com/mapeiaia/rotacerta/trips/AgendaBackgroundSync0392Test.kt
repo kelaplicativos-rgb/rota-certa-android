@@ -31,42 +31,21 @@ class AgendaBackgroundSync0392Test {
     }
 
     @Test
-    fun targetedVerifyKeepsLogicalAndTransportRevisionsIndependent() {
-        assertEquals(
-            30L,
-            targetedReverifyTransportRevision0439(
-                canonicalRevision = 8L,
-                localPublicationRevision = 8L,
-                remotePublicationRevision = 30L,
-            ),
-        )
-        assertEquals(
-            39L,
-            targetedReverifyTransportRevision0439(
-                canonicalRevision = 14L,
-                localPublicationRevision = 14L,
-                remotePublicationRevision = 39L,
-            ),
-        )
-        assertEquals(
-            8L,
-            targetedReverifyTransportRevision0439(
-                canonicalRevision = 8L,
-                localPublicationRevision = 0L,
-                remotePublicationRevision = 0L,
-            ),
-        )
-        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 6L))
-        assertFalse(targetedReverifyRemoteLogicalAhead0439(8L, 8L))
-        assertTrue(targetedReverifyRemoteLogicalAhead0439(8L, 9L))
-
+    fun targetedVerifyDelegatesTransportRevisionAndRetryToCanonicalOutbox() {
         val source = backgroundSource()
-        assertTrue(source.contains("val remoteBefore = api.listDriverTripSyncStates0402().trips"))
-        assertTrue(source.contains("remoteStateHint0402 = remoteBefore"))
-        assertTrue(source.contains("entityRevision = transportRevision0439"))
-        assertTrue(source.contains("publicationRevision = transportRevision0439"))
-        assertTrue(source.contains("REMOTE_LOGICAL_REVISION_AHEAD"))
-        assertFalse(source.contains("entityRevision = canonical.canonicalRevision"))
+        val start = source.indexOf("internal suspend fun reverifyCanonicalMirror0435")
+        val end = source.indexOf("fun enqueueRecoveryIfNeeded", start)
+        assertTrue(start >= 0 && end > start)
+        val exact = source.substring(start, end)
+
+        assertTrue(exact.contains("TripMutationCoordinator0387(appContext, store)"))
+        assertTrue(exact.contains("recordExternalCollectionMutation("))
+        assertTrue(exact.contains("drainPending(canonicalTripIds = setOf(canonicalTripId))"))
+        assertTrue(exact.contains("samePublisher=true directHttp=false"))
+        assertFalse(exact.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental("))
+        assertFalse(exact.contains("TripRemoteApi(settings)"))
+        assertFalse(exact.contains("targetedReverifyTransportRevision0439("))
+        assertFalse(exact.contains("recordPublicationCommitted0411("))
     }
 
     @Test
@@ -94,12 +73,19 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("INPUT_REQUESTED_AT_0435 to requestedAtMillis"))
         assertTrue(source.contains("STALE_DURABLE_WORK_0435"))
         assertTrue(source.contains("reverifyCanonicalMirror0435"))
-        assertTrue(source.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental"))
-        assertTrue(source.contains("PublicMirrorAttestationCoordinator0411.attest"))
+        assertTrue(source.contains("recordExternalCollectionMutation("))
+        assertTrue(source.contains("drainPending(canonicalTripIds = setOf(canonicalTripId))"))
+        assertTrue(source.contains("publicMirrorProjectionCurrent0411()"))
         assertTrue(source.contains("canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()"))
-        assertTrue(source.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
-        assertTrue(source.contains("origin = \"card_verify_missing_public_url_0442\""))
-        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
+        assertFalse(source.substring(source.indexOf("internal suspend fun reverifyCanonicalMirror0435"), source.indexOf("fun enqueueRecoveryIfNeeded")).contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407"))
+        assertTrue(source.contains("PUBLIC_TRIP_LINK_OPTIONAL_0465"))
+        val reverify = source.substring(
+            source.indexOf("internal suspend fun reverifyCanonicalMirror0435"),
+            source.indexOf("fun enqueueRecoveryIfNeeded"),
+        )
+        assertFalse(reverify.contains("BLABLACAR_PUBLIC_URL_CANONICALIZED_0442"))
+        assertTrue(reverify.contains("publicationBlocked=false"))
+        assertTrue(reverify.contains("PUBLISHED_URL_PENDING"))
         assertFalse(source.contains("reason == \"trip_reverify\" ||\n            reason.startsWith(\"admin_update_now:\")"))
         assertTrue(source.contains("val targetedRetryable = false"))
     }
@@ -193,7 +179,7 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("tenantMutexes.computeIfAbsent"))
         assertTrue(source.contains("BackoffPolicy.EXPONENTIAL"))
         assertTrue(source.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
-        assertTrue(source.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(source.contains("TripMutationCoordinator0387(appContext, store).drainPending("))
         assertTrue(source.contains("PublicAgendaAutoSync0300.sync"))
         assertTrue(source.contains("BookingRealtimeEvents0356.notifyChanged()"))
         assertTrue(source.contains("TripWidgetProvider.updateAll(appContext)"))
@@ -252,7 +238,7 @@ class AgendaBackgroundSync0392Test {
         val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
 
         assertTrue(background.contains("PublicAgendaAutoSync0300.sync("))
-        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending()"))
+        assertTrue(background.contains("TripMutationCoordinator0387(appContext, store).drainPending("))
         assertFalse(background.contains("TripsActivity"))
         assertFalse(activity.contains("PublicAgendaAutoSync0300.sync("))
     }
@@ -282,6 +268,19 @@ class AgendaBackgroundSync0392Test {
         assertFalse(timeline.contains("manual_card_shortcut"))
         assertFalse(background.contains("BlaBlaReliableSeatSyncActivity"))
         assertFalse(background.contains("BlaBlaManualSeatSyncActivity"))
+    }
+
+
+    @Test
+    fun manualPublicUrlUsesExistingTargetedPushCanonicalStoreAndOutbox0465() {
+        val source = backgroundSource()
+        assertTrue(source.contains("booking_push:admin_public_url_saved"))
+        assertTrue(source.contains("manualPublicUrlAssignments0465"))
+        assertTrue(source.contains("ADMIN_PUBLIC_URL_CANONICAL_APPLIED_0465"))
+        assertTrue(source.contains("store.saveTrip("))
+        assertTrue(source.contains("recordExternalCollectionMutation("))
+        assertTrue(source.contains("drainPending(canonicalTripIds = setOf(canonicalTripId))"))
+        assertTrue(source.contains("PUBLISHED_URL_PENDING"))
     }
 
 }

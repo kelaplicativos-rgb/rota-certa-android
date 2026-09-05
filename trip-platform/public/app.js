@@ -1219,15 +1219,18 @@ function isOfficialBlaBlaHost(hostname) {
 
 function safeBlaBlaPublicUrl(item) {
   const raw = String(item?.blablaPublicUrl || "").trim();
-  const expectedTripId = String(item?.blablaTripId || "").trim();
-  if (!raw || !expectedTripId) return "";
+  const administrativeTripId = String(item?.blablaTripId || "").trim();
+  if (!raw || !administrativeTripId) return "";
   try {
     const url = new URL(raw);
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
     if (url.protocol !== "https:" || !isOfficialBlaBlaHost(url.hostname)) return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
-    const actualTripId = String(url.searchParams.get("id") || url.pathname.match(/\/trip\/([^/?#]+)/i)?.[1] || "").trim();
-    if (!actualTripId || actualTripId !== expectedTripId) return "";
+    const publicTripToken = String(url.searchParams.get("id") || url.pathname.match(/\/trip\/([^/?#]+)/i)?.[1] || "").trim();
+    if (!publicTripToken) return "";
+    // The server only exposes this field from the committed canonical projection.
+    // BlaBlaCar's public /trip token may differ from the administrative trip ID.
     url.searchParams.delete("search_uuid");
     url.hash = "";
     return url.href;

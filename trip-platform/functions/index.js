@@ -698,6 +698,19 @@ function normalizeBlaBlaPublicUrl(raw, expectedTripId = "") {
   return normalizeBlaBlaUrl(raw, expectedTripId, true);
 }
 
+/**
+ * Canonical projection input is already bound upstream by the BlaBlaCar
+ * orchestrator to the strong administrative trip identity. BlaBlaCar may use a
+ * distinct opaque token in the public /trip URL, so this trusted canonical path
+ * validates the public permalink structurally without re-imposing ID equality.
+ * General/unbound write paths continue to use normalizeBlaBlaPublicUrl().
+ */
+function normalizeCanonicalBoundBlaBlaPublicUrl0423(raw, expectedAdministrativeTripId = "") {
+  const expected = cleanText(expectedAdministrativeTripId, 160);
+  if (!expected) return "";
+  return normalizeBlaBlaPublicUrl(raw, expected) || normalizeBlaBlaUrl(raw, "", true);
+}
+
 function normalizeStops(rawStops) {
   if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > 24) {
     throw new Error("A viagem precisa ter entre 2 e 24 paradas.");
@@ -1128,7 +1141,7 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     capacityReliable: payload.capacityReliable === true,
     itineraryAuthoritative: payload.itineraryAuthoritative === true,
     publicUrl: cleanText(payload.publicUrl, 1200),
-    blablaPublicUrl: normalizeBlaBlaPublicUrl(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160)),
+    blablaPublicUrl: normalizeCanonicalBoundBlaBlaPublicUrl0423(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160)),
     publicationRevision: Math.max(0, Math.floor(Number(payload.publicationRevision || 0))),
     canonicalStateHash: cleanText(payload.canonicalStateHash, 160),
   };
@@ -1397,11 +1410,21 @@ async function getDriverPublicTripReadback0411(req, res, token) {
   const committedAtMillis = committedAt && typeof committedAt.toMillis === "function"
     ? Math.max(0, Number(committedAt.toMillis() || 0))
     : Math.max(0, Number(data.updatedAtMillis || 0));
+  const publicDriverSnap = driver.username
+    ? await db.collection("tripDrivers").doc(driver.username).get()
+    : null;
+  const agendaVisibility0466 = publicAgendaTripVisibility0466(
+    publicDriverSnap && publicDriverSnap.exists ? publicDriverSnap.data() : null,
+    token,
+    data,
+  );
   return json(res, 200, {
     remoteTripId: token,
     payload,
     publicProjectionHash: canonicalPublicTripHash0411(payload),
     persistedAtMillis: committedAtMillis,
+    agendaVisible: agendaVisibility0466.visible,
+    agendaVisibilityReason: agendaVisibility0466.reason,
   });
 }
 
@@ -3079,6 +3102,36 @@ function publicProjectionCommittedCurrent0434(token, data) {
   return Boolean(data.publicCommittedAt0422);
 }
 
+function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
+  if (!driverData || typeof driverData !== "object") {
+    return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
+  }
+  if (!data || data.publicationTombstone === true) {
+    return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
+  }
+  if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
+    return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
+  }
+  if (Number(data.departureAtMillis || 0) <= Number(nowMillis || 0)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_DEPARTURE_NOT_FUTURE" };
+  }
+  if (!publicProjectionCommittedCurrent0434(token, data)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_NOT_COMMITTED" };
+  }
+  const publicProfileScope0417 = new Set(
+    (Array.isArray(driverData.publicTripProfileUuids0417) ? driverData.publicTripProfileUuids0417 : [])
+      .map((value) => cleanText(value, 160).toLowerCase())
+      .filter(Boolean),
+  );
+  if (publicProfileScope0417.size) {
+    const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
+    if (profileUuid && !publicProfileScope0417.has(profileUuid)) {
+      return { visible: false, reason: "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED" };
+    }
+  }
+  return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -3110,22 +3163,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     if (!view) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
-  const publicProfileScope0417 = new Set(
-    (Array.isArray(driver.publicTripProfileUuids0417) ? driver.publicTripProfileUuids0417 : [])
-      .map((value) => cleanText(value, 160).toLowerCase())
-      .filter(Boolean),
-  );
   const sourceDocs = snapshot.docs
-    .filter((doc) =>
-      PUBLIC_STATUSES.has(doc.data().status) &&
-      Number(doc.data().departureAtMillis) > Date.now() &&
-      publicProjectionCommittedCurrent0434(doc.id, doc.data())
-    )
-    .filter((doc) => {
-      if (!publicProfileScope0417.size) return true;
-      const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
-      return !profileUuid || publicProfileScope0417.has(profileUuid);
-    })
+    .filter((doc) => publicAgendaTripVisibility0466(driver, doc.id, doc.data()).visible)
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
   const rawTrips = tester
@@ -7068,6 +7107,9 @@ async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
   const now = Date.now();
+  const includePastForVerification = String(
+    req.query && req.query.includePastForVerification || "",
+  ).trim().toLowerCase() === "1";
   try {
     const snapshot = await db.collection("trips")
       .where("driverUsername", "==", driver.username)
@@ -7109,7 +7151,10 @@ async function listDriverTripSyncState0402(req, res) {
           occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
         };
       })
-      .filter((trip) => PUBLIC_STATUSES.has(trip.status) && trip.departureAtMillis > now)
+      .filter((trip) =>
+        PUBLIC_STATUSES.has(trip.status) &&
+        (includePastForVerification || trip.departureAtMillis > now)
+      )
       .sort((a, b) => a.departureAtMillis - b.departureAtMillis);
     return json(res, 200, { trips });
   } catch (error) {
@@ -7420,6 +7465,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-public-url" && req.method === "PUT") {
+      return await agendaAdmin0417.updateAdminTripBlaBlaPublicUrl0465(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
       return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);

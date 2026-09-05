@@ -65,6 +65,8 @@ internal data class DriverPublicTripReadback0411(
     val payload: CanonicalPublicTripPayload0411,
     val publicProjectionHash: String,
     val persistedAtMillis: Long = 0L,
+    val agendaVisible: Boolean = false,
+    val agendaVisibilityReason: String = "",
 )
 
 internal data class PublicMirrorAttestationDecision0411(
@@ -137,7 +139,7 @@ internal fun canonicalPublicProjectionPayload0411(
         capacityReliable = reliable,
         itineraryAuthoritative = trip.itineraryAuthoritative,
         publicUrl = trip.publicUrl.orEmpty().trim(),
-        blablaPublicUrl = BlaBlaCollectorUrlModule.publicTrip(
+        blablaPublicUrl = canonicalBoundBlaBlaPublicUrl0423(
             trip.blablaPublicUrl,
             trip.blablaTripId,
         ).orEmpty(),
@@ -347,6 +349,8 @@ internal fun evaluatePublicMirrorReadback0411(
     val persistedCommitValid = readback.persistedAtMillis > 0L
     if (!persistedCommitValid) mismatch += "persistedAtMillis"
     val revisionValid = logicalRevisionValid && transportRevisionValid && persistedCommitValid
+    val agendaVisible = readback.agendaVisible
+    if (!agendaVisible) mismatch += "agendaVisibility"
 
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
@@ -370,8 +374,12 @@ internal fun evaluatePublicMirrorReadback0411(
     if (actual.publicUrl.isBlank() || actual.publicUrl != expected.publicUrl) mismatch += "publicUrl"
 
     val expectedTripId = expected.blablaTripId.takeIf(String::isNotBlank)
-    val expectedLink = BlaBlaCollectorUrlModule.publicTrip(expected.blablaPublicUrl, expectedTripId).orEmpty()
-    val actualLink = BlaBlaCollectorUrlModule.publicTrip(actual.blablaPublicUrl, expectedTripId).orEmpty()
+    // By this stage the canonical URL was already bound upstream to the strong
+    // administrative trip identity. The public /trip token may legitimately
+    // differ from that administrative ID, so downstream validation must preserve
+    // the proven canonical binding and then require readback byte-equivalence.
+    val expectedLink = canonicalBoundBlaBlaPublicUrl0423(expected.blablaPublicUrl, expectedTripId).orEmpty()
+    val actualLink = canonicalBoundBlaBlaPublicUrl0423(actual.blablaPublicUrl, expectedTripId).orEmpty()
     val linkRequired = expectedTripId != null
     val linkValid = if (linkRequired) expectedLink.isNotBlank() && actualLink == expectedLink else true
     if (!linkValid) mismatch += "blablaPublicUrl"
@@ -383,15 +391,27 @@ internal fun evaluatePublicMirrorReadback0411(
     if (readbackHash != expectedHash) mismatch += "publicHash"
 
     val uniqueMismatch = mismatch.distinct()
-    val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
+    val validated = identityValid && revisionValid && linkValid && agendaVisible && uniqueMismatch.isEmpty()
+    val optionalLinkOnlyUnproven =
+        identityValid &&
+            revisionValid &&
+            agendaVisible &&
+            linkRequired &&
+            expectedLink.isBlank() &&
+            uniqueMismatch.all { it == "blablaPublicUrl" }
     return PublicMirrorAttestationDecision0411(
-        state = if (validated) PublicMirrorAttestationState0411.VALIDATED else PublicMirrorAttestationState0411.DIVERGENT,
+        state = when {
+            validated -> PublicMirrorAttestationState0411.VALIDATED
+            optionalLinkOnlyUnproven -> PublicMirrorAttestationState0411.UNPROVEN
+            else -> PublicMirrorAttestationState0411.DIVERGENT
+        },
         expectedHash = expectedHash,
         readbackHash = readbackHash,
         mismatchFields = uniqueMismatch,
         reason = when {
-            validated -> "PUBLIC_READBACK_MATCH"
-            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_UNRESOLVED"
+            validated -> "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466"
+            !agendaVisible -> readback.agendaVisibilityReason.trim().ifBlank { "PUBLIC_AGENDA_NOT_VISIBLE_0466" }
+            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466"
             !transportRevisionValid -> "STALE_TRANSPORT_REVISION"
             !logicalRevisionValid -> "STALE_LOGICAL_REVISION"
             !persistedCommitValid -> "PUBLIC_COMMIT_TIMESTAMP_MISSING"
@@ -405,6 +425,7 @@ internal fun evaluatePublicMirrorReadback0411(
 
 internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
+        publicMirrorAttestationReason0411 == "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466" &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
         publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
         publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
@@ -414,6 +435,31 @@ internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
         publicMirrorPublicIdentity0421.isNotBlank() &&
         publicMirrorExpectedHash0411.isNotBlank() &&
         publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
+
+/**
+ * The public projection can be fully read back while the optional BlaBlaCar /trip
+ * enrichment is still unavailable. This never grants blue attestation.
+ */
+internal fun Trip.publicMirrorProjectionCurrent0411(): Boolean =
+    publicMirrorAttestationCurrent0411() ||
+        (
+            publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.UNPROVEN &&
+                publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466" &&
+                publicMirrorMismatchFields0411.isNotEmpty() &&
+                publicMirrorMismatchFields0411.all { it == "blablaPublicUrl" } &&
+                publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
+                publicMirrorAttemptedPublicationRevision0421 == publicationRevision &&
+                publicMirrorReadbackPublicationRevision0421 == publicationRevision &&
+                publicMirrorLastReadbackAtMillis0421 > 0L &&
+                publicMirrorPublicIdentity0421.isNotBlank() &&
+                publicMirrorExpectedHash0411.isNotBlank() &&
+                publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
+        )
+
+internal fun Trip.publicMirrorPublishedWithoutBlaBlaUrl0465(): Boolean =
+    !publicMirrorAttestationCurrent0411() &&
+        publicMirrorProjectionCurrent0411() &&
+        canonicalBoundBlaBlaPublicUrl0423(blablaPublicUrl, blablaTripId).isNullOrBlank()
 
 internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorAttestationState0411 = if (deleted || publicationTombstone) {

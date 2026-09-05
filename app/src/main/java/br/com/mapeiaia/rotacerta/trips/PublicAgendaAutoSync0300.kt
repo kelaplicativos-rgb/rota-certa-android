@@ -89,6 +89,42 @@ internal fun canonicalMirrorBookings0441(
             .toList()
     }
 
+internal fun externalIncrementalPublicationIdentityAccepted0455(
+    resolvedInternalTripId: String,
+    expectedStrongId: String,
+    boundInternalTripId: String,
+    canonicalTripSnapshot: Trip?,
+    source: BlaBlaCollectorTrip,
+    accountIdentityConfirmed: Boolean,
+): Boolean {
+    val resolved = resolvedInternalTripId.trim()
+    if (resolved.isBlank()) return false
+    if (
+        strongExternalSnapshotIdentityMatches0387(
+            canonicalTripId = resolved,
+            snapshotTrip = canonicalTripSnapshot,
+            sourceTrip = source,
+        )
+    ) return true
+    if (!accountIdentityConfirmed) return false
+    return resolved == expectedStrongId || resolved == boundInternalTripId
+}
+
+internal fun externalIncrementalCanonicalIdentityMatches0452(
+    resolvedInternalTripId: String,
+    expectedStrongId: String,
+    boundInternalTripId: String,
+    canonicalTripSnapshot: Trip?,
+    source: BlaBlaCollectorTrip,
+): Boolean = externalIncrementalPublicationIdentityAccepted0455(
+    resolvedInternalTripId = resolvedInternalTripId,
+    expectedStrongId = expectedStrongId,
+    boundInternalTripId = boundInternalTripId,
+    canonicalTripSnapshot = canonicalTripSnapshot,
+    source = source,
+    accountIdentityConfirmed = true,
+)
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -748,13 +784,23 @@ internal object PublicAgendaAutoSync0300 {
         canonicalTripSnapshot: Trip? = null,
         remoteStateHint0402: DriverTripSyncState0402? = null,
     ): Boolean = withContext(Dispatchers.IO) {
-        if (source.identity_conflict) return@withContext false
+        if (source.identity_conflict) {
+            if (outboxEventId.isNotBlank()) {
+                error("EXTERNAL_SOURCE_IDENTITY_CONFLICT")
+            }
+            return@withContext false
+        }
         val profileUuid = source.profile_uuid.trim()
         val tripId = source.trip_id?.trim().orEmpty()
         val boundInternalTripId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
         val resolvedInternalTripId = canonicalTripId.takeIf(String::isNotBlank)
             ?: boundInternalTripId.takeIf(String::isNotBlank)
-            ?: if (entityRevision > 0L) {
+            ?: if (
+                entityRevision > 0L &&
+                externalAccountId.isNotBlank() &&
+                profileUuid.isNotBlank() &&
+                tripId.isNotBlank()
+            ) {
                 strongExternalCanonicalTripId0387(
                     TripPublicationOutbox0387(context).tenantId,
                     externalAccountId,
@@ -763,86 +809,372 @@ internal object PublicAgendaAutoSync0300 {
                 )
             } else ""
         if (entityRevision > 0L) {
-            val accounts = BlaBlaDynamicAccountRegistry(context).list().filter { account ->
-                account.id == externalAccountId && account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+            val accounts = if (externalAccountId.isBlank()) emptyList() else {
+                BlaBlaDynamicAccountRegistry(context).list().filter { account ->
+                    account.id == externalAccountId &&
+                        account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+                }
             }
-            val expectedStrongId = strongExternalCanonicalTripId0387(
-                TripPublicationOutbox0387(context).tenantId,
-                externalAccountId,
-                profileUuid,
-                tripId,
-            )
-            require(
-                profileUuid.isNotBlank() && tripId.isNotBlank() && externalAccountId.isNotBlank() && accounts.size == 1 &&
-                    resolvedInternalTripId.isNotBlank() &&
-                    (resolvedInternalTripId == expectedStrongId || resolvedInternalTripId == boundInternalTripId)
+            val accountIdentityConfirmed0455 = externalAccountId.isNotBlank() && accounts.size == 1
+            val expectedStrongId0455 = if (
+                accountIdentityConfirmed0455 &&
+                profileUuid.isNotBlank() &&
+                tripId.isNotBlank()
             ) {
-                "Sincronização externa determinística exige internalTripId + conta + profile UUID + tripId fortes."
+                strongExternalCanonicalTripId0387(
+                    TripPublicationOutbox0387(context).tenantId,
+                    externalAccountId,
+                    profileUuid,
+                    tripId,
+                )
+            } else ""
+            val canonicalSnapshotIdentityAccepted0455 = strongExternalSnapshotIdentityMatches0387(
+                canonicalTripId = resolvedInternalTripId,
+                snapshotTrip = canonicalTripSnapshot,
+                sourceTrip = source,
+            )
+            val canonicalIdentityAccepted0455 = externalIncrementalPublicationIdentityAccepted0455(
+                resolvedInternalTripId = resolvedInternalTripId,
+                expectedStrongId = expectedStrongId0455,
+                boundInternalTripId = boundInternalTripId,
+                canonicalTripSnapshot = canonicalTripSnapshot,
+                source = source,
+                accountIdentityConfirmed = accountIdentityConfirmed0455,
+            )
+            if (outboxEventId.isNotBlank()) {
+                UnifiedDebugEventStore.record(
+                    "PUBLIC_EVIDENCE_0421",
+                    context.packageName,
+                    buildString {
+                        append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                        append(" traceId=").append(outboxEventId)
+                        append(" correlationId=").append(outboxEventId)
+                        append(" stage=INCREMENTAL_IDENTITY_GUARD")
+                        append(" status=").append(if (canonicalIdentityAccepted0455) "OK" else "FAILED")
+                        append(" reasonCode=").append(if (canonicalIdentityAccepted0455) "CANONICAL_PUBLICATION_IDENTITY_ACCEPTED" else "CANONICAL_PUBLICATION_IDENTITY_REJECTED")
+                        append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                        append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                        append(" transportRevision=").append(entityRevision)
+                        append(" mutationId=").append(mutationId0421)
+                        append(" idempotencyKey=").append(idempotencyKey0421)
+                        append(" snapshotIdentity=").append(canonicalSnapshotIdentityAccepted0455)
+                        append(" accountIdentity=").append(accountIdentityConfirmed0455)
+                        append(" profileUuidPresent=").append(profileUuid.isNotBlank())
+                        append(" tripIdPresent=").append(tripId.isNotBlank())
+                        append(" previousStage=CANONICAL_REBASE_GUARD nextStage=CANONICAL_OPERATIONAL_GUARD")
+                    },
+                )
+            }
+            require(profileUuid.isNotBlank() && tripId.isNotBlank() && canonicalIdentityAccepted0455) {
+                "Sincronização externa determinística exige snapshot canônico forte ou conta + profile UUID + tripId fortes."
             }
         }
-        val settings = store.onlineSettings()
-        if (!settings.configured) return@withContext false
-        val canonical = canonicalTripSnapshot?.takeIf { trip ->
-            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !trip.deleted &&
-                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim() == tripId
-        } ?: store.trips().firstOrNull { trip ->
-            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !trip.deleted &&
-                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim() == tripId
+        fun recordPreOperationalEvidence0458(
+            stage: String,
+            status: String,
+            reasonCode: String,
+            previousStage: String,
+            nextStage: String,
+            startedNs: Long,
+            error: Throwable? = null,
+        ) {
+            if (outboxEventId.isBlank()) return
+            runCatching {
+                val causeResolution = error?.let(AgendaFailureEvidence::resolveCauseChain)
+                val root = causeResolution?.chain?.lastOrNull()
+                val sourceFrame = error?.stackTrace?.firstOrNull {
+                    it.className.startsWith("br.com.mapeiaia.rotacerta")
+                }
+                val exceptionMessage = error?.message.orEmpty().let { raw ->
+                    runCatching { UnifiedDebugEventStore.sanitizeForExport(raw) }
+                        .getOrDefault("<sanitization-failed>")
+                        .replace('"', '\'')
+                        .take(240)
+                }
+                val rootMessage = root?.message.orEmpty().let { raw ->
+                    runCatching { UnifiedDebugEventStore.sanitizeForExport(raw) }
+                        .getOrDefault("<sanitization-failed>")
+                        .replace('"', '\'')
+                        .take(240)
+                }
+                UnifiedDebugEventStore.recordAlways(
+                    "PUBLIC_EVIDENCE_0421",
+                    context.packageName,
+                    buildString {
+                        append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, canonicalTripSnapshot?.canonicalRevision ?: 0L))
+                        append(" traceId=").append(outboxEventId)
+                        append(" correlationId=").append(outboxEventId)
+                        append(" stage=").append(stage)
+                        append(" status=").append(status)
+                        append(" reasonCode=").append(reasonCode)
+                        append(" canonicalTripId=").append(seatSyncDiagnosticKey(resolvedInternalTripId))
+                        append(" logicalRevision=").append(canonicalTripSnapshot?.canonicalRevision ?: 0L)
+                        append(" transportRevision=").append(entityRevision)
+                        append(" mutationId=").append(mutationId0421)
+                        append(" idempotencyKey=").append(idempotencyKey0421)
+                        append(" durationMs=").append(((System.nanoTime() - startedNs).coerceAtLeast(0L)) / 1_000_000L)
+                        if (error != null) {
+                            append(" exceptionClass=").append(error.javaClass.name)
+                            append(" exceptionMessage=\"").append(exceptionMessage).append('\"')
+                            append(" rootCauseClass=").append(root?.javaClass?.name.orEmpty())
+                            append(" rootCauseMessage=\"").append(rootMessage).append('\"')
+                            if (sourceFrame != null) {
+                                append(" exceptionSource=")
+                                    .append(sourceFrame.fileName ?: sourceFrame.className.substringAfterLast('.'))
+                                    .append(':').append(sourceFrame.methodName)
+                                    .append(':').append(sourceFrame.lineNumber)
+                            }
+                        }
+                        append(" previousStage=").append(previousStage)
+                        append(" nextStage=").append(nextStage)
+                    },
+                )
+            }
         }
-        val synthesized = canonical?.let { canonicalTrip ->
-            toCanonicalExternalProjection0406(
-                canonical = canonicalTrip,
-                source = source,
-                nowMillis = nowMillis,
+
+        fun <T> preOperationalEvidenceStep0457(
+            stage: String,
+            previousStage: String,
+            nextStage: String,
+            block: () -> T,
+        ): T {
+            val startedNs0458 = System.nanoTime()
+            return try {
+                val value = block()
+                recordPreOperationalEvidence0458(
+                    stage = stage,
+                    status = "OK",
+                    reasonCode = "PRE_OPERATIONAL_STEP_OK",
+                    previousStage = previousStage,
+                    nextStage = nextStage,
+                    startedNs = startedNs0458,
+                )
+                value
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                recordPreOperationalEvidence0458(
+                    stage = stage,
+                    status = "FAILED",
+                    reasonCode = "PRE_OPERATIONAL_EXCEPTION",
+                    previousStage = previousStage,
+                    nextStage = "STOP",
+                    startedNs = startedNs0458,
+                    error = error,
+                )
+                throw error
+            }
+        }
+
+        val settings = preOperationalEvidenceStep0457(
+            stage = "ONLINE_SETTINGS_READ",
+            previousStage = "INCREMENTAL_IDENTITY_GUARD",
+            nextStage = "CANONICAL_SOURCE_RESOLUTION",
+        ) {
+            store.onlineSettings()
+        }
+        if (!settings.configured) {
+            if (outboxEventId.isNotBlank()) {
+                error("AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY")
+            }
+            return@withContext false
+        }
+        val canonical = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_SOURCE_RESOLUTION",
+            previousStage = "ONLINE_SETTINGS_READ",
+            nextStage = "CANONICAL_PROJECTION_BUILD",
+        ) {
+            canonicalTripSnapshot?.takeIf { trip ->
+            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                !trip.deleted &&
+                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == tripId
+            } ?: store.trips().firstOrNull { trip ->
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                    !trip.deleted &&
+                    trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                    trip.blablaTripId?.trim() == tripId
+            }
+        }
+        val synthesized = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_PROJECTION_BUILD",
+            previousStage = "CANONICAL_SOURCE_RESOLUTION",
+            nextStage = "DIAGNOSTIC_KEY_BUILD",
+        ) {
+            canonical?.let { canonicalTrip ->
+                toCanonicalExternalProjection0406(
+                    canonical = canonicalTrip,
+                    source = source,
+                    nowMillis = nowMillis,
+                )
+            } ?: run {
+                val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+                val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                toPublicTrip(
+                    source = source,
+                    capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
+                    rotaCertaSeatAllocation = rotaCertaQuota,
+                    nowMillis = nowMillis,
+                )
+            }
+        }
+        if (synthesized == null) {
+            val projectionReason0460 = if (canonical != null) {
+                "CANONICAL_PROJECTION_UNAVAILABLE"
+            } else {
+                "RAW_SOURCE_NOT_PUBLISHABLE"
+            }
+            recordPreOperationalEvidence0458(
+                stage = "CANONICAL_PROJECTION_RESULT",
+                status = "FAILED",
+                reasonCode = projectionReason0460,
+                previousStage = "CANONICAL_PROJECTION_BUILD",
+                nextStage = "STOP",
+                startedNs = System.nanoTime(),
             )
-        } ?: run {
-            val rotaCertaQuota = configuredRotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
-            val blablaQuota = source.published_seats?.takeIf { it in 0..999 } ?: 0
-            toPublicTrip(
-                source = source,
-                capacity = (blablaQuota + rotaCertaQuota).coerceIn(0, 999),
-                rotaCertaSeatAllocation = rotaCertaQuota,
-                nowMillis = nowMillis,
-            )
-        } ?: return@withContext false
+            if (outboxEventId.isNotBlank()) {
+                error(projectionReason0460)
+            }
+            return@withContext false
+        }
         val startedAt = System.nanoTime()
-        val tripKey = sha256(synthesized.trip.publicToken).take(12)
-        val failureContext = AgendaFailureEvidence.tripContext(
-            trip = synthesized.trip,
-            bookings = synthesized.capacityClaims,
-            tripKey = tripKey,
-            publicIdentity = store.publicExternalBindings()
-                .firstOrNull { it.publicToken == synthesized.trip.publicToken }
-                ?.remoteTripId,
-            origin = TripRecordOrigin.EXTERNAL_BACKING.name,
-            revision = synthesized.snapshotRevision,
-            confirmedSeatsOverride = synthesized.bookedSeats,
-            realAvailableSeatsOverride = synthesized.realAvailableSeats,
-        )
+        val tripKey = preOperationalEvidenceStep0457(
+            stage = "DIAGNOSTIC_KEY_BUILD",
+            previousStage = "CANONICAL_PROJECTION_BUILD",
+            nextStage = "DIAGNOSTIC_CONTEXT_BUILD",
+        ) {
+            sha256(synthesized.trip.publicToken).take(12)
+        }
+        val diagnosticStartedNs0458 = System.nanoTime()
+        val failureContext = try {
+            val value = AgendaFailureEvidence.tripContext(
+                trip = synthesized.trip,
+                bookings = synthesized.capacityClaims,
+                tripKey = tripKey,
+                publicIdentity = store.publicExternalBindings()
+                    .firstOrNull { it.publicToken == synthesized.trip.publicToken }
+                    ?.remoteTripId,
+                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                revision = synthesized.snapshotRevision,
+                confirmedSeatsOverride = synthesized.bookedSeats,
+                realAvailableSeatsOverride = synthesized.realAvailableSeats,
+            )
+            recordPreOperationalEvidence0458(
+                stage = "DIAGNOSTIC_CONTEXT_BUILD",
+                status = "OK",
+                reasonCode = "DIAGNOSTIC_CONTEXT_READY",
+                previousStage = "DIAGNOSTIC_KEY_BUILD",
+                nextStage = "REMOTE_API_CONTEXT_BUILD",
+                startedNs = diagnosticStartedNs0458,
+            )
+            value
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            // Observability is fail-open: a diagnostic envelope must never block
+            // the canonical publication pipeline.
+            recordPreOperationalEvidence0458(
+                stage = "DIAGNOSTIC_CONTEXT_BUILD",
+                status = "DEGRADED",
+                reasonCode = "DIAGNOSTIC_CONTEXT_FALLBACK",
+                previousStage = "DIAGNOSTIC_KEY_BUILD",
+                nextStage = "REMOTE_API_CONTEXT_BUILD",
+                startedNs = diagnosticStartedNs0458,
+                error = error,
+            )
+            AgendaFailureTripContext(
+                tripKey = tripKey,
+                canonicalIdentity = synthesized.trip.tripKey.ifBlank { synthesized.trip.id },
+                publicIdentity = "<unresolved>",
+                origin = TripRecordOrigin.EXTERNAL_BACKING.name,
+                route = synthesized.trip.title,
+                revision = synthesized.snapshotRevision,
+                confirmedSeats = synthesized.bookedSeats,
+                realAvailableSeats = synthesized.realAvailableSeats,
+                snapshotVersion = synthesized.snapshotRevision.substringBefore(':').take(40),
+            )
+        }
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_INCREMENTAL_START",
             context.packageName,
             "tripKey=$tripKey sourceComplete=${synthesized.sourceComplete} revision=${synthesized.snapshotRevision.takeLast(12)} fullSyncRequested=false",
         )
-        val api = TripRemoteApi(settings)
+        val api = preOperationalEvidenceStep0457(
+            stage = "REMOTE_API_CONTEXT_BUILD",
+            previousStage = "DIAGNOSTIC_CONTEXT_BUILD",
+            nextStage = "PRIVATE_MIRROR_INPUT_BUILD",
+        ) {
+            TripRemoteApi(settings)
+        }
         val privateMirrorTrip0434 = canonical ?: synthesized.trip
-        val privateMirrorBookings0434 = canonicalMirrorBookings0441(
-            canonicalSourceAuthoritative = canonical != null,
-            storedCanonicalBookings = store.bookingsFor(privateMirrorTrip0434.id),
-            synthesizedCapacityClaims = synthesized.capacityClaims,
-        )
+        val privateMirrorBookings0434 = preOperationalEvidenceStep0457(
+            stage = "PRIVATE_MIRROR_INPUT_BUILD",
+            previousStage = "REMOTE_API_CONTEXT_BUILD",
+            nextStage = "CANONICAL_OPERATIONAL_GUARD",
+        ) {
+            canonicalMirrorBookings0441(
+                canonicalSourceAuthoritative = canonical != null,
+                storedCanonicalBookings = store.bookingsFor(privateMirrorTrip0434.id),
+                synthesizedCapacityClaims = synthesized.capacityClaims,
+            )
+        }
         val canonicalTripId0434 = privateMirrorTrip0434.tripKey
             .ifBlank { resolvedInternalTripId }
             .ifBlank { privateMirrorTrip0434.id }
-        val canonicalOperational0434 = canonicalOperationalSnapshot0434(
-            trip = privateMirrorTrip0434,
-            bookings = privateMirrorBookings0434,
-            nowMillis = privateMirrorTrip0434.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
-        )
+        val domainInventory0456 = operationalInventoryCapacity(privateMirrorTrip0434, privateMirrorBookings0434)
+        val canonicalCapacityInvariant0456 = privateMirrorTrip0434.capacity == domainInventory0456
+        if (outboxEventId.isNotBlank()) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_EVIDENCE_0421",
+                context.packageName,
+                buildString {
+                    append("evidenceId=").append(publicationEvidenceId0421(outboxEventId, privateMirrorTrip0434.canonicalRevision))
+                    append(" traceId=").append(outboxEventId)
+                    append(" correlationId=").append(outboxEventId)
+                    append(" stage=CANONICAL_OPERATIONAL_GUARD")
+                    append(" status=").append(if (canonicalCapacityInvariant0456) "OK" else "FAILED")
+                    append(" reasonCode=").append(
+                        if (canonicalCapacityInvariant0456) {
+                            "CANONICAL_CAPACITY_INVARIANT_CONFIRMED"
+                        } else {
+                            "CANONICAL_CAPACITY_INVARIANT_MISMATCH"
+                        },
+                    )
+                    append(" canonicalTripId=").append(seatSyncDiagnosticKey(canonicalTripId0434))
+                    append(" logicalRevision=").append(privateMirrorTrip0434.canonicalRevision)
+                    append(" transportRevision=").append(entityRevision)
+                    append(" mutationId=").append(mutationId0421)
+                    append(" idempotencyKey=").append(idempotencyKey0421)
+                    append(" capacity=").append(privateMirrorTrip0434.capacity)
+                    append(" domainInventory=").append(domainInventory0456)
+                    append(" publishedSeats=").append(privateMirrorTrip0434.publishedSeats ?: -1)
+                    append(" rotaCertaSeatAllocation=").append(privateMirrorTrip0434.rotaCertaSeatAllocation ?: -1)
+                    append(" previousStage=PRIVATE_MIRROR_INPUT_BUILD nextStage=PRIVATE_MIRROR_REQUEST")
+                },
+            )
+        }
+        val canonicalOperational0434 = preOperationalEvidenceStep0457(
+            stage = "CANONICAL_OPERATIONAL_BUILD",
+            previousStage = "CANONICAL_OPERATIONAL_GUARD",
+            nextStage = "PRIVATE_MIRROR_REQUEST",
+        ) {
+            canonicalOperationalSnapshot0434(
+                trip = privateMirrorTrip0434,
+                bookings = privateMirrorBookings0434,
+                nowMillis = privateMirrorTrip0434.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
+            )
+        }
+        val privateMirrorEvidence0455 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+            RemotePublicationEvidenceContext0421(
+                evidenceId = publicationEvidenceId0421(traceId, privateMirrorTrip0434.canonicalRevision),
+                traceId = traceId,
+                canonicalTripId = canonicalTripId0434,
+                logicalRevision = privateMirrorTrip0434.canonicalRevision,
+                transportRevision = entityRevision,
+                mutationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+            )
+        }
         syncPrivateAgendaMirror0434(
             api = api,
             trip = privateMirrorTrip0434,
@@ -852,6 +1184,7 @@ internal object PublicAgendaAutoSync0300 {
             correlationId = outboxEventId,
             syncOperationId = mutationId0421,
             idempotencyKey = idempotencyKey0421,
+            evidence0421 = privateMirrorEvidence0455,
         )
         val result = try {
             syncExternalCapacitySnapshot(
@@ -1374,52 +1707,46 @@ internal object PublicAgendaAutoSync0300 {
         nowMillis: Long = System.currentTimeMillis(),
     ): PublicAgendaExternalTrip? {
         if (canonical.deleted || canonical.status == TripStatus.CANCELLED) return null
-        val synthesized = toPublicTrip(
-            source = source,
-            capacity = canonical.capacity.coerceIn(0, 999),
-            nowMillis = nowMillis,
-            rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation?.coerceIn(0, 999) ?: 0,
-        ) ?: return null
-        val projectedTrip = synthesized.trip.copy(
-            id = canonical.id,
-            title = canonical.title,
-            departureAtMillis = canonical.departureAtMillis,
-            capacity = canonical.capacity,
-            status = canonical.status,
-            stops = canonical.stops,
-            remoteId = canonical.remoteId ?: synthesized.trip.remoteId,
-            publicToken = canonical.publicToken,
-            publicUrl = canonical.publicUrl,
-            blablaProfileUuid = canonical.blablaProfileUuid,
-            blablaTripId = canonical.blablaTripId,
-            blablaManageUrl = canonical.blablaManageUrl,
-            blablaPublicUrl = canonical.blablaPublicUrl,
-            publicBookingEnabled = canonical.publicBookingEnabled,
-            itineraryAuthoritative = canonical.itineraryAuthoritative,
-            publishedSeats = canonical.publishedSeats,
-            capacityReliable = canonical.capacityReliable,
-            rotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation,
+
+        // The TripStore snapshot is already the authoritative domain object at this
+        // point. A durable publication retry must not re-run collector discovery
+        // eligibility (future departure, raw date parsing or raw route completeness)
+        // through toPublicTrip(), otherwise a valid canonical card silently becomes
+        // null merely because time advanced after the original collection.
+        val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..999 }
+        val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
+        val bookedSeats = source.booked_seats.coerceAtLeast(passengerSeats).coerceIn(0, 999)
+        val projectedTrip = canonical.copy(
+            remoteId = canonical.remoteId ?: canonical.publicToken.takeIf(String::isNotBlank),
             recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
-            canonicalRevision = canonical.canonicalRevision,
-            seatAllocationVersionUsed = canonical.seatAllocationVersionUsed,
-            publicationRevision = canonical.publicationRevision,
-            publicationTombstone = canonical.publicationTombstone,
-            publicationEventId = canonical.publicationEventId,
-            tripKey = canonical.tripKey,
-            canonicalStateHash = canonical.canonicalStateHash,
-            publicTimezoneId0411 = canonical.publicTimezoneId0411,
-            lastCollectionRunId = canonical.lastCollectionRunId,
-            lastCollectionGeneration = canonical.lastCollectionGeneration,
-            lastObservedAtMillis = canonical.lastObservedAtMillis,
             deleted = false,
             deletedAtMillis = 0L,
         )
-        return synthesized.copy(
+        val sourceReference = source.trip_id.orEmpty()
+            .ifBlank { source.trip_href.orEmpty() }
+            .ifBlank { "BLABLACAR:" + projectedTrip.publicToken }
+        val claims = externalCapacityClaims(
+            source = source,
             trip = projectedTrip,
+            bookedSeats = bookedSeats,
+            sourceReference = sourceReference,
+        )
+        val allocation = canonical.rotaCertaSeatAllocation?.coerceIn(0, 999) ?: 0
+        return PublicAgendaExternalTrip(
+            trip = projectedTrip,
+            bookedSeats = bookedSeats,
+            sourceReference = sourceReference,
+            capacityClaims = claims,
+            publishedSeats = verifiedPublishedSeats,
+            profileUuid = source.profile_uuid.trim(),
+            blablaTripId = source.trip_id.orEmpty().trim(),
+            blablaTripHref = source.trip_href.orEmpty().trim(),
             blablaPublicHref = projectedTrip.blablaPublicUrl.orEmpty(),
-            capacityClaims = synthesized.capacityClaims.map { it.copy(tripId = canonical.id) },
-            snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank { synthesized.snapshotRevision },
-            realAvailableSeats = (canonical.capacity - synthesized.bookedSeats).coerceAtLeast(0),
+            sourceComplete = verifiedPublishedSeats != null && source.passenger_roster_complete,
+            snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank {
+                externalCapacitySnapshotRevision(source, allocation)
+            },
+            realAvailableSeats = (canonical.capacity - bookedSeats).coerceAtLeast(0),
         )
     }
 

@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.assertNull
 
 class BlaBlaPublicTripShare0363Test {
     @Test
@@ -15,7 +16,9 @@ class BlaBlaPublicTripShare0363Test {
         assertTrue(script.contains("Object.defineProperty(navigator, 'share'"))
         assertTrue(script.contains("canCaptureWithoutOpeningSystemShare"))
         assertTrue(script.contains("state.clicks < 3"))
-        assertTrue(script.contains("if (!id || id !== tripId) return '';"))
+        assertTrue(script.contains("if (requireAdministrativeId && id !== tripId) return '';"))
+        assertTrue(script.contains("authoritativeSharedPublicTripUrl"))
+        assertTrue(script.contains("acceptCandidate(piece, true)"))
         assertTrue(script.contains("url.searchParams.delete('search_uuid')"))
 
         assertTrue(browser.contains("Phase.PUBLIC_SHARE"))
@@ -23,7 +26,36 @@ class BlaBlaPublicTripShare0363Test {
         assertTrue(browser.contains("PUBLIC_TRIP_LINK_CAPTURED"))
         assertTrue(browser.contains("PUBLIC_TRIP_LINK_UNAVAILABLE"))
         assertTrue(browser.contains("systemShareOpened=false"))
-        assertTrue(browser.contains("BlaBlaCollectorUrlModule.publicTrip(evidence?.publicTripHref, tripId)"))
+        assertTrue(browser.contains("private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2"))
+        assertTrue(browser.contains("publicTripShareReadAttempts < MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS"))
+        assertTrue(browser.contains("postSessionDelayed0405({"))
+        assertTrue(browser.contains("PUBLIC_TRIP_SHARE_RETRY_MS"))
+        assertTrue(browser.contains("BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation("))
+        assertTrue(browser.contains("PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION"))
+    }
+
+    @Test
+    fun shareActionCanBindDifferentPublicTokenOnlyToVerifiedAdministrativeTrip() {
+        val administrativeTripId = "01a0359e-de23-78ab-ab26-6cc973c5c3d1"
+        val publicTripId = "019ed00c-1919-7896-8507-5315d113f690"
+        val href = "https://www.blablacar.com.br/trip?id=$publicTripId"
+
+        assertNull(BlaBlaCollectorUrlModule.publicTrip(href, administrativeTripId))
+        assertEquals(
+            href,
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = href,
+                expectedAdministrativeTripId = administrativeTripId,
+                boundAdministrativeTripId = administrativeTripId,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = href,
+                expectedAdministrativeTripId = administrativeTripId,
+                boundAdministrativeTripId = "different-administrative-trip",
+            ),
+        )
     }
 
     @Test

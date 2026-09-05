@@ -21,6 +21,15 @@ test("driver sync-state exposes server canonical stops and snapshot revision beh
 });
 
 
+test("driver sync-state keeps future-only discovery but allows past trips for exact verification", () => {
+  const start = source.indexOf("async function listDriverTripSyncState0402");
+  const end = source.indexOf("async function reconcileDriverAgendaSeatAllocation", start);
+  const fn = source.slice(start, end);
+  assert.match(fn, /includePastForVerification/);
+  assert.match(fn, /req\.query && req\.query\.includePastForVerification/);
+  assert.match(fn, /includePastForVerification \|\| trip\.departureAtMillis > now/);
+});
+
 test("driver trip creation adopts an existing strong BlaBlaCar identity instead of creating a parallel token", () => {
   const start = source.indexOf("async function createDriverTrip");
   const end = source.indexOf("async function updateDriverTrip", start);

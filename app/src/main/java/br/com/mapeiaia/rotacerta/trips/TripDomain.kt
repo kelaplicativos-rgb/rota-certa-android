@@ -123,7 +123,7 @@ data class Trip(
     val externalSnapshot: BlaBlaCollectorTrip? = null,
     /** Semantic fingerprint of [externalSnapshot], excluding volatile browser/UI attributes. */
     val externalSnapshotFingerprint: String = "",
-    /** False means the observation was partial and must not replace a previously complete canonical snapshot. */
+    /** False means the current observation is partial: positive evidence may merge, but absence cannot erase confirmed state. */
     val externalSnapshotComplete: Boolean = false,
     /** Stable tenant-scoped identity. External trips are tenant + provider + profile UUID + provider trip id. */
     val tripKey: String = "",
@@ -218,7 +218,7 @@ internal fun canonicalTripStateHash0406(
         append(trip.recordOrigin.name).append('|')
         append(trip.blablaProfileUuid.orEmpty().trim().lowercase()).append('|')
         append(trip.blablaTripId.orEmpty().trim()).append('|')
-        append(BlaBlaCollectorUrlModule.publicTrip(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
+        append(canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
         append(trip.publicTimezoneId0411.trim()).append('|')
         append(trip.departureAtMillis).append('|')
         append(trip.status.name).append('|')

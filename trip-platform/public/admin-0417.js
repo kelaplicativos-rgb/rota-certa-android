@@ -27,6 +27,7 @@
     try { return sessionStorage.getItem("rotacerta-passenger-session") || ""; } catch (_) { return ""; }
   }
   let currentTrips = [];
+  let currentSelectedTrip0465 = null;
   let currentSettings = null;
   const adminInFlight0427 = new Set();
   let dashboardLoadPromise0427 = null;
@@ -97,6 +98,7 @@
 
   function stateClass0417(state) {
     if (state === "VERIFIED") return "adminStateBlue0417";
+    if (state === "PUBLISHED") return "adminStateGreen0465";
     if (state === "PENDING") return "adminStateOrange0417";
     if (state === "DIVERGENT" || state === "ERROR") return "adminStateRed0417";
     return "adminStateGray0417";
@@ -112,6 +114,7 @@
     const counts = data.counts || {};
     byId("adminHealthGrid0417").innerHTML = [
       ["MATCH confirmado", counts.verified || 0, "adminStateBlue0417"],
+      ["Publicado • link pendente", counts.published || 0, "adminStateGreen0465"],
       ["Pendente", counts.pending || 0, "adminStateOrange0417"],
       ["Divergente", counts.divergent || 0, "adminStateRed0417"],
       ["Não verificado", counts.unproven || 0, "adminStateGray0417"],
@@ -252,8 +255,27 @@
     }
   }
 
+  function selectTripPublicUrlEditor0465(remoteTripId) {
+    const trip = currentTrips.find((item) => item.remoteTripId === remoteTripId) || null;
+    currentSelectedTrip0465 = trip;
+    const editor = byId("adminTripPublicUrlEditor0465");
+    if (!trip || !trip.blablaTripId) {
+      editor.classList.add("hidden");
+      return;
+    }
+    editor.classList.remove("hidden");
+    byId("adminTripPublicUrlTitle0465").textContent =
+      "URL pública BlaBlaCar • " + (trip.title || trip.blablaTripId);
+    byId("adminTripPublicUrlHint0465").textContent = trip.attestationState === "PUBLISHED"
+      ? "Esta viagem está verde: a Agenda já confere. Cole o link público BlaBlaCar e salve para a Timeline republicar e atestar em azul."
+      : "O link salvo entra primeiro na Timeline canônica; azul só aparece depois do novo readback público.";
+    byId("adminTripPublicUrlInput0465").value =
+      trip.blablaPublicUrl || trip.manualBlaBlaPublicUrl0465 || "";
+  }
+
   async function loadHistory0417(remoteTripId) {
     if (!remoteTripId) return;
+    selectTripPublicUrlEditor0465(remoteTripId);
     setMessage0417("Carregando histórico da viagem…");
     try {
       const response = await api0417("/v1/admin/trips/" + encodeURIComponent(remoteTripId) + "/history");
@@ -268,6 +290,33 @@
       byId("adminTripHistory0417").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) { setMessage0417(error.message, true); }
   }
+
+  const saveTripPublicUrlButton0465 = byId("adminSaveTripPublicUrl0465");
+  saveTripPublicUrlButton0465.addEventListener("click", () =>
+    runAdminAction0427("save-trip-public-url", saveTripPublicUrlButton0465, async () => {
+      const trip = currentSelectedTrip0465;
+      if (!trip) return setMessage0417("Selecione uma viagem.", true);
+      const blablaPublicUrl = byId("adminTripPublicUrlInput0465").value.trim();
+      if (!blablaPublicUrl) return setMessage0417("Cole a URL pública BlaBlaCar da viagem.", true);
+      setMessage0417("Salvando na Timeline canônica…");
+      try {
+        const result = await api0417(
+          "/v1/admin/trips/" + encodeURIComponent(trip.remoteTripId) + "/blablacar-public-url",
+          {
+            method: "PUT",
+            operationId: newAdminOperationId0427("public_url"),
+            body: JSON.stringify({ blablaPublicUrl }),
+          },
+        );
+        setMessage0417(result.changed
+          ? "URL salva. O card foi enviado à Timeline; o azul aparecerá após o readback confirmar a nova revisão."
+          : "Esta URL já está aplicada à viagem.");
+        setTimeout(loadDashboard0417, 1200);
+        setTimeout(loadDashboard0417, 3500);
+        setTimeout(loadDashboard0417, 8000);
+      } catch (error) { setMessage0417(error.message, true); }
+    }),
+  );
 
   entry.addEventListener("click", () => {
     hidePublicSections0417();

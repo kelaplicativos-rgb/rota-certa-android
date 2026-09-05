@@ -210,7 +210,7 @@ class AgendaReadbackForensics0421Test {
             snapshot = snapshot,
             status = TripPublicationStatus0387.DELIVERED,
         )
-        assertTrue(
+        assertFalse(
             shouldDeduplicatePublicationEvent0410(
                 latest = latest,
                 operation = TripPublicationOperation0387.UPSERT_LOCAL,
@@ -218,6 +218,31 @@ class AgendaReadbackForensics0421Test {
                 remoteProjectionDivergenceObserved = true,
             ),
         )
+    }
+
+    @Test
+    fun publicEvidenceExportsAuthoritativeCanonicalTripKeyInsteadOfProjectionId() {
+        val timeline = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt",
+        ).readText()
+        assertTrue(timeline.contains("Identidade canônica: \" + trip.tripKey.ifBlank { trip.id }"))
+        assertTrue(timeline.contains("q(trip.tripKey.ifBlank { trip.id })"))
+        assertFalse(timeline.contains("q(trip.id)).append(',')"))
+    }
+
+    @Test
+    fun publicUrlEnrichmentIsOptionalAfterCanonicalStateComparison0465() {
+        val source = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt",
+        ).readText()
+        assertTrue(source.contains("stage = \"STATE_COMPARE\""))
+        assertTrue(source.contains("CANONICAL_STATE_MATCH"))
+        assertTrue(source.contains("stage = \"PUBLIC_URL_ENRICHMENT\""))
+        assertTrue(source.contains("OPTIONAL_PENDING"))
+        assertTrue(source.contains("BLABLACAR_PUBLIC_URL_RESOLVED"))
+        assertTrue(source.contains("publishedWithoutUrl0465 -> \"\""))
+        assertTrue(source.contains("publishedWithoutUrl0465 -> \"PUBLISHED\""))
+        assertFalse(source.contains("!finalDecision.linkValid -> \"PUBLIC_URL_PRECONDITION\""))
     }
 
     @Test
