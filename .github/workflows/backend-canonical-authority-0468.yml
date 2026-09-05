@@ -1,16 +1,16 @@
-name: Paridade visual dos cards da Agenda 0.1.473
+name: Paridade visual dos cards da Agenda 0.1.474
 
 on:
   push:
     branches:
-      - agent/agenda-card-visual-parity-0.1.473
+      - agent/agenda-card-visual-parity-0.1.474
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-card-visual-parity-0473-${{ github.ref }}
+  group: agenda-card-visual-parity-0474-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -79,7 +79,7 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Validate backend syntax and 0.1.473 card parity contracts
+      - name: Validate backend syntax and 0.1.474 card parity contracts
         shell: bash
         run: |
           set -euo pipefail
@@ -209,8 +209,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -F 'versionCode = 5766' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.473"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5767' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.474"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -259,7 +259,7 @@ jobs:
           grep -Fq 'Administração da Agenda' live-public.html
           grep -Fq 'adminTripBookings0468' live-public.html
           grep -Fq 'adminTripContext0470' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.473" > live-app.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.474" > live-app.js
           grep -Fq 'Administrar esta viagem' live-app.js
           grep -Fq '/v1/admin/card-capabilities' live-app.js
           grep -Fq '/public-visibility' live-app.js
@@ -268,7 +268,7 @@ jobs:
           grep -Fq 'agendaJourney0473' live-app.js
           grep -Fq 'agendaCanonicalVisual0473' live-public.html
           grep -Fq 'adminTripIdentityRecovery0472' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.473" > live-admin.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.474" > live-admin.js
           grep -Fq 'blablacar-identity-recovery' live-admin.js
           grep -Fq 'scheduleTripIdentityRecovery0472' live-admin.js
           printf '%s\n' "${GITHUB_SHA}" > deployed-source-head.txt
@@ -276,7 +276,7 @@ jobs:
       - name: Upload installable APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-card-visual-parity-0473-${{ github.sha }}
+          name: rota-certa-agenda-card-visual-parity-0474-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
