@@ -27,7 +27,9 @@ class AgendaTimelineAutoSync0398Test {
 
     @Test
     fun synchronizationIsAutomaticAndReadOnlyInTimeline() {
-        assertTrue(automaticSync.contains("O servidor é a fonte canônica"))\n        assertTrue(automaticSync.contains("central de coleta BlaBlaCar do Android"))\n        assertTrue(automaticSync.contains("ABRIR ÁREA ADMINISTRATIVA"))
+        assertTrue(automaticSync.contains("O servidor é a fonte canônica"))
+        assertTrue(automaticSync.contains("central de coleta BlaBlaCar do Android"))
+        assertTrue(automaticSync.contains("ABRIR ÁREA ADMINISTRATIVA"))
         assertFalse(timeline.contains("AgendaAutomaticSyncTimelineStatus0398("))
         assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
         assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
