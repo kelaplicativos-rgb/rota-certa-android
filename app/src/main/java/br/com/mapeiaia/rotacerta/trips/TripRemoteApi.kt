@@ -724,16 +724,30 @@ class TripRemoteApi(
         requireDriverToken = true,
     )
 
-    suspend fun listDriverTripSyncStates0402(): DriverTripSyncStateResponse0402 = request(
+    suspend fun listDriverTripSyncStates0402(
+        includePastForVerification0429: Boolean = false,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
+    ): DriverTripSyncStateResponse0402 = request(
         method = "GET",
-        path = "/v1/driver/trips/sync-state",
+        path = if (includePastForVerification0429) {
+            "/v1/driver/trips/sync-state?includePastForVerification=1"
+        } else {
+            "/v1/driver/trips/sync-state"
+        },
         requireDriverToken = true,
+        evidence0421 = evidence0421,
+        successNextStage0421 = "PUBLIC_IDENTITY_RESOLUTION",
     )
 
-    internal suspend fun readPublicTripProjection0411(remoteTripId: String): DriverPublicTripReadback0411 = request(
+    internal suspend fun readPublicTripProjection0411(
+        remoteTripId: String,
+        evidence0421: RemotePublicationEvidenceContext0421? = null,
+    ): DriverPublicTripReadback0411 = request(
         method = "GET",
         path = "/v1/driver/trips/${remoteTripId.trim()}/public-readback",
         requireDriverToken = true,
+        evidence0421 = evidence0421,
+        successNextStage0421 = "PUBLIC_READBACK_RESPONSE",
     )
 
     internal suspend fun writePrivateAgendaMirror0434(
@@ -1251,6 +1265,7 @@ class TripRemoteApi(
         body: String? = null,
         requireDriverToken: Boolean,
         evidence0421: RemotePublicationEvidenceContext0421? = null,
+        successNextStage0421: String = "PUBLIC_READBACK_REQUEST",
     ): T = withContext(Dispatchers.IO) {
         val requestPayload = body.orEmpty()
         val requestPayloadBytes = if (body == null) ByteArray(0) else requestPayload.toByteArray(Charsets.UTF_8)
@@ -1350,7 +1365,7 @@ class TripRemoteApi(
                     stage = "SERVER_ACK",
                     status = "DENIED",
                     reason = backendErrorCode(responseText).ifBlank { "HTTP_$status" },
-                    extra = "networkCallId=$networkCallId httpStatus=$status previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                    extra = "networkCallId=$networkCallId httpStatus=$status previousStage=HTTP_RESPONSE nextStage=$successNextStage0421",
                 )
                 remoteException(
                     method = method,
@@ -1378,7 +1393,7 @@ class TripRemoteApi(
                     stage = "SERVER_ACK",
                     status = "OK",
                     reason = "WRITE_ACCEPTED",
-                    extra = "networkCallId=$networkCallId httpStatus=$status responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseSha256=${sha256Hex(responsePayloadBytes)} durationMs=${((System.nanoTime() - callStartedNs).coerceAtLeast(0L)) / 1_000_000L} previousStage=HTTP_RESPONSE nextStage=$successNextStage0421",
                 )
                 decoded
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -1389,7 +1404,7 @@ class TripRemoteApi(
                     stage = "SERVER_ACK",
                     status = "FAILED",
                     reason = "RESPONSE_DECODE_FAILED",
-                    extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} previousStage=HTTP_RESPONSE nextStage=PUBLIC_READBACK_REQUEST",
+                    extra = "networkCallId=$networkCallId httpStatus=$status responseBytes=${responsePayloadBytes.size} responseSha256=${sha256Hex(responsePayloadBytes)} previousStage=HTTP_RESPONSE nextStage=$successNextStage0421",
                 )
                 remoteException(
                     method = method,
