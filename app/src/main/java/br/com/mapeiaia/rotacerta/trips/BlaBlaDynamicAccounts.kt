@@ -2316,7 +2316,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} tripId=$tripId source=share_action binding=" +
                         BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION +
                         " exactAdministrativeTrip=true publicIdRelation=" +
-                        if (sharedPublicTripId == tripId) "same" else "different" +
+                        (if (sharedPublicTripId == tripId) "same" else "different") +
                         " shareControlPresent=${evidence?.shareControlPresent == true}" +
                         " shareInterceptInstalled=${evidence?.shareInterceptInstalled == true}" +
                         " shareInvoked=${evidence?.shareInvoked == true}" +
