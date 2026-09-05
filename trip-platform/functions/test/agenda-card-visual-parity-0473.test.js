@@ -33,7 +33,7 @@ test("0473 shared card reproduces compact journey hierarchy without duplicating 
   assert.match(cards, /agendaDateLabel0473\(item\.departureAtMillis\)/);
   assert.match(cards, /agendaJourneyTime0473/);
   assert.match(cards, /agendaJourneyRail0473/);
-  assert.match(cards, /agendaJourneyCity0473/);
+  assert.match(cards, /agendaJourneyCity0473/);\n  assert.match(cards, /agendaJourneyStartCity0473/);\n  assert.match(cards, /agendaJourneyEndCity0473/);
   assert.match(cards, /agendaDurationBetween0473/);
   assert.match(cards, /startStop0473 = stops\[fromIndex\]/);
   assert.match(cards, /endStop0473 = stops\[toIndex\]/);
@@ -65,6 +65,6 @@ test("0473 CSS preserves reference hierarchy on mobile while admin controls stay
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /\.agendaTripAdmin0473 .*\.agendaDate0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.473/);
-  assert.match(html, /admin-0417\.js\?v=0\.1\.473/);
+  assert.match(html, /app\.js\?v=0\.1\.474/);
+  assert.match(html, /admin-0417\.js\?v=0\.1\.474/);
 });
