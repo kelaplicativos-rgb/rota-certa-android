@@ -66,7 +66,7 @@ class AgendaAutomaticSync0397Test {
         assertFalse(ui.contains("Sincronizar agora"))
         assertTrue(ui.contains("O servidor é a fonte canônica"))
         assertTrue(ui.contains("central de coleta BlaBlaCar do Android"))
-        assertTrue(ui.contains("ABRIR ÁREA ADMINISTRATIVA"))
+        assertTrue(ui.contains("ABRIR AGENDA PÚBLICA"))
         assertTrue(ui.contains("WorkManager"))
         assertTrue(ui.contains("Doze"))
         assertTrue(ui.contains("App Standby"))
