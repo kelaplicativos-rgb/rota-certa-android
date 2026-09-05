@@ -231,15 +231,18 @@ class AgendaReadbackForensics0421Test {
     }
 
     @Test
-    fun publicUrlPreconditionIsReportedSeparatelyFromCanonicalStateComparison() {
+    fun publicUrlEnrichmentIsOptionalAfterCanonicalStateComparison0465() {
         val source = java.io.File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicMirrorAttestationCoordinator0411.kt",
         ).readText()
         assertTrue(source.contains("stage = \"STATE_COMPARE\""))
         assertTrue(source.contains("CANONICAL_STATE_MATCH"))
-        assertTrue(source.contains("stage = \"PUBLIC_URL_PRECONDITION\""))
+        assertTrue(source.contains("stage = \"PUBLIC_URL_ENRICHMENT\""))
+        assertTrue(source.contains("OPTIONAL_PENDING"))
         assertTrue(source.contains("BLABLACAR_PUBLIC_URL_RESOLVED"))
-        assertTrue(source.contains("!finalDecision.linkValid -> \"PUBLIC_URL_PRECONDITION\""))
+        assertTrue(source.contains("publishedWithoutUrl0465 -> \"\""))
+        assertTrue(source.contains("publishedWithoutUrl0465 -> \"PUBLISHED\""))
+        assertFalse(source.contains("!finalDecision.linkValid -> \"PUBLIC_URL_PRECONDITION\""))
     }
 
     @Test
