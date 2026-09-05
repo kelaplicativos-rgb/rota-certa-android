@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const root = path.join(__dirname, "..", "..", "..");
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
@@ -25,6 +26,113 @@ function between(source, startMarker, endMarker) {
   assert.notEqual(end, -1, endMarker + " missing");
   return source.slice(start, end);
 }
+
+function stopShapeMigration0477() {
+  const production = between(api, "function canonicalStopSemanticKey0477", "function normalizeDriverTrip");
+  const sandbox = {};
+  vm.runInNewContext(
+    `
+      function cleanText(value, maxLength = 1000) {
+        return String(value == null ? "" : value).trim().slice(0, maxLength);
+      }
+      ${production}
+      this.migrate0477 = canonicalEndpointStopShapeMigration0439;
+    `,
+    sandbox,
+  );
+  return sandbox.migrate0477;
+}
+
+function plain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+test("0477 canonical stop migration safely rekeys the same ordered four-stop itinerary", () => {
+  const migrate = stopShapeMigration0477();
+  const previous = [
+    { id: "old-0", name: "Santo André", address: "Santo André" },
+    { id: "old-1", name: "Extrema", address: "Extrema" },
+    { id: "old-2", name: "Pouso Alegre", address: "Pouso Alegre" },
+    { id: "old-3", name: "Três Corações", address: "Três Corações" },
+  ];
+  const next = [
+    { id: "new-0", name: "Santo André", address: "Santo André" },
+    { id: "new-1", name: "Extrema", address: "Extrema" },
+    { id: "new-2", name: "Pouso Alegre", address: "Pouso Alegre" },
+    { id: "new-3", name: "Três Corações", address: "Três Corações" },
+  ];
+  const records = [
+    { id: "booking-a", boardingStopId: "old-0", dropoffStopId: "old-3" },
+    { id: "booking-b", boardingStopId: "old-1", dropoffStopId: "old-2" },
+  ];
+
+  const result = plain(migrate(previous, next, records));
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(
+    result.records.map(({ boardingStopId, dropoffStopId }) => ({ boardingStopId, dropoffStopId })),
+    [
+      { boardingStopId: "new-0", dropoffStopId: "new-3" },
+      { boardingStopId: "new-1", dropoffStopId: "new-2" },
+    ],
+  );
+  assert.equal(result.changes.length, 2);
+});
+
+test("0477 canonical stop migration still rejects a semantic route change", () => {
+  const migrate = stopShapeMigration0477();
+  const previous = [
+    { id: "old-0", name: "Santo André" },
+    { id: "old-1", name: "Extrema" },
+    { id: "old-2", name: "Pouso Alegre" },
+    { id: "old-3", name: "Três Corações" },
+  ];
+  const changedRoute = [
+    { id: "new-0", name: "Santo André" },
+    { id: "new-1", name: "Atibaia" },
+    { id: "new-2", name: "Pouso Alegre" },
+    { id: "new-3", name: "Três Corações" },
+  ];
+
+  assert.throws(
+    () => migrate(previous, changedRoute, []),
+    (error) => error && error.code === "canonical_stop_shape_migration_unsafe" && error.httpStatus === 409,
+  );
+});
+
+test("0477 preserves the historical two-stop to multi-stop endpoint migration", () => {
+  const migrate = stopShapeMigration0477();
+  const previous = [
+    { id: "old-origin", name: "Santo André" },
+    { id: "old-destination", name: "Três Corações" },
+  ];
+  const next = [
+    { id: "new-origin", name: "Santo André" },
+    { id: "new-extrema", name: "Extrema" },
+    { id: "new-pouso", name: "Pouso Alegre" },
+    { id: "new-destination", name: "Três Corações" },
+  ];
+  const result = plain(migrate(previous, next, [
+    { id: "booking-full", boardingStopId: "old-origin", dropoffStopId: "old-destination" },
+  ]));
+
+  assert.deepEqual(
+    {
+      boardingStopId: result.records[0].boardingStopId,
+      dropoffStopId: result.records[0].dropoffStopId,
+    },
+    { boardingStopId: "new-origin", dropoffStopId: "new-destination" },
+  );
+});
+
+test("0477 multi-stop rekey remains behind deterministic strong-identity authorization", () => {
+  const fn = between(api, "const previousStopIds0439", "const normalizedBase0468");
+  assert.match(fn, /deterministicRequest/);
+  assert.match(fn, /sameStrongExternalIdentity0439/);
+  assert.match(fn, /Boolean\(canonicalTripId\)/);
+  assert.match(fn, /serverCanonicalAuthority0468/);
+  assert.match(fn, /expectedPublicProjectionHash0425/);
+});
 
 test("0468 backend is the logical revision and public projection authority", () => {
   const helper = between(api, "function canonicalServerStateHash0468", "function assertNoOperationalOverbooking");
