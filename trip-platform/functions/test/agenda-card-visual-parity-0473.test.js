@@ -17,56 +17,40 @@ function between(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("0473 public and authenticated Home use exactly one canonical visual card surface", () => {
-  const cards = between(app, "function renderAgendaCards", "async function loadTrip");
+test("0475 public Home keeps exactly one canonical visual card renderer", () => {
+  const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
   assert.match(cards, /agendaCanonicalVisual0473/);
-  assert.match(cards, /data-card-surface/);
   assert.match(cards, /canonical-trip-0473/);
-  assert.match(cards, /adminManageable0471/);
-  assert.match(cards, /Administrar esta viagem/);
+  assert.match(cards, /agendaJourney0473/);
+  assert.match(cards, /agendaPassengerStack0473/);
   assert.equal((app.match(/function renderAgendaCards/g) || []).length, 1);
-  assert.doesNotMatch(app, /renderAdminAgendaCards|renderPrivateTripCards|renderPublicTripCards0473/);
+  assert.doesNotMatch(app, /renderAdminAgendaCards|renderPrivateTripCards|adminManageable0471/);
 });
 
-test("0473 shared card reproduces compact journey hierarchy without duplicating trip data", () => {
-  const cards = between(app, "function renderAgendaCards", "async function loadTrip");
+test("0475 compact journey hierarchy preserves the approved 0.1.474 visual structure", () => {
+  const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
   assert.match(cards, /agendaDateLabel0473\(item\.departureAtMillis\)/);
   assert.match(cards, /agendaJourneyTime0473/);
   assert.match(cards, /agendaJourneyRail0473/);
   assert.match(cards, /agendaJourneyCity0473/);
-  assert.match(cards, /agendaJourneyStartCity0473/);
-  assert.match(cards, /agendaJourneyEndCity0473/);
   assert.match(cards, /agendaDurationBetween0473/);
-  assert.match(cards, /startStop0473 = stops\[fromIndex\]/);
-  assert.match(cards, /endStop0473 = stops\[toIndex\]/);
   assert.match(cards, /startCity0473\.textContent = from/);
   assert.match(cards, /endCity0473\.textContent = to/);
 });
 
-test("0473 date heading has yesterday today tomorrow and compact weekday fallback", () => {
-  const helper = between(app, "function agendaDateLabel0473", "function agendaSegmentMoment0473");
-  assert.match(helper, /"Ontem"/);
-  assert.match(helper, /"Hoje"/);
-  assert.match(helper, /"Amanhã"/);
-  assert.match(helper, /"Seg\."/);
-  assert.match(helper, /"Set\."/);
-});
-
-test("0473 occupancy row remains privacy-safe and identical in public and admin modes", () => {
-  const cards = between(app, "function renderAgendaCards", "async function loadTrip");
+test("0475 occupancy remains privacy-safe", () => {
+  const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
   assert.match(cards, /normalizedSeatCount\(item\.confirmedPassengerSeats\)/);
-  assert.match(cards, /agendaPassengerStack0473/);
   assert.match(cards, /agendaPassengerMore0473/);
   assert.doesNotMatch(cards, /passengerName|passengerPhoto|passengerWhatsapp|booking\.passenger/i);
 });
 
-test("0473 CSS preserves reference hierarchy on mobile while admin controls stay additive", () => {
+test("0475 public HTML has canonical mobile CSS and no administrative surface", () => {
   assert.match(html, /\.agendaCanonicalVisual0473/);
   assert.match(html, /\.agendaJourney0473\{display:grid/);
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
-  assert.match(html, /\.agendaTripAdmin0473 .*\.agendaDate0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.474/);
-  assert.match(html, /admin-0417\.js\?v=0\.1\.474/);
+  assert.match(html, /app\.js\?v=0\.1\.475/);
+  assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem|Minha Área/i);
 });
