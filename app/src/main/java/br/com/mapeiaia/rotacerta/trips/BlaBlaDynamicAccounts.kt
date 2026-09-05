@@ -663,23 +663,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val enabledScriptNames0449 = intent?.getStringArrayListExtra(
             BlaBlaDynamicSessionIntents.EXTRA_ENABLED_SCRIPTS_0449,
         )
-        scriptSelection0449 = when {
-            mode == BlaBlaDynamicSessionIntents.MODE_SYNC && targetDates.isNotEmpty() ->
-                BlaBlaDateScopeScriptSelection0449.fromNames(enabledScriptNames0449)
-            mode == BlaBlaDynamicSessionIntents.MODE_SYNC && automaticCollectionGeneration > 0L ->
-                BlaBlaDateScopeScriptSelection0449.automaticAgendaListing0476()
-            else -> BlaBlaDateScopeScriptSelection0449.legacyAll()
-        }
-        if (
+        scriptSelection0449 = if (
             mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
-            automaticCollectionGeneration > 0L &&
-            targetDates.isEmpty()
+            targetDates.isNotEmpty()
         ) {
-            UnifiedDebugEventStore.record(
-                "BLABLACAR_AUTOMATIC_AGENDA_LISTING_0476",
-                packageName,
-                "generation=$automaticCollectionGeneration accountKey=${seatSyncDiagnosticKey(account.id)} coreTrip=true passengerEnrichment=false seatEnrichment=false publicUrlEnrichment=false preserveExistingEnrichment=true",
-            )
+            BlaBlaDateScopeScriptSelection0449.fromNames(enabledScriptNames0449)
+        } else {
+            BlaBlaDateScopeScriptSelection0449.legacyAll()
         }
         if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC || BlaBlaCollectorUrlModule.tripId(targetTripHref) != targetTripId) {
             targetTripId = ""
