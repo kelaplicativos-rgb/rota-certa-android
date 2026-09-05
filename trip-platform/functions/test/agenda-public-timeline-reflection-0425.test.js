@@ -326,3 +326,30 @@ test("public adoption never uses route or time similarity as canonical identity"
   assert.doesNotMatch(create, /projectionPhysicalIdentityCompatible0421/);
   assert.doesNotMatch(source, /function projectionPhysicalIdentityCompatible0421/);
 });
+
+
+test("readback and public agenda share one visibility predicate 0466", () => {
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(visibility, /PUBLIC_STATUSES\.has/);
+  assert.match(visibility, /departureAtMillis/);
+  assert.match(visibility, /publicProjectionCommittedCurrent0434/);
+  assert.match(visibility, /publicTripProfileUuids0417/);
+  assert.match(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
+
+  const readback = source.slice(
+    source.indexOf("async function getDriverPublicTripReadback0411"),
+    source.indexOf("function clientIp"),
+  );
+  assert.match(readback, /publicAgendaTripVisibility0466/);
+  assert.match(readback, /agendaVisible:\s*agendaVisibility0466\.visible/);
+  assert.match(readback, /agendaVisibilityReason:\s*agendaVisibility0466\.reason/);
+
+  const agenda = source.slice(
+    source.indexOf("async function getPublicDriverAgenda"),
+    source.indexOf("async function createDriverTrip"),
+  );
+  assert.match(agenda, /filter\(\(doc\) => publicAgendaTripVisibility0466\(driver, doc\.id, doc\.data\(\)\)\.visible\)/);
+});
