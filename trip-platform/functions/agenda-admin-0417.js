@@ -138,6 +138,7 @@ function createAgendaAdmin0417({
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
   classifyPublicTripState0469,
+  buildAdminHomeTrip0471,
   mutateDriverBookingDecision0468,
   mutateDriverPassengerOperationalStatus0468,
   mutateProtectedBooking0468,
@@ -303,6 +304,7 @@ function createAgendaAdmin0417({
     return {
       canViewTrip: true,
       canManageTrip: true,
+      canTogglePublicVisibility: true,
       canManagePassengers: true,
       canManageCapacity: false,
       canEditPublicData: false,
@@ -506,6 +508,8 @@ function createAgendaAdmin0417({
       attestedAtMillis: Math.max(0, Number(trip.publicAttestedAtMillis0417 || 0)),
       attestationReason: clean0417(effective0469.reason || trip.publicAttestationReason0417, 160),
       agendaVisible0469: effective0469.visible === true,
+      agendaOnline0471: trip.publicAgendaOnline0471 !== false,
+      visibilityRevision0471: Math.max(0, Number(trip.publicAgendaVisibilityRevision0471 || 0)),
       mismatchFields: Array.isArray(trip.publicAttestationMismatchFields0417)
         ? trip.publicAttestationMismatchFields0417.map((v) => clean0417(v, 80)).slice(0, 24)
         : [],
@@ -527,7 +531,6 @@ function createAgendaAdmin0417({
     const { driver, trips } = await readDriverAndTrips0417(session.driverUsername);
     const cards = activeAdminTrips0417(trips)
       .map((trip) => ({ trip, effective: effectivePublicState0469(driver, trip) }))
-      .filter((entry) => entry.effective.visible === true)
       .map(({ trip, effective }) => ({
         canonicalTripId: canonicalTripIdentity0470(trip, trip.id),
         remoteTripId: trip.id,
@@ -535,7 +538,12 @@ function createAgendaAdmin0417({
         publicationRevision: Math.max(0, Number(trip.publicationRevision || 0)),
         manualBlaBlaPublicUrlRevision0465: Math.max(0, Number(trip.manualBlaBlaPublicUrlRevision0465 || 0)),
         attestationState: clean0417(effective.state, 24) || "UNPROVEN",
-        agendaVisible0469: true,
+        agendaVisible0469: effective.visible === true,
+        agendaOnline0471: trip.publicAgendaOnline0471 !== false,
+        visibilityRevision0471: Math.max(0, Number(trip.publicAgendaVisibilityRevision0471 || 0)),
+        trip: typeof buildAdminHomeTrip0471 === "function"
+          ? buildAdminHomeTrip0471(trip.id, trip)
+          : safeTripAdminSummary0417(trip, driver),
         capabilities: tripAdminCapabilities0470(trip),
       }));
     await touchAdminSession0417(session);
@@ -967,6 +975,117 @@ function createAgendaAdmin0417({
     }
   }
 
+
+  async function updateAdminTripPublicVisibility0471(req, res, tripId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    const resolved = await resolveAdminTrip0470(session, tripId);
+    if (!resolved || resolved.missing || resolved.forbidden || resolved.ambiguous) {
+      return failResolvedTrip0470(res, resolved);
+    }
+    if (!req.body || typeof req.body.online !== "boolean") {
+      return fail0417(res, 400, "invalid_public_visibility", "Informe online como verdadeiro ou falso.");
+    }
+
+    const requestedOnline = req.body.online === true;
+    const expectedRevision = Object.prototype.hasOwnProperty.call(req.body, "expectedVisibilityRevision0471")
+      ? Math.max(0, Number(req.body.expectedVisibilityRevision0471 || 0))
+      : null;
+    const operationId = adminOperationId0417(req);
+    const claim = await claimAdminCommand0417({
+      session,
+      eventType: "TRIP_PUBLIC_VISIBILITY_CHANGED_0471",
+      operationId,
+    });
+    if (!claim.created) {
+      return json0417(res, 200, {
+        accepted: claim.result !== "ERROR",
+        replayed: true,
+        correlationId: claim.correlationId,
+        remoteTripId: resolved.remoteTripId,
+        canonicalTripId: resolved.canonicalTripId,
+      });
+    }
+
+    try {
+      const outcome = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(resolved.ref);
+        if (!snap.exists) {
+          throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+        }
+        const before = snap.data();
+        if (clean0417(before.driverUsername, 40) !== session.driverUsername) {
+          throw Object.assign(new Error("Você não tem permissão para administrar esta viagem."), {
+            httpStatus: 403,
+            code: "forbidden_trip_tenant",
+          });
+        }
+        const currentOnline = before.publicAgendaOnline0471 !== false;
+        const currentRevision = Math.max(0, Number(before.publicAgendaVisibilityRevision0471 || 0));
+        if (expectedRevision != null && currentRevision !== expectedRevision) {
+          throw Object.assign(new Error("O estado online/offline desta viagem mudou em outra sessão. O estado atual foi preservado."), {
+            httpStatus: 409,
+            code: "trip_visibility_revision_conflict",
+          });
+        }
+        const changed = currentOnline !== requestedOnline;
+        const nextRevision = currentRevision + (changed ? 1 : 0);
+        if (changed) {
+          tx.set(resolved.ref, {
+            publicAgendaOnline0471: requestedOnline,
+            publicAgendaVisibilityRevision0471: nextRevision,
+            publicAgendaVisibilityUpdatedAtMillis0471: Date.now(),
+          }, { merge: true });
+        }
+        return {
+          before,
+          changed,
+          currentOnline,
+          nextRevision,
+        };
+      });
+
+      await touchAdminSession0417(session);
+      await claim.ref.set({
+        tripId: resolved.remoteTripId,
+        publicToken: resolved.remoteTripId,
+        result: "SUCCESS",
+        changes: [{
+          field: "publicAgendaOnline0471",
+          before: String(outcome.currentOnline),
+          after: String(requestedOnline),
+        }, {
+          field: "publicAgendaVisibilityRevision0471",
+          before: String(Math.max(0, outcome.nextRevision - (outcome.changed ? 1 : 0))),
+          after: String(outcome.nextRevision),
+        }],
+      }, { merge: true });
+
+      return json0417(res, 200, {
+        accepted: true,
+        changed: outcome.changed,
+        replayed: false,
+        correlationId: claim.correlationId,
+        remoteTripId: resolved.remoteTripId,
+        canonicalTripId: resolved.canonicalTripId,
+        online: requestedOnline,
+        visibilityRevision0471: outcome.nextRevision,
+      });
+    } catch (error) {
+      await claim.ref.set({
+        tripId: resolved.remoteTripId,
+        result: "ERROR",
+        changes: [],
+      }, { merge: true }).catch(() => {});
+      return fail0417(
+        res,
+        error.httpStatus || 400,
+        error.code || "admin_trip_visibility_update_failed",
+        error.message || "Falha ao alterar a visibilidade pública desta viagem.",
+      );
+    }
+  }
+
   async function reportDriverAdminSyncHealth0417(req, res) {
     const driver = await requireDriver(req, res);
     if (!driver || !driver.username) return;
@@ -1200,6 +1319,7 @@ function createAgendaAdmin0417({
     reportDriverAdminSyncHealth0417,
     recordDriverPublicAttestation0417,
     updateAdminTripBlaBlaPublicUrl0465,
+    updateAdminTripPublicVisibility0471,
     listAdminLogs0417,
     getAdminTripHistory0417,
     exportAdminLogs0417,

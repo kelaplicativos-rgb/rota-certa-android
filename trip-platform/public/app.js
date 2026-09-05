@@ -89,6 +89,9 @@ const passengerSessionContextId0427 = (() => {
 })();
 let agendaTripsCache = [];
 const agendaAdminCardCapabilities0470 = new Map();
+let agendaAdminCapabilitiesLoaded0471 = false;
+let agendaAdminCardsSignature0471 = "";
+let agendaAdminHomePollTimer0471 = null;
 let agendaReturnScrollY0470 = 0;
 let pendingAuthDestination = (portalMode || requestedAdminTripIdentity0470) ? "portal" : (tripToken ? "trip" : "agenda");
 let calendarPickerTarget = "departure";
@@ -778,8 +781,10 @@ async function requestReferralInvite() {
 }
 
 async function hydrateAgendaAdminCapabilities0470() {
-  agendaAdminCardCapabilities0470.clear();
-  if (isTesterMode() || !passengerSessionToken || !passengerAgendaAdmin0418 || !driverUsername) return false;
+  if (isTesterMode() || !passengerSessionToken || !passengerAgendaAdmin0418 || !driverUsername) {
+    agendaAdminCapabilitiesLoaded0471 = false;
+    return false;
+  }
   try {
     const response = await fetch("/v1/admin/card-capabilities", {
       headers: authenticatedHeaders({
@@ -797,12 +802,17 @@ async function hydrateAgendaAdminCapabilities0470() {
         passengerAgendaAdmin0418 = false;
         updateAuthenticatedChrome();
       }
+      agendaAdminCapabilitiesLoaded0471 = false;
       return false;
     }
+    const next = new Map();
     (Array.isArray(body.cards) ? body.cards : []).forEach((card) => {
       const canonicalTripId = String(card && card.canonicalTripId || "").trim();
-      if (canonicalTripId) agendaAdminCardCapabilities0470.set(canonicalTripId, card);
+      if (canonicalTripId) next.set(canonicalTripId, card);
     });
+    agendaAdminCardCapabilities0470.clear();
+    next.forEach((value, key) => agendaAdminCardCapabilities0470.set(key, value));
+    agendaAdminCapabilitiesLoaded0471 = true;
     return true;
   } catch (_) {
     return false;
@@ -810,11 +820,125 @@ async function hydrateAgendaAdminCapabilities0470() {
 }
 
 function applyAgendaAdminCapabilities0470(trips) {
-  return (Array.isArray(trips) ? trips : []).map((item) => {
+  const publicTrips = Array.isArray(trips) ? trips : [];
+  const publicByCanonical = new Map(publicTrips.map((item) => [
+    String(item && item.canonicalTripId || "").trim(),
+    item,
+  ]).filter(([canonicalTripId]) => canonicalTripId));
+
+  if (passengerAgendaAdmin0418 && agendaAdminCapabilitiesLoaded0471) {
+    return [...agendaAdminCardCapabilities0470.values()]
+      .map((adminContext0470) => {
+        const canonicalTripId = String(adminContext0470 && adminContext0470.canonicalTripId || "").trim();
+        const publicTrip = publicByCanonical.get(canonicalTripId) || {};
+        const adminTrip = adminContext0470 && adminContext0470.trip && typeof adminContext0470.trip === "object"
+          ? adminContext0470.trip
+          : {};
+        return { ...publicTrip, ...adminTrip, canonicalTripId, adminContext0470 };
+      })
+      .sort((a, b) => Number(a.departureAtMillis || 0) - Number(b.departureAtMillis || 0));
+  }
+
+  return publicTrips.map((item) => {
     const canonicalTripId = String(item && item.canonicalTripId || "").trim();
     const adminContext0470 = canonicalTripId ? agendaAdminCardCapabilities0470.get(canonicalTripId) || null : null;
     return { ...item, adminContext0470 };
   });
+}
+
+function agendaAdminSignature0471() {
+  return [...agendaAdminCardCapabilities0470.values()]
+    .map((card) => [
+      String(card && card.canonicalTripId || ""),
+      Number(card && card.canonicalRevision || 0),
+      Number(card && card.publicationRevision || 0),
+      Number(card && card.visibilityRevision0471 || 0),
+      card && card.agendaOnline0471 === false ? "offline" : "online",
+      Number(card && card.trip && card.trip.updatedAtMillis || 0),
+      String(card && card.trip && card.trip.status || ""),
+    ].join("|"))
+    .sort()
+    .join("\n");
+}
+
+async function refreshAgendaAdminHome0471({ force = false } = {}) {
+  if (isTesterMode() || !passengerSessionToken || !passengerAgendaAdmin0418 || !driverUsername) return false;
+  const previousSignature = agendaAdminCardsSignature0471;
+  const loaded = await hydrateAgendaAdminCapabilities0470();
+  if (!loaded) return false;
+  const nextSignature = agendaAdminSignature0471();
+  agendaAdminCardsSignature0471 = nextSignature;
+  if (!force && previousSignature === nextSignature) return true;
+
+  const restoreScrollY = Math.max(0, Number(window.scrollY || 0));
+  agendaTripsCache = applyAgendaAdminCapabilities0470(agendaTripsCache);
+  if (!$("agenda").classList.contains("hidden")) {
+    renderAgenda(agendaTripsCache);
+    window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+  }
+  return true;
+}
+
+function scheduleAgendaAdminHomePolling0471() {
+  if (agendaAdminHomePollTimer0471) clearTimeout(agendaAdminHomePollTimer0471);
+  agendaAdminHomePollTimer0471 = null;
+  if (isTesterMode() || !passengerSessionToken || !passengerAgendaAdmin0418 || !driverUsername) return;
+  agendaAdminHomePollTimer0471 = setTimeout(async () => {
+    if (!document.hidden) await refreshAgendaAdminHome0471();
+    scheduleAgendaAdminHomePolling0471();
+  }, 1800);
+}
+
+function newAgendaVisibilityOperationId0471() {
+  const suffix = globalThis.crypto && typeof globalThis.crypto.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 18);
+  return ("home_visibility_" + suffix).replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 100);
+}
+
+async function setAgendaTripPublicOnline0471(adminContext0470, button) {
+  const canonicalTripId = String(adminContext0470 && adminContext0470.canonicalTripId || "").trim();
+  if (!canonicalTripId || !button) return;
+  const nextOnline = adminContext0470.agendaOnline0471 === false;
+  button.disabled = true;
+  const previousText = button.textContent;
+  button.textContent = nextOnline ? "ativando…" : "desligando…";
+  try {
+    const response = await fetch(
+      "/v1/admin/trips/" + encodeURIComponent(canonicalTripId) + "/public-visibility",
+      {
+        method: "PUT",
+        headers: authenticatedHeaders({
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Rota-Certa-Admin-Driver": driverUsername,
+          "X-Rota-Certa-Operation-Id": newAgendaVisibilityOperationId0471(),
+        }),
+        body: JSON.stringify({
+          online: nextOnline,
+          expectedVisibilityRevision0471: Number(adminContext0470.visibilityRevision0471 || 0),
+        }),
+      },
+    );
+    const body = await response.json();
+    if (!response.ok) {
+      if (response.status === 401) {
+        savePassengerSession("");
+        passengerAgendaAdmin0418 = false;
+        updateAuthenticatedChrome();
+      }
+      if (response.status === 403) {
+        passengerAgendaAdmin0418 = false;
+        updateAuthenticatedChrome();
+      }
+      throw new Error(body.message || "Não foi possível alterar online/offline.");
+    }
+    await refreshAgendaAdminHome0471({ force: true });
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = previousText;
+    setError(error.message || "Não foi possível alterar online/offline.");
+  }
 }
 
 async function loadAgenda(options = {}) {
@@ -850,10 +974,12 @@ async function loadAgenda(options = {}) {
     tracePublicAction("PUBLIC_AGENDA_LOADED", { statusCode });
     agendaTripsCache = Array.isArray(body.trips) ? body.trips : [];
     await hydrateAgendaAdminCapabilities0470();
+    agendaAdminCardsSignature0471 = agendaAdminSignature0471();
     agendaTripsCache = applyAgendaAdminCapabilities0470(agendaTripsCache);
     if (publicSlug) $("subscribeCalendar").textContent = "Compartilhar link da Agenda";
     if (portalMode && !passengerAgendaAdmin0418) return openPassengerPortal();
     renderAgenda(agendaTripsCache);
+    scheduleAgendaAdminHomePolling0471();
     if (Number.isFinite(Number(options.restoreScrollY))) {
       window.scrollTo({ top: Math.max(0, Number(options.restoreScrollY)), behavior: "auto" });
     }
@@ -1683,15 +1809,20 @@ function renderAgenda(trips) {
   updateSearchUi();
   const container = $("agendaTrips");
   container.innerHTML = "";
-  const visibleTrips = trips.filter((item) =>
-    PUBLIC_AGENDA_CARD_STATUSES_0469.has(item?.status) &&
-    item?.publicBookingEnabled === true &&
-    orderedStops(item).length >= 2
-  );
+  const adminMode0471 = passengerAgendaAdmin0418 && agendaAdminCapabilitiesLoaded0471;
+  const visibleTrips = trips.filter((item) => {
+    const adminContext0470 = item && item.adminContext0470;
+    if (adminMode0471 && adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true) {
+      return orderedStops(item).length >= 2;
+    }
+    return PUBLIC_AGENDA_CARD_STATUSES_0469.has(item?.status) &&
+      item?.publicBookingEnabled === true &&
+      orderedStops(item).length >= 2;
+  });
   if (!visibleTrips.length) {
     const empty = document.createElement("div");
     empty.className = "card muted";
-    empty.textContent = "Nenhuma próxima viagem publicada.";
+    empty.textContent = adminMode0471 ? "Nenhuma próxima viagem sincronizada." : "Nenhuma próxima viagem publicada.";
     container.appendChild(empty);
     return;
   }
@@ -1713,7 +1844,7 @@ function renderAgendaCards(entries, container, filtered = false) {
         : availableForTripSegment(item, fromIndex, toIndex))
       : 0;
     const soldOut = item.capacityReliable === true && segmentAvailable === 0;
-    const actionsEnabled = item.capacityReliable === true && segmentAvailable > 0;
+    const actionsEnabled = publicOnline0471 && item.capacityReliable === true && segmentAvailable > 0;
     const from = stops[fromIndex]?.name || "Origem";
     const to = stops[toIndex]?.name || "Destino";
     const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
@@ -1721,6 +1852,31 @@ function renderAgendaCards(entries, container, filtered = false) {
     card.className = (full || soldOut) ? "agendaTrip agendaTripFull" : "agendaTrip";
     const canonicalTripId0470 = String(item.canonicalTripId || "").trim();
     if (canonicalTripId0470) card.dataset.canonicalTripId = canonicalTripId0470;
+    const adminContext0470 = item.adminContext0470;
+    const adminManageable0471 = Boolean(
+      adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true
+    );
+    const publicOnline0471 = !adminManageable0471 || adminContext0470.agendaOnline0471 !== false;
+    if (!publicOnline0471) card.classList.add("agendaTripOffline0471");
+
+    if (adminManageable0471 && adminContext0470.capabilities.canTogglePublicVisibility === true && canonicalTripId0470) {
+      const visibilityToggle0471 = document.createElement("button");
+      visibilityToggle0471.type = "button";
+      visibilityToggle0471.className = "agendaVisibilityToggle0471 " + (publicOnline0471 ? "agendaVisibilityOnline0471" : "agendaVisibilityOffline0471");
+      visibilityToggle0471.textContent = publicOnline0471 ? "online" : "offline";
+      visibilityToggle0471.setAttribute("aria-pressed", String(publicOnline0471));
+      visibilityToggle0471.setAttribute(
+        "aria-label",
+        (publicOnline0471 ? "Viagem online. Toque para deixar offline: " : "Viagem offline. Toque para deixar online: ") +
+          from + " para " + to + ", " + formatDateOnly(item.departureAtMillis),
+      );
+      visibilityToggle0471.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setAgendaTripPublicOnline0471(adminContext0470, visibilityToggle0471);
+      });
+      card.appendChild(visibilityToggle0471);
+    }
 
     const owner = item.driverUsername || driverUsername;
     const detailsParams = new URLSearchParams({ motorista: owner, trip: item.publicToken || item.tripId });
@@ -1793,16 +1949,15 @@ function renderAgendaCards(entries, container, filtered = false) {
 
     card.append(date, routeFrom, arrow, routeTo, meta, bottom);
 
-    const adminContext0470 = item.adminContext0470;
-    if (adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true) {
+    if (adminManageable0471) {
       const state = String(adminContext0470.attestationState || "UNPROVEN").toUpperCase();
-      const stateLabel = {
+      const stateLabel = !publicOnline0471 ? "⚫ Offline" : ({
         VERIFIED: "🔵 Validada",
         PUBLISHED: "🟢 Publicada",
         PENDING: "🟠 Sincronizando",
         DIVERGENT: "🔴 Divergente",
         ERROR: "🔴 Erro",
-      }[state] || "⚪ Não comprovada";
+      }[state] || "⚪ Não comprovada");
       const adminState = document.createElement("div");
       adminState.className = "agendaAdminState0470";
       adminState.setAttribute("role", "status");
@@ -1811,12 +1966,14 @@ function renderAgendaCards(entries, container, filtered = false) {
       card.appendChild(adminState);
     }
 
-    const details = document.createElement("a");
-    details.className = "agendaDetailsLink";
-    details.href = `/?${detailsParams.toString()}`;
-    details.textContent = "Ver detalhes";
-    details.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
-    card.appendChild(details);
+    if (publicOnline0471) {
+      const details = document.createElement("a");
+      details.className = "agendaDetailsLink";
+      details.href = `/?${detailsParams.toString()}`;
+      details.textContent = "Ver detalhes";
+      details.addEventListener("click", () => tracePublicAction("PUBLIC_TRIP_SELECTED"));
+      card.appendChild(details);
+    }
 
     if (soldOut || full) {
       const fullWord = document.createElement("div");
@@ -1866,7 +2023,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       card.appendChild(choices);
     }
 
-    if (adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true && canonicalTripId0470) {
+    if (adminManageable0471 && canonicalTripId0470) {
       const administer = document.createElement("button");
       administer.type = "button";
       administer.className = "adminCardAction0470";

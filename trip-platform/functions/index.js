@@ -3212,12 +3212,21 @@ function publicProjectionCommittedCurrent0434(token, data) {
   return Boolean(data.publicCommittedAt0422);
 }
 
+function tripPublicOnline0471(data) {
+  // Backward compatibility: trips created before 0.1.471 remain online until an
+  // Agenda administrator explicitly turns them offline.
+  return !(data && data.publicAgendaOnline0471 === false);
+}
+
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
   if (!driverData || typeof driverData !== "object") {
     return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
   }
   if (!data || data.publicationTombstone === true) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
+  }
+  if (!tripPublicOnline0471(data)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_OFFLINE_0471" };
   }
   if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
@@ -3320,6 +3329,26 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   });
 }
 
+
+function buildAdminHomeTrip0471(token, data) {
+  const source = publicProjectionCommittedCurrent0434(token, data)
+    ? data
+    : { ...(data || {}), canonicalPublicProjection0434: null };
+  const card = safePublicTrip(token, source || {});
+  return {
+    ...card,
+    tripId: token,
+    publicToken: token,
+    canonicalTripId: cleanText(data && (data.canonicalTripId || data.localTripId) || token, 180) || token,
+    title: cleanText(data && data.title, 220) || card.title,
+    departureAtMillis: Math.max(0, Number(data && data.departureAtMillis || card.departureAtMillis || 0)),
+    status: cleanText(data && data.status, 24) || card.status,
+    publicBookingEnabled: data && data.publicBookingEnabled === true,
+    driverUsername: normalizeUsername(data && data.driverUsername || card.driverUsername || ""),
+    driverDisplayName: cleanText(data && data.driverDisplayName || card.driverDisplayName, 120),
+    updatedAtMillis: Math.max(0, Number(data && data.updatedAtMillis || card.updatedAtMillis || 0)),
+  };
+}
 
 function adminPublicTripState0469(driverData, token, data, nowMillis = Date.now()) {
   const visibility = publicAgendaTripVisibility0466(driverData, token, data, nowMillis);
@@ -3861,6 +3890,19 @@ async function getPublicTrip(res, req, token) {
     : null;
   const driverData = driverSnap && driverSnap.exists ? driverSnap.data() : null;
   const authenticationRequired = agendaAuthenticationRequired0428(driverData);
+  const testerRequested0471 = Boolean(testerSessionHeader(req));
+  if (!testerRequested0471 && !tripPublicOnline0471(data)) {
+    await appendPublicDebugEvent({
+      driverUsername,
+      event: "PUBLIC_TRIP_LOAD_FAILED",
+      source: "server",
+      tripToken: token,
+      screen: "trip",
+      reason: "trip_offline_0471",
+      statusCode: 404,
+    }).catch(() => {});
+    return fail(res, 404, "trip_offline", "Esta viagem está offline no momento.");
+  }
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, driverUsername);
@@ -5461,6 +5503,9 @@ async function createBooking(req, res, token) {
       if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
       const trip = tripSnap.data();
       debugDriverUsername = normalizeUsername(trip.driverUsername || "");
+      if (!tripPublicOnline0471(trip)) {
+        throw Object.assign(new Error("Esta viagem está offline no momento."), { httpStatus: 409, code: "trip_offline" });
+      }
       if (!PUBLIC_STATUSES.has(trip.status)) {
         throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
       }
@@ -7698,6 +7743,7 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
   classifyPublicTripState0469: adminPublicTripState0469,
+  buildAdminHomeTrip0471,
   mutateDriverBookingDecision0468: mutateDriverBookingDecision,
   mutateDriverPassengerOperationalStatus0468: mutateDriverPassengerOperationalStatus,
   mutateProtectedBooking0468: mutateProtectedBooking,
@@ -7794,6 +7840,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-public-url" && req.method === "PUT") {
       return await agendaAdmin0417.updateAdminTripBlaBlaPublicUrl0465(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "public-visibility" && req.method === "PUT") {
+      return await agendaAdmin0417.updateAdminTripPublicVisibility0471(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
       return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);

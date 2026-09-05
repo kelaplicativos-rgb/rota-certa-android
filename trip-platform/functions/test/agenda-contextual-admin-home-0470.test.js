@@ -58,7 +58,9 @@ test("0470 contextual admin endpoint resolves exact canonical identity inside te
 test("0470 card capabilities are server-side, per authenticated Agenda admin, and lightweight", () => {
   const capabilities = between(admin, "async function getAdminCardCapabilities0470", "async function getAdminTripContext0470");
   assert.match(capabilities, /requireAdminSession0417/);
-  assert.match(capabilities, /effective\.visible === true/);
+  assert.doesNotMatch(capabilities, /\.filter\(\(entry\) => entry\.effective\.visible === true\)/);
+  assert.match(capabilities, /agendaOnline0471:/);
+  assert.match(capabilities, /trip: typeof buildAdminHomeTrip0471/);
   assert.match(capabilities, /canonicalTripId:/);
   assert.match(capabilities, /capabilities: tripAdminCapabilities0470/);
   assert.doesNotMatch(capabilities, /bookings|passengerContact|passengerName/);
