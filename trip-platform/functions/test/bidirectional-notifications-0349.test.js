@@ -44,7 +44,7 @@ test("authenticated My Trips edit and cancel both notify the driver through exis
 
 test("driver protected booking mutation uses driver auth and not an undefined passenger session", () => {
   const admin = block(api, "async function mutateProtectedBooking", "async function updatePassengerBooking");
-  assert.match(admin, /const driver = await requireDriver\(req, res\)/);
+  assert.match(admin, /const driver = driverOverride0468 \|\| await requireDriver\(req, res\)/);\n  assert.match(admin, /const adminActor0468 = driverOverride0468 && driverOverride0468\.adminActor0468 === true/);
   assert.match(admin, /trip_owner_mismatch/);
   assert.doesNotMatch(admin, /requirePassengerDriverAccess/);
   assert.doesNotMatch(admin, /\bsession\b/);
