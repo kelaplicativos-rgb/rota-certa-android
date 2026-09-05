@@ -7728,6 +7728,21 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
       return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);
     }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
+      return await agendaAdmin0417.listAdminTripBookings0468(req, res, parts[3]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "decision" && req.method === "POST") {
+      return await agendaAdmin0417.mutateAdminBookingDecision0468(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "operational" && req.method === "POST") {
+      return await agendaAdmin0417.mutateAdminBookingOperational0468(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "admin" && req.method === "PUT") {
+      return await agendaAdmin0417.mutateAdminProtectedBooking0468(req, res, parts[3], parts[5], false);
+    }
+    if (parts.length === 8 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "admin" && parts[7] === "cancel" && req.method === "POST") {
+      return await agendaAdmin0417.mutateAdminProtectedBooking0468(req, res, parts[3], parts[5], true);
+    }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-attestation" && req.method === "POST") {
       return await agendaAdmin0417.recordDriverPublicAttestation0417(req, res, parts[3]);
     }
