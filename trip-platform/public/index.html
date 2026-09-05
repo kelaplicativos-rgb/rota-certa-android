@@ -62,7 +62,7 @@
     .adminEntry0417{border:0;background:transparent;color:var(--muted);font-size:14px;font-weight:800;text-decoration:underline;text-underline-offset:3px;padding:4px 0 8px;cursor:pointer}
     .adminHeader0417{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.adminHeader0417 h1{font-size:30px;margin:0}
     .adminGrid0417{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.adminMetric0417{border:1px solid var(--line);border-radius:16px;padding:14px;background:#fff;display:grid;gap:4px}.adminMetric0417 strong{font-size:26px}.adminMetric0417 span{font-size:14px;font-weight:800}
-    .adminStateBlue0417{color:#1769d2}.adminStateOrange0417{color:#b56d00}.adminStateRed0417{color:#b42318}.adminStateGray0417{color:#7b818a}
+    .adminStateBlue0417{color:#1769d2}.adminStateGreen0465{color:#15803d}.adminStateOrange0417{color:#b56d00}.adminStateRed0417{color:#b42318}.adminStateGray0417{color:#7b818a}
     .adminActionGrid0417{display:grid;grid-template-columns:1fr 1fr;gap:10px}.adminCheck0417{display:flex;grid-template-columns:none;flex-direction:row;align-items:flex-start;gap:10px;margin:8px 0;font-size:17px}.adminCheck0417 input{width:24px;min-height:24px;margin:1px 0}.adminCheck0417 span{display:grid;gap:2px}.adminCheck0417 small{font-size:12px;color:var(--muted);word-break:break-all}
     .adminTrip0417{width:100%;border:1px solid var(--line);border-radius:16px;background:#fff;padding:13px;text-align:left;display:grid;grid-template-columns:26px 1fr;gap:9px;margin-top:8px;cursor:pointer}.adminTrip0417 small{display:block;font-size:13px;color:var(--muted);margin-top:3px}.adminStateDot0417{font-size:20px;line-height:1}
     .adminLogItem0417{border-bottom:1px solid var(--line);padding:10px 0;display:grid;gap:3px}.adminLogItem0417 small{font-size:13px;color:var(--muted)}.adminToolbar0417{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.adminToolbar0417 button{width:auto;min-height:48px;padding:9px 13px;font-size:16px}.adminToolbar0417 label{display:flex;flex-direction:row;align-items:center;gap:8px;margin:0;font-size:15px}.adminToolbar0417 input[type=checkbox]{width:22px;min-height:22px}
@@ -372,6 +372,15 @@
       <div class="card">
         <h2>Viagens e MATCH ponta a ponta</h2>
         <div id="adminTrips0417"></div>
+        <div id="adminTripPublicUrlEditor0465" class="hidden">
+          <div class="adminDivider0417"></div>
+          <h3 id="adminTripPublicUrlTitle0465">URL pública BlaBlaCar</h3>
+          <p id="adminTripPublicUrlHint0465" class="muted">Selecione uma viagem verde para preencher o link público BlaBlaCar.</p>
+          <label>URL pública da viagem
+            <input id="adminTripPublicUrlInput0465" type="url" inputmode="url" autocomplete="off" placeholder="https://www.blablacar.com.br/trip?...">
+          </label>
+          <button id="adminSaveTripPublicUrl0465" class="primary" type="button">Salvar URL na Timeline</button>
+        </div>
         <div class="adminDivider0417"></div>
         <h3 id="adminTripHistoryTitle0417">Histórico da viagem</h3>
         <div id="adminTripHistory0417" class="adminDetails0417"><p class="muted">Toque em uma viagem para abrir sua cronologia técnica.</p></div>
