@@ -524,10 +524,12 @@ function createAgendaAdmin0417({
       publicationRevision: Math.max(0, Number(trip.publicationRevision || 0)),
       manualBlaBlaPublicUrlRevision0465: Math.max(0, Number(trip.manualBlaBlaPublicUrlRevision0465 || 0)),
       manualBlaBlaIdentityRevision0472: Math.max(0, Number(trip.manualBlaBlaIdentityRevision0472 || 0)),
+      manualBlaBlaIdentityAppliedRevision0472: Math.max(0, Number(trip.manualBlaBlaIdentityAppliedRevision0472 || 0)),
       manualBlaBlaManageUrl0472: (validatedBlaBlaManageIdentity0472(trip.manualBlaBlaManageUrl0472) || {}).url || "",
       manualBlaBlaIdentityPending0472: Boolean(
         validatedBlaBlaManageIdentity0472(trip.manualBlaBlaManageUrl0472) &&
-        clean0417(trip.manualBlaBlaTripId0472, 160) !== blablaTripId
+        Math.max(0, Number(trip.manualBlaBlaIdentityAppliedRevision0472 || 0)) <
+          Math.max(0, Number(trip.manualBlaBlaIdentityRevision0472 || 0))
       ),
       canonicalStateHash: clean0417(trip.canonicalStateHash, 160),
       attestationState: state,
@@ -852,14 +854,16 @@ function createAgendaAdmin0417({
     const manualIdentityAssignments0472 = tripSnap.docs.map((doc) => {
       const data = doc.data();
       const requested = validatedBlaBlaManageIdentity0472(data.manualBlaBlaManageUrl0472);
-      if (!requested || clean0417(data.blablaTripId, 160) === requested.tripId) return null;
+      const requestRevision = Math.max(0, Number(data.manualBlaBlaIdentityRevision0472 || 0));
+      const appliedRevision = Math.max(0, Number(data.manualBlaBlaIdentityAppliedRevision0472 || 0));
+      if (!requested || requestRevision <= 0 || appliedRevision >= requestRevision) return null;
       return {
         remoteTripId: doc.id,
         canonicalTripId: clean0417(data.canonicalTripId || data.localTripId, 180),
         expectedProfileUuid: clean0417(data.manualBlaBlaProfileUuid0472 || data.blablaProfileUuid, 160),
         candidateTripId: requested.tripId,
         blablaManageUrl: requested.url,
-        requestRevision: Math.max(0, Number(data.manualBlaBlaIdentityRevision0472 || 0)),
+        requestRevision,
         updatedAtMillis: Math.max(0, Number(data.manualBlaBlaIdentityUpdatedAtMillis0472 || 0)),
       };
     }).filter((item) => item && item.requestRevision > 0);

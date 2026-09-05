@@ -466,12 +466,15 @@
       if (recovery) recovery.classList.add("hidden");
       return;
     }
-    if (!trip.blablaTripId || trip.capabilities && trip.capabilities.canManageBlaBlaLink !== true) {
+    if (!trip.blablaTripId || trip.manualBlaBlaIdentityPending0472 ||
+        trip.capabilities && trip.capabilities.canManageBlaBlaLink !== true) {
       editor.classList.add("hidden");
       if (recovery) recovery.classList.remove("hidden");
       if (unavailable) {
         unavailable.textContent = trip.manualBlaBlaIdentityPending0472
-          ? "Solicitação pendente. O servidor ainda não promoveu nenhum ID: aguardando o Samsung autenticado reencontrar esta viagem."
+          ? (trip.blablaTripId
+            ? "O servidor já reconheceu a identidade forte. Aguardando o Samsung concluir a migração local e confirmar a mesma revisão."
+            : "Solicitação pendente. O servidor ainda não promoveu nenhum ID: aguardando o Samsung autenticado reencontrar esta viagem.")
           : "Esta viagem ainda não possui identidade forte BlaBlaCar. Cole a URL de “Editar sua carona”; ela será usada apenas como pista para uma confirmação autenticada no Samsung.";
       }
       const manageInput = byId("adminTripManageUrlInput0472");
@@ -626,7 +629,11 @@
       if (!currentContextTrip0470 || currentContextTrip0470.canonicalTripId !== canonicalTripId) return;
       await refreshTripContext0470({ silent: true });
       await loadHistory0417(canonicalTripId);
-      if (currentContextTrip0470 && currentContextTrip0470.blablaTripId) {
+      if (
+        currentContextTrip0470 &&
+        currentContextTrip0470.blablaTripId &&
+        !currentContextTrip0470.manualBlaBlaIdentityPending0472
+      ) {
         setMessage0417("Identidade forte confirmada pelo Samsung. Agora a URL pública BlaBlaCar pode seguir para publicação, readback e validação azul.");
         return;
       }

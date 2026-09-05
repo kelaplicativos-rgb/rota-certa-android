@@ -724,6 +724,7 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
   const candidateTripId = cleanText(body.blablaTripId, 160);
   const profileUuid = cleanText(body.blablaProfileUuid, 160).toLowerCase();
   const requestRevision = Math.max(0, Math.floor(Number(body.requestRevision || 0)));
+  const localApplied = body.localApplied === true;
   const blablaManageUrl = normalizeBlaBlaManageUrl(body.blablaManageUrl, candidateTripId);
   if (!remoteTripId || !candidateTripId || !profileUuid || requestRevision <= 0 || !blablaManageUrl) {
     return fail(res, 400, "invalid_blablacar_identity_confirmation", "Confirmação de identidade BlaBlaCar incompleta.");
@@ -764,8 +765,16 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
       const currentProfileUuid = cleanText(previous.blablaProfileUuid, 160).toLowerCase();
       if (currentTripId) {
         if (currentTripId === candidateTripId && (!currentProfileUuid || currentProfileUuid === profileUuid)) {
+          const alreadyApplied = Math.max(0, Number(previous.manualBlaBlaIdentityAppliedRevision0472 || 0));
+          if (localApplied && alreadyApplied < requestRevision) {
+            tx.set(ref, {
+              manualBlaBlaIdentityAppliedRevision0472: requestRevision,
+              manualBlaBlaIdentityAppliedAtMillis0472: Date.now(),
+            }, { merge: true });
+          }
           return {
             changed: false,
+            localApplied: localApplied || alreadyApplied >= requestRevision,
             canonicalTripId: cleanText(previous.canonicalTripId || previous.localTripId || remoteTripId, 180),
             canonicalRevision: Math.max(0, Number(previous.canonicalRevision || 0)),
           };
@@ -773,6 +782,12 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
         throw Object.assign(new Error("Esta viagem já possui outra identidade forte BlaBlaCar."), {
           httpStatus: 409,
           code: "blablacar_identity_already_strong",
+        });
+      }
+      if (localApplied) {
+        throw Object.assign(new Error("O Samsung não pode concluir a recuperação antes da confirmação canônica do servidor."), {
+          httpStatus: 409,
+          code: "blablacar_identity_ack_before_confirmation",
         });
       }
 
@@ -809,6 +824,7 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
       tx.set(ref, committed, { merge: true });
       return {
         changed: true,
+        localApplied: false,
         canonicalTripId: cleanText(committed.canonicalTripId || previous.canonicalTripId || remoteTripId, 180),
         canonicalRevision: Math.max(0, Number(committed.canonicalRevision || 0)),
       };
@@ -816,6 +832,7 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
     return json(res, 200, {
       accepted: true,
       changed: result.changed,
+      localApplied: result.localApplied === true,
       remoteTripId,
       canonicalTripId: result.canonicalTripId,
       canonicalRevision: result.canonicalRevision,
