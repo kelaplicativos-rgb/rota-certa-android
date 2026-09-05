@@ -50,7 +50,8 @@ test("last-seat contention is serialized by the same Firestore trip transaction"
   assert.match(create, /code: "insufficient_seats", availableSeats: available/);
   assert.match(create, /assertNoOverbooking\(trip, reconciled\)/);
   assert.match(create, /tx\.create\(bookingRef, candidatePersisted\)/);
-  assert.match(create, /tx\.update\(tripRef, canonicalServerProjectionPatch0468\(/);\n  assert.match(create, /canonicalCapacityPersistence\(trip, candidateRecords, reconciledCapacityState, now\)/);
+  assert.match(create, /tx\.update\(tripRef, canonicalServerProjectionPatch0468\(/);
+  assert.match(create, /canonicalCapacityPersistence\(trip, candidateRecords, reconciledCapacityState, now\)/);
   assert.ok(create.indexOf("if (seats > available)") < create.indexOf("tx.create(bookingRef, candidatePersisted)"));
   assert.ok(create.indexOf("assertNoOverbooking(trip, reconciled)") < create.indexOf("tx.create(bookingRef, candidatePersisted)"));
 });
