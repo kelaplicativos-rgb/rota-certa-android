@@ -39,9 +39,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 internal enum class AgendaRootSection0396(val label: String) {
-    ALL_TRIPS("Todas as viagens"),
+    ALL_TRIPS("Timeline antiga"),
     ASSISTANT("Assistente Rota Certa"),
-    AUTOMATIC_SYNC("Sincronização automática"),
+    AUTOMATIC_SYNC("BlaBlaCar"),
     PUBLIC_SEARCH("Consulta pública"),
     PASSENGERS("Passageiros"),
     INTEGRATIONS("Integrações"),
@@ -84,11 +84,10 @@ internal fun AgendaModuleDrawer0396(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 20.dp),
                 ) {
-                    Text("Agenda de Viagens", style = MaterialTheme.typography.titleLarge)
+                    Text("Rota Certa", style = MaterialTheme.typography.titleLarge)
                 }
                 HorizontalDivider()
                 listOf(
-                    AgendaRootSection0396.ALL_TRIPS,
                     AgendaRootSection0396.AUTOMATIC_SYNC,
                     AgendaRootSection0396.PUBLIC_SEARCH,
                     AgendaRootSection0396.PASSENGERS,
@@ -153,7 +152,7 @@ internal fun AgendaModuleHeader0396(
             ) {
                 if (root) {
                     Text(
-                        "Agenda de Viagens",
+                        "Rota Certa",
                         style = MaterialTheme.typography.titleMedium,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
