@@ -131,16 +131,18 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
   assert.match(attestation, /independent0468\.visible === true/);
 });
 
-test("0469 public visibility is the exact card-renderability contract", () => {
+test("0475 public visibility is canonical list renderability without legacy admin gates", () => {
   const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
   assert.match(visibility, /applyPublicTripVisibility0434/);
   assert.match(visibility, /safePublicTrip\(token, data\)/);
-  assert.match(visibility, /rendered0469\.publicBookingEnabled !== true/);
+  assert.doesNotMatch(visibility, /tripPublicOnline0471/);
+  assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
+  assert.doesNotMatch(visibility, /publicBookingEnabled !== true/);
   assert.match(visibility, /rendered0469\.stops\.length < 2/);
   assert.match(visibility, /PUBLIC_AGENDA_RENDER_STATUS_UNAVAILABLE_0469/);
   assert.match(visibility, /PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469/);
   assert.match(publicApp0469, /PUBLIC_AGENDA_CARD_STATUSES_0469 = new Set\(\["PUBLISHED", "FULL", "STARTING", "ACTIVE"\]\)/);
-  assert.match(publicApp0469, /PUBLIC_AGENDA_CARD_STATUSES_0469\.has\(item\?\.status\)/);
+  assert.match(publicApp0469, /PUBLIC_AGENDA_CARD_STATUSES_0469\.has\(String\(item\?\.status/);
 });
 
 test("0469 Admin green and blue derive from the same visible public card state", () => {
@@ -187,9 +189,10 @@ test("0468 Android normal navigation opens the BlaBlaCar collector and keeps leg
   assert.match(navigation0468, /AUTOMATIC_SYNC\("BlaBlaCar"\)/);
 });
 
-test("0468 collector panel identifies backend as authority and exposes the existing administrative surface", () => {
+test("0475 collector panel identifies backend as authority and opens only the public Agenda", () => {
   assert.match(syncUi0468, /O servidor é a fonte canônica/);
-  assert.match(syncUi0468, /ABRIR ÁREA ADMINISTRATIVA/);
+  assert.match(syncUi0468, /ABRIR AGENDA PÚBLICA/);
+  assert.doesNotMatch(syncUi0468, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(syncUi0468, /store\.onlineSettings\(\)\.publicAgendaUrl/);
   assert.match(syncUi0468, /Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\)\)/);
   assert.match(syncUi0468, /O Android mantém apenas cache, sessão e transporte offline/);
@@ -221,8 +224,9 @@ test("0468 canonical domain blocks cancellation after passenger is in the car", 
   assert.match(publicAdmin0468, /operational !== "IN_CAR" && operational !== "COMPLETED"/);
 });
 
-test("0468 web Admin exposes passenger operations over canonical endpoints", () => {
-  assert.match(publicHtml0468, /id="adminTripBookings0468"/);
+test("0475 canonical admin commands remain internal while public HTML exposes none of them", () => {
+  assert.doesNotMatch(publicHtml0468, /adminTripBookings0468|Administração da Agenda|Administrar esta viagem/);
+  assert.doesNotMatch(publicHtml0468, /admin-0417\.js/);
   assert.match(publicAdmin0468, /loadAdminTripBookings0468/);
   assert.match(publicAdmin0468, /data-admin-decision0468="APPROVE"/);
   assert.match(publicAdmin0468, /data-admin-decision0468="REJECT"/);
