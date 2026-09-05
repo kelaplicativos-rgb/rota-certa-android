@@ -405,7 +405,7 @@ internal fun evaluatePublicMirrorReadback0411(
         mismatchFields = uniqueMismatch,
         reason = when {
             validated -> "PUBLIC_READBACK_MATCH"
-            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_UNRESOLVED"
+            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_PENDING"
             !transportRevisionValid -> "STALE_TRANSPORT_REVISION"
             !logicalRevisionValid -> "STALE_LOGICAL_REVISION"
             !persistedCommitValid -> "PUBLIC_COMMIT_TIMESTAMP_MISSING"
@@ -437,7 +437,7 @@ internal fun Trip.publicMirrorProjectionCurrent0411(): Boolean =
     publicMirrorAttestationCurrent0411() ||
         (
             publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.UNPROVEN &&
-                publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_UNRESOLVED" &&
+                publicMirrorAttestationReason0411 in setOf("BLABLACAR_PUBLIC_URL_PENDING", "BLABLACAR_PUBLIC_URL_UNRESOLVED") &&
                 publicMirrorMismatchFields0411.isNotEmpty() &&
                 publicMirrorMismatchFields0411.all { it == "blablaPublicUrl" } &&
                 publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
@@ -448,6 +448,11 @@ internal fun Trip.publicMirrorProjectionCurrent0411(): Boolean =
                 publicMirrorExpectedHash0411.isNotBlank() &&
                 publicMirrorExpectedHash0411 == publicMirrorReadbackHash0411
         )
+
+internal fun Trip.publicMirrorPublishedWithoutBlaBlaUrl0465(): Boolean =
+    !publicMirrorAttestationCurrent0411() &&
+        publicMirrorProjectionCurrent0411() &&
+        canonicalBoundBlaBlaPublicUrl0423(blablaPublicUrl, blablaTripId).isNullOrBlank()
 
 internal fun Trip.invalidatePublicMirror0411(reason: String): Trip = copy(
     publicMirrorAttestationState0411 = if (deleted || publicationTombstone) {
