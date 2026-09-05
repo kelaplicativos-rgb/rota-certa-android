@@ -726,7 +726,6 @@ class TripRemoteApi(
 
     suspend fun listDriverTripSyncStates0402(
         includePastForVerification0429: Boolean = false,
-        evidence0421: RemotePublicationEvidenceContext0421? = null,
     ): DriverTripSyncStateResponse0402 = request(
         method = "GET",
         path = if (includePastForVerification0429) {
@@ -735,7 +734,6 @@ class TripRemoteApi(
             "/v1/driver/trips/sync-state"
         },
         requireDriverToken = true,
-        evidence0421 = evidence0421,
         successNextStage0421 = "PUBLIC_IDENTITY_RESOLUTION",
     )
 
