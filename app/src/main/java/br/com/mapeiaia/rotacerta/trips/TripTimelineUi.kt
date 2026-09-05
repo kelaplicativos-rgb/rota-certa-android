@@ -54,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.Coordinate
 import br.com.mapeiaia.rotacerta.DeviceLocationService
 import br.com.mapeiaia.rotacerta.GeoDistance
@@ -1029,7 +1030,10 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
     }
 }
 
-private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
+private fun publicMirrorEvidenceJson0421(
+    trip: Trip?,
+    commandAudit0407: BlaBlaCommandAuditSnapshot0407?,
+): String {
     if (trip == null) return "{}"
     fun q(value: String): String = JSONObject.quote(
         runCatching { UnifiedDebugEventStore.sanitizeForExport(value) }
@@ -1220,6 +1224,15 @@ private fun publicMirrorEvidenceJson0421(trip: Trip?): String {
         append("\"requestHash\":").append(q(requestHash)).append(',')
         append("\"responseHash\":").append(q(responseHash)).append(',')
         append("\"reasonCode\":").append(q(reasonCode)).append(',')
+        append("\"control\":{")
+        append("\"status\":").append(q(commandAudit0407?.status?.name.orEmpty())).append(',')
+        append("\"pending\":").append(commandAudit0407?.pending == true).append(',')
+        append("\"requestedAtMillis\":").append(commandAudit0407?.requestedAtMillis ?: 0L).append(',')
+        append("\"finishedAtMillis\":").append(commandAudit0407?.finishedAtMillis ?: 0L).append(',')
+        append("\"errorCode\":").append(q(commandAudit0407?.errorCode.orEmpty())).append(',')
+        append("\"queuedVersionCode\":").append(commandAudit0407?.queuedVersionCode ?: 0L).append(',')
+        append("\"currentVersionCode\":").append(BuildConfig.VERSION_CODE)
+        append("},")
         append("\"attempt\":").append(currentAttemptNumber0459).append(',')
         append("\"attemptState\":").append(q(attemptState0459)).append(',')
         append("\"lastObservedStage\":").append(q(currentAttemptLastStage0459)).append(',')
@@ -1412,7 +1425,10 @@ private fun TimelineEntryCard(
                     onClick = {
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         clipboard.setPrimaryClip(
-                            ClipData.newPlainText("Rota Certa Evidence Bundle", publicMirrorEvidenceJson0421(trip)),
+                            ClipData.newPlainText(
+                                "Rota Certa Evidence Bundle",
+                                publicMirrorEvidenceJson0421(trip, commandAudit0407),
+                            ),
                         )
                         Toast.makeText(context, "Evidence Bundle JSON copiado.", Toast.LENGTH_SHORT).show()
                     },
