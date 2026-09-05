@@ -253,3 +253,18 @@ test("0.1.428 open sessions stay within one Agenda", () => {
   assert.match(source, /passenger_auth_restored/);
   assert.match(source, /password_change_unavailable/);
 });
+
+test("green published state and manual BlaBlaCar URL use the canonical targeted push corridor 0465", () => {
+  const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+  const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  const browser = fs.readFileSync(path.join(__dirname, "..", "..", "public", "admin-0417.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
+  assert.match(admin, /publishedWithoutUrl/);
+  assert.match(admin, /manualBlaBlaPublicUrl0465/);
+  assert.match(admin, /event: "admin_public_url_saved"/);
+  assert.match(admin, /manualPublicUrlAssignments0465/);
+  assert.match(source, /blablacar-public-url/);
+  assert.match(browser, /adminStateGreen0465/);
+  assert.match(browser, /save-trip-public-url/);
+  assert.match(html, /adminTripPublicUrlInput0465/);
+});
