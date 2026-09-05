@@ -129,6 +129,24 @@ internal object BlaBlaDateScopeScriptCatalog0449 {
         BlaBlaBrowserRequest.SEAT_OPTIONS,
     )
 
+    /** Entire seat-management group. Date/period listing must not depend on it by default. */
+    val seatFlowRequests0478: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.SEAT_OPTIONS,
+        BlaBlaBrowserRequest.SEAT_CHANGE,
+        BlaBlaBrowserRequest.SEAT_SAVE,
+    )
+
+    /**
+     * Safe default for date/period collection.
+     *
+     * The public Agenda card is materialized from trip/passenger/canonical evidence. Seat management
+     * remains available explicitly through the toggles and the dedicated seat-sync flow, but an absent
+     * BlaBlaCar options link must not quarantine an otherwise valid trip.
+     */
+    val dateScopeDefaultRequests0478: Set<BlaBlaBrowserRequest> by lazy {
+        all - seatFlowRequests0478
+    }
+
     val coreTripRequests: Set<BlaBlaBrowserRequest> = setOf(
         BlaBlaBrowserRequest.RIDE_LIST,
         BlaBlaBrowserRequest.TRIP_OPEN,
