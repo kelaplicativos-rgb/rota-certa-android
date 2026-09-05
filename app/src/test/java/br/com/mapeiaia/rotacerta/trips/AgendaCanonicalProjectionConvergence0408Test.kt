@@ -195,7 +195,7 @@ class AgendaCanonicalProjectionConvergence0408Test {
 
     @Test
     fun durableReadbackIdentityResolutionDoesNotReuseFutureDiscoveryFilter() {
-        val backend = File("trip-platform/functions/index.js").readText()
+        val backend = File("../trip-platform/functions/index.js").readText()
         val remoteApi = source("TripRemoteApi.kt")
         val outbox = source("TripPublicationOutbox0387.kt")
         val attestation = source("PublicMirrorAttestationCoordinator0411.kt")
