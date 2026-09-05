@@ -684,46 +684,35 @@ internal class TripMutationCoordinator0387(
             )
             return null
         }
-        val canonicalMatches = store.trips().filter { trip ->
-            resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !trip.deleted &&
-                trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                trip.blablaTripId?.trim() == tripId
-        }
-        if (canonicalMatches.size != 1) {
-            UnifiedDebugEventStore.record(
-                "TRIP_MUTATION_EXTERNAL_CANONICAL_BLOCKED_0453",
-                appContext.packageName,
-                "tenantId=" + outbox.tenantId +
-                    " profileUuidPresent=true tripIdPresent=true canonicalMatches=" + canonicalMatches.size +
-                    " reason=canonical_identity_not_unique",
-            )
-            return null
-        }
-        val canonicalExternalTrip = canonicalMatches.single()
-        val canonicalTripId = canonicalExternalTrip.tripKey.trim()
-        if (canonicalTripId.isBlank()) {
-            UnifiedDebugEventStore.record(
-                "TRIP_MUTATION_EXTERNAL_CANONICAL_BLOCKED_0453",
-                appContext.packageName,
-                "tenantId=" + outbox.tenantId +
-                    " internalTripId=" + seatSyncDiagnosticKey(canonicalExternalTrip.id) +
-                    " profileUuidPresent=true tripIdPresent=true reason=canonical_trip_key_unresolved",
-            )
-            return null
-        }
+        val canonicalTripId = canonicalBlaBlaTripKey0406(
+            tenantId = outbox.tenantId,
+            profileUuid = profileUuid,
+            providerTripId = tripId,
+        ) ?: return null
         val allocation = configuredRotaCertaSeatAllocation?.takeIf { it in 0..999 }
-            ?: canonicalExternalTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
             ?: 0
+        val blablaQuota = sourceTrip.published_seats?.takeIf { it in 0..999 } ?: 0
+        val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
+            source = sourceTrip,
+            capacity = (blablaQuota + allocation).coerceIn(0, 999),
+            rotaCertaSeatAllocation = allocation,
+        ) ?: return null
+        val transportTrip0468 = synthesized.trip.copy(
+            tripKey = canonicalTripId,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = 0L,
+            canonicalStateHash = "",
+        )
         val signature = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(sourceTrip, allocation) +
-            "|state:" + canonicalExternalTrip?.canonicalStateHash.orEmpty()
+            "|server-canonical:" + canonicalTripId +
+            "|config:" + (seatAllocationVersion?.coerceAtLeast(0L) ?: 0L)
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
             operation = TripPublicationOperation0387.UPSERT_EXTERNAL,
             mutationType = mutationType,
             source = eventSource,
             snapshot = TripPublicationSnapshot0387(
-                trip = canonicalExternalTrip,
+                trip = transportTrip0468,
                 externalTrip = sourceTrip,
                 externalAccountId = accountId,
                 configuredRotaCertaSeatAllocation = allocation,
@@ -978,6 +967,37 @@ internal class TripMutationCoordinator0387(
                                 "accountRecovered=true profileUuidPresent=true tripIdPresent=true",
                             )
                         }
+                        val backendCanonicalDirectTransport0468 =
+                            event.snapshot.trip?.canonicalRevision == 0L &&
+                                event.snapshot.trip?.canonicalStateHash.isNullOrBlank() &&
+                                event.canonicalTripId == canonicalBlaBlaTripKey0406(
+                                    tenantId = event.tenantId,
+                                    profileUuid = sourceTrip.profile_uuid,
+                                    providerTripId = sourceTrip.trip_id,
+                                )
+                        if (backendCanonicalDirectTransport0468) {
+                            recordEvidence0421(
+                                stage = "CANONICAL_REBASE_GUARD",
+                                status = "SKIPPED",
+                                reason = "BACKEND_CANONICAL_AUTHORITY_0468",
+                                event = event,
+                                extra = "localCanonicalRead=false previousStage=OUTBOX_IDENTITY_GUARD nextStage=INCREMENTAL_IDENTITY_GUARD",
+                            )
+                            PublicAgendaAutoSync0300.syncExternalTripIncremental(
+                                context = appContext,
+                                store = store,
+                                source = sourceTrip,
+                                configuredRotaCertaSeatAllocation = event.snapshot.configuredRotaCertaSeatAllocation,
+                                entityRevision = event.revision,
+                                outboxEventId = event.id,
+                                mutationId0421 = event.resolvedMutationId0421(),
+                                idempotencyKey0421 = event.resolvedIdempotencyKey0421(),
+                                externalAccountId = effectiveExternalAccountId0454,
+                                canonicalTripId = event.canonicalTripId,
+                                seatAllocationVersion = event.snapshot.seatAllocationVersion,
+                                canonicalTripSnapshot = event.snapshot.trip,
+                            )
+                        } else {
                         val currentCanonicalMatches0456 = store.trips().filter { trip ->
                             resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
                                 !trip.deleted &&
@@ -1119,6 +1139,7 @@ internal class TripMutationCoordinator0387(
                             seatAllocationVersion = event.snapshot.seatAllocationVersion,
                             canonicalTripSnapshot = repairedCanonical0456,
                         )
+                        }
                     }
                     TripPublicationOperation0387.TOMBSTONE -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot de tombstone ausente." }
@@ -1428,12 +1449,11 @@ internal class TripMutationCoordinator0387(
         val accountIdentityConfirmed = effectiveExternalAccountId.isNotBlank()
         val boundCanonicalId = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)?.bookingTripId.orEmpty()
         val expectedStrongId = if (accountIdentityConfirmed) {
-            strongExternalCanonicalTripId0387(
-                event.tenantId,
-                effectiveExternalAccountId,
-                profileUuid,
-                tripId,
-            )
+            canonicalBlaBlaTripKey0406(
+                tenantId = event.tenantId,
+                profileUuid = profileUuid,
+                providerTripId = tripId,
+            ).orEmpty()
         } else ""
         return externalIncrementalPublicationIdentityAccepted0455(
             resolvedInternalTripId = event.canonicalTripId,
