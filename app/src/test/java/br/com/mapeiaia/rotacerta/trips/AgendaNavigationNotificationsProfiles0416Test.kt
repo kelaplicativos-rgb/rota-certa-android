@@ -16,14 +16,15 @@ class AgendaNavigationNotificationsProfiles0416Test {
             .substringAfter("listOf(")
             .substringBefore(").forEach { section ->")
         listOf(
-            "AgendaRootSection0396.ALL_TRIPS",
             "AgendaRootSection0396.AUTOMATIC_SYNC",
             "AgendaRootSection0396.PUBLIC_SEARCH",
             "AgendaRootSection0396.PASSENGERS",
             "AgendaRootSection0396.INTEGRATIONS",
             "AgendaRootSection0396.APP_SETTINGS",
         ).forEach { assertTrue(visible.contains(it), "Missing destination: $it") }
+        assertFalse(visible.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(visible.contains("AgendaRootSection0396.ASSISTANT"))
+        assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
         assertFalse(header.contains("Central do Rota Certa"))
         assertFalse(header.contains("Text(\"Navegação\""))
     }
