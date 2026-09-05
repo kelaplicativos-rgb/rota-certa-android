@@ -1783,6 +1783,79 @@ function canonicalCapacityPersistence(trip, records, capacityState = null, now =
   };
 }
 
+function canonicalServerStateHash0468(trip) {
+  const semantic = {
+    canonicalTripId: cleanText(trip.canonicalTripId || trip.localTripId, 180),
+    canonicalRevision: Math.max(0, Number(trip.canonicalRevision || 0)),
+    blablaProfileUuid: cleanText(trip.blablaProfileUuid, 160).toLowerCase(),
+    blablaTripId: cleanText(trip.blablaTripId, 160),
+    title: cleanText(trip.title, 220),
+    departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
+    status: cleanText(trip.status, 24),
+    capacity: Math.max(0, Number(trip.capacity || 0)),
+    stops: (Array.isArray(trip.stops) ? trip.stops : []).map(canonicalPublicStop0411),
+    segmentLoads: (Array.isArray(trip.segmentLoads) ? trip.segmentLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentPassengerLoads: (Array.isArray(trip.segmentPassengerLoads) ? trip.segmentPassengerLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    segmentBlockedLoads: (Array.isArray(trip.segmentBlockedLoads) ? trip.segmentBlockedLoads : []).map((value) => Math.max(0, Number(value || 0))),
+    publishedSeats: trip.publishedSeats == null ? null : Math.max(0, Number(trip.publishedSeats || 0)),
+    rotaCertaSeatAllocation: Math.max(0, Number(trip.rotaCertaSeatAllocation || 0)),
+    publicBookingEnabled: trip.publicBookingEnabled === true,
+    capacityReliable: trip.capacityReliable === true,
+    itineraryAuthoritative: trip.itineraryAuthoritative === true,
+    blablaPublicUrl: normalizeCanonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, cleanText(trip.blablaTripId, 160)),
+    publicationTombstone: trip.publicationTombstone === true,
+  };
+  return "server-canonical-v1:" + sha256Hex(JSON.stringify(semantic));
+}
+
+function canonicalServerProjectionPatch0468(token, previous, patch, publicationRevision, now = Date.now()) {
+  const currentCanonicalRevision = Math.max(0, Math.floor(Number(previous && previous.canonicalRevision || 0)));
+  const canonicalRevision = currentCanonicalRevision + 1;
+  const canonicalTripId = cleanText(
+    patch && (patch.canonicalTripId || patch.localTripId) ||
+      previous && (previous.canonicalTripId || previous.localTripId) ||
+      token,
+    180,
+  ) || cleanText(token, 180);
+  const revision = Math.max(
+    1,
+    Math.floor(Number(publicationRevision || patch && patch.publicationRevision || previous && previous.publicationRevision || 0)),
+  );
+  const merged = {
+    ...(previous || {}),
+    ...(patch || {}),
+    canonicalTripId,
+    canonicalRevision,
+    publicationRevision: revision,
+    updatedAtMillis: now,
+  };
+  const canonicalStateHash = canonicalServerStateHash0468(merged);
+  const projectionSource = { ...merged, canonicalStateHash, canonicalPublicProjection0434: null };
+  const canonicalPublicProjection0434 = canonicalPublicTripPayload0411(token, projectionSource);
+  const publicProjectionHash0434 = canonicalPublicTripHash0411(canonicalPublicProjection0434);
+  const tombstoned = merged.publicationTombstone === true;
+  return {
+    ...(patch || {}),
+    canonicalTripId,
+    canonicalRevision,
+    canonicalStateHash,
+    publicationRevision: revision,
+    canonicalPublicProjection0434,
+    publicProjectionHash0434,
+    publicProjectionRevision0434: canonicalRevision,
+    publicCommittedAt0422: FieldValue.serverTimestamp(),
+    publicAttestationState0417: tombstoned ? "UNPROVEN" : "PENDING",
+    publicAttestedPublicationRevision0417: 0,
+    publicAttestedCanonicalRevision0417: 0,
+    publicAttestedHash0417: "",
+    publicAttestedAtMillis0417: 0,
+    publicAttestationReason0417: tombstoned ? "PUBLICATION_TOMBSTONED" : "SERVER_CANONICAL_REVISION_CHANGED_0468",
+    publicAttestationMismatchFields0417: [],
+    publicAttestationCorrelationId0417: "",
+    updatedAtMillis: now,
+  };
+}
+
 function assertNoOperationalOverbooking(trip, records, now = Date.now()) {
   const summary = reconciledOperationalSeatSummary(trip, records, now);
   if (summary.operationalOverbookingSeats > 0) {
@@ -6588,6 +6661,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   const outboxEventId = cleanText(req.body && req.body.outboxEventId, 120);
   const mutationId0421 = cleanText(req.body && req.body.mutationId0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const idempotencyKey0421 = cleanText(req.body && req.body.idempotencyKey0421, 120).replace(/[^A-Za-z0-9_-]/g, "");
+  const serverCanonicalAuthority0468 = req.body && req.body.serverCanonicalAuthority0468 === true;
   const expectedPublicProjectionHash0425 = cleanText(
     req.body && req.body.expectedPublicProjectionHash0425,
     160,
@@ -6619,6 +6693,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       });
     }
   }
+  if (serverCanonicalAuthority0468) {
+    const strongProfile0468 = cleanText(rawTrip && rawTrip.blablaProfileUuid, 160);
+    const strongTrip0468 = cleanText(rawTrip && rawTrip.blablaTripId, 160);
+    if (claimNamespace !== "BLABLACAR_SYNC:" || entityRevision <= 0 || !canonicalTripId || !outboxEventId || !idempotencyKey0421 || !strongProfile0468 || !strongTrip0468) {
+      return fail(res, 409, "canonical_ingestion_identity_required", "Ingestão canônica exige identidade forte, revisão de transporte e chave idempotente.");
+    }
+  }
   if (!["LOCAL_MIRROR:", "BLABLACAR_SYNC:"].includes(claimNamespace)) {
     return fail(res, 400, "invalid_capacity_namespace", "Origem do snapshot de capacidade inválida.");
   }
@@ -6640,8 +6721,24 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   try {
     const result = await db.runTransaction(async (tx) => {
       const tripSnap = await tx.get(tripRef);
-      if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
-      const previous = tripSnap.data();
+      const createdByCanonicalIngestion0468 = !tripSnap.exists && serverCanonicalAuthority0468;
+      if (!tripSnap.exists && !createdByCanonicalIngestion0468) {
+        throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      }
+      const previous = tripSnap.exists ? tripSnap.data() : {
+        publicToken: token,
+        publicUrl: publicUrlFor(req, token, driver.publicUsername || driver.username),
+        driverUsername: driver.username,
+        driverDisplayName: driver.displayName,
+        bookingsCount: 0,
+        publicationRevision: 0,
+        canonicalRevision: 0,
+        canonicalTripId,
+        stops: [],
+        status: "DRAFT",
+        capacity: 0,
+        createdAtMillis: Date.now(),
+      };
       if (previous.driverUsername && previous.driverUsername !== driver.username) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
@@ -6796,15 +6893,27 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         previousStopIds0439 !== incomingStopIds0439 &&
         deterministicRequest &&
         sameStrongExternalIdentity0439 &&
-        Boolean(incomingPublicProjection0434) &&
-        Boolean(expectedPublicProjectionHash0425) &&
         Boolean(canonicalTripId) &&
-        cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId;
+        (serverCanonicalAuthority0468 || (
+          Boolean(incomingPublicProjection0434) &&
+          Boolean(expectedPublicProjectionHash0425) &&
+          cleanText(incomingPublicProjection0434.canonicalTripId, 180) === canonicalTripId
+        ));
 
-      const normalized = normalizeDriverTrip({
+      const normalizedBase0468 = normalizeDriverTrip({
         ...rawTrip,
+        canonicalRevision: serverCanonicalAuthority0468 ? Math.max(0, Number(previous.canonicalRevision || 0)) : rawTrip.canonicalRevision,
+        canonicalStateHash: serverCanonicalAuthority0468 ? cleanText(previous.canonicalStateHash, 160) : rawTrip.canonicalStateHash,
         capacityReliable: preserveManagedClaims0436 ? rawTrip.capacityReliable === true : true,
       }, previous, bookedStopShapeMigrationAuthorized0439);
+      const normalized = serverCanonicalAuthority0468 ? {
+        ...normalizedBase0468,
+        notes: cleanText(previous.notes, 1200) || normalizedBase0468.notes,
+        status: ["COMPLETED", "CANCELLED"].includes(cleanText(previous.status, 24))
+          ? cleanText(previous.status, 24)
+          : normalizedBase0468.status,
+        publicBookingEnabled: tripSnap.exists ? previous.publicBookingEnabled === true : normalizedBase0468.publicBookingEnabled,
+      } : normalizedBase0468;
       const candidateTrip = {
         ...previous,
         ...normalized,
@@ -6901,7 +7010,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       const previousPublicProjectionHash0434 = cleanText(previous.publicProjectionHash0434, 160).toLowerCase();
       const publicProjectionRevision0434 = Math.max(0, Math.floor(Number(previous.publicProjectionRevision0434 || 0))) +
         (incomingPublicProjection0434 && expectedPublicProjectionHash0425 !== previousPublicProjectionHash0434 ? 1 : 0);
-      const canonicalProjectionPersistence0434 = incomingPublicProjection0434 ? {
+      const canonicalProjectionPersistence0434 = !serverCanonicalAuthority0468 && incomingPublicProjection0434 ? {
         canonicalPublicProjection0434: incomingPublicProjection0434,
         publicProjectionHash0434: expectedPublicProjectionHash0425,
         publicProjectionRevision0434,
@@ -6951,7 +7060,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         occupancyRevision,
         bookingsCount: candidateRecords.length + staleManaged.length,
       };
-      if (expectedPublicProjectionHash0425) {
+      if (expectedPublicProjectionHash0425 && !serverCanonicalAuthority0468) {
         const nextPublicProjectionHash0425 = incomingPublicProjection0434
           ? canonicalPublicTripHash0411(incomingPublicProjection0434).toLowerCase()
           : canonicalPublicTripHash0411(canonicalPublicTripPayload0411(token, nextProjectionData0425)).toLowerCase();
@@ -7035,7 +7144,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           idempotencyKey: idempotencyKey0421,
         });
       }
-      tx.update(tripRef, {
+      const capacityCommitPatch0468 = {
         ...normalized,
         ...persistence,
         capacityReliable: preserveManagedClaims0436 ? previous.capacityReliable === true : true,
@@ -7055,8 +7164,22 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         canonicalStopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
         canonicalStopShapeMigratedAtMillis0439: stopShapeMigration0439.changed ? now : Number(previous.canonicalStopShapeMigratedAtMillis0439 || 0),
         updatedAtMillis: now,
-        publicCommittedAt0422: FieldValue.serverTimestamp(),
-      });
+      };
+      const canonicalCommitPatch0468 = serverCanonicalAuthority0468
+        ? canonicalServerProjectionPatch0468(token, previous, capacityCommitPatch0468, deterministicRequest ? entityRevision : currentEntityRevision + 1, now)
+        : { ...capacityCommitPatch0468, publicCommittedAt0422: FieldValue.serverTimestamp() };
+      if (tripSnap.exists) {
+        tx.update(tripRef, canonicalCommitPatch0468);
+      } else {
+        tx.set(tripRef, {
+          ...previous,
+          ...canonicalCommitPatch0468,
+          publicToken: token,
+          driverUsername: driver.username,
+          driverDisplayName: driver.displayName,
+          createdAtMillis: now,
+        }, { merge: true });
+      }
       const committedRange0434 = incomingPublicProjection0434
         ? {
             minimum: incomingPublicProjection0434.availableSeatsMinimum,
@@ -7072,6 +7195,13 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         snapshotOverbooked,
         refundBookingIds: protectedRefundIds,
         stopShapeMigrationCount0439: stopShapeMigration0439.changes.length,
+        canonicalTripId: cleanText(canonicalCommitPatch0468.canonicalTripId || nextProjectionData0425.canonicalTripId, 180),
+        canonicalRevision: Math.max(0, Number(canonicalCommitPatch0468.canonicalRevision || nextProjectionData0425.canonicalRevision || 0)),
+        canonicalStateHash: cleanText(canonicalCommitPatch0468.canonicalStateHash || nextProjectionData0425.canonicalStateHash, 160),
+        publicProjectionHash: serverCanonicalAuthority0468
+          ? cleanText(canonicalCommitPatch0468.publicProjectionHash0434, 160)
+          : canonicalPublicTripHash0411(canonicalPublicTripPayload0411(token, nextProjectionData0425)),
+        createdCanonical: createdByCanonicalIngestion0468,
       };
     });
     for (const bookingId of (result.refundBookingIds || [])) {
@@ -7091,6 +7221,12 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
       logicalReplay: result.logicalReplay === true,
       snapshotOverbooked: result.snapshotOverbooked === true,
       stopShapeMigrationCount0439: Math.max(0, Number(result.stopShapeMigrationCount0439 || 0)),
+      canonicalTripId: cleanText(result.canonicalTripId, 180),
+      canonicalRevision: Math.max(0, Number(result.canonicalRevision || 0)),
+      canonicalStateHash: cleanText(result.canonicalStateHash, 160),
+      publicProjectionHash: cleanText(result.publicProjectionHash, 160),
+      createdCanonical: result.createdCanonical === true,
+      serverCanonicalAuthority0468,
     });
   } catch (error) {
     return fail(
