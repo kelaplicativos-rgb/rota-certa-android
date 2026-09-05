@@ -309,7 +309,7 @@ class PublicMirrorAttestation0411Test {
 
         assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
         assertTrue(decision.linkValid)
-        assertEquals("PUBLIC_READBACK_MATCH", decision.reason)
+        assertEquals("PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466", decision.reason)
         assertTrue(decision.mismatchFields.isEmpty())
     }
 
