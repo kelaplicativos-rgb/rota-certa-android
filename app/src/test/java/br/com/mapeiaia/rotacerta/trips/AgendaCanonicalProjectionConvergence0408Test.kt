@@ -188,9 +188,27 @@ class AgendaCanonicalProjectionConvergence0408Test {
     fun deliveredIncrementalPublicationUsesExistingReadbackAttestation() {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertTrue(outbox.contains("deliveredCanonicalIds0429"))
-        assertTrue(outbox.contains("api.listDriverTripSyncStates0402().trips"))
+        assertTrue(outbox.contains("includePastForVerification0429 = true"))
         assertTrue(outbox.contains("PublicMirrorAttestationCoordinator0411.attest("))
         assertTrue(outbox.contains("force = true"))
+    }
+
+    @Test
+    fun durableReadbackIdentityResolutionDoesNotReuseFutureDiscoveryFilter() {
+        val backend = File("trip-platform/functions/index.js").readText()
+        val remoteApi = source("TripRemoteApi.kt")
+        val outbox = source("TripPublicationOutbox0387.kt")
+        val attestation = source("PublicMirrorAttestationCoordinator0411.kt")
+
+        assertTrue(backend.contains("includePastForVerification"))
+        assertTrue(backend.contains("(includePastForVerification || trip.departureAtMillis > now)"))
+        assertTrue(remoteApi.contains("includePastForVerification0429: Boolean = false"))
+        assertTrue(remoteApi.contains("/v1/driver/trips/sync-state?includePastForVerification=1"))
+        assertTrue(outbox.contains("stage = \"PUBLIC_IDENTITY_RESOLUTION\""))
+        assertTrue(outbox.contains("includePastForVerification0429 = true"))
+        assertTrue(outbox.contains("status = \"FAILED\""))
+        assertTrue(attestation.contains("transportEvidence0421"))
+        assertTrue(attestation.contains("evidence0421 = transportEvidence0421"))
     }
 
     @Test
