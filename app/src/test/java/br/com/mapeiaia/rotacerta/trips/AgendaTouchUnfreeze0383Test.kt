@@ -93,7 +93,7 @@ class AgendaTouchUnfreeze0383Test {
             assertFalse(activity.contains("AgendaHeaderAction0396(\"$label\""), "Obsolete sync/clear action returned: $label")
         }
         assertTrue(header.contains("INTEGRATIONS(\"Integrações\")"), "Persistent integration navigation must remain a real drawer destination")
-        assertTrue(header.contains("AUTOMATIC_SYNC(\"Sincronização automática\")"), "Automatic sync must remain a real drawer destination")
+        assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"), "BlaBlaCar collection must remain a real drawer destination")
         assertFalse(activity.contains("AgendaHeaderAction0396(\"Integração online\""), "Persistent navigation must not return to the contextual overflow")
         assertTrue(header.contains("IconButton("), "Header navigation/overflow must be real touch targets")
         assertTrue(header.contains("NavigationDrawerItem("), "Drawer destinations must be real navigation touch targets")
