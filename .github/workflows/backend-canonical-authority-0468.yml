@@ -1,0 +1,92 @@
+name: Backend canonical authority 0.1.468
+
+on:
+  push:
+    branches:
+      - agent/backend-canonical-authority-0.1.468
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-canonical-authority-0468-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove source SHA and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          BASE=c34dac6d54ba1bd1c1d233701669a1c80017844c
+          FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git show "$BASE:$FAROL" > /tmp/farol-base.kt
+          cmp -s /tmp/farol-base.kt "$FAROL"
+          printf '%s\n' "${GITHUB_SHA}" | tee source_head.txt
+          sha256sum "$FAROL" | tee farol.sha256
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend syntax and contracts
+        working-directory: trip-platform/functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock=false --ignore-scripts --no-audit --no-fund
+          npm run check
+          npm test
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android unit tests and build APK
+        shell: bash
+        env:
+          GOOGLE_MAPS_API_KEY: canonical_0468_dummy_key
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Prove final artifact belongs to current SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+          git status --short --untracked-files=no | tee tracked-status.txt
+          test ! -s tracked-status.txt
+
+      - name: Upload installable APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-backend-canonical-0468-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            source_head.txt
+            app-version.txt
+            apk.sha256
+            farol.sha256
