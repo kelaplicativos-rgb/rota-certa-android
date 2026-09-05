@@ -1253,10 +1253,28 @@ internal class TripMutationCoordinator0387(
             } else {
                 try {
                     val api = TripRemoteApi(settings)
-                    val remoteStates = api.listDriverTripSyncStates0402().trips
+                    pendingVerification0429.values.forEach { event ->
+                        recordEvidence0421(
+                            stage = "PUBLIC_IDENTITY_RESOLUTION",
+                            status = "START",
+                            reason = "SYNC_STATE_LOOKUP",
+                            event = event,
+                            extra = "includePastForVerification=true previousStage=SERVER_ACK nextStage=PUBLIC_IDENTITY_RESOLUTION",
+                        )
+                    }
+                    val remoteStates = api.listDriverTripSyncStates0402(
+                        includePastForVerification0429 = true,
+                    ).trips
                     pendingVerification0429.forEach { (canonicalTripId, event) ->
                         val trip = store.getTrip(canonicalTripId)
                         if (trip == null || trip.deleted || trip.publicationTombstone || trip.status == TripStatus.CANCELLED) {
+                            recordEvidence0421(
+                                stage = "PUBLIC_IDENTITY_RESOLUTION",
+                                status = "FAILED",
+                                reason = "CANONICAL_SNAPSHOT_UNAVAILABLE_AFTER_WRITE",
+                                event = event,
+                                extra = "previousStage=SERVER_ACK nextStage=STOP",
+                            )
                             outbox.markFailure(event.id, IllegalStateException("Snapshot canônico indisponível após publicação."), retryable = false)
                             return@forEach
                         }
@@ -1265,6 +1283,26 @@ internal class TripMutationCoordinator0387(
                             .distinctBy(DriverTripSyncState0402::remoteTripId)
                         if (candidates.size != 1) {
                             val duplicate = candidates.size > 1
+                            val identityReason0429 = if (candidates.isEmpty()) {
+                                "PUBLIC_IDENTITY_UNRESOLVED"
+                            } else {
+                                "PUBLIC_IDENTITY_AMBIGUOUS"
+                            }
+                            recordEvidence0421(
+                                stage = "PUBLIC_IDENTITY_RESOLUTION",
+                                status = "FAILED",
+                                reason = identityReason0429,
+                                event = event,
+                                extra = "projectionCandidates=" + candidates.size +
+                                    " includePastForVerification=true previousStage=SERVER_ACK nextStage=STOP",
+                            )
+                            recordEvidence0421(
+                                stage = "ATTESTATION",
+                                status = "DENIED",
+                                reason = identityReason0429,
+                                event = event,
+                                extra = "retryable=" + (!duplicate) + " publicReadbackAttempted=false",
+                            )
                             outbox.markFailure(
                                 event.id,
                                 IllegalStateException(if (duplicate) "Public identity ambígua." else "Public identity ainda não resolvida."),
@@ -1275,10 +1313,19 @@ internal class TripMutationCoordinator0387(
                                 appContext.packageName,
                                 "canonicalTripId=" + seatSyncDiagnosticKey(trip.tripKey.ifBlank { trip.id }) +
                                     " projectionCandidates=" + candidates.size +
-                                    " reason=" + if (candidates.isEmpty()) "PUBLIC_IDENTITY_UNRESOLVED" else "PUBLIC_IDENTITY_AMBIGUOUS",
+                                    " reason=" + identityReason0429,
                             )
                             return@forEach
                         }
+                        recordEvidence0421(
+                            stage = "PUBLIC_IDENTITY_RESOLUTION",
+                            status = "OK",
+                            reason = "PUBLIC_IDENTITY_RESOLVED",
+                            event = event,
+                            extra = "projectionCandidates=1 includePastForVerification=true publicIdentityKey=" +
+                                seatSyncDiagnosticKey(candidates.single().remoteTripId) +
+                                " previousStage=SERVER_ACK nextStage=PUBLIC_READBACK_REQUEST",
+                        )
                         val attestation = PublicMirrorAttestationCoordinator0411.attest(
                             context = appContext,
                             store = store,
@@ -1319,11 +1366,32 @@ internal class TripMutationCoordinator0387(
                     }
                 } catch (cancelled: CancellationException) {
                     pendingVerification0429.values.forEach { event ->
+                        recordEvidence0421(
+                            stage = "PUBLIC_IDENTITY_RESOLUTION",
+                            status = "FAILED",
+                            reason = "PUBLIC_IDENTITY_LOOKUP_CANCELLED",
+                            event = event,
+                            extra = "previousStage=SERVER_ACK nextStage=STOP",
+                        )
                         outbox.markFailure(event.id, cancelled, retryable = true)
                     }
                     throw cancelled
                 } catch (error: Throwable) {
                     pendingVerification0429.values.forEach { event ->
+                        recordEvidence0421(
+                            stage = "PUBLIC_IDENTITY_RESOLUTION",
+                            status = "FAILED",
+                            reason = "PUBLIC_IDENTITY_LOOKUP_FAILED",
+                            event = event,
+                            extra = failureSummary0387(error) + " previousStage=SERVER_ACK nextStage=STOP",
+                        )
+                        recordEvidence0421(
+                            stage = "ATTESTATION",
+                            status = "DENIED",
+                            reason = "PUBLIC_IDENTITY_LOOKUP_FAILED",
+                            event = event,
+                            extra = "retryable=true publicReadbackAttempted=false",
+                        )
                         outbox.markFailure(event.id, error, retryable = true)
                     }
                     UnifiedDebugEventStore.record(
