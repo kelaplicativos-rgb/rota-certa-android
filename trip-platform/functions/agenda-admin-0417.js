@@ -136,6 +136,7 @@ function createAgendaAdmin0417({
   passengerAccessIsAuthorized,
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
+  validatePublicAttestationCurrent0468,
 }) {
   async function appendAdminAudit0417({
     driverUsername,
@@ -721,6 +722,15 @@ function createAgendaAdmin0417({
     const requestedMismatchFields = Array.isArray(body.mismatchFields)
       ? body.mismatchFields.map((item) => clean0417(item, 80)).filter(Boolean).slice(0, 24)
       : [];
+    const independent0468 = typeof validatePublicAttestationCurrent0468 === "function"
+      ? await validatePublicAttestationCurrent0468({
+          driverUsername: driver.username,
+          tripId: clean0417(tripId, 120),
+          tripData: data,
+          expectedHash,
+          readbackHash,
+        })
+      : { committed: false, visible: false, currentHash: "", reason: "ATTESTATION_VALIDATOR_UNAVAILABLE_0468" };
     const proofCurrent =
       requestedRevision > 0 &&
       requestedRevision === currentRevision &&
@@ -729,6 +739,10 @@ function createAgendaAdmin0417({
       readbackHash &&
       expectedHash &&
       readbackHash === expectedHash &&
+      independent0468.committed === true &&
+      independent0468.visible === true &&
+      expectedHash === clean0417(independent0468.currentHash, 160) &&
+      readbackHash === clean0417(independent0468.currentHash, 160) &&
       (!requestedCanonicalHash || requestedCanonicalHash === canonicalHash);
     const verified = requestedState === "VERIFIED" && proofCurrent;
     const publishedWithoutUrl = requestedState === "PUBLISHED" &&
@@ -748,11 +762,21 @@ function createAgendaAdmin0417({
       publicAttestedCanonicalRevision0417: verified ? requestedCanonicalRevision : 0,
       publicAttestedHash0417: verified ? readbackHash : "",
       publicAttestedAtMillis0417: verified ? now : 0,
-      publicAttestationReason0417: clean0417(body.reason, 160),
+      publicAttestationReason0417: verified
+        ? clean0417(body.reason, 160)
+        : clean0417(independent0468.reason || body.reason, 160),
       publicAttestationMismatchFields0417: requestedMismatchFields,
       publicAttestationCorrelationId0417: clean0417(body.correlationId, 100),
     }, { merge: true });
-    return json0417(res, 200, { state, verified, publicationRevision: currentRevision, canonicalRevision: currentCanonicalRevision });
+    return json0417(res, 200, {
+      state,
+      verified,
+      publicationRevision: currentRevision,
+      canonicalRevision: currentCanonicalRevision,
+      agendaVisible: independent0468.visible === true,
+      agendaVisibilityReason: clean0417(independent0468.reason, 160),
+      currentPublicProjectionHash: clean0417(independent0468.currentHash, 160),
+    });
   }
 
   async function listAdminLogs0417(req, res) {
