@@ -14,6 +14,8 @@ const remoteApi = fs.readFileSync(path.join(root, "app", "src", "main", "java", 
 const activity0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripsActivity.kt"), "utf8");
 const navigation0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "AgendaHeaderNavigation0396.kt"), "utf8");
 const syncUi0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "AgendaAutomaticSyncUi0397.kt"), "utf8");
+const publicAdmin0468 = fs.readFileSync(path.join(root, "trip-platform", "public", "admin-0417.js"), "utf8");
+const publicHtml0468 = fs.readFileSync(path.join(root, "trip-platform", "public", "index.html"), "utf8");
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -156,4 +158,40 @@ test("0468 collector panel identifies backend as authority and exposes the exist
   assert.match(syncUi0468, /store\.onlineSettings\(\)\.publicAgendaUrl/);
   assert.match(syncUi0468, /Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\)\)/);
   assert.match(syncUi0468, /O Android mantém apenas cache, sessão e transporte offline/);
+});
+
+
+test("0468 Admin reuses the same booking domain commands instead of implementing parallel transitions", () => {
+  assert.match(admin, /mutateDriverBookingDecision0468/);
+  assert.match(admin, /mutateDriverPassengerOperationalStatus0468/);
+  assert.match(admin, /mutateProtectedBooking0468/);
+  assert.match(admin, /listDriverBookings0468/);
+  assert.match(admin, /adminActor0468: true/);
+
+  const routes = between(api, "exports.tripApi", "if (path === \"/v1/health\"");
+  assert.match(routes, /agendaAdmin0417\.listAdminTripBookings0468/);
+  assert.match(routes, /agendaAdmin0417\.mutateAdminBookingDecision0468/);
+  assert.match(routes, /agendaAdmin0417\.mutateAdminBookingOperational0468/);
+
+  const decision = between(api, "async function mutateDriverBookingDecision", "async function mutateDriverPassengerOperationalStatus");
+  assert.match(decision, /driverOverride0468/);
+  assert.match(decision, /adminActor0468 \? "ADMIN" : "DRIVER"/);
+  assert.match(decision, /adminActor0468 \? "ADMIN_WEB"/);
+});
+
+test("0468 canonical domain blocks cancellation after passenger is in the car", () => {
+  const operational = between(api, "async function mutateDriverPassengerOperationalStatus", "async function mutateProtectedBooking");
+  assert.match(operational, /beforeOperational === "IN_CAR" && selection === "CANCELLED"/);
+  assert.match(operational, /passenger_in_car_not_cancelable/);
+  assert.match(publicAdmin0468, /operational !== "IN_CAR" && operational !== "COMPLETED"/);
+});
+
+test("0468 web Admin exposes passenger operations over canonical endpoints", () => {
+  assert.match(publicHtml0468, /id="adminTripBookings0468"/);
+  assert.match(publicAdmin0468, /loadAdminTripBookings0468/);
+  assert.match(publicAdmin0468, /data-admin-decision0468="APPROVE"/);
+  assert.match(publicAdmin0468, /data-admin-decision0468="REJECT"/);
+  assert.match(publicAdmin0468, /data-admin-operational0468/);
+  assert.match(publicAdmin0468, /\/v1\/admin\/trips\//);
+  assert.match(publicAdmin0468, /Estado atualizado no backend canônico/);
 });
