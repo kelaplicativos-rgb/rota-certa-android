@@ -1954,7 +1954,7 @@ function renderAgendaCards(entries, container, filtered = false) {
     rail0473.setAttribute("aria-hidden", "true");
 
     const startCity0473 = document.createElement("div");
-    startCity0473.className = "agendaJourneyCity0473";
+    startCity0473.className = "agendaJourneyCity0473 agendaJourneyStartCity0473";
     startCity0473.textContent = from;
 
     const endTime0473 = document.createElement("div");
@@ -1964,7 +1964,7 @@ function renderAgendaCards(entries, container, filtered = false) {
     endTime0473.appendChild(endClock0473);
 
     const endCity0473 = document.createElement("div");
-    endCity0473.className = "agendaJourneyCity0473";
+    endCity0473.className = "agendaJourneyCity0473 agendaJourneyEndCity0473";
     endCity0473.textContent = to;
 
     journey0473.append(startTime0473, rail0473, startCity0473, endTime0473, endCity0473);
