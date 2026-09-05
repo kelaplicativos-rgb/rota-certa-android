@@ -16,6 +16,7 @@ const navigation0468 = fs.readFileSync(path.join(root, "app", "src", "main", "ja
 const syncUi0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "AgendaAutomaticSyncUi0397.kt"), "utf8");
 const publicAdmin0468 = fs.readFileSync(path.join(root, "trip-platform", "public", "admin-0417.js"), "utf8");
 const publicHtml0468 = fs.readFileSync(path.join(root, "trip-platform", "public", "index.html"), "utf8");
+const publicApp0469 = fs.readFileSync(path.join(root, "trip-platform", "public", "app.js"), "utf8");
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -128,6 +129,40 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
   assert.match(attestation, /independent0468\.visible === true/);
   assert.match(attestation, /expectedHash === clean0417\(independent0468\.currentHash/);
   assert.match(attestation, /independent0468\.visible === true/);
+});
+
+test("0469 public visibility is the exact card-renderability contract", () => {
+  const visibility = between(api, "function publicAgendaTripVisibility0466", "function adminPublicTripState0469");
+  assert.match(visibility, /applyPublicTripVisibility0434/);
+  assert.match(visibility, /safePublicTrip\(token, data\)/);
+  assert.match(visibility, /rendered0469\.publicBookingEnabled !== true/);
+  assert.match(visibility, /rendered0469\.stops\.length < 2/);
+  assert.match(visibility, /PUBLIC_AGENDA_RENDER_STATUS_UNAVAILABLE_0469/);
+  assert.match(visibility, /PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469/);
+  assert.match(publicApp0469, /PUBLIC_AGENDA_CARD_STATUSES_0469 = new Set\(\["PUBLISHED", "FULL", "STARTING", "ACTIVE"\]\)/);
+  assert.match(publicApp0469, /PUBLIC_AGENDA_CARD_STATUSES_0469\.has\(item\?\.status\)/);
+});
+
+test("0469 Admin green and blue derive from the same visible public card state", () => {
+  const classifier = between(api, "function adminPublicTripState0469", "async function getPublicDriverAgenda");
+  assert.match(classifier, /publicAgendaTripVisibility0466/);
+  assert.match(classifier, /state: "PUBLISHED"/);
+  assert.match(classifier, /BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469/);
+  assert.match(classifier, /publicProjectionAttestedCurrent0429/);
+  assert.match(classifier, /state: "VERIFIED"/);
+  assert.match(admin, /classifyPublicTripState0469/);
+  assert.match(admin, /effectivePublicState0469/);
+  assert.match(admin, /agendaVisible0469: effective0469\.visible === true/);
+});
+
+test("0469 direct canonical outbox keeps no-URL public card green and reserves blue for valid URL", () => {
+  assert.match(outbox, /blablaUrlPending0469/);
+  assert.match(outbox, /canonicalBoundBlaBlaPublicUrl0423/);
+  assert.match(outbox, /blablaUrlPending0469 -> "PUBLISHED"/);
+  assert.match(outbox, /else -> "VERIFIED"/);
+  assert.match(outbox, /BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469/);
+  assert.match(outbox, /serverPublicProjectionConfirmed0469/);
+  assert.match(outbox, /green=" \+ \(!backendCanonicalBlue0469\)/);
 });
 
 test("0468 Android transport contract carries server canonical ACK rather than inventing it", () => {
