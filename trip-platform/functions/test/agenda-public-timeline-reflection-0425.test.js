@@ -277,13 +277,14 @@ test("unsafe non-endpoint legacy shape still fails closed", () => {
   );
 });
 
-test("public profile scope remains intact and independent from projection repair", () => {
+test("0475 public list includes every synchronized profile while projection repair remains canonical", () => {
   const visibility = source.slice(
     source.indexOf("function publicAgendaTripVisibility0466"),
     source.indexOf("async function getPublicDriverAgenda"),
   );
-  assert.match(visibility, /publicTripProfileUuids0417/);
-  assert.match(visibility, /publicProfileScope0417\.has\(profileUuid\)/);
+  assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
+  assert.doesNotMatch(visibility, /publicProfileScope0417/);
+  assert.match(visibility, /publicProjectionCommittedCurrent0434/);
 });
 
 
@@ -343,8 +344,9 @@ test("readback and public agenda share one visibility predicate 0466", () => {
   assert.match(visibility, /PUBLIC_STATUSES\.has/);
   assert.match(visibility, /departureAtMillis/);
   assert.match(visibility, /publicProjectionCommittedCurrent0434/);
-  assert.match(visibility, /publicTripProfileUuids0417/);
-  assert.match(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
+  assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
+  assert.doesNotMatch(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
+  assert.doesNotMatch(visibility, /tripPublicOnline0471/);
 
   const readback = source.slice(
     source.indexOf("async function getDriverPublicTripReadback0411"),
