@@ -1,16 +1,16 @@
-name: Agenda stop-shape migration 0.1.477
+name: Agenda complete listing final 0.1.478
 
 on:
   push:
     branches:
-      - agent/agenda-stop-shape-migration-0.1.477
+      - agent/agenda-complete-list-final-0.1.478
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-stop-shape-migration-0477-${{ github.ref }}
+  group: agenda-complete-list-final-0478-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_stop_shape_0477_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_complete_list_0478_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -35,14 +35,17 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          BASE=902df9a87c1b8f91c7d33ee94e2f0c525b3a85b7
+          BASE=05e56491ea319dcb1aacd49b8dd8c840a1948be4
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
-          grep -Fq 'versionCode = 5770' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.477"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5771' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.478"' app/build.gradle.kts
           grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
           grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
+          grep -Fq 'orderedEndpointPreservingMigration0478' trip-platform/functions/index.js
+          grep -Fq 'dateScopeDefaultRequests0478' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
+          grep -Fq 'Vagas ficam desligadas por padrão' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           ! grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           printf '%s\n' "${GITHUB_SHA}" | tee source_head.txt
           sha256sum "$FAROL" | tee farol.sha256
@@ -131,11 +134,11 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
           "$AAPT" dump badging "$APK" | tee aapt-badging.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
-          grep -Fq "versionCode='5770'" aapt-badging.txt
-          grep -Fq "versionName='0.1.477'" aapt-badging.txt
+          grep -Fq "versionCode='5771'" aapt-badging.txt
+          grep -Fq "versionName='0.1.478'" aapt-badging.txt
           sha256sum "$APK" | tee apk.sha256
-          grep -F 'versionCode = 5770' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.477"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5771' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.478"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -160,6 +163,74 @@ jobs:
             exit 3
           fi
 
+      - name: Diagnose live canonical state before deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd trip-platform/functions
+          node <<'NODE' | tee ../../missing-trip-diagnostic-predeploy.json
+          const admin = require("firebase-admin");
+          (async () => {
+            if (!admin.apps.length) admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
+            const db = admin.firestore();
+            const targets = new Set([
+              "01a058be-73c8-7845-9ad2-076aaef9883c",
+            ]);
+            const targetDeparture = 1788703200000;
+            const driverUsername = "ezequiel";
+            const tripsSnap = await db.collection("trips").where("driverUsername", "==", driverUsername).limit(300).get();
+            const rows = [];
+            for (const doc of tripsSnap.docs) {
+              const d = doc.data() || {};
+              const isTarget = targets.has(String(d.blablaTripId || ""));
+              const nearTarget = Math.abs(Number(d.departureAtMillis || 0) - targetDeparture) <= 3 * 60 * 60 * 1000;
+              if (!isTarget && !nearTarget) continue;
+              const bookings = await doc.ref.collection("bookings").get();
+              rows.push({
+                id: doc.id,
+                isTarget,
+                driverUsername: d.driverUsername || "",
+                title: d.title || "",
+                departureAtMillis: Number(d.departureAtMillis || 0),
+                status: d.status || "",
+                publicationTombstone: d.publicationTombstone === true,
+                publicBookingEnabled: d.publicBookingEnabled === true,
+                blablaProfileUuid: d.blablaProfileUuid || "",
+                blablaTripId: d.blablaTripId || "",
+                canonicalTripId: d.canonicalTripId || d.localTripId || "",
+                tripKey: d.tripKey || "",
+                publicationRevision: Number(d.publicationRevision || 0),
+                canonicalRevision: Number(d.canonicalRevision || 0),
+                capacitySnapshotRevision: d.capacitySnapshotRevision || "",
+                canonicalStateHash: d.canonicalStateHash || "",
+                publicProjectionHash0434: d.publicProjectionHash0434 || "",
+                hasCanonicalPublicProjection0434: Boolean(d.canonicalPublicProjection0434 && typeof d.canonicalPublicProjection0434 === "object"),
+                canonicalPublicProjectionTripId: d.canonicalPublicProjection0434?.blablaTripId || "",
+                canonicalPublicProjectionRevision: Number(d.canonicalPublicProjection0434?.canonicalRevision || 0),
+                publicCommittedAt0422: Boolean(d.publicCommittedAt0422),
+                publicProjectionRevision0434: Number(d.publicProjectionRevision0434 || 0),
+                publicAttestationState0417: d.publicAttestationState0417 || "",
+                publicAttestedPublicationRevision0417: Number(d.publicAttestedPublicationRevision0417 || 0),
+                publicAttestedCanonicalRevision0417: Number(d.publicAttestedCanonicalRevision0417 || 0),
+                stops: Array.isArray(d.stops) ? d.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""})) : [],
+                canonicalStops: Array.isArray(d.canonicalPublicProjection0434?.stops)
+                  ? d.canonicalPublicProjection0434.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""}))
+                  : [],
+                bookingsCountStored: Number(d.bookingsCount || 0),
+                bookings: bookings.docs.map(b => {
+                  const v=b.data()||{};
+                  return {id:b.id,status:v.status||"",source:v.source||"",boardingStopId:v.boardingStopId||"",dropoffStopId:v.dropoffStopId||"",seats:Number(v.seats||0)};
+                }),
+                updatedAtMillis: Number(d.updatedAtMillis || 0),
+              });
+            }
+            console.log(JSON.stringify({targets:[...targets],targetDeparture,rows}, null, 2));
+          })().catch((error) => {
+            console.error(error && error.stack || error);
+            process.exitCode = 1;
+          });
+          NODE
+
       - name: Deploy exact SHA trip API only
         shell: bash
         run: |
@@ -182,71 +253,21 @@ jobs:
           grep -Fq '"ok":true' live-health.json
           printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
 
-      - name: Diagnose missing 06 Sep canonical trip
+      - name: Verify target public read path after deploy
         shell: bash
         run: |
           set -euo pipefail
-          cd trip-platform/functions
-          node <<'NODE' | tee ../../missing-trip-diagnostic.json
-          const admin = require("firebase-admin");
-          if (!admin.apps.length) admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
-          const db = admin.firestore();
-          const targetTripId = "01a058be-73c8-7845-9ad2-076aaef9883c";
-          const targetDeparture = 1788703200000;
-          const driverUsername = "ezequiel";
-          const tripsSnap = await db.collection("trips").where("driverUsername", "==", driverUsername).limit(300).get();
-          const rows = [];
-          for (const doc of tripsSnap.docs) {
-            const d = doc.data() || {};
-            const isTarget = String(d.blablaTripId || "") === targetTripId;
-            const nearTarget = Math.abs(Number(d.departureAtMillis || 0) - targetDeparture) <= 3 * 60 * 60 * 1000;
-            if (!isTarget && !nearTarget) continue;
-            const bookings = await doc.ref.collection("bookings").get();
-            rows.push({
-              id: doc.id,
-              isTarget,
-              driverUsername: d.driverUsername || "",
-              title: d.title || "",
-              departureAtMillis: Number(d.departureAtMillis || 0),
-              status: d.status || "",
-              publicationTombstone: d.publicationTombstone === true,
-              publicBookingEnabled: d.publicBookingEnabled === true,
-              blablaProfileUuid: d.blablaProfileUuid || "",
-              blablaTripId: d.blablaTripId || "",
-              canonicalTripId: d.canonicalTripId || d.localTripId || "",
-              tripKey: d.tripKey || "",
-              publicationRevision: Number(d.publicationRevision || 0),
-              canonicalRevision: Number(d.canonicalRevision || 0),
-              capacitySnapshotRevision: d.capacitySnapshotRevision || "",
-              canonicalStateHash: d.canonicalStateHash || "",
-              publicProjectionHash0434: d.publicProjectionHash0434 || "",
-              hasCanonicalPublicProjection0434: Boolean(d.canonicalPublicProjection0434 && typeof d.canonicalPublicProjection0434 === "object"),
-              canonicalPublicProjectionTripId: d.canonicalPublicProjection0434?.blablaTripId || "",
-              canonicalPublicProjectionRevision: Number(d.canonicalPublicProjection0434?.canonicalRevision || 0),
-              publicCommittedAt0422: Boolean(d.publicCommittedAt0422),
-              publicProjectionRevision0434: Number(d.publicProjectionRevision0434 || 0),
-              publicAttestationState0417: d.publicAttestationState0417 || "",
-              publicAttestedPublicationRevision0417: Number(d.publicAttestedPublicationRevision0417 || 0),
-              publicAttestedCanonicalRevision0417: Number(d.publicAttestedCanonicalRevision0417 || 0),
-              stops: Array.isArray(d.stops) ? d.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""})) : [],
-              canonicalStops: Array.isArray(d.canonicalPublicProjection0434?.stops)
-                ? d.canonicalPublicProjection0434.stops.map(s => ({id:s?.id || "", name:s?.name || "", address:s?.address || ""}))
-                : [],
-              bookingsCountStored: Number(d.bookingsCount || 0),
-              bookings: bookings.docs.map(b => {
-                const v=b.data()||{};
-                return {id:b.id,status:v.status||"",source:v.source||"",boardingStopId:v.boardingStopId||"",dropoffStopId:v.dropoffStopId||"",seats:Number(v.seats||0)};
-              }),
-              updatedAtMillis: Number(d.updatedAtMillis || 0),
-            });
-          }
-          console.log(JSON.stringify({targetTripId,targetDeparture,rows}, null, 2));
-          NODE
+          BASE=https://rota-certa-7ccc8.web.app
+          for TOKEN in bbae1dc05ac20f799f907a5b55935f8f bb66f151315740dbd3effc4b2010ed2f; do
+            CODE="$(curl --silent --show-error --output "public-$TOKEN.json" --write-out '%{http_code}' "$BASE/v1/public/trips/$TOKEN")"
+            printf '%s %s\n' "$TOKEN" "$CODE" | tee -a target-public-read-status.txt
+            test "$CODE" = "200" || test "$CODE" = "404"
+          done
 
       - name: Upload final APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-stop-shape-0477-${{ github.sha }}
+          name: rota-certa-agenda-complete-list-0478-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -260,4 +281,7 @@ jobs:
             node-focused-tests.log
             android-focused-tests.log
             live-health.json
-            missing-trip-diagnostic.json
+            missing-trip-diagnostic-predeploy.json
+            target-public-read-status.txt
+            public-bbae1dc05ac20f799f907a5b55935f8f.json
+            public-bb66f151315740dbd3effc4b2010ed2f.json
