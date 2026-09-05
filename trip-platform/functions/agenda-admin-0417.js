@@ -251,21 +251,9 @@ function createAgendaAdmin0417({
       return null;
     }
     const driver = resolved.driverSnap && resolved.driverSnap.exists ? resolved.driverSnap.data() : {};
-    if (!authenticationRequired0417(driver)) {
-      return {
-        driverUsername: resolved.canonicalUsername,
-        actorId: "agenda-open-0428",
-        passengerId: "",
-        passengerContact: "",
-        contactHash: "",
-        sessionContextHash: "",
-        sessionRefId: "",
-        createdAtMillis: 0,
-        lastActivityAtMillis: 0,
-        expiresAtMillis: 0,
-        openAccess: true,
-      };
-    }
+    // 0470: public Agenda access may be passwordless, but administration is never anonymous.
+    // The same passenger session is still usable when password auth is disabled; role and tenant
+    // remain enforced below by driverPassengerAccess + agendaAdmin.
     const passengerSession = await requirePassengerSession(req, res);
     if (!passengerSession) return null;
     const access = await passengerAccessForIdentity(
