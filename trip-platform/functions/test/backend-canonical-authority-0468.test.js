@@ -226,6 +226,26 @@ test("0478 canonical stop migration rejects reordered shared waypoints", () => {
   );
 });
 
+test("0478 canonical stop migration rejects mixed intermediate replacement", () => {
+  const migrate = stopShapeMigration0477();
+  const previous = [
+    { id: "old-0", name: "Santo André" },
+    { id: "old-1", name: "Extrema" },
+    { id: "old-2", name: "Pouso Alegre" },
+    { id: "old-3", name: "Três Corações" },
+  ];
+  const next = [
+    { id: "new-0", name: "Santo André" },
+    { id: "new-1", name: "Camanducaia" },
+    { id: "new-2", name: "Pouso Alegre" },
+    { id: "new-3", name: "Três Corações" },
+  ];
+  assert.throws(
+    () => migrate(previous, next, []),
+    (error) => error && error.code === "canonical_stop_shape_migration_unsafe" && error.httpStatus === 409,
+  );
+});
+
 test("0478 canonical stop migration rejects endpoint replacement", () => {
   const migrate = stopShapeMigration0477();
   const previous = [
