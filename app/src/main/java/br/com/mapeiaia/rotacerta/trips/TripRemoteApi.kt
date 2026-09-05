@@ -502,6 +502,7 @@ data class DriverCapacitySnapshotRequest(
     val idempotencyKey0421: String = "",
     val expectedPublicProjectionHash0425: String = "",
     val expectedPublicProjectionJson0434: String = "",
+    val serverCanonicalAuthority0468: Boolean = false,
 )
 
 @Serializable
@@ -563,6 +564,12 @@ data class DriverCapacitySnapshotResponse(
     val stale: Boolean = false,
     val logicalReplay: Boolean = false,
     val stopShapeMigrationCount0439: Int = 0,
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val canonicalStateHash: String = "",
+    val publicProjectionHash: String = "",
+    val createdCanonical: Boolean = false,
+    val serverCanonicalAuthority0468: Boolean = false,
 )
 
 internal data class RemotePublicationEvidenceContext0421(
@@ -862,6 +869,7 @@ class TripRemoteApi(
         expectedPublicProjectionJson0434: String = "",
         sourceComplete: Boolean = true,
         preserveManagedClaims0436: Boolean = false,
+        serverCanonicalAuthority0468: Boolean = false,
     ): DriverCapacitySnapshotResponse {
         val evidence0421 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
             RemotePublicationEvidenceContext0421(
@@ -925,6 +933,7 @@ class TripRemoteApi(
                     idempotencyKey0421 = idempotencyKey0421,
                     expectedPublicProjectionHash0425 = expectedPublicProjectionHash0425,
                     expectedPublicProjectionJson0434 = expectedPublicProjectionJson0434,
+                    serverCanonicalAuthority0468 = serverCanonicalAuthority0468,
                 ),
             )
         }
