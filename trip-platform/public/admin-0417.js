@@ -31,6 +31,7 @@
   let currentContextTrip0470 = null;
   let contextReturn0470 = { source: "global", returnScrollY: 0 };
   let contextPollTimer0470 = null;
+  let contextHistoryPushed0470 = false;
   let currentSettings = null;
   const adminInFlight0427 = new Set();
   let dashboardLoadPromise0427 = null;
@@ -550,7 +551,13 @@
       setMessage0417("");
       const url = new URL(location.href);
       url.searchParams.set("administrar", response.trip.canonicalTripId);
-      history.replaceState({ rotaCertaAdminTrip0470: response.trip.canonicalTripId }, "", url.pathname + url.search + url.hash);
+      const nextUrl = url.pathname + url.search + url.hash;
+      contextHistoryPushed0470 = options.source !== "deep-link" && !new URL(location.href).searchParams.get("administrar");
+      if (contextHistoryPushed0470) {
+        history.pushState({ rotaCertaAdminTrip0470: response.trip.canonicalTripId }, "", nextUrl);
+      } else {
+        history.replaceState(history.state || null, "", nextUrl);
+      }
       byId("adminTripContextBack0470").focus({ preventScroll: true });
     } catch (error) {
       setMessage0417(error.message, true);
@@ -560,7 +567,7 @@
     }
   }
 
-  async function closeTripAdminContext0470() {
+  async function finishCloseTripAdminContext0470({ fromHistory = false } = {}) {
     if (contextPollTimer0470) {
       clearTimeout(contextPollTimer0470);
       contextPollTimer0470 = null;
@@ -569,9 +576,11 @@
     currentContextTrip0470 = null;
     currentSelectedTrip0465 = null;
     byId("adminTripContext0470").classList.add("hidden");
-    const url = new URL(location.href);
-    url.searchParams.delete("administrar");
-    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (!fromHistory) {
+      const url = new URL(location.href);
+      url.searchParams.delete("administrar");
+      history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
     if (contextReturn0470.source === "global") {
       byId("adminPanel0417").classList.remove("hidden");
       setMessage0417("");
@@ -585,6 +594,15 @@
       return;
     }
     location.reload();
+  }
+
+  async function closeTripAdminContext0470() {
+    if (contextHistoryPushed0470) {
+      contextHistoryPushed0470 = false;
+      history.back();
+      return;
+    }
+    return finishCloseTripAdminContext0470();
   }
 
   const saveTripPublicUrlButton0465 = byId("adminSaveTripPublicUrl0465");
@@ -644,6 +662,12 @@
     leaveAdmin0417();
   });
   byId("adminTripContextBack0470").addEventListener("click", closeTripAdminContext0470);
+  window.addEventListener("popstate", () => {
+    if (!byId("adminTripContext0470").classList.contains("hidden")) {
+      contextHistoryPushed0470 = false;
+      finishCloseTripAdminContext0470({ fromHistory: true });
+    }
+  });
   document.querySelectorAll("[data-admin-context-scroll0470]").forEach((button) => {
     button.addEventListener("click", () => {
       const target = byId(button.dataset.adminContextScroll0470 || "");
