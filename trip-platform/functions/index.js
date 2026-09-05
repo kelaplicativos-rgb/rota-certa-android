@@ -653,6 +653,10 @@ function cleanText(value, max = 240) {
 function blaBlaExternalTripId(url) {
   const queryId = cleanText(url.searchParams.get("id"), 160);
   if (queryId) return queryId;
+  // 0472: an authenticated Editar sua carona URL may provide administrative
+  // identity evidence. It is never converted into a public passenger URL.
+  const editMatch = url.pathname.match(/\/rides\/offer\/edit\/([^/?#]+)/i);
+  if (editMatch) return cleanText(editMatch[1], 160);
   const match = url.pathname.match(/\/(?:trip|rides\/offer)\/([^/?#]+)/i);
   if (!match || /^(?:edit|passenger)$/i.test(match[1])) return "";
   return cleanText(match[1], 160);
@@ -709,6 +713,125 @@ function normalizeCanonicalBoundBlaBlaPublicUrl0423(raw, expectedAdministrativeT
   const expected = cleanText(expectedAdministrativeTripId, 160);
   if (!expected) return "";
   return normalizeBlaBlaPublicUrl(raw, expected) || normalizeBlaBlaUrl(raw, "", true);
+}
+
+
+async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
+  const driver = await requireDriver(req, res);
+  if (!driver || !driver.username) return;
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  const remoteTripId = cleanText(body.remoteTripId, 120);
+  const candidateTripId = cleanText(body.blablaTripId, 160);
+  const profileUuid = cleanText(body.blablaProfileUuid, 160).toLowerCase();
+  const requestRevision = Math.max(0, Math.floor(Number(body.requestRevision || 0)));
+  const blablaManageUrl = normalizeBlaBlaManageUrl(body.blablaManageUrl, candidateTripId);
+  if (!remoteTripId || !candidateTripId || !profileUuid || requestRevision <= 0 || !blablaManageUrl) {
+    return fail(res, 400, "invalid_blablacar_identity_confirmation", "Confirmação de identidade BlaBlaCar incompleta.");
+  }
+
+  const ref = db.collection("trips").doc(remoteTripId);
+  try {
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      }
+      const previous = snap.data();
+      if (normalizeUsername(previous.driverUsername) !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+
+      const pendingRevision = Math.max(0, Math.floor(Number(previous.manualBlaBlaIdentityRevision0472 || 0)));
+      const pendingTripId = cleanText(previous.manualBlaBlaTripId0472, 160);
+      const pendingManageUrl = normalizeBlaBlaManageUrl(previous.manualBlaBlaManageUrl0472, pendingTripId);
+      const expectedProfileUuid = cleanText(
+        previous.manualBlaBlaProfileUuid0472 || previous.blablaProfileUuid,
+        160,
+      ).toLowerCase();
+      if (
+        pendingRevision !== requestRevision ||
+        pendingTripId !== candidateTripId ||
+        pendingManageUrl !== blablaManageUrl ||
+        (expectedProfileUuid && expectedProfileUuid !== profileUuid)
+      ) {
+        throw Object.assign(new Error("A solicitação de recuperação mudou ou não corresponde à coleta autenticada."), {
+          httpStatus: 409,
+          code: "blablacar_identity_recovery_stale",
+        });
+      }
+
+      const currentTripId = cleanText(previous.blablaTripId, 160);
+      const currentProfileUuid = cleanText(previous.blablaProfileUuid, 160).toLowerCase();
+      if (currentTripId) {
+        if (currentTripId === candidateTripId && (!currentProfileUuid || currentProfileUuid === profileUuid)) {
+          return {
+            changed: false,
+            canonicalTripId: cleanText(previous.canonicalTripId || previous.localTripId || remoteTripId, 180),
+            canonicalRevision: Math.max(0, Number(previous.canonicalRevision || 0)),
+          };
+        }
+        throw Object.assign(new Error("Esta viagem já possui outra identidade forte BlaBlaCar."), {
+          httpStatus: 409,
+          code: "blablacar_identity_already_strong",
+        });
+      }
+
+      const tenantTrips = await tx.get(
+        db.collection("trips").where("driverUsername", "==", driver.username).limit(300),
+      );
+      const conflict = tenantTrips.docs.find((doc) => {
+        if (doc.id === remoteTripId) return false;
+        const data = doc.data();
+        return cleanText(data.blablaTripId, 160) === candidateTripId &&
+          cleanText(data.blablaProfileUuid, 160).toLowerCase() === profileUuid;
+      });
+      if (conflict) {
+        throw Object.assign(new Error("Esta identidade BlaBlaCar já está vinculada a outra viagem canônica."), {
+          httpStatus: 409,
+          code: "blablacar_identity_already_bound",
+        });
+      }
+
+      const now = Date.now();
+      const committed = canonicalServerProjectionPatch0468(
+        remoteTripId,
+        previous,
+        {
+          blablaProfileUuid: profileUuid,
+          blablaTripId: candidateTripId,
+          blablaManageUrl,
+          manualBlaBlaIdentityConfirmedRevision0472: requestRevision,
+          manualBlaBlaIdentityConfirmedAtMillis0472: now,
+        },
+        Math.max(1, Number(previous.publicationRevision || 0)),
+        now,
+      );
+      tx.set(ref, committed, { merge: true });
+      return {
+        changed: true,
+        canonicalTripId: cleanText(committed.canonicalTripId || previous.canonicalTripId || remoteTripId, 180),
+        canonicalRevision: Math.max(0, Number(committed.canonicalRevision || 0)),
+      };
+    });
+    return json(res, 200, {
+      accepted: true,
+      changed: result.changed,
+      remoteTripId,
+      canonicalTripId: result.canonicalTripId,
+      canonicalRevision: result.canonicalRevision,
+      blablaProfileUuid: profileUuid,
+      blablaTripId: candidateTripId,
+      blablaManageUrl,
+      requestRevision,
+    });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "blablacar_identity_confirmation_failed",
+      error.message || "Falha ao confirmar identidade BlaBlaCar.",
+    );
+  }
 }
 
 function normalizeStops(rawStops) {
@@ -7786,6 +7909,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/admin/export") return await agendaAdmin0417.exportAdminLogs0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/sessions") return await agendaAdmin0417.listAdminSessions0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/admin/sync-policy") return await agendaAdmin0417.getDriverAdminSyncPolicy0417(req, res);
+    if (req.method === "POST" && path === "/v1/driver/admin/identity-recovery") return await confirmDriverBlaBlaIdentityRecovery0472(req, res);
     if (req.method === "POST" && path === "/v1/driver/admin/sync-health") return await agendaAdmin0417.reportDriverAdminSyncHealth0417(req, res);
     if (req.method === "GET" && path === "/v1/driver/public-debug") return await listDriverPublicDebugEvents(req, res);
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
@@ -7837,6 +7961,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && req.method === "GET") {
       return await agendaAdmin0417.getAdminTripContext0470(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-identity-recovery" && req.method === "PUT") {
+      return await agendaAdmin0417.requestAdminTripBlaBlaIdentityRecovery0472(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-public-url" && req.method === "PUT") {
       return await agendaAdmin0417.updateAdminTripBlaBlaPublicUrl0465(req, res, parts[3]);

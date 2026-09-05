@@ -127,6 +127,25 @@ function validatedBlaBlaPublicUrl0417(raw, expectedTripId) {
   }
 }
 
+
+function validatedBlaBlaManageIdentity0472(raw) {
+  const value = clean0417(raw, 1200);
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost0417(url.hostname)) return null;
+    if (url.username || url.password || (url.port && url.port !== "443")) return null;
+    const match = url.pathname.replace(/\/+$/, "").match(/^\/rides\/offer\/edit\/([^/?#]+)$/i);
+    const tripId = clean0417(match && match[1], 160);
+    if (!tripId || !/^[A-Za-z0-9_-]{4,160}$/.test(tripId)) return null;
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
+    return { url: url.toString(), tripId };
+  } catch (_) {
+    return null;
+  }
+}
+
 function createAgendaAdmin0417({
   db,
   resolveDriverUsername,
@@ -309,6 +328,7 @@ function createAgendaAdmin0417({
       canManageCapacity: false,
       canEditPublicData: false,
       canManageBlaBlaLink: Boolean(clean0417(trip.blablaTripId, 160)),
+      canRecoverBlaBlaIdentity: !Boolean(clean0417(trip.blablaTripId, 160)),
       canSendMessages: false,
       canManageFinancials: false,
       canCancelTrip: false,
@@ -503,6 +523,12 @@ function createAgendaAdmin0417({
       canonicalRevision: Math.max(0, Number(trip.canonicalRevision || 0)),
       publicationRevision: Math.max(0, Number(trip.publicationRevision || 0)),
       manualBlaBlaPublicUrlRevision0465: Math.max(0, Number(trip.manualBlaBlaPublicUrlRevision0465 || 0)),
+      manualBlaBlaIdentityRevision0472: Math.max(0, Number(trip.manualBlaBlaIdentityRevision0472 || 0)),
+      manualBlaBlaManageUrl0472: (validatedBlaBlaManageIdentity0472(trip.manualBlaBlaManageUrl0472) || {}).url || "",
+      manualBlaBlaIdentityPending0472: Boolean(
+        validatedBlaBlaManageIdentity0472(trip.manualBlaBlaManageUrl0472) &&
+        clean0417(trip.manualBlaBlaTripId0472, 160) !== blablaTripId
+      ),
       canonicalStateHash: clean0417(trip.canonicalStateHash, 160),
       attestationState: state,
       attestedAtMillis: Math.max(0, Number(trip.publicAttestedAtMillis0417 || 0)),
@@ -823,10 +849,149 @@ function createAgendaAdmin0417({
         updatedAtMillis: Math.max(0, Number(data.manualBlaBlaPublicUrlUpdatedAtMillis0465 || 0)),
       };
     }).filter(Boolean);
+    const manualIdentityAssignments0472 = tripSnap.docs.map((doc) => {
+      const data = doc.data();
+      const requested = validatedBlaBlaManageIdentity0472(data.manualBlaBlaManageUrl0472);
+      if (!requested || clean0417(data.blablaTripId, 160) === requested.tripId) return null;
+      return {
+        remoteTripId: doc.id,
+        canonicalTripId: clean0417(data.canonicalTripId || data.localTripId, 180),
+        expectedProfileUuid: clean0417(data.manualBlaBlaProfileUuid0472 || data.blablaProfileUuid, 160),
+        candidateTripId: requested.tripId,
+        blablaManageUrl: requested.url,
+        requestRevision: Math.max(0, Number(data.manualBlaBlaIdentityRevision0472 || 0)),
+        updatedAtMillis: Math.max(0, Number(data.manualBlaBlaIdentityUpdatedAtMillis0472 || 0)),
+      };
+    }).filter((item) => item && item.requestRevision > 0);
     return json0417(res, 200, {
       syncPolicy: normalizeSyncPolicy0417(snap.exists && snap.data().adminSyncPolicy0417),
       manualPublicUrlAssignments0465,
+      manualIdentityAssignments0472,
     });
+  }
+
+  async function requestAdminTripBlaBlaIdentityRecovery0472(req, res, tripId) {
+    const session = await requireAdminSession0417(req, res);
+    if (!session) return;
+    const resolved = await resolveAdminTrip0470(session, tripId);
+    if (!resolved || resolved.missing || resolved.forbidden || resolved.ambiguous) {
+      return failResolvedTrip0470(res, resolved);
+    }
+    const operationId = adminOperationId0417(req);
+    const claim = await claimAdminCommand0417({
+      session,
+      eventType: "BLABLACAR_IDENTITY_RECOVERY_REQUESTED_0472",
+      operationId,
+    });
+    if (!claim.created) {
+      return json0417(res, 200, {
+        accepted: claim.result !== "ERROR",
+        replayed: true,
+        correlationId: claim.correlationId,
+        remoteTripId: resolved.remoteTripId,
+        canonicalTripId: resolved.canonicalTripId,
+      });
+    }
+    const expectedCanonicalRevision = req.body && Object.prototype.hasOwnProperty.call(req.body, "expectedCanonicalRevision")
+      ? Math.max(0, Number(req.body.expectedCanonicalRevision || 0))
+      : null;
+    const expectedIdentityRevision = req.body && Object.prototype.hasOwnProperty.call(req.body, "expectedIdentityRevision0472")
+      ? Math.max(0, Number(req.body.expectedIdentityRevision0472 || 0))
+      : null;
+    try {
+      const outcome = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(resolved.ref);
+        if (!snap.exists) {
+          throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+        }
+        const before = snap.data();
+        if (clean0417(before.driverUsername, 40) !== session.driverUsername) {
+          throw Object.assign(new Error("Você não tem permissão para administrar esta viagem."), {
+            httpStatus: 403,
+            code: "forbidden_trip_tenant",
+          });
+        }
+        if (clean0417(before.blablaTripId, 160)) {
+          throw Object.assign(new Error("Esta viagem já possui identidade forte BlaBlaCar."), {
+            httpStatus: 409,
+            code: "blablacar_identity_already_strong",
+          });
+        }
+        const currentCanonicalRevision = Math.max(0, Number(before.canonicalRevision || 0));
+        const currentIdentityRevision = Math.max(0, Number(before.manualBlaBlaIdentityRevision0472 || 0));
+        if (
+          (expectedCanonicalRevision != null && currentCanonicalRevision !== expectedCanonicalRevision) ||
+          (expectedIdentityRevision != null && currentIdentityRevision !== expectedIdentityRevision)
+        ) {
+          throw Object.assign(new Error("Esta viagem mudou desde que você a abriu. A versão atual foi preservada."), {
+            httpStatus: 409,
+            code: "trip_revision_conflict",
+          });
+        }
+        const requested = validatedBlaBlaManageIdentity0472(req.body && req.body.blablaManageUrl);
+        if (!requested) {
+          throw Object.assign(new Error("Cole a URL HTTPS oficial de “Editar sua carona” desta viagem na BlaBlaCar."), {
+            httpStatus: 400,
+            code: "invalid_blablacar_manage_url",
+          });
+        }
+        const previous = validatedBlaBlaManageIdentity0472(before.manualBlaBlaManageUrl0472);
+        const changed = !previous || previous.url !== requested.url || previous.tripId !== requested.tripId;
+        const nextRevision = currentIdentityRevision + (changed ? 1 : 0);
+        if (changed) {
+          tx.set(resolved.ref, {
+            manualBlaBlaManageUrl0472: requested.url,
+            manualBlaBlaTripId0472: requested.tripId,
+            manualBlaBlaProfileUuid0472: clean0417(before.blablaProfileUuid, 160),
+            manualBlaBlaIdentityRevision0472: nextRevision,
+            manualBlaBlaIdentityUpdatedAtMillis0472: Date.now(),
+          }, { merge: true });
+        }
+        return { before, requested, previous, changed, nextRevision, currentCanonicalRevision };
+      });
+      await touchAdminSession0417(session);
+      await claim.ref.set({
+        tripId: resolved.remoteTripId,
+        publicToken: resolved.remoteTripId,
+        result: "SUCCESS",
+        changes: [{
+          field: "blablaIdentityRecovery",
+          before: outcome.previous ? "pending" : "",
+          after: "pending",
+        }, {
+          field: "manualBlaBlaIdentityRevision0472",
+          before: String(Math.max(0, outcome.nextRevision - (outcome.changed ? 1 : 0))),
+          after: String(outcome.nextRevision),
+        }],
+      }, { merge: true });
+      if (outcome.changed) {
+        await sendDriverBookingPush({
+          driverUsername: session.driverUsername,
+          event: "admin_blablacar_identity_requested",
+          tripToken: resolved.remoteTripId,
+          tripTitle: clean0417(outcome.before.title, 180),
+          correlationId: claim.correlationId,
+        });
+      }
+      return json0417(res, outcome.changed ? 202 : 200, {
+        accepted: true,
+        changed: outcome.changed,
+        replayed: false,
+        correlationId: claim.correlationId,
+        remoteTripId: resolved.remoteTripId,
+        canonicalTripId: resolved.canonicalTripId,
+        canonicalRevision: outcome.currentCanonicalRevision,
+        requestRevision: outcome.nextRevision,
+      });
+    } catch (error) {
+      await claim.ref.set({ tripId: resolved.remoteTripId, result: "ERROR", changes: [] }, { merge: true }).catch(() => {});
+      return fail0417(
+        res,
+        error.httpStatus || 400,
+        error.code || "blablacar_identity_recovery_failed",
+        error.message || "Falha ao solicitar recuperação da identidade BlaBlaCar.",
+      );
+    }
   }
 
   async function updateAdminTripBlaBlaPublicUrl0465(req, res, tripId) {
@@ -1318,6 +1483,7 @@ function createAgendaAdmin0417({
     getDriverAdminSyncPolicy0417,
     reportDriverAdminSyncHealth0417,
     recordDriverPublicAttestation0417,
+    requestAdminTripBlaBlaIdentityRecovery0472,
     updateAdminTripBlaBlaPublicUrl0465,
     updateAdminTripPublicVisibility0471,
     listAdminLogs0417,
@@ -1341,4 +1507,5 @@ module.exports = {
   redact0417,
   activeAdminTrips0417,
   validatedBlaBlaPublicUrl0417,
+  validatedBlaBlaManageIdentity0472,
 };

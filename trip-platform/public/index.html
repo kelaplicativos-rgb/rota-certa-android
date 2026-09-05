@@ -357,7 +357,14 @@
           </label>
           <button id="adminSaveTripPublicUrl0465" class="primary" type="button">Validar e salvar</button>
         </div>
-        <p id="adminTripPublicUrlUnavailable0470" class="muted hidden">Esta viagem ainda não possui identidade forte BlaBlaCar para vincular uma URL pública.</p>
+        <div id="adminTripIdentityRecovery0472" class="hidden">
+          <h3>Recuperar identidade BlaBlaCar</h3>
+          <p id="adminTripPublicUrlUnavailable0470" class="muted">Esta viagem ainda não possui identidade forte BlaBlaCar. Use a própria tela “Editar sua carona” como pista; o vínculo só será confirmado depois que o Samsung autenticado reencontrar exatamente essa viagem.</p>
+          <label>URL de “Editar sua carona”
+            <input id="adminTripManageUrlInput0472" type="url" inputmode="url" autocomplete="off" placeholder="https://www.blablacar.com.br/rides/offer/edit/...">
+          </label>
+          <button id="adminRecoverTripIdentity0472" class="primary" type="button">Confirmar no Samsung e vincular</button>
+        </div>
       </div>
 
       <div id="adminContextHistory0470" class="card adminContextSection0470">

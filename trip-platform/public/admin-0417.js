@@ -459,13 +459,26 @@
         )) || null;
     currentSelectedTrip0465 = trip;
     const editor = byId("adminTripPublicUrlEditor0465");
+    const recovery = byId("adminTripIdentityRecovery0472");
     const unavailable = byId("adminTripPublicUrlUnavailable0470");
-    if (!trip || !trip.blablaTripId || trip.capabilities && trip.capabilities.canManageBlaBlaLink !== true) {
+    if (!trip) {
       editor.classList.add("hidden");
-      if (unavailable) unavailable.classList.remove("hidden");
+      if (recovery) recovery.classList.add("hidden");
       return;
     }
-    if (unavailable) unavailable.classList.add("hidden");
+    if (!trip.blablaTripId || trip.capabilities && trip.capabilities.canManageBlaBlaLink !== true) {
+      editor.classList.add("hidden");
+      if (recovery) recovery.classList.remove("hidden");
+      if (unavailable) {
+        unavailable.textContent = trip.manualBlaBlaIdentityPending0472
+          ? "Solicitação pendente. O servidor ainda não promoveu nenhum ID: aguardando o Samsung autenticado reencontrar esta viagem."
+          : "Esta viagem ainda não possui identidade forte BlaBlaCar. Cole a URL de “Editar sua carona”; ela será usada apenas como pista para uma confirmação autenticada no Samsung.";
+      }
+      const manageInput = byId("adminTripManageUrlInput0472");
+      if (manageInput) manageInput.value = trip.manualBlaBlaManageUrl0472 || "";
+      return;
+    }
+    if (recovery) recovery.classList.add("hidden");
     editor.classList.remove("hidden");
     byId("adminTripPublicUrlTitle0465").textContent =
       "URL pública BlaBlaCar • " + (trip.title || trip.blablaTripId);
@@ -604,6 +617,66 @@
     }
     return finishCloseTripAdminContext0470();
   }
+
+
+  function scheduleTripIdentityRecovery0472(canonicalTripId) {
+    let attempt = 0;
+    const delays = [1800, 3500, 7000, 12000, 20000];
+    const poll = async () => {
+      if (!currentContextTrip0470 || currentContextTrip0470.canonicalTripId !== canonicalTripId) return;
+      await refreshTripContext0470({ silent: true });
+      await loadHistory0417(canonicalTripId);
+      if (currentContextTrip0470 && currentContextTrip0470.blablaTripId) {
+        setMessage0417("Identidade forte confirmada pelo Samsung. Agora a URL pública BlaBlaCar pode seguir para publicação, readback e validação azul.");
+        return;
+      }
+      if (attempt < delays.length) {
+        contextPollTimer0470 = setTimeout(poll, delays[attempt++]);
+      } else {
+        setMessage0417("A recuperação continua pendente. Nenhum vínculo foi forçado; o Samsung precisa reencontrar exatamente esta viagem em uma coleta autenticada.");
+      }
+    };
+    if (contextPollTimer0470) clearTimeout(contextPollTimer0470);
+    contextPollTimer0470 = setTimeout(poll, delays[attempt++]);
+  }
+
+  const recoverTripIdentityButton0472 = byId("adminRecoverTripIdentity0472");
+  recoverTripIdentityButton0472.addEventListener("click", () =>
+    runAdminAction0427("recover-trip-identity", recoverTripIdentityButton0472, async () => {
+      const trip = currentSelectedTrip0465;
+      if (!trip) return setMessage0417("Selecione uma viagem.", true);
+      const blablaManageUrl = byId("adminTripManageUrlInput0472").value.trim();
+      if (!blablaManageUrl) return setMessage0417("Cole a URL de “Editar sua carona” desta viagem.", true);
+      setMessage0417("Registrando a pista e solicitando confirmação autenticada no Samsung…");
+      try {
+        const result = await api0417(
+          "/v1/admin/trips/" + encodeURIComponent(trip.canonicalTripId || trip.remoteTripId) + "/blablacar-identity-recovery",
+          {
+            method: "PUT",
+            operationId: newAdminOperationId0427("identity_recovery"),
+            body: JSON.stringify({
+              blablaManageUrl,
+              expectedCanonicalRevision: Number(trip.canonicalRevision || 0),
+              expectedIdentityRevision0472: Number(trip.manualBlaBlaIdentityRevision0472 || 0),
+            }),
+          },
+        );
+        setMessage0417(result.changed
+          ? "Solicitação aceita. O ID ainda NÃO foi promovido: o Samsung fará uma coleta autenticada e só vinculará se encontrar uma correspondência forte e fisicamente compatível."
+          : "Esta mesma recuperação já estava pendente; nenhum vínculo adicional foi criado.");
+        await refreshTripContext0470({ silent: true });
+        await loadHistory0417(trip.canonicalTripId || trip.remoteTripId);
+        scheduleTripIdentityRecovery0472(trip.canonicalTripId || result.canonicalTripId || "");
+      } catch (error) {
+        if (error.status === 409 && error.code === "trip_revision_conflict") {
+          setMessage0417("Conflito de versão: outra alteração chegou primeiro. A versão atual foi preservada e será recarregada.", true);
+          await refreshTripContext0470({ silent: true });
+          return;
+        }
+        setMessage0417(error.message, true);
+      }
+    }),
+  );
 
   const saveTripPublicUrlButton0465 = byId("adminSaveTripPublicUrl0465");
   saveTripPublicUrlButton0465.addEventListener("click", () =>
