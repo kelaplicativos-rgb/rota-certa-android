@@ -24,7 +24,7 @@
     return false;
   };
 
-  const exactPublicTripUrl = (raw) => {
+  const publicTripUrl = (raw, requireAdministrativeId) => {
     if (!tripId) return '';
     try {
       const url = new URL(raw || '', location.href);
@@ -36,7 +36,8 @@
         const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
         id = clean(match && match[1]);
       }
-      if (!id || id !== tripId) return '';
+      if (!id) return '';
+      if (requireAdministrativeId && id !== tripId) return '';
       url.searchParams.delete('search_uuid');
       url.hash = '';
       return url.href;
@@ -44,6 +45,9 @@
       return '';
     }
   };
+
+  const exactPublicTripUrl = (raw) => publicTripUrl(raw, true);
+  const authoritativeSharedPublicTripUrl = (raw) => publicTripUrl(raw, false);
 
   const urlsFrom = (value) => {
     const text = String(value || '');
@@ -65,11 +69,13 @@
     window[stateKey] = state;
   }
 
-  const acceptCandidate = (raw) => {
-    const exact = exactPublicTripUrl(raw);
-    if (exact) {
-      state.publicTripHref = exact;
-      return exact;
+  const acceptCandidate = (raw, authoritativeSharePayload) => {
+    const resolved = authoritativeSharePayload
+      ? authoritativeSharedPublicTripUrl(raw)
+      : exactPublicTripUrl(raw);
+    if (resolved) {
+      state.publicTripHref = resolved;
+      return resolved;
     }
     return '';
   };
@@ -101,8 +107,8 @@
     }
     state.payloadText = pieces.map(String).join(' ').slice(0, 4000);
     pieces.some((piece) => {
-      if (acceptCandidate(piece)) return true;
-      return urlsFrom(piece).some(acceptCandidate);
+      if (acceptCandidate(piece, true)) return true;
+      return urlsFrom(piece).some((candidate) => acceptCandidate(candidate, true));
     });
     return Promise.resolve();
   };
@@ -188,7 +194,7 @@
   }
 
   if (!state.publicTripHref && state.payloadText) {
-    urlsFrom(state.payloadText).some(acceptCandidate);
+    urlsFrom(state.payloadText).some((candidate) => acceptCandidate(candidate, true));
   }
 
   return JSON.stringify({
