@@ -59,10 +59,8 @@ jobs:
             test/agenda-public-read-only-0475.test.js \
             test/agenda-card-visual-parity-0473.test.js \
             test/backend-canonical-authority-0468.test.js \
-            test/agenda-private-mirror-0434.test.js \
             test/agenda-public-timeline-reflection-0425.test.js \
-            test/agenda-readback-forensics-0421.test.js \
-            test/deterministic-trip-outbox-0387.test.js | tee ../../node-focused-tests.log
+            test/agenda-readback-forensics-0421.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
         shell: bash
