@@ -26,6 +26,10 @@ class BlaBlaPublicTripShare0363Test {
         assertTrue(browser.contains("PUBLIC_TRIP_LINK_CAPTURED"))
         assertTrue(browser.contains("PUBLIC_TRIP_LINK_UNAVAILABLE"))
         assertTrue(browser.contains("systemShareOpened=false"))
+        assertTrue(browser.contains("private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2"))
+        assertTrue(browser.contains("publicTripShareReadAttempts < MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS"))
+        assertTrue(browser.contains("postSessionDelayed0405({"))
+        assertTrue(browser.contains("PUBLIC_TRIP_SHARE_RETRY_MS"))
         assertTrue(browser.contains("BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation("))
         assertTrue(browser.contains("PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION"))
     }
