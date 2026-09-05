@@ -69,7 +69,7 @@ class AgendaAutomaticSync0397Test {
         assertTrue(ui.contains("ABRIR ÁREA ADMINISTRATIVA"))
         assertTrue(ui.contains("WorkManager"))
         assertTrue(ui.contains("Doze"))
-        assertTrue(ui.contains("Forçar parada"))
+        assertTrue(ui.contains("App Standby"))\n        assertTrue(ui.contains("restrições do fabricante"))
         assertTrue(background.contains("recordRunStarted"))
         assertTrue(background.contains("recordRunFinished"))
         assertTrue(background.contains("workId=\$id"))
