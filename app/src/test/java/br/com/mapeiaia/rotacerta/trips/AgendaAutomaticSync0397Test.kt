@@ -64,7 +64,7 @@ class AgendaAutomaticSync0397Test {
         assertTrue(ui.contains("Último resultado"))
         assertTrue(ui.contains("Falha/retry"))
         assertFalse(ui.contains("Sincronizar agora"))
-        assertTrue(ui.contains("Esta é a única central de sincronização"))
+        assertTrue(ui.contains("O servidor é a fonte canônica"))\n        assertTrue(ui.contains("central de coleta BlaBlaCar do Android"))\n        assertTrue(ui.contains("ABRIR ÁREA ADMINISTRATIVA"))
         assertTrue(ui.contains("WorkManager"))
         assertTrue(ui.contains("Doze"))
         assertTrue(ui.contains("Forçar parada"))
