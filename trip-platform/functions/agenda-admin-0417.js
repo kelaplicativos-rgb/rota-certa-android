@@ -486,7 +486,7 @@ function createAgendaAdmin0417({
     const blablaPublicUrl = validatedBlaBlaPublicUrl0417(trip.blablaPublicUrl, blablaTripId);
     return {
       remoteTripId: trip.id,
-      canonicalTripId: clean0417(trip.canonicalTripId || trip.localTripId, 180),
+      canonicalTripId: canonicalTripIdentity0470(trip, trip.id),
       blablaProfileUuid: clean0417(trip.blablaProfileUuid, 160),
       blablaTripId,
       title: clean0417(trip.title, 220),
@@ -914,11 +914,23 @@ function createAgendaAdmin0417({
         tripId: resolved.remoteTripId,
         publicToken: resolved.remoteTripId,
         result: "SUCCESS",
-        changes: [{
-          field: "blablaPublicUrl",
-          before: outcome.applied || outcome.previousRequested,
-          after: outcome.requested,
-        }],
+        changes: [
+          {
+            field: "blablaPublicUrl",
+            before: outcome.applied || outcome.previousRequested,
+            after: outcome.requested,
+          },
+          {
+            field: "canonicalRevision",
+            before: String(outcome.currentCanonicalRevision),
+            after: String(outcome.currentCanonicalRevision),
+          },
+          {
+            field: "manualBlaBlaPublicUrlRevision0465",
+            before: String(Math.max(0, outcome.nextManualRevision - (outcome.changedRequest ? 1 : 0))),
+            after: String(outcome.nextManualRevision),
+          },
+        ],
       }, { merge: true });
       if (outcome.changedApplied) {
         await sendDriverBookingPush({
