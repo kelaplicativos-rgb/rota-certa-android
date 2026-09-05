@@ -2,6 +2,7 @@
 
 const DateContract = window.RotaCertaDateContract;
 if (!DateContract) throw new Error("Rota Certa date contract unavailable");
+const PUBLIC_AGENDA_CARD_STATUSES_0469 = new Set(["PUBLISHED", "FULL", "STARTING", "ACTIVE"]);
 
 const $ = (id) => document.getElementById(id);
 
@@ -1623,7 +1624,7 @@ function renderAgenda(trips) {
   const container = $("agendaTrips");
   container.innerHTML = "";
   const visibleTrips = trips.filter((item) =>
-    ["PUBLISHED", "FULL"].includes(item?.status) &&
+    PUBLIC_AGENDA_CARD_STATUSES_0469.has(item?.status) &&
     item?.publicBookingEnabled === true &&
     orderedStops(item).length >= 2
   );
