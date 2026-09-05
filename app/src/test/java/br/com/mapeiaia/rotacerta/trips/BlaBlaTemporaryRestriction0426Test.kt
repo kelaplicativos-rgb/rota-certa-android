@@ -176,7 +176,7 @@ class BlaBlaTemporaryRestriction0426Test {
         assertTrue(network >= 0)
         assertTrue(share > network)
         assertTrue(exactSearch > share)
-        assertTrue(source.contains("private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 0"))
+        assertTrue(source.contains("private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2"))
         assertTrue(source.contains("networkFirst="))
     }
 
