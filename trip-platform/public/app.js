@@ -204,6 +204,39 @@ function formatTime(ms) {
   return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(Number(ms)));
 }
 
+function agendaDateLabel0473(ms) {
+  const date = new Date(Number(ms || 0));
+  if (!Number.isFinite(date.getTime())) return "";
+  const now = new Date();
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const targetStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const deltaDays = Math.round((targetStart - dayStart) / 86400000);
+  if (deltaDays === -1) return "Ontem";
+  if (deltaDays === 0) return "Hoje";
+  if (deltaDays === 1) return "Amanhã";
+  const weekdays = ["Dom.", "Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb."];
+  const months = ["Jan.", "Fev.", "Mar.", "Abr.", "Mai.", "Jun.", "Jul.", "Ago.", "Set.", "Out.", "Nov.", "Dez."];
+  return weekdays[date.getDay()] + " " + String(date.getDate()).padStart(2, "0") + " " + months[date.getMonth()];
+}
+
+function agendaSegmentMoment0473(item, stop, index, fallbackMillis) {
+  if (!stop) return Number(fallbackMillis || 0);
+  if (index === 0) {
+    return Number(stop.plannedDepartureMillis || stop.plannedArrivalMillis || fallbackMillis || 0);
+  }
+  return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || fallbackMillis || 0);
+}
+
+function agendaDurationBetween0473(startMillis, endMillis) {
+  const start = Number(startMillis || 0);
+  const end = Number(endMillis || 0);
+  if (!start || !end || end <= start) return "";
+  const minutes = Math.round((end - start) / 60000);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? hours + "h" + String(rest).padStart(2, "0") : minutes + " min";
+}
+
 function formatMoney(cents) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
     .format(Math.max(0, Number(cents || 0)) / 100);
@@ -1858,6 +1891,7 @@ function renderAgendaCards(entries, container, filtered = false) {
     const publicOnline0471 = !adminManageable0471 || adminContext0470.agendaOnline0471 !== false;
     const actionsEnabled = publicOnline0471 && item.capacityReliable === true && segmentAvailable > 0;
     if (!publicOnline0471) card.classList.add("agendaTripOffline0471");
+    if (adminManageable0471) card.classList.add("agendaTripAdmin0473");
 
     if (adminManageable0471 && adminContext0470.capabilities.canTogglePublicVisibility === true && canonicalTripId0470) {
       const visibilityToggle0471 = document.createElement("button");
@@ -1885,69 +1919,112 @@ function renderAgendaCards(entries, container, filtered = false) {
       detailsParams.set("destino", stops[toIndex]?.id || "");
     }
 
+    const startStop0473 = stops[fromIndex] || null;
+    const endStop0473 = stops[toIndex] || null;
+    const startMillis0473 = agendaSegmentMoment0473(item, startStop0473, 0, item.departureAtMillis);
+    const endMillis0473 = agendaSegmentMoment0473(item, endStop0473, Math.max(1, toIndex), 0);
+    const duration0473 = agendaDurationBetween0473(startMillis0473, endMillis0473) || durationFor(item);
+
+    const canonicalVisual0473 = document.createElement("div");
+    canonicalVisual0473.className = "agendaCanonicalVisual0473";
+    canonicalVisual0473.setAttribute("data-card-surface", "canonical-trip-0473");
+
     const date = document.createElement("div");
-    date.className = "agendaDate";
-    date.textContent = formatDateOnly(item.departureAtMillis);
-    const routeFrom = document.createElement("div");
-    routeFrom.className = "agendaRouteLine";
-    routeFrom.textContent = from;
-    const arrow = document.createElement("div");
-    arrow.className = "agendaArrow";
-    arrow.textContent = "↓";
-    const routeTo = document.createElement("div");
-    routeTo.className = "agendaRouteLine";
-    routeTo.textContent = to;
-    const meta = document.createElement("div");
-    meta.className = "agendaMetaRow";
-    const time = document.createElement("span");
-    time.className = "bigPill";
-    time.textContent = `🕘 ${formatTime(item.departureAtMillis)}`;
-    const seats = document.createElement("span");
-    seats.className = "bigPill";
-    seats.textContent = publicAvailabilityLabel(item, segmentAvailable, filtered);
-    meta.append(time, seats);
-    if (item.capacityReliable === true) {
-      const passengers = document.createElement("span");
-      passengers.className = "bigPill";
-      passengers.textContent = `👥 Passageiros confirmados: ${normalizedSeatCount(item.confirmedPassengerSeats)}`;
-      meta.appendChild(passengers);
+    date.className = "agendaDate agendaDate0473";
+    date.textContent = agendaDateLabel0473(item.departureAtMillis);
 
-      const blockedTotal = normalizedSeatCount(item.blockedSeats);
-      if (blockedTotal > 0) {
-        const blocked = document.createElement("span");
-        blocked.className = "bigPill";
-        blocked.textContent = `🚫 Vagas bloqueadas: ${blockedTotal}`;
-        meta.appendChild(blocked);
-      }
+    const journey0473 = document.createElement("div");
+    journey0473.className = "agendaJourney0473";
 
-      const blablaAvailable = item.blablaAvailableSeats == null ? null : normalizedSeatCount(item.blablaAvailableSeats);
-      const rotaAvailable = item.rotaCertaAvailableSeats == null ? null : normalizedSeatCount(item.rotaCertaAvailableSeats);
-      const totalAvailable = item.totalAvailableSeats == null ? null : normalizedSeatCount(item.totalAvailableSeats);
-      if (blablaAvailable != null && rotaAvailable != null && totalAvailable != null) {
-        const availability = document.createElement("span");
-        availability.className = "bigPill";
-        availability.textContent = `BlaBlaCar ${blablaAvailable} vaga(s) • Rota Certa ${rotaAvailable} vaga(s) • Total disponível ${totalAvailable}`;
-        meta.appendChild(availability);
-      }
+    const startTime0473 = document.createElement("div");
+    startTime0473.className = "agendaJourneyTime0473 agendaJourneyStart0473";
+    const startClock0473 = document.createElement("strong");
+    startClock0473.textContent = formatTime(startMillis0473 || item.departureAtMillis);
+    startTime0473.appendChild(startClock0473);
+    if (duration0473) {
+      const durationNode0473 = document.createElement("small");
+      durationNode0473.className = "agendaJourneyDuration0473";
+      durationNode0473.textContent = duration0473;
+      startTime0473.appendChild(durationNode0473);
     }
-    const duration = durationFor(item);
-    if (duration) {
-      const durationPill = document.createElement("span");
-      durationPill.className = "bigPill";
-      durationPill.textContent = `⏱ ${duration}`;
-      meta.appendChild(durationPill);
-    }
+
+    const rail0473 = document.createElement("div");
+    rail0473.className = "agendaJourneyRail0473";
+    rail0473.innerHTML = '<span class="agendaJourneyDot0473"></span><span class="agendaJourneyLine0473"></span><span class="agendaJourneyDot0473"></span>';
+    rail0473.setAttribute("aria-hidden", "true");
+
+    const startCity0473 = document.createElement("div");
+    startCity0473.className = "agendaJourneyCity0473";
+    startCity0473.textContent = from;
+
+    const endTime0473 = document.createElement("div");
+    endTime0473.className = "agendaJourneyTime0473 agendaJourneyEnd0473";
+    const endClock0473 = document.createElement("strong");
+    endClock0473.textContent = formatTime(endMillis0473);
+    endTime0473.appendChild(endClock0473);
+
+    const endCity0473 = document.createElement("div");
+    endCity0473.className = "agendaJourneyCity0473";
+    endCity0473.textContent = to;
+
+    journey0473.append(startTime0473, rail0473, startCity0473, endTime0473, endCity0473);
+
     const bottom = document.createElement("div");
-    bottom.className = "agendaBottom";
-    const driver = document.createElement("div");
-    driver.className = "driverMini";
-    driver.textContent = driverDisplayName || "Motorista Rota Certa";
-    const price = document.createElement("div");
-    price.className = "priceMini";
-    price.textContent = fare > 0 ? formatMoney(fare) : "";
-    bottom.append(driver, price);
+    bottom.className = "agendaBottom agendaBottom0473";
 
-    card.append(date, routeFrom, arrow, routeTo, meta, bottom);
+    const occupancy0473 = document.createElement("div");
+    occupancy0473.className = "agendaOccupancy0473";
+    const car0473 = document.createElement("span");
+    car0473.className = "agendaCar0473";
+    car0473.setAttribute("role", "img");
+    car0473.setAttribute("aria-label", "Viagem de carro");
+    car0473.textContent = "🚗";
+    occupancy0473.appendChild(car0473);
+
+    const passengerCount0473 = normalizedSeatCount(item.confirmedPassengerSeats);
+    const passengerStack0473 = document.createElement("span");
+    passengerStack0473.className = "agendaPassengerStack0473";
+    passengerStack0473.setAttribute(
+      "aria-label",
+      passengerCount0473 === 1 ? "1 passageiro confirmado" : passengerCount0473 + " passageiros confirmados",
+    );
+    const shownPassengerDots0473 = Math.min(3, passengerCount0473);
+    for (let passengerIndex0473 = 0; passengerIndex0473 < shownPassengerDots0473; passengerIndex0473 += 1) {
+      const passengerDot0473 = document.createElement("span");
+      passengerDot0473.className = "agendaPassengerDot0473";
+      passengerDot0473.setAttribute("aria-hidden", "true");
+      passengerDot0473.textContent = "●";
+      passengerStack0473.appendChild(passengerDot0473);
+    }
+    if (passengerCount0473 > 3) {
+      const passengerMore0473 = document.createElement("span");
+      passengerMore0473.className = "agendaPassengerMore0473";
+      passengerMore0473.setAttribute("aria-hidden", "true");
+      passengerMore0473.textContent = "+" + (passengerCount0473 - 3);
+      passengerStack0473.appendChild(passengerMore0473);
+    } else if (passengerCount0473 === 0) {
+      const passengerEmpty0473 = document.createElement("span");
+      passengerEmpty0473.className = "agendaPassengerEmpty0473";
+      passengerEmpty0473.textContent = "Sem passageiros";
+      passengerStack0473.appendChild(passengerEmpty0473);
+    }
+    occupancy0473.appendChild(passengerStack0473);
+
+    const summary0473 = document.createElement("div");
+    summary0473.className = "agendaCardSummary0473";
+    const availability0473 = document.createElement("span");
+    availability0473.className = "agendaCardAvailability0473";
+    availability0473.textContent = publicAvailabilityLabel(item, segmentAvailable, filtered).replace(/^🪑\s*/, "");
+    summary0473.appendChild(availability0473);
+    if (fare > 0) {
+      const price = document.createElement("span");
+      price.className = "priceMini agendaCardPrice0473";
+      price.textContent = formatMoney(fare);
+      summary0473.appendChild(price);
+    }
+    bottom.append(occupancy0473, summary0473);
+    canonicalVisual0473.append(date, journey0473, bottom);
+    card.appendChild(canonicalVisual0473);
 
     if (adminManageable0471) {
       const state = String(adminContext0470.attestationState || "UNPROVEN").toUpperCase();
