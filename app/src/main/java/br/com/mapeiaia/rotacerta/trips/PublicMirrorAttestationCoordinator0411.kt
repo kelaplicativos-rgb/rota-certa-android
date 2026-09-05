@@ -249,6 +249,13 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 diff.fieldDiffs.isEmpty() &&
                 decision.expectedHash == decision.readbackHash &&
                 readback.publicProjectionHash == decision.readbackHash
+        val publishedWithoutUrl0465 =
+            decision.state == PublicMirrorAttestationState0411.UNPROVEN &&
+                decision.reason in setOf("BLABLACAR_PUBLIC_URL_PENDING", "BLABLACAR_PUBLIC_URL_UNRESOLVED") &&
+                decision.mismatchFields.isNotEmpty() &&
+                decision.mismatchFields.all { it == "blablaPublicUrl" } &&
+                stateBytesMatch
+
         evidence(
             stage = "STATE_COMPARE",
             status = if (stateBytesMatch) "MATCH" else "MISMATCH",
@@ -263,8 +270,12 @@ internal object PublicMirrorAttestationCoordinator0411 {
                 " fieldDiffPaths=" + diff.fieldDiffs.joinToString(",") { it.fieldPath }.take(240),
         )
         evidence(
-            stage = "PUBLIC_URL_PRECONDITION",
-            status = if (decision.linkValid) "MATCH" else "FAILED",
+            stage = "PUBLIC_URL_ENRICHMENT",
+            status = when {
+                decision.linkValid -> "MATCH"
+                publishedWithoutUrl0465 -> "OPTIONAL_PENDING"
+                else -> "FAILED"
+            },
             reason = if (decision.linkValid) "BLABLACAR_PUBLIC_URL_RESOLVED" else decision.reason,
             extra = "linkRequired=" + expected.blablaTripId.isNotBlank() +
                 " linkValid=" + decision.linkValid +
@@ -276,7 +287,11 @@ internal object PublicMirrorAttestationCoordinator0411 {
             api.reportPublicTripAttestation0417(
                 remoteTripId = remote.remoteTripId,
                 request = DriverPublicAttestationRequest0417(
-                    state = if (decision.state == PublicMirrorAttestationState0411.VALIDATED) "VERIFIED" else decision.state.name,
+                    state = when {
+                        decision.state == PublicMirrorAttestationState0411.VALIDATED -> "VERIFIED"
+                        publishedWithoutUrl0465 -> "PUBLISHED"
+                        else -> decision.state.name
+                    },
                     canonicalRevision = current.canonicalRevision,
                     publicationRevision = current.publicationRevision,
                     canonicalStateHash = current.canonicalStateHash,
@@ -384,7 +399,8 @@ internal object PublicMirrorAttestationCoordinator0411 {
             failedStage0421 = when {
                 !finalDecision.identityValid -> "IDENTITY_COMPARE"
                 !finalDecision.revisionValid -> "REVISION_COMPARE"
-                !finalDecision.linkValid -> "PUBLIC_URL_PRECONDITION"
+                publishedWithoutUrl0465 -> ""
+                !finalDecision.linkValid -> "PUBLIC_URL_ENRICHMENT"
                 finalDecision.state == PublicMirrorAttestationState0411.PENDING -> "ATTESTATION_REPORT"
                 finalDecision.state != PublicMirrorAttestationState0411.VALIDATED -> "STATE_COMPARE"
                 else -> ""
@@ -395,7 +411,11 @@ internal object PublicMirrorAttestationCoordinator0411 {
 
         evidence(
             stage = "ATTESTATION",
-            status = if (finalDecision.state == PublicMirrorAttestationState0411.VALIDATED) "CONFIRMED" else "DENIED",
+            status = when {
+                finalDecision.state == PublicMirrorAttestationState0411.VALIDATED -> "CONFIRMED"
+                publishedWithoutUrl0465 -> "PUBLISHED"
+                else -> "DENIED"
+            },
             reason = finalDecision.reason,
             extra = "agendaMatch=" + (finalDecision.state == PublicMirrorAttestationState0411.VALIDATED) +
                 " linkValid=" + finalDecision.linkValid +
