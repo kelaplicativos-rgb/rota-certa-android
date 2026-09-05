@@ -6150,6 +6150,12 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
           { httpStatus: 409, code: "passenger_operational_completed" },
         );
       }
+      if (beforeOperational === "IN_CAR" && selection === "CANCELLED") {
+        throw Object.assign(
+          new Error("Passageiro já embarcado não pode ser cancelado. Conclua a operação ou corrija o estado por fluxo autorizado."),
+          { httpStatus: 409, code: "passenger_in_car_not_cancelable" },
+        );
+      }
       const afterOperational = selection === "PAID" ? beforeOperational : selection;
       const afterPayment = selection === "PAID" ? "PAID" : beforePayment;
       const afterBookingStatus = selection === "CANCELLED"
