@@ -1410,11 +1410,21 @@ async function getDriverPublicTripReadback0411(req, res, token) {
   const committedAtMillis = committedAt && typeof committedAt.toMillis === "function"
     ? Math.max(0, Number(committedAt.toMillis() || 0))
     : Math.max(0, Number(data.updatedAtMillis || 0));
+  const publicDriverSnap = driver.username
+    ? await db.collection("tripDrivers").doc(driver.username).get()
+    : null;
+  const agendaVisibility0466 = publicAgendaTripVisibility0466(
+    publicDriverSnap && publicDriverSnap.exists ? publicDriverSnap.data() : null,
+    token,
+    data,
+  );
   return json(res, 200, {
     remoteTripId: token,
     payload,
     publicProjectionHash: canonicalPublicTripHash0411(payload),
     persistedAtMillis: committedAtMillis,
+    agendaVisible: agendaVisibility0466.visible,
+    agendaVisibilityReason: agendaVisibility0466.reason,
   });
 }
 
@@ -3092,6 +3102,36 @@ function publicProjectionCommittedCurrent0434(token, data) {
   return Boolean(data.publicCommittedAt0422);
 }
 
+function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
+  if (!driverData || typeof driverData !== "object") {
+    return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
+  }
+  if (!data || data.publicationTombstone === true) {
+    return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
+  }
+  if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
+    return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
+  }
+  if (Number(data.departureAtMillis || 0) <= Number(nowMillis || 0)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_DEPARTURE_NOT_FUTURE" };
+  }
+  if (!publicProjectionCommittedCurrent0434(token, data)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_NOT_COMMITTED" };
+  }
+  const publicProfileScope0417 = new Set(
+    (Array.isArray(driverData.publicTripProfileUuids0417) ? driverData.publicTripProfileUuids0417 : [])
+      .map((value) => cleanText(value, 160).toLowerCase())
+      .filter(Boolean),
+  );
+  if (publicProfileScope0417.size) {
+    const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
+    if (profileUuid && !publicProfileScope0417.has(profileUuid)) {
+      return { visible: false, reason: "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED" };
+    }
+  }
+  return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -3123,22 +3163,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     if (!view) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
-  const publicProfileScope0417 = new Set(
-    (Array.isArray(driver.publicTripProfileUuids0417) ? driver.publicTripProfileUuids0417 : [])
-      .map((value) => cleanText(value, 160).toLowerCase())
-      .filter(Boolean),
-  );
   const sourceDocs = snapshot.docs
-    .filter((doc) =>
-      PUBLIC_STATUSES.has(doc.data().status) &&
-      Number(doc.data().departureAtMillis) > Date.now() &&
-      publicProjectionCommittedCurrent0434(doc.id, doc.data())
-    )
-    .filter((doc) => {
-      if (!publicProfileScope0417.size) return true;
-      const profileUuid = cleanText(doc.data().blablaProfileUuid, 160).toLowerCase();
-      return !profileUuid || publicProfileScope0417.has(profileUuid);
-    })
+    .filter((doc) => publicAgendaTripVisibility0466(driver, doc.id, doc.data()).visible)
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
   const rawTrips = tester
