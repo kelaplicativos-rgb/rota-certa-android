@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -240,10 +241,25 @@ internal data class BlaBlaCommandAuditSnapshot0407(
     val requestedAtMillis: Long,
     val finishedAtMillis: Long,
     val errorCode: String = "",
-) {
-    val pending: Boolean
-        get() = status == BlaBlaCommandStatus0407.QUEUED
-}
+    val queuedVersionCode: Long = 0L,
+    val pending: Boolean = status == BlaBlaCommandStatus0407.QUEUED,
+)
+
+internal const val BLA_BLA_COMMAND_PENDING_LEASE_MILLIS_0463 = 30L * 60L * 1000L
+
+internal fun commandPendingLeaseCurrent0463(
+    status: BlaBlaCommandStatus0407,
+    requestedAtMillis: Long,
+    queuedVersionCode: Long,
+    currentVersionCode: Long,
+    nowMillis: Long,
+): Boolean =
+    status == BlaBlaCommandStatus0407.QUEUED &&
+        requestedAtMillis > 0L &&
+        queuedVersionCode > 0L &&
+        queuedVersionCode == currentVersionCode &&
+        nowMillis >= requestedAtMillis &&
+        nowMillis - requestedAtMillis < BLA_BLA_COMMAND_PENDING_LEASE_MILLIS_0463
 
 /**
  * Process-local invalidation only. Durable command status lives in SharedPreferences;
@@ -266,16 +282,30 @@ internal object BlaBlaTripControlEvents0407 {
 internal class BlaBlaTripCommandStatusStore0407(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun get(target: BlaBlaTripTarget0407): BlaBlaCommandAuditSnapshot0407? {
+    fun get(
+        target: BlaBlaTripTarget0407,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): BlaBlaCommandAuditSnapshot0407? {
         val prefix = prefix(target)
         val rawStatus = prefs.getString(prefix + "_status", null) ?: return null
         val status = runCatching { BlaBlaCommandStatus0407.valueOf(rawStatus) }.getOrNull() ?: return null
+        val requestedAtMillis = prefs.getLong(prefix + "_requested", 0L)
+        val queuedVersionCode = prefs.getLong(prefix + "_version_code", 0L)
+        val pending = commandPendingLeaseCurrent0463(
+            status = status,
+            requestedAtMillis = requestedAtMillis,
+            queuedVersionCode = queuedVersionCode,
+            currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+            nowMillis = nowMillis,
+        )
         return BlaBlaCommandAuditSnapshot0407(
             commandId = prefs.getString(prefix + "_command", "").orEmpty(),
             status = status,
-            requestedAtMillis = prefs.getLong(prefix + "_requested", 0L),
+            requestedAtMillis = requestedAtMillis,
             finishedAtMillis = prefs.getLong(prefix + "_finished", 0L),
             errorCode = prefs.getString(prefix + "_error", "").orEmpty(),
+            queuedVersionCode = queuedVersionCode,
+            pending = pending,
         )
     }
 
@@ -289,12 +319,8 @@ internal class BlaBlaTripCommandStatusStore0407(context: Context) {
         requestedAtMillis: Long,
         nowMillis: Long = System.currentTimeMillis(),
     ): Boolean {
-        val current = get(target)
-        val livePending = current?.pending == true &&
-            current.requestedAtMillis > 0L &&
-            nowMillis >= current.requestedAtMillis &&
-            nowMillis - current.requestedAtMillis < PENDING_LEASE_MILLIS
-        if (livePending) return false
+        val current = get(target, nowMillis)
+        if (current?.pending == true) return false
 
         val prefix = prefix(target)
         val saved = prefs.edit()
@@ -302,6 +328,7 @@ internal class BlaBlaTripCommandStatusStore0407(context: Context) {
             .putString(prefix + "_status", BlaBlaCommandStatus0407.QUEUED.name)
             .putLong(prefix + "_requested", requestedAtMillis.coerceAtLeast(1L))
             .putLong(prefix + "_finished", 0L)
+            .putLong(prefix + "_version_code", BuildConfig.VERSION_CODE.toLong())
             .putString(prefix + "_error", "")
             .commit()
         if (saved) BlaBlaTripControlEvents0407.notifyChanged()
@@ -316,6 +343,7 @@ internal class BlaBlaTripCommandStatusStore0407(context: Context) {
             .putString(prefix + "_status", result.status.name)
             .putLong(prefix + "_requested", result.startedAtMillis.coerceAtLeast(1L))
             .putLong(prefix + "_finished", result.finishedAtMillis.coerceAtLeast(result.startedAtMillis))
+            .putLong(prefix + "_version_code", BuildConfig.VERSION_CODE.toLong())
             .putString(prefix + "_error", result.errorCode.take(120))
             .commit()
         if (saved) BlaBlaTripControlEvents0407.notifyChanged()
@@ -326,7 +354,6 @@ internal class BlaBlaTripCommandStatusStore0407(context: Context) {
 
     companion object {
         private const val PREFS = "rota_certa_blablacar_trip_control_0407"
-        private const val PENDING_LEASE_MILLIS = 30L * 60L * 1000L
     }
 }
 
@@ -335,7 +362,8 @@ internal fun blaBlaVerificationLabel0407(
     lastObservedAtMillis: Long,
     strongTargetAvailable: Boolean,
 ): String = when {
-    audit?.status == BlaBlaCommandStatus0407.QUEUED -> "⟳ Atualizando"
+    audit?.pending == true -> "⟳ Atualizando"
+    audit?.status == BlaBlaCommandStatus0407.QUEUED -> "⚠ Verificação anterior interrompida"
     audit?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED -> "⚠ Sessão necessária"
     audit?.status == BlaBlaCommandStatus0407.TEMPORARILY_RESTRICTED -> "⚠ BlaBlaCar temporariamente indisponível"
     audit?.status == BlaBlaCommandStatus0407.ACCOUNT_NOT_AVAILABLE -> "⚠ Conta indisponível"
