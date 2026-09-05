@@ -871,6 +871,17 @@ function normalizeStops(rawStops) {
   return stops;
 }
 
+function canonicalStopSemanticKey0477(stopRaw) {
+  const stop = stopRaw && typeof stopRaw === "object" ? stopRaw : {};
+  const label = cleanText(stop.name, 160) || cleanText(stop.address, 300);
+  return label
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw, recordsRaw) {
   const previousStops = Array.isArray(previousStopsRaw) ? previousStopsRaw : [];
   const nextStops = Array.isArray(nextStopsRaw) ? nextStopsRaw : [];
@@ -880,29 +891,45 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
   if (previousIds.join("|") === nextIds.join("|")) {
     return { changed: false, records, changes: [] };
   }
-  if (
-    previousStops.length !== 2 ||
-    nextStops.length < 2 ||
-    previousIds.some((id) => !id) ||
-    nextIds.some((id) => !id)
-  ) {
+
+  const idsValid0477 =
+    previousStops.length >= 2 &&
+    nextStops.length >= 2 &&
+    previousIds.every(Boolean) &&
+    nextIds.every(Boolean) &&
+    new Set(previousIds).size === previousIds.length &&
+    new Set(nextIds).size === nextIds.length;
+  const previousSemantic0477 = previousStops.map(canonicalStopSemanticKey0477);
+  const nextSemantic0477 = nextStops.map(canonicalStopSemanticKey0477);
+  const sameOrderedSemanticShape0477 =
+    previousStops.length === nextStops.length &&
+    previousSemantic0477.every((key, index) => Boolean(key) && key === nextSemantic0477[index]);
+  const legacyEndpointExpansion0439 =
+    previousStops.length === 2 &&
+    nextStops.length >= 2;
+
+  if (!idsValid0477 || (!sameOrderedSemanticShape0477 && !legacyEndpointExpansion0439)) {
     throw Object.assign(
       new Error("A migração canônica de paradas não é segura para esta estrutura."),
       { httpStatus: 409, code: "canonical_stop_shape_migration_unsafe" },
     );
   }
-  const oldFirst = previousIds[0];
-  const oldLast = previousIds[1];
-  const newFirst = nextIds[0];
-  const newLast = nextIds[nextIds.length - 1];
+
+  const mappedStopIds0477 = new Map();
+  if (sameOrderedSemanticShape0477) {
+    previousIds.forEach((id, index) => mappedStopIds0477.set(id, nextIds[index]));
+  } else {
+    mappedStopIds0477.set(previousIds[0], nextIds[0]);
+    mappedStopIds0477.set(previousIds[previousIds.length - 1], nextIds[nextIds.length - 1]);
+  }
   const nextIdSet = new Set(nextIds);
 
   const mapStopId = (rawId) => {
     const id = cleanText(rawId, 80);
     if (!id) return "";
     if (nextIdSet.has(id)) return id;
-    if (id === oldFirst) return newFirst;
-    if (id === oldLast) return newLast;
+    const mapped = mappedStopIds0477.get(id);
+    if (mapped) return mapped;
     throw Object.assign(
       new Error("Reserva existente referencia uma parada que não pode ser migrada com segurança."),
       { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
