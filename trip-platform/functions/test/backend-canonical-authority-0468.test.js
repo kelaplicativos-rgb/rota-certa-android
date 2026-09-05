@@ -1,0 +1,135 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+
+const root = path.join(__dirname, "..", "..", "..");
+const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js"), "utf8");
+const outbox = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripPublicationOutbox0387.kt"), "utf8");
+const autoSync = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"), "utf8");
+const remoteApi = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripRemoteApi.kt"), "utf8");
+
+function between(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, startMarker + " missing");
+  const end = source.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(end, -1, endMarker + " missing");
+  return source.slice(start, end);
+}
+
+test("0468 backend is the logical revision and public projection authority", () => {
+  const helper = between(api, "function canonicalServerStateHash0468", "function assertNoOperationalOverbooking");
+  assert.match(helper, /server-canonical-v1:/);
+  assert.match(helper, /canonicalRevision = currentCanonicalRevision \+ 1/);
+  assert.match(helper, /canonicalPublicTripPayload0411/);
+  assert.match(helper, /publicProjectionHash0434/);
+  assert.match(helper, /publicAttestationState0417: tombstoned \? "UNPROVEN" : "PENDING"/);
+});
+
+test("0468 first BlaBla ingestion can create the canonical server trip without a prior Android TripStore row", () => {
+  const fn = between(api, "async function reconcileDriverCapacitySnapshot", "async function listDriverTripSyncState0402");
+  assert.match(fn, /serverCanonicalAuthority0468/);
+  assert.match(fn, /createdByCanonicalIngestion0468 = !tripSnap\.exists && serverCanonicalAuthority0468/);
+  assert.match(fn, /canonical_ingestion_identity_required/);
+  assert.match(fn, /claimNamespace !== "BLABLACAR_SYNC:"/);
+  assert.match(fn, /tx\.set\(tripRef,[\s\S]*createdAtMillis: now/);
+  assert.doesNotMatch(fn, /if \(!tripSnap\.exists\) throw Object\.assign\(new Error\("Viagem não encontrada\."\)/);
+});
+
+test("0468 server authority does not accept Android public bytes or logical hash as source of truth", () => {
+  const fn = between(api, "async function reconcileDriverCapacitySnapshot", "async function listDriverTripSyncState0402");
+  assert.match(fn, /!serverCanonicalAuthority0468 && incomingPublicProjection0434/);
+  assert.match(fn, /expectedPublicProjectionHash0425 && !serverCanonicalAuthority0468/);
+  assert.match(fn, /canonicalRevision: serverCanonicalAuthority0468 \? Math\.max\(0, Number\(previous\.canonicalRevision/);
+  assert.match(fn, /canonicalStateHash: serverCanonicalAuthority0468 \? cleanText\(previous\.canonicalStateHash/);
+});
+
+test("0468 replay of the same transport mutation is idempotent and cannot advance canonical revision twice", () => {
+  const fn = between(api, "async function reconcileDriverCapacitySnapshot", "async function listDriverTripSyncState0402");
+  assert.match(fn, /serverCanonicalReplay0468/);
+  assert.match(fn, /sameIdempotentMutation/);
+  assert.match(fn, /currentCanonicalStateHash\.startsWith\("server-canonical-v1:"\)/);
+  assert.match(fn, /logicalReplay: true/);
+});
+
+test("0468 booking, operational and capacity mutations rebuild the public projection in the same transaction", () => {
+  for (const name of [
+    "async function createBooking",
+    "async function mutateDriverBookingDecision",
+    "async function mutateDriverPassengerOperationalStatus",
+    "async function mutateProtectedBooking",
+    "async function updatePassengerBooking",
+    "async function cancelPassengerBooking",
+  ]) {
+    const start = api.indexOf(name);
+    assert.notEqual(start, -1, name + " missing");
+    const next = api.indexOf("\nasync function ", start + name.length);
+    const body = api.slice(start, next < 0 ? api.length : next);
+    assert.match(body, /canonicalServerProjectionPatch0468/, name + " must update canonical projection atomically");
+  }
+  assert.match(api, /ROTA_CERTA_SEAT_ALLOCATION_CHANGED/);
+});
+
+test("0468 collector outbox derives canonical identity directly from strong provider identity", () => {
+  const record = between(outbox, "    private fun recordExternalMutation(", "    fun recordTombstone(");
+  assert.match(record, /canonicalBlaBlaTripKey0406/);
+  assert.match(record, /transportTrip0468/);
+  assert.match(record, /canonicalRevision = 0L/);
+  assert.match(record, /canonicalStateHash = ""/);
+  assert.doesNotMatch(record, /canonicalMatches\.size != 1/);
+  assert.doesNotMatch(record, /store\.saveTrip/);
+});
+
+test("0468 direct collection skips private mirror and client-authored public projection", () => {
+  const fn = between(autoSync, "    suspend fun syncExternalTripIncremental(", "    private suspend fun syncExternalCapacitySnapshot(");
+  assert.match(fn, /serverCanonicalAuthority0468/);
+  assert.match(fn, /BACKEND_CANONICAL_DIRECT_INGESTION_0468/);
+  assert.match(fn, /if \(!serverCanonicalAuthority0468\) \{[\s\S]*syncPrivateAgendaMirror0434/);
+  const cap = between(autoSync, "    private suspend fun syncExternalCapacitySnapshot(", "    private fun saveExternalBinding(");
+  assert.match(cap, /serverCanonicalAuthority0468 = serverCanonicalAuthority0468/);
+  assert.match(cap, /if \(serverCanonicalAuthority0468\) "" else expectedPublicProjectionHash0425\(\)/);
+  assert.match(cap, /isRemoteTripNotFound\(firstError\) && !serverCanonicalAuthority0468/);
+});
+
+test("0468 outbox completes only after independent public readback and server attestation, without local canonical read", () => {
+  const direct = between(outbox, "val backendCanonicalDirectTransport0468", "} else {\n                        val currentCanonicalMatches0456");
+  assert.match(direct, /canonicalAck0468/);
+  assert.match(direct, /readPublicTripProjection0411/);
+  assert.match(direct, /canonicalPublicProjectionHash0411\(readback0468\.payload\)/);
+  assert.match(direct, /readback0468\.agendaVisible/);
+  assert.match(direct, /reportPublicTripAttestation0417/);
+  assert.match(direct, /serverPublicAttestationConfirmed0433/);
+  assert.doesNotMatch(direct, /store\.getTrip/);
+  assert.doesNotMatch(direct, /store\.trips\(\)/);
+
+  const completion = between(outbox, "if (backendCanonicalVerified0468)", "val localMirrorSourceId0434");
+  assert.match(completion, /outbox\.markDelivered/);
+  assert.match(completion, /return@eventLoop/);
+});
+
+test("0468 server independently refuses blue when projection is stale, uncommitted, hidden or hash-mismatched", () => {
+  const validator = between(api, "async function validatePublicAttestationCurrent0468", "function clientIp");
+  assert.match(validator, /publicProjectionCommittedCurrent0434/);
+  assert.match(validator, /publicAgendaTripVisibility0466/);
+  assert.match(validator, /canonicalPublicTripHash0411/);
+  assert.match(validator, /suppliedMatchesCurrent/);
+
+  const attestation = between(admin, "  async function recordDriverPublicAttestation0417", "  async function listAdminLogs0417");
+  assert.match(attestation, /validatePublicAttestationCurrent0468/);
+  assert.match(attestation, /independent0468\.committed === true/);
+  assert.match(attestation, /independent0468\.visible === true/);
+  assert.match(attestation, /expectedHash === clean0417\(independent0468\.currentHash/);
+  assert.doesNotMatch(attestation, /blablaPublicUrl/);
+});
+
+test("0468 Android transport contract carries server canonical ACK rather than inventing it", () => {
+  assert.match(remoteApi, /val serverCanonicalAuthority0468: Boolean = false/);
+  assert.match(remoteApi, /val canonicalTripId: String = ""/);
+  assert.match(remoteApi, /val canonicalRevision: Long = 0L/);
+  assert.match(remoteApi, /val canonicalStateHash: String = ""/);
+  assert.match(remoteApi, /val publicProjectionHash: String = ""/);
+  assert.match(remoteApi, /serverCanonicalAuthority0468 = serverCanonicalAuthority0468/);
+});
