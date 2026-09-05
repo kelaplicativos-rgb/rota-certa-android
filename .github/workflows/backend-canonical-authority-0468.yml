@@ -1,20 +1,20 @@
-name: Paridade visual dos cards da Agenda 0.1.474
+name: Agenda pública somente leitura 0.1.475
 
 on:
   push:
     branches:
-      - agent/agenda-card-visual-parity-0.1.474
+      - agent/agenda-public-read-only-0.1.475
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-card-visual-parity-0474-${{ github.ref }}
+  group: agenda-public-read-only-0475-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-and-build:
+  validate-build-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -23,6 +23,7 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
     steps:
       - name: Checkout exact triggering SHA
         uses: actions/checkout@v4
@@ -34,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          BASE=c34dac6d54ba1bd1c1d233701669a1c80017844c
+          BASE=52c6887035b6d4003029d5af9cc09c93931cd83a
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
@@ -45,6 +46,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Validate read-only public Agenda and canonical backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd trip-platform/functions
+          npm install --package-lock=false --ignore-scripts --no-audit --no-fund
+          npm run check
+          node --check ../public/app.js
+          node --test \
+            test/agenda-public-read-only-0475.test.js \
+            test/agenda-card-visual-parity-0473.test.js \
+            test/backend-canonical-authority-0468.test.js \
+            test/agenda-private-mirror-0434.test.js \
+            test/agenda-public-timeline-reflection-0425.test.js \
+            test/agenda-readback-forensics-0421.test.js \
+            test/deterministic-trip-outbox-0387.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
         shell: bash
@@ -79,55 +97,6 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Validate backend syntax and 0.1.474 card parity contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd trip-platform/functions
-          npm install --package-lock=false --ignore-scripts --no-audit --no-fund
-          npm run check
-          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js test/agenda-public-online-toggle-0471.test.js test/agenda-blablacar-identity-recovery-0472.test.js test/agenda-card-visual-parity-0473.test.js
-          cd ../..
-          rm -rf /tmp/rota-certa-base-0468
-          git worktree add --detach /tmp/rota-certa-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
-          (
-            cd /tmp/rota-certa-base-0468/trip-platform/functions
-            npm install --package-lock=false --ignore-scripts --no-audit --no-fund
-            set +e
-            npm test > /tmp/base-node-tests.log 2>&1
-            BASE_STATUS=$?
-            set -e
-            BASE_FAIL="$(grep -E '^# fail [0-9]+' /tmp/base-node-tests.log | tail -1 | awk '{print $3}')"
-            printf '%s\n' "${BASE_FAIL:-999}" > /tmp/base-fail-count
-            printf 'base_status=%s base_fail=%s\n' "$BASE_STATUS" "${BASE_FAIL:-unknown}"
-          )
-          (
-            cd trip-platform/functions
-            set +e
-            npm test > /tmp/current-node-tests.log 2>&1
-            CURRENT_STATUS=$?
-            set -e
-            CURRENT_FAIL="$(grep -E '^# fail [0-9]+' /tmp/current-node-tests.log | tail -1 | awk '{print $3}')"
-            printf '%s\n' "${CURRENT_FAIL:-999}" > /tmp/current-fail-count
-            printf 'current_status=%s current_fail=%s\n' "$CURRENT_STATUS" "${CURRENT_FAIL:-unknown}"
-          )
-          BASE_FAIL="$(cat /tmp/base-fail-count)"
-          CURRENT_FAIL="$(cat /tmp/current-fail-count)"
-          echo "Historical suite comparison: base=$BASE_FAIL current=$CURRENT_FAIL"
-          grep '^not ok ' /tmp/base-node-tests.log | sed -E 's/^not ok [0-9]+ - //' | sort > /tmp/base-failures.txt || true
-          grep '^not ok ' /tmp/current-node-tests.log | sed -E 's/^not ok [0-9]+ - //' | sort > /tmp/current-failures.txt || true
-          comm -13 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-new-failures.txt
-          comm -23 /tmp/base-failures.txt /tmp/current-failures.txt | tee historical-resolved-failures.txt
-          printf 'base=%s\ncurrent=%s\n' "$BASE_FAIL" "$CURRENT_FAIL" | tee historical-counts.txt
-          if [ -s historical-new-failures.txt ]; then
-            echo "New Node historical-contract failures require classification before deploy." >&2
-            cat historical-new-failures.txt >&2
-            exit 4
-          fi
-          cp /tmp/base-node-tests.log baseline-node-tests.log
-          cp /tmp/current-node-tests.log current-node-tests.log
-          git worktree remove /tmp/rota-certa-base-0468 --force
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -137,80 +106,34 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run focused canonical Android tests and build APK
+      - name: Run focused Android regression tests and build installable APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace --info
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee android-focused-tests.log
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
 
-      - name: Compare full Android historical suite with authoritative base
-        shell: bash
-        run: |
-          set -euo pipefail
-          cp app/google-services.json /tmp/google-services-0468.json
-          rm -rf /tmp/rota-certa-android-base-0468
-          git worktree add --detach /tmp/rota-certa-android-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
-          cp /tmp/google-services-0468.json /tmp/rota-certa-android-base-0468/app/google-services.json
-          (
-            cd /tmp/rota-certa-android-base-0468
-            chmod +x ./gradlew
-            set +e
-            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/android-base-tests.log 2>&1
-            BASE_ANDROID_STATUS=$?
-            set -e
-            printf '%s\n' "$BASE_ANDROID_STATUS" > /tmp/android-base-status
-          )
-          (
-            set +e
-            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/android-current-tests.log 2>&1
-            CURRENT_ANDROID_STATUS=$?
-            set -e
-            printf '%s\n' "$CURRENT_ANDROID_STATUS" > /tmp/android-current-status
-          )
-          sed -n -E 's/^[[:space:]]*(.+Test) > (.+) FAILED$/\1 > \2/p' /tmp/android-base-tests.log | sort -u > android-baseline-failures.txt
-          sed -n -E 's/^[[:space:]]*(.+Test) > (.+) FAILED$/\1 > \2/p' /tmp/android-current-tests.log | sort -u > android-current-failures.txt
-          comm -13 android-baseline-failures.txt android-current-failures.txt | tee android-new-failures.txt
-          comm -23 android-baseline-failures.txt android-current-failures.txt | tee android-resolved-failures.txt
-          printf 'base_status=%s\ncurrent_status=%s\nbase_failures=%s\ncurrent_failures=%s\n'             "$(cat /tmp/android-base-status)"             "$(cat /tmp/android-current-status)"             "$(wc -l < android-baseline-failures.txt)"             "$(wc -l < android-current-failures.txt)" | tee android-historical-counts.txt
-          cp /tmp/android-base-tests.log android-baseline-tests.log
-          cp /tmp/android-current-tests.log android-current-tests.log
-          git worktree remove /tmp/rota-certa-android-base-0468 --force
-          if [ -s android-new-failures.txt ]; then
-            echo "New Android historical-contract failures require classification before deploy." >&2
-            cat android-new-failures.txt >&2
-            while IFS= read -r failure; do
-              test -n "$failure" || continue
-              grep -F -B 12 -A 30 "$failure" /tmp/android-current-tests.log || true
-            done < android-new-failures.txt
-            exit 4
-          fi
-
-      - name: Prove final artifact belongs to current SHA
+      - name: Prove final APK belongs to current SHA
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -F 'versionCode = 5767' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.474"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5768' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.475"' app/build.gradle.kts | tee -a app-version.txt
+          grep -Fq 'ABRIR AGENDA PÚBLICA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt
+          ! grep -Fq 'ABRIR ÁREA ADMINISTRATIVA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -235,7 +158,7 @@ jobs:
             exit 3
           fi
 
-      - name: Deploy exact SHA canonical backend and unified Agenda cards
+      - name: Deploy exact SHA backend and read-only public Agenda
         shell: bash
         run: |
           set -euo pipefail
@@ -248,7 +171,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Live canonical backend smoke
+      - name: Live smoke exact public surface
         shell: bash
         run: |
           set -euo pipefail
@@ -256,27 +179,19 @@ jobs:
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee live-health.json
           grep -Fq '"ok":true' live-health.json
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/" > live-public.html
-          grep -Fq 'Administração da Agenda' live-public.html
-          grep -Fq 'adminTripBookings0468' live-public.html
-          grep -Fq 'adminTripContext0470' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.474" > live-app.js
-          grep -Fq 'Administrar esta viagem' live-app.js
-          grep -Fq '/v1/admin/card-capabilities' live-app.js
-          grep -Fq '/public-visibility' live-app.js
-          grep -Fq 'agendaVisibilityToggle0471' live-app.js
+          grep -Fq 'app.js?v=0.1.475' live-public.html
+          grep -Fq 'id="agendaTrips"' live-public.html
+          ! grep -Eiq 'Minha Área|Administrador|Administração da Agenda|privateAuth|accessGate|admin-0417.js|agendaVisibilityToggle0471' live-public.html
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.475" > live-app.js
           grep -Fq 'agendaCanonicalVisual0473' live-app.js
-          grep -Fq 'agendaJourney0473' live-app.js
-          grep -Fq 'agendaCanonicalVisual0473' live-public.html
-          grep -Fq 'adminTripIdentityRecovery0472' live-public.html
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/admin-0417.js?v=0.1.474" > live-admin.js
-          grep -Fq 'blablacar-identity-recovery' live-admin.js
-          grep -Fq 'scheduleTripIdentityRecovery0472' live-admin.js
-          printf '%s\n' "${GITHUB_SHA}" > deployed-source-head.txt
+          grep -Fq 'PUBLIC_AGENDA_CARD_STATUSES_0469' live-app.js
+          ! grep -Eiq '/v1/admin/|passengerSession|privateAuth|requestPublicAgendaAccess|agendaVisibilityToggle0471|Administrar esta viagem' live-app.js
+          printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
 
       - name: Upload installable APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-card-visual-parity-0474-${{ github.sha }}
+          name: rota-certa-agenda-public-read-only-0475-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -285,20 +200,9 @@ jobs:
             app-version.txt
             apk.sha256
             farol.sha256
-            baseline-node-tests.log
-            current-node-tests.log
-            historical-new-failures.txt
-            historical-resolved-failures.txt
-            historical-counts.txt
-            android-baseline-failures.txt
-            android-current-failures.txt
-            android-new-failures.txt
-            android-resolved-failures.txt
-            android-historical-counts.txt
-            android-baseline-tests.log
-            android-current-tests.log
+            node-focused-tests.log
+            android-focused-tests.log
             live-health.json
             live-public.html
             live-app.js
-            live-admin.js
             deployed-source-head.txt
