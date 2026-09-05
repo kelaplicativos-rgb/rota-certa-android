@@ -6821,6 +6821,27 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
           currentMutationId0421 &&
           mutationId0421 === currentMutationId0421
         );
+        const serverCanonicalReplay0468 =
+          serverCanonicalAuthority0468 &&
+          sameIdempotentMutation &&
+          currentCanonicalStateHash.startsWith("server-canonical-v1:") &&
+          publicProjectionCommittedCurrent0434(token, previous);
+        if (serverCanonicalReplay0468) {
+          const range = capacityAvailabilityRange(previous, Array.isArray(previous.segmentLoads) ? previous.segmentLoads : []);
+          return {
+            changed: false,
+            stale: false,
+            logicalReplay: true,
+            range,
+            entityRevision: currentEntityRevision,
+            occupancyRevision: Math.max(0, Number(previous.occupancyRevision || 0)),
+            canonicalTripId: cleanText(previous.canonicalTripId || previous.localTripId, 180),
+            canonicalRevision: currentLogicalRevision,
+            canonicalStateHash: currentCanonicalStateHash,
+            publicProjectionHash: currentPublicProjectionHash0425,
+            createdCanonical: false,
+          };
+        }
         if (
           currentEventId &&
           outboxEventId &&
