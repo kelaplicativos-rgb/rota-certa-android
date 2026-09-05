@@ -3237,7 +3237,63 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
       return { visible: false, reason: "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED" };
     }
   }
+
+  // 0469: visibility is not merely "stored in the public collection". It must
+  // describe the exact payload that the public browser can render as an Agenda card.
+  const rendered0469 = applyPublicTripVisibility0434(
+    safePublicTrip(token, data),
+    data,
+    driverData,
+  );
+  if (!PUBLIC_STATUSES.has(cleanText(rendered0469.status, 24))) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_STATUS_UNAVAILABLE_0469" };
+  }
+  if (Number(rendered0469.departureAtMillis || 0) <= Number(nowMillis || 0)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469" };
+  }
+  if (rendered0469.publicBookingEnabled !== true) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_BOOKING_DISABLED_0469" };
+  }
+  if (!Array.isArray(rendered0469.stops) || rendered0469.stops.length < 2) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ITINERARY_UNAVAILABLE_0469" };
+  }
   return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
+}
+
+function adminPublicTripState0469(driverData, token, data, nowMillis = Date.now()) {
+  const visibility = publicAgendaTripVisibility0466(driverData, token, data, nowMillis);
+  if (!visibility.visible) {
+    const stored = cleanText(data && data.publicAttestationState0417, 24).toUpperCase();
+    return {
+      state: stored === "DIVERGENT" || stored === "ERROR" ? "DIVERGENT" : "PENDING",
+      visible: false,
+      reason: visibility.reason,
+    };
+  }
+
+  const blablaTripId = cleanText(data && data.blablaTripId, 160);
+  const blablaPublicUrl = blablaTripId
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(data && data.blablaPublicUrl, blablaTripId)
+    : "";
+  if (blablaTripId && !blablaPublicUrl) {
+    return {
+      state: "PUBLISHED",
+      visible: true,
+      reason: "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469",
+    };
+  }
+  if (publicProjectionAttestedCurrent0429(token, data)) {
+    return {
+      state: "VERIFIED",
+      visible: true,
+      reason: "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0469",
+    };
+  }
+  return {
+    state: "PENDING",
+    visible: true,
+    reason: "PUBLIC_ATTESTATION_PENDING_AGENDA_VISIBLE_0469",
+  };
 }
 
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
@@ -7638,6 +7694,7 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
+  classifyPublicTripState0469: adminPublicTripState0469,
   mutateDriverBookingDecision0468: mutateDriverBookingDecision,
   mutateDriverPassengerOperationalStatus0468: mutateDriverPassengerOperationalStatus,
   mutateProtectedBooking0468: mutateProtectedBooking,
