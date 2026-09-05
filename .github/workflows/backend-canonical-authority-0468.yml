@@ -1,24 +1,24 @@
-name: Agenda complete trip listing 0.1.476
+name: Agenda stop-shape migration 0.1.477
 
 on:
   push:
     branches:
-      - agent/agenda-complete-trip-list-0.1.476
+      - agent/agenda-stop-shape-migration-0.1.477
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-complete-trip-list-0476-${{ github.ref }}
+  group: agenda-stop-shape-migration-0477-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate-build:
+  validate-build-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_complete_listing_0476_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_stop_shape_0477_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -30,26 +30,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove exact source and FAROL isolation
+      - name: Prove source version and protected FAROL
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          BASE=cdf9df92e1a35bc344e4f3b3f4e010c7b4023d84
+          BASE=902df9a87c1b8f91c7d33ee94e2f0c525b3a85b7
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
+          grep -Fq 'versionCode = 5770' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.477"' app/build.gradle.kts
+          grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
+          grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
+          ! grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           printf '%s\n' "${GITHUB_SHA}" | tee source_head.txt
           sha256sum "$FAROL" | tee farol.sha256
-          grep -Fq 'versionCode = 5769' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.476"' app/build.gradle.kts
-          grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_AUTOMATIC_AGENDA_LISTING_0476' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
 
       - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Validate canonical backend migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd trip-platform/functions
+          npm install --package-lock=false --ignore-scripts --no-audit --no-fund
+          npm run check
+          node --check index.js
+          node --test \
+            test/backend-canonical-authority-0468.test.js \
+            test/agenda-public-read-only-0475.test.js \
+            test/agenda-public-timeline-reflection-0425.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
         shell: bash
@@ -90,23 +104,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: android-actions/setup-android@v3
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Run causal regression tests
+      - name: Run focused Android regressions
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaOrchestratorScriptSelection0449Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDirectCollector0263Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee android-focused-tests.log
 
-      - name: Assemble installable APK
+      - name: Assemble and inspect exact-head APK
         shell: bash
         run: |
           set -euo pipefail
@@ -114,22 +129,74 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" | tee aapt-badging.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -Fq "versionCode='5770'" aapt-badging.txt
+          grep -Fq "versionName='0.1.477'" aapt-badging.txt
           sha256sum "$APK" | tee apk.sha256
-          grep -F 'versionCode = 5769' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.476"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5770' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.477"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
-      - name: Upload exact-head APK and evidence
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy exact SHA trip API only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+          fi
+
+      - name: Smoke deployed backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee live-health.json
+          grep -Fq '"ok":true' live-health.json
+          printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
+
+      - name: Upload final APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-complete-listing-0476-${{ github.sha }}
+          name: rota-certa-agenda-stop-shape-0477-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             source_head.txt
+            deployed-source-head.txt
             app-version.txt
             apk.sha256
+            aapt-badging.txt
             farol.sha256
+            node-focused-tests.log
             android-focused-tests.log
+            live-health.json
