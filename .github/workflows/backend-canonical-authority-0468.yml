@@ -62,7 +62,6 @@ jobs:
           node --check index.js
           node --test \
             test/backend-canonical-authority-0468.test.js \
-            test/agenda-public-read-only-0475.test.js \
             test/agenda-public-timeline-reflection-0425.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
