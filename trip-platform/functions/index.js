@@ -942,6 +942,7 @@ function safePublicTripFromCanonical0434(token, data) {
   return {
     tripId: token,
     publicToken: token,
+    canonicalTripId: payload.canonicalTripId,
     title: payload.title,
     departureAtMillis: payload.departureAtMillis,
     capacity,
@@ -1060,6 +1061,7 @@ function safePublicTrip(token, data) {
   return {
     tripId: token,
     publicToken: token,
+    canonicalTripId: cleanText(data.canonicalTripId || data.localTripId || token, 180),
     title: data.title,
     departureAtMillis: data.departureAtMillis,
     capacity,
@@ -7726,6 +7728,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
   try {
     if (req.method === "POST" && path === "/v1/public/debug/events") return await recordPublicBrowserDebugEvent(req, res);
     if (req.method === "GET" && path === "/v1/admin/me") return await agendaAdmin0417.getAdminMe0417(req, res);
+    if (req.method === "GET" && path === "/v1/admin/card-capabilities") return await agendaAdmin0417.getAdminCardCapabilities0470(req, res);
     if (req.method === "GET" && path === "/v1/admin/overview") return await agendaAdmin0417.getAdminOverview0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/trips") return await agendaAdmin0417.listAdminTrips0417(req, res);
     if (req.method === "GET" && path === "/v1/admin/settings") return await agendaAdmin0417.getAdminSettings0417(req, res);
@@ -7785,6 +7788,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
+    }
+    if (parts.length === 4 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && req.method === "GET") {
+      return await agendaAdmin0417.getAdminTripContext0470(req, res, parts[3]);
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-public-url" && req.method === "PUT") {
       return await agendaAdmin0417.updateAdminTripBlaBlaPublicUrl0465(req, res, parts[3]);
