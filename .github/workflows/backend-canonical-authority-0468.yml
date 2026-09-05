@@ -142,7 +142,21 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaImmediateCardDelta0431Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaNavigationNotificationsProfiles0416Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTouchUnfreeze0383Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace --info
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compare full Android historical suite with authoritative base
@@ -180,6 +194,10 @@ jobs:
           if [ -s android-new-failures.txt ]; then
             echo "New Android historical-contract failures require classification before deploy." >&2
             cat android-new-failures.txt >&2
+            while IFS= read -r failure; do
+              test -n "$failure" || continue
+              grep -F -B 12 -A 30 "$failure" /tmp/android-current-tests.log || true
+            done < android-new-failures.txt
             exit 4
           fi
 
