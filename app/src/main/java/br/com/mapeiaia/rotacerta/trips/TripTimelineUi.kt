@@ -935,6 +935,7 @@ private data class TimelineProfileCardColors(
 )
 
 private val PublicAgendaMirrorBlue0417 = Color(0xFF1769D2)
+private val PublicAgendaMirrorGreen0465 = Color(0xFF15803D)
 private val PublicAgendaMirrorOrange0417 = Color(0xFFF59E0B)
 private val PublicAgendaMirrorRed0417 = Color(0xFFD32F2F)
 private val PublicAgendaMirrorGray0417 = Color(0xFF9E9E9E)
@@ -942,6 +943,7 @@ private val PublicAgendaMirrorGray0417 = Color(0xFF9E9E9E)
 private fun publicMirrorDotColor0417(trip: Trip?): Color = when {
     trip == null -> PublicAgendaMirrorGray0417
     trip.publicMirrorAttestationCurrent0411() -> PublicAgendaMirrorBlue0417
+    trip.publicMirrorPublishedWithoutBlaBlaUrl0465() -> PublicAgendaMirrorGreen0465
     trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> PublicAgendaMirrorOrange0417
     trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> PublicAgendaMirrorRed0417
     else -> PublicAgendaMirrorGray0417
@@ -950,6 +952,7 @@ private fun publicMirrorDotColor0417(trip: Trip?): Color = when {
 private fun publicMirrorDiagnosticTitle0417(trip: Trip?): String = when {
     trip == null -> "Agenda ainda não verificada"
     trip.publicMirrorAttestationCurrent0411() -> "MATCH confirmado"
+    trip.publicMirrorPublishedWithoutBlaBlaUrl0465() -> "Publicado na Agenda • URL BlaBlaCar pendente"
     trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> "Sincronizando / pendente"
     trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "Divergência ou erro"
     else -> "Agenda ainda não verificada"
@@ -985,6 +988,7 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
     return buildString {
         appendLine("Estado: " + when {
             trip.publicMirrorAttestationCurrent0411() -> "MATCH"
+            trip.publicMirrorPublishedWithoutBlaBlaUrl0465() -> "PUBLICADO / URL BLABLACAR PENDENTE"
             trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.PENDING -> "PENDENTE"
             trip.publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.DIVERGENT -> "DIVERGENTE / ERRO"
             else -> "NÃO VERIFICADO"
@@ -999,7 +1003,7 @@ private fun publicMirrorDiagnosticBody0417(trip: Trip?): String {
         appendLine("Hash público: " + trip.publicMirrorReadbackHash0411.ifBlank { "indisponível" })
         appendLine("Agenda encontrada: " + if (agendaFound) "sim" else "não comprovada")
         appendLine("Identidade confere: " + if (identityMatches) "sim" else "não")
-        appendLine("Conteúdo confere: " + if (contentMatches) "sim" else "não")
+        appendLine("Conteúdo confere: " + if (contentMatches || trip.publicMirrorPublishedWithoutBlaBlaUrl0465()) "sim" else "não")
         appendLine("Link BlaBlaCar presente: " + if (trip.blablaPublicUrl.isNullOrBlank()) "não" else "sim")
         appendLine("Link BlaBlaCar validado: " + if (trip.blablaTripId.isNullOrBlank()) "não aplicável" else if (specificBlaBla == null) "não" else "sim")
         appendLine("Último readback: " + (trip.publicMirrorLastReadbackAtMillis0421.takeIf { it > 0L }?.toString() ?: "ainda não realizado"))
