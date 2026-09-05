@@ -7440,6 +7440,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
     }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "blablacar-public-url" && req.method === "PUT") {
+      return await agendaAdmin0417.updateAdminTripBlaBlaPublicUrl0465(req, res, parts[3]);
+    }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "admin" && parts[2] === "trips" && parts[4] === "history" && req.method === "GET") {
       return await agendaAdmin0417.getAdminTripHistory0417(req, res, parts[3]);
     }
