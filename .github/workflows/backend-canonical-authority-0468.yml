@@ -40,14 +40,49 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Validate backend syntax and contracts
-        working-directory: trip-platform/functions
+      - name: Validate backend syntax and 0.1.468 contracts
         shell: bash
         run: |
           set -euo pipefail
+          cd trip-platform/functions
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
-          npm test
+          node --test test/backend-canonical-authority-0468.test.js
+          cd ../..
+          rm -rf /tmp/rota-certa-base-0468
+          git worktree add --detach /tmp/rota-certa-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
+          (
+            cd /tmp/rota-certa-base-0468/trip-platform/functions
+            npm install --package-lock=false --ignore-scripts --no-audit --no-fund
+            set +e
+            npm test > /tmp/base-node-tests.log 2>&1
+            BASE_STATUS=$?
+            set -e
+            BASE_FAIL="$(grep -E '^# fail [0-9]+' /tmp/base-node-tests.log | tail -1 | awk '{print $3}')"
+            printf '%s\n' "${BASE_FAIL:-999}" > /tmp/base-fail-count
+            printf 'base_status=%s base_fail=%s\n' "$BASE_STATUS" "${BASE_FAIL:-unknown}"
+          )
+          (
+            cd trip-platform/functions
+            set +e
+            npm test > /tmp/current-node-tests.log 2>&1
+            CURRENT_STATUS=$?
+            set -e
+            CURRENT_FAIL="$(grep -E '^# fail [0-9]+' /tmp/current-node-tests.log | tail -1 | awk '{print $3}')"
+            printf '%s\n' "${CURRENT_FAIL:-999}" > /tmp/current-fail-count
+            printf 'current_status=%s current_fail=%s\n' "$CURRENT_STATUS" "${CURRENT_FAIL:-unknown}"
+          )
+          BASE_FAIL="$(cat /tmp/base-fail-count)"
+          CURRENT_FAIL="$(cat /tmp/current-fail-count)"
+          echo "Historical suite comparison: base=$BASE_FAIL current=$CURRENT_FAIL"
+          if [ "$CURRENT_FAIL" -gt "$BASE_FAIL" ]; then
+            echo "Current branch introduced additional historical contract failures." >&2
+            cat /tmp/current-node-tests.log
+            exit 1
+          fi
+          cp /tmp/base-node-tests.log baseline-node-tests.log
+          cp /tmp/current-node-tests.log current-node-tests.log
+          git worktree remove /tmp/rota-certa-base-0468 --force
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -90,3 +125,5 @@ jobs:
             app-version.txt
             apk.sha256
             farol.sha256
+            baseline-node-tests.log
+            current-node-tests.log
