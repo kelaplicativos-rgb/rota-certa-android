@@ -931,12 +931,18 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
   const sharedOrderPreserved0478 = sharedNextIndexes0478.every(
     (index, position) => position === 0 || index > sharedNextIndexes0478[position - 1],
   );
+  const previousIsSemanticSubset0478 = previousSemantic0478.every(nextSemanticIndex0478.has.bind(nextSemanticIndex0478));
+  const previousSemanticSet0478 = new Set(previousSemantic0478);
+  const nextIsSemanticSubset0478 = nextSemantic0478.every(previousSemanticSet0478.has.bind(previousSemanticSet0478));
+  const pureInsertionOrRemoval0478 =
+    previousIsSemanticSubset0478 || nextIsSemanticSubset0478;
   const orderedEndpointPreservingMigration0478 =
     previousStops.length > 2 &&
     idsValid0478 &&
     uniquePreviousSemantic0478 &&
     uniqueNextSemantic0478 &&
     sameSemanticEndpoints0478 &&
+    pureInsertionOrRemoval0478 &&
     sharedOrderPreserved0478;
 
   if (
