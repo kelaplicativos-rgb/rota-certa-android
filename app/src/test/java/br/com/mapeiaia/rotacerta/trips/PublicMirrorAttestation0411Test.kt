@@ -28,6 +28,8 @@ class PublicMirrorAttestation0411Test {
                 payload = payload,
                 publicProjectionHash = hash,
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -74,6 +76,8 @@ class PublicMirrorAttestation0411Test {
                 payload = stale,
                 publicProjectionHash = canonicalPublicProjectionHash0411(stale),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -123,6 +127,8 @@ class PublicMirrorAttestation0411Test {
                 payload = changed,
                 publicProjectionHash = canonicalPublicProjectionHash0411(changed),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -148,6 +154,8 @@ class PublicMirrorAttestation0411Test {
                 payload = stale,
                 publicProjectionHash = canonicalPublicProjectionHash0411(stale),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -174,6 +182,8 @@ class PublicMirrorAttestation0411Test {
                 payload = newer,
                 publicProjectionHash = canonicalPublicProjectionHash0411(newer),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -201,6 +211,8 @@ class PublicMirrorAttestation0411Test {
                 payload = wrong,
                 publicProjectionHash = canonicalPublicProjectionHash0411(wrong),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -208,6 +220,33 @@ class PublicMirrorAttestation0411Test {
         assertFalse(decision.linkValid)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
         assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun exactTripReadbackOutsideVisibleAgendaCannotBeGreenOrBlue0466() {
+        val trip = canonicalTrip().copy(blablaPublicUrl = null)
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+                agendaVisible = false,
+                agendaVisibilityReason = "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertEquals("PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED", decision.reason)
+        assertTrue("agendaVisibility" in decision.mismatchFields)
+        assertFalse(decision.mismatchFields.all { it == "blablaPublicUrl" })
     }
 
     @Test
@@ -226,12 +265,14 @@ class PublicMirrorAttestation0411Test {
                 payload = expected,
                 publicProjectionHash = canonicalPublicProjectionHash0411(expected),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
         assertEquals(PublicMirrorAttestationState0411.UNPROVEN, decision.state)
         assertFalse(decision.linkValid)
-        assertEquals("BLABLACAR_PUBLIC_URL_PENDING", decision.reason)
+        assertEquals("BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466", decision.reason)
         assertTrue("blablaPublicUrl" in decision.mismatchFields)
         assertFalse(decision.mismatchFields.any { it != "blablaPublicUrl" })
     }
@@ -261,6 +302,8 @@ class PublicMirrorAttestation0411Test {
                 payload = expected,
                 publicProjectionHash = canonicalPublicProjectionHash0411(expected),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -290,6 +333,8 @@ class PublicMirrorAttestation0411Test {
                 payload = actual,
                 publicProjectionHash = canonicalPublicProjectionHash0411(actual),
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -315,6 +360,8 @@ class PublicMirrorAttestation0411Test {
                 payload = expected,
                 publicProjectionHash = "public-v2:not-the-readback-hash",
                 persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
             ),
         )
 
@@ -334,6 +381,7 @@ class PublicMirrorAttestation0411Test {
         val hash = canonicalPublicProjectionHash0411(payload)
         val validated = trip.copy(
             publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.VALIDATED,
+            publicMirrorAttestationReason0411 = "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466",
             publicMirrorAttestedCanonicalRevision0411 = trip.canonicalRevision,
             publicMirrorAttestedPublicationRevision0411 = trip.publicationRevision,
             publicMirrorExpectedHash0411 = hash,
@@ -357,7 +405,7 @@ class PublicMirrorAttestation0411Test {
             publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
             publicMirrorAttestedCanonicalRevision0411 = 0L,
             publicMirrorAttestedPublicationRevision0411 = 0L,
-            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING",
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466",
             publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
         )
         assertFalse(linkOnlyUnproven.publicMirrorAttestationCurrent0411())
@@ -453,14 +501,14 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
-    fun publishedWithoutUrlIsGreenOnlyForExactCurrentProjection0465() {
+    fun publishedWithoutUrlIsGreenOnlyForExactVisiblePublicAgendaProjection0466() {
         val trip = canonicalTrip()
         val hash = canonicalPublicProjectionHash0411(
             canonicalPublicProjectionPayload0411(trip, emptyList(), trip.publicationRevision, now),
         )
         val green = trip.copy(
             publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
-            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING",
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466",
             publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
             publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
             publicMirrorAttemptedPublicationRevision0421 = trip.publicationRevision,
@@ -473,6 +521,10 @@ class PublicMirrorAttestation0411Test {
         )
         assertTrue(green.publicMirrorPublishedWithoutBlaBlaUrl0465())
         assertFalse(green.publicMirrorAttestationCurrent0411())
+        assertFalse(
+            green.copy(publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING")
+                .publicMirrorPublishedWithoutBlaBlaUrl0465(),
+        )
         assertFalse(green.copy(publicMirrorReadbackHash0411 = "public-v2:wrong").publicMirrorPublishedWithoutBlaBlaUrl0465())
         assertFalse(green.copy(canonicalRevision = green.canonicalRevision + 1L).publicMirrorPublishedWithoutBlaBlaUrl0465())
     }
