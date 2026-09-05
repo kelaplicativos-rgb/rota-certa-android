@@ -28,6 +28,9 @@
   }
   let currentTrips = [];
   let currentSelectedTrip0465 = null;
+  let currentContextTrip0470 = null;
+  let contextReturn0470 = { source: "global", returnScrollY: 0 };
+  let contextPollTimer0470 = null;
   let currentSettings = null;
   const adminInFlight0427 = new Set();
   let dashboardLoadPromise0427 = null;
@@ -85,6 +88,8 @@
       const message = body && typeof body === "object" ? body.message : String(body || "Falha na operação.");
       const error = new Error(message);
       error.status = response.status;
+      error.code = body && typeof body === "object" ? String(body.error || "") : "";
+      error.body = body;
       throw error;
     }
     return body;
@@ -152,8 +157,64 @@
           '</small></span></button>';
     }).join("");
     host.querySelectorAll("[data-trip]").forEach((button) => {
-      button.addEventListener("click", () => loadHistory0417(decodeURIComponent(button.dataset.trip || "")));
+      button.addEventListener("click", () => {
+        const remoteTripId = decodeURIComponent(button.dataset.trip || "");
+        const trip = currentTrips.find((item) => item.remoteTripId === remoteTripId);
+        const canonicalTripId = trip && (trip.canonicalTripId || trip.remoteTripId);
+        if (canonicalTripId) openTripAdminContext0470(canonicalTripId, { source: "global", returnScrollY: window.scrollY });
+      });
     });
+  }
+
+  function stateLabel0470(state) {
+    return ({
+      VERIFIED: "🔵 Validada",
+      PUBLISHED: "🟢 Publicada",
+      PENDING: "🟠 Sincronizando / pendente",
+      DIVERGENT: "🔴 Divergente",
+      ERROR: "🔴 Erro",
+      UNPROVEN: "⚪ Não comprovada",
+    })[String(state || "UNPROVEN").toUpperCase()] || "⚪ Não comprovada";
+  }
+
+  function humanAuditLabel0470(event) {
+    const key = String(event && (event.eventType || event.event) || "").toUpperCase();
+    if (key.includes("BLABLACAR_PUBLIC_URL")) return "URL pública BlaBlaCar atualizada";
+    if (key.includes("ATTEST")) return "Atestação pública atualizada";
+    if (key.includes("PUBLICATION")) return "Publicação da viagem atualizada";
+    if (key.includes("BOOKING") && key.includes("APPROV")) return "Reserva aprovada";
+    if (key.includes("BOOKING") && key.includes("REJECT")) return "Reserva recusada";
+    if (key.includes("PASSENGER") || key.includes("OPERATIONAL")) return "Estado do passageiro atualizado";
+    return String(event && (event.eventType || event.event || event.category) || "Evento da viagem");
+  }
+
+  function renderTripContext0470(trip) {
+    currentContextTrip0470 = trip || null;
+    if (!trip) return;
+    const stops = Array.isArray(trip.stops) ? trip.stops : [];
+    const from = String(stops[0] && stops[0].name || "").trim();
+    const to = String(stops[stops.length - 1] && stops[stops.length - 1].name || "").trim();
+    byId("adminTripContextTitle0470").textContent = from && to
+      ? from + " → " + to
+      : (trip.title || "Administrar esta viagem");
+    byId("adminTripContextMeta0470").textContent =
+      fmt0417(trip.departureAtMillis) + " • " + String(trip.status || "—");
+    byId("adminTripContextStatus0470").textContent = stateLabel0470(trip.attestationState);
+    byId("adminTripContextIdentity0470").textContent =
+      "Identidade canônica: " + String(trip.canonicalTripId || "—") +
+      " • revisão " + Number(trip.canonicalRevision || 0);
+    const facts = [
+      ["Capacidade", Number(trip.capacity || 0)],
+      ["Disponibilidade", Number(trip.availableSeatsMinimum || 0) === Number(trip.availableSeatsMaximum || 0)
+        ? Number(trip.availableSeatsMaximum || 0) + " vaga(s)"
+        : Number(trip.availableSeatsMinimum || 0) + "–" + Number(trip.availableSeatsMaximum || 0) + " vaga(s)"],
+      ["Publicação", "revisão " + Number(trip.publicationRevision || 0)],
+      ["Última alteração", fmt0417(trip.updatedAtMillis)],
+    ];
+    byId("adminTripContextFacts0470").innerHTML = facts.map(([label, value]) =>
+      '<div class="adminContextFact0470"><small>'+escapeHtml0417(label)+'</small><strong>'+escapeHtml0417(value)+'</strong></div>'
+    ).join("");
+    selectTripPublicUrlEditor0465(trip);
   }
 
   function escapeHtml0417(value) {
@@ -374,43 +435,144 @@
     }
   }
 
-  function selectTripPublicUrlEditor0465(remoteTripId) {
-    const trip = currentTrips.find((item) => item.remoteTripId === remoteTripId) || null;
+  function selectTripPublicUrlEditor0465(tripOrIdentity) {
+    const trip = tripOrIdentity && typeof tripOrIdentity === "object"
+      ? tripOrIdentity
+      : (currentContextTrip0470 && (
+          currentContextTrip0470.canonicalTripId === tripOrIdentity ||
+          currentContextTrip0470.remoteTripId === tripOrIdentity
+        ) ? currentContextTrip0470 : currentTrips.find((item) =>
+          item.remoteTripId === tripOrIdentity || item.canonicalTripId === tripOrIdentity
+        )) || null;
     currentSelectedTrip0465 = trip;
     const editor = byId("adminTripPublicUrlEditor0465");
-    if (!trip || !trip.blablaTripId) {
+    const unavailable = byId("adminTripPublicUrlUnavailable0470");
+    if (!trip || !trip.blablaTripId || trip.capabilities && trip.capabilities.canManageBlaBlaLink !== true) {
       editor.classList.add("hidden");
+      if (unavailable) unavailable.classList.remove("hidden");
       return;
     }
+    if (unavailable) unavailable.classList.add("hidden");
     editor.classList.remove("hidden");
     byId("adminTripPublicUrlTitle0465").textContent =
       "URL pública BlaBlaCar • " + (trip.title || trip.blablaTripId);
     byId("adminTripPublicUrlHint0465").textContent = trip.attestationState === "PUBLISHED"
-      ? "Esta viagem está publicada no Rota Certa. Cole o link público BlaBlaCar opcional para enriquecer a referência externa."
-      : "O link é opcional. A viagem permanece canônica no servidor; o selo depende do readback público atual.";
+      ? "🟢 A viagem está comprovadamente visível na Agenda. Salve a URL para iniciar a validação forte até o estado azul."
+      : (trip.attestationState === "VERIFIED"
+        ? "🔵 URL, revisão, readback e atestação estão validados para o estado atual."
+        : "O servidor não exibirá sucesso forte antes de publicação, readback e atestação confirmarem a revisão atual.");
     byId("adminTripPublicUrlInput0465").value =
       trip.blablaPublicUrl || trip.manualBlaBlaPublicUrl0465 || "";
   }
 
-  async function loadHistory0417(remoteTripId) {
-    if (!remoteTripId) return;
-    selectTripPublicUrlEditor0465(remoteTripId);
-    setMessage0417("Carregando histórico da viagem…");
+  async function loadHistory0417(tripIdentity, { scroll = false } = {}) {
+    if (!tripIdentity) return;
     try {
       const [response] = await Promise.all([
-        api0417("/v1/admin/trips/" + encodeURIComponent(remoteTripId) + "/history"),
-        loadAdminTripBookings0468(remoteTripId),
+        api0417("/v1/admin/trips/" + encodeURIComponent(tripIdentity) + "/history"),
+        loadAdminTripBookings0468(tripIdentity),
       ]);
       const events = Array.isArray(response.events) ? response.events : [];
-      byId("adminTripHistoryTitle0417").textContent = "Histórico da viagem";
+      byId("adminTripHistoryTitle0417").textContent = "Histórico / Auditoria";
       byId("adminTripHistory0417").innerHTML = events.length
-        ? events.map((event) => '<div class="adminLogItem0417"><strong>'+escapeHtml0417(event.event || event.eventType || "EVENTO")+
+        ? events.slice().reverse().map((event) => '<div class="adminLogItem0417"><strong>'+escapeHtml0417(humanAuditLabel0470(event))+
           '</strong><small>'+fmt0417(event.createdAtMillis)+' • '+escapeHtml0417(event.reason || event.result || event.source || "")+
           '</small></div>').join("")
         : '<p class="muted">Nenhum evento correlacionado encontrado.</p>';
-      setMessage0417("");
-      byId("adminTripHistory0417").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (scroll) byId("adminTripHistory0417").scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) { setMessage0417(error.message, true); }
+  }
+
+  async function refreshTripContext0470({ silent = false } = {}) {
+    if (!currentContextTrip0470 || !currentContextTrip0470.canonicalTripId) return null;
+    const canonicalTripId = currentContextTrip0470.canonicalTripId;
+    if (!silent) setMessage0417("Atualizando esta viagem…");
+    try {
+      const response = await api0417("/v1/admin/trips/" + encodeURIComponent(canonicalTripId));
+      renderTripContext0470(response.trip);
+      if (!silent) setMessage0417("");
+      return response.trip;
+    } catch (error) {
+      if (!silent) setMessage0417(error.message, true);
+      return null;
+    }
+  }
+
+  function scheduleTripContextReadback0470(canonicalTripId) {
+    if (contextPollTimer0470) clearTimeout(contextPollTimer0470);
+    let attempt = 0;
+    const delays = [1800, 3500, 7000, 12000];
+    const poll = async () => {
+      if (!currentContextTrip0470 || currentContextTrip0470.canonicalTripId !== canonicalTripId) return;
+      await refreshTripContext0470({ silent: true });
+      await loadHistory0417(canonicalTripId);
+      if (currentContextTrip0470 && currentContextTrip0470.attestationState === "VERIFIED") {
+        setMessage0417("🔵 Validada: publicação, readback e atestação confirmaram a revisão atual.");
+        return;
+      }
+      if (attempt < delays.length) {
+        contextPollTimer0470 = setTimeout(poll, delays[attempt++]);
+      }
+    };
+    contextPollTimer0470 = setTimeout(poll, delays[attempt++]);
+  }
+
+  async function openTripAdminContext0470(canonicalTripId, options = {}) {
+    const identity = String(canonicalTripId || "").trim().slice(0, 180);
+    if (!identity) return;
+    contextReturn0470 = {
+      source: options.source || "home",
+      returnScrollY: Math.max(0, Number(options.returnScrollY || 0)),
+    };
+    hidePublicSections0417();
+    byId("adminPanel0417").classList.add("hidden");
+    byId("adminTripContext0470").classList.remove("hidden");
+    setMessage0417("Carregando administração desta viagem…");
+    try {
+      const response = await api0417("/v1/admin/trips/" + encodeURIComponent(identity));
+      if (!response.capabilities || response.capabilities.canManageTrip !== true) {
+        throw new Error("Você não tem permissão para administrar esta viagem.");
+      }
+      renderTripContext0470(response.trip);
+      await loadHistory0417(response.trip.canonicalTripId);
+      setMessage0417("");
+      const url = new URL(location.href);
+      url.searchParams.set("administrar", response.trip.canonicalTripId);
+      history.replaceState({ rotaCertaAdminTrip0470: response.trip.canonicalTripId }, "", url.pathname + url.search + url.hash);
+      byId("adminTripContextBack0470").focus({ preventScroll: true });
+    } catch (error) {
+      setMessage0417(error.message, true);
+      if (error.status === 401 || error.status === 403) {
+        byId("adminTripContext0470").classList.add("hidden");
+      }
+    }
+  }
+
+  async function closeTripAdminContext0470() {
+    if (contextPollTimer0470) {
+      clearTimeout(contextPollTimer0470);
+      contextPollTimer0470 = null;
+    }
+    const canonicalTripId = currentContextTrip0470 && currentContextTrip0470.canonicalTripId || "";
+    currentContextTrip0470 = null;
+    currentSelectedTrip0465 = null;
+    byId("adminTripContext0470").classList.add("hidden");
+    const url = new URL(location.href);
+    url.searchParams.delete("administrar");
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (contextReturn0470.source === "global") {
+      byId("adminPanel0417").classList.remove("hidden");
+      setMessage0417("");
+      window.scrollTo({ top: contextReturn0470.returnScrollY, behavior: "auto" });
+      return;
+    }
+    section.classList.add("hidden");
+    const home = globalThis.RotaCertaAgendaHome0470;
+    if (home && typeof home.refreshTrip === "function" && canonicalTripId) {
+      await home.refreshTrip(canonicalTripId, { restoreScrollY: contextReturn0470.returnScrollY, focus: true });
+      return;
+    }
+    location.reload();
   }
 
   const saveTripPublicUrlButton0465 = byId("adminSaveTripPublicUrl0465");
@@ -423,28 +585,61 @@
       setMessage0417("Salvando referência externa no Backend Rota Certa…");
       try {
         const result = await api0417(
-          "/v1/admin/trips/" + encodeURIComponent(trip.remoteTripId) + "/blablacar-public-url",
+          "/v1/admin/trips/" + encodeURIComponent(trip.canonicalTripId || trip.remoteTripId) + "/blablacar-public-url",
           {
             method: "PUT",
             operationId: newAdminOperationId0427("public_url"),
-            body: JSON.stringify({ blablaPublicUrl }),
+            body: JSON.stringify({
+              blablaPublicUrl,
+              expectedCanonicalRevision: Number(trip.canonicalRevision || 0),
+              expectedManualRevision0465: Number(trip.manualBlaBlaPublicUrlRevision0465 || 0),
+            }),
           },
         );
-        setMessage0417(result.changed
-          ? "URL salva no Backend Rota Certa. O selo será atualizado após o readback confirmar a revisão pública."
-          : "Esta URL já está aplicada à viagem.");
-        setTimeout(loadDashboard0417, 1200);
-        setTimeout(loadDashboard0417, 3500);
-        setTimeout(loadDashboard0417, 8000);
-      } catch (error) { setMessage0417(error.message, true); }
+        if (result.replayed) {
+          setMessage0417("Esta operação já havia sido recebida. Recarregando o estado autoritativo da viagem…");
+        } else if (result.changed) {
+          setMessage0417("URL aceita pelo backend. Aguardando sincronização, publicação, readback e atestação; o card só ficará azul após confirmação forte.");
+        } else {
+          setMessage0417("Esta URL já está registrada para a revisão atual.");
+        }
+        await refreshTripContext0470({ silent: true });
+        await loadHistory0417(trip.canonicalTripId || trip.remoteTripId);
+        scheduleTripContextReadback0470(trip.canonicalTripId || result.canonicalTripId || "");
+      } catch (error) {
+        if (error.status === 409 && error.code === "trip_revision_conflict") {
+          setMessage0417("Conflito de versão: outra alteração chegou primeiro. A versão atual foi preservada e será recarregada.", true);
+          await refreshTripContext0470({ silent: true });
+          return;
+        }
+        setMessage0417(error.message, true);
+      }
     }),
   );
 
   entry.addEventListener("click", () => {
     hidePublicSections0417();
+    byId("adminTripContext0470").classList.add("hidden");
+    byId("adminPanel0417").classList.remove("hidden");
     loadDashboard0417();
   });
-  byId("adminBack0417").addEventListener("click", leaveAdmin0417);
+  byId("adminBack0417").addEventListener("click", () => {
+    if (!byId("adminTripContext0470").classList.contains("hidden")) return closeTripAdminContext0470();
+    leaveAdmin0417();
+  });
+  byId("adminTripContextBack0470").addEventListener("click", closeTripAdminContext0470);
+  document.querySelectorAll("[data-admin-context-scroll0470]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = byId(button.dataset.adminContextScroll0470 || "");
+      if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+
+  globalThis.RotaCertaAgendaAdmin0470 = {
+    openTrip: openTripAdminContext0470,
+    closeTrip: closeTripAdminContext0470,
+    refreshTrip: refreshTripContext0470,
+  };
 
   byId("adminRefresh0417").addEventListener("click", loadDashboard0417);
 
