@@ -32,7 +32,7 @@ test("0471 offline is enforced by server discovery, direct trip read and new boo
   const direct = between(api, "async function getPublicTrip", "function normalizeBrazilWhatsapp");
   assert.match(direct, /tripPublicOnline0471\(data\)/);
   assert.match(direct, /trip_offline/);
-  const booking = between(api, "async function createBooking", "async function updateBooking");
+  const booking = between(api, "async function createBooking", "async function cancelPublicBooking");
   assert.match(booking, /tripPublicOnline0471\(trip\)/);
   assert.match(booking, /code: "trip_offline"/);
 });
@@ -44,7 +44,7 @@ test("0471 authenticated Home receives all active canonical cards, including off
   assert.match(capabilities, /agendaOnline0471:/);
   assert.match(capabilities, /visibilityRevision0471:/);
   assert.match(capabilities, /buildAdminHomeTrip0471/);
-  const hydrate = between(app, "async function hydrateAgendaAdminCapabilities0470", "async function loadAgenda");
+  const hydrate = between(app, "async function hydrateAgendaAdminCapabilities0470", "function applyAgendaAdminCapabilities0470");
   assert.match(hydrate, /\/v1\/admin\/card-capabilities/);
   assert.doesNotMatch(hydrate, /\/v1\/admin\/trips/);
   assert.equal((app.match(/function renderAgendaCards/g) || []).length, 1);
