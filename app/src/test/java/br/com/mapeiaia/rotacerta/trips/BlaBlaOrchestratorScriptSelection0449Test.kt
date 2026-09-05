@@ -180,6 +180,32 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     }
 
     @Test
+    fun automaticAgendaListingMaterializesNewCoreTripWithoutAdminEnrichment() {
+        val fresh = trip(
+            publicUrl = "https://www.blablacar.com.br/trip?id=pending-admin-enrichment",
+            seats = 4,
+            passenger = "Pedido pendente",
+            time = "11:00",
+        )
+        val selection = BlaBlaDateScopeScriptSelection0449.automaticAgendaListing0476()
+        val merged = mergeSelectiveCollectorTrip0449(null, fresh, selection)
+
+        assertTrue(selection.selective)
+        assertTrue(selection.wantsCoreTripData())
+        assertFalse(selection.wantsPassengerData())
+        assertFalse(selection.wantsSeatData())
+        assertFalse(selection.wantsPublicUrl())
+        assertEquals("11:00", merged?.departure_time)
+        assertEquals("Origem", merged?.actual_departure)
+        assertEquals("Destino", merged?.actual_arrival)
+        assertTrue(merged?.passengers.orEmpty().isEmpty())
+        assertNull(merged?.published_seats)
+        assertNull(merged?.public_trip_href)
+        assertTrue(dynamic.contains("automaticAgendaListing0476()"))
+        assertTrue(dynamic.contains("BLABLACAR_AUTOMATIC_AGENDA_LISTING_0476"))
+    }
+
+    @Test
     fun passengerAndSeatStagesAreGatedByRequestedOutputs() {
         assertTrue(dynamic.contains("if (scriptSelection0449.wantsPassengerData())"))
         assertTrue(dynamic.contains("scriptSelection0449.wantsSeatData()"))
