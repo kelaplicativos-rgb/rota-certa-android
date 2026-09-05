@@ -1244,6 +1244,17 @@ internal class TripMutationCoordinator0387(
                         if (response.stale) throw PublicationStaleRevision0387(response.entityRevision)
                     }
                 }
+                if (backendCanonicalVerified0468) {
+                    outbox.markDelivered(event.id)
+                    delivered++
+                    recordEvent(
+                        "TRIP_MUTATION_OUTBOX_DELIVERED",
+                        event,
+                        "publicationResult=server_canonical_readback_confirmed_0468 blue=true localCanonicalRead=false retryCount=" +
+                            event.attempts + " latencyMs=" + ((System.nanoTime() - startedNs) / 1_000_000L),
+                    )
+                    return@eventLoop
+                }
                 val localMirrorSourceId0434 = event.snapshot.trip?.id?.takeIf(String::isNotBlank)
                     ?: event.canonicalTripId
                 store.recordPublicationCommitted0411(
