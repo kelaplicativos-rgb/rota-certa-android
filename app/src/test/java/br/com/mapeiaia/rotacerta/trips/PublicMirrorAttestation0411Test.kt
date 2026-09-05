@@ -60,6 +60,24 @@ class PublicMirrorAttestation0411Test {
     }
 
     @Test
+    fun serverCanonicalAckAcceptsGreenWithoutUrlButNeverCallsItBlue0469() {
+        val green = DriverPublicAttestationResponse0417(
+            state = "PUBLISHED",
+            verified = false,
+            publicationRevision = 18,
+            canonicalRevision = 12,
+        )
+        assertTrue(serverPublicProjectionConfirmed0469(12, 18, expectBlue = false, response = green))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, green))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 18, expectBlue = true, response = green))
+
+        val blue = green.copy(state = "VERIFIED", verified = true)
+        assertTrue(serverPublicProjectionConfirmed0469(12, 18, expectBlue = true, response = blue))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 18, expectBlue = false, response = blue))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 19, expectBlue = true, response = blue))
+    }
+
+    @Test
     fun staleLogicalCanonicalRevisionPreventsBlue() {
         val trip = canonicalTrip()
         val expected = canonicalPublicProjectionPayload0411(
