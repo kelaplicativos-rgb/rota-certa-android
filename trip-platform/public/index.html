@@ -67,6 +67,12 @@
     .adminTrip0417{width:100%;border:1px solid var(--line);border-radius:16px;background:#fff;padding:13px;text-align:left;display:grid;grid-template-columns:26px 1fr;gap:9px;margin-top:8px;cursor:pointer}.adminTrip0417 small{display:block;font-size:13px;color:var(--muted);margin-top:3px}.adminStateDot0417{font-size:20px;line-height:1}
     .adminLogItem0417{border-bottom:1px solid var(--line);padding:10px 0;display:grid;gap:3px}.adminLogItem0417 small{font-size:13px;color:var(--muted)}.adminToolbar0417{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.adminToolbar0417 button{width:auto;min-height:48px;padding:9px 13px;font-size:16px}.adminToolbar0417 label{display:flex;flex-direction:row;align-items:center;gap:8px;margin:0;font-size:15px}.adminToolbar0417 input[type=checkbox]{width:22px;min-height:22px}
     .adminDivider0417{height:1px;background:var(--line);margin:18px 0}.adminPanelTitle0417{margin-top:0}.adminDetails0417{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:0 12px}
+    .agendaAdminState0470{display:inline-flex;align-items:center;margin-top:14px;padding:8px 12px;border-radius:999px;background:#f3f4f6;font-size:16px;font-weight:950}
+    .adminCardAction0470{display:flex;align-items:center;justify-content:center;width:100%;min-height:58px;margin-top:14px;border:2px solid #171717;border-radius:16px;background:#fff;color:#171717;font-size:18px;font-weight:950;cursor:pointer}
+    .adminCardAction0470:focus{outline:3px solid #171717;outline-offset:3px}.adminCardAction0470:active{transform:scale(.995)}
+    .adminContextHero0470{position:sticky;top:0;z-index:10;background:#fff;border:2px solid #171717}.adminContextIdentity0470{font-size:14px;color:var(--muted);word-break:break-all}.adminContextStatus0470{font-size:18px;font-weight:950;margin-top:10px}.adminContextNav0470{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:thin}.adminContextNav0470 button{flex:0 0 auto;min-height:44px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 12px;font-size:15px;font-weight:900;cursor:pointer}
+    .adminContextFacts0470{margin-top:12px}.adminContextFact0470{border:1px solid var(--line);border-radius:14px;padding:12px;background:#f8f9fb;display:grid;gap:3px}.adminContextFact0470 small{color:var(--muted);font-size:13px}.adminContextFact0470 strong{font-size:18px}.adminContextSection0470{scroll-margin-top:18px}
+    .agendaTripFull{pointer-events:auto;user-select:auto;cursor:default}
     @media(max-width:480px){html{font-size:17px}.passengerAreaEntry{min-width:158px;padding:9px 12px}.passengerAreaTitle{font-size:17px}.passengerAreaSub{font-size:13px}.pageTitle{font-size:30px}.agendaRouteLine,.tripRoute{font-size:29px}.timelineStop{grid-template-columns:78px 20px 1fr}.time{font-size:20px}.stopName{font-size:22px}}
   </style>
 </head>
@@ -79,7 +85,7 @@
         🔔<span id="passengerNotificationBadge" class="notificationBadge hidden">0</span>
       </button>
       <button id="openPassengerPortal" class="passengerAreaEntry hidden" type="button" aria-label="Abrir Minhas Viagens">
-        <span class="passengerAreaTitle">Minhas Viagens</span>
+        <span class="passengerAreaTitle">Minha Área</span>
         <span class="passengerAreaSub">Reservas e conta</span>
       </button>
     </div>
@@ -312,7 +318,52 @@
       <button id="adminBack0417" class="backButton" type="button">‹ Voltar</button>
       <h1>Administração da Agenda</h1>
     </div>
-    <p id="adminMessage0417" class="muted"></p>
+    <p id="adminMessage0417" class="muted" role="status" aria-live="polite"></p>
+
+    <div id="adminTripContext0470" class="hidden">
+      <div class="card adminContextHero0470">
+        <button id="adminTripContextBack0470" class="backButton" type="button">‹ Voltar à Agenda</button>
+        <h2 id="adminTripContextTitle0470">Administrar esta viagem</h2>
+        <p id="adminTripContextMeta0470" class="muted"></p>
+        <div id="adminTripContextStatus0470" class="adminContextStatus0470" role="status" aria-live="polite"></div>
+        <div id="adminTripContextIdentity0470" class="adminContextIdentity0470"></div>
+        <div id="adminTripContextFacts0470" class="adminGrid0417 adminContextFacts0470"></div>
+        <nav class="adminContextNav0470" aria-label="Seções da administração desta viagem">
+          <button type="button" data-admin-context-scroll0470="adminContextOverview0470">Visão geral</button>
+          <button type="button" data-admin-context-scroll0470="adminContextPassengers0470">Passageiros</button>
+          <button type="button" data-admin-context-scroll0470="adminContextBlaBla0470">BlaBlaCar</button>
+          <button type="button" data-admin-context-scroll0470="adminContextHistory0470">Histórico</button>
+        </nav>
+      </div>
+
+      <div id="adminContextOverview0470" class="card adminContextSection0470">
+        <h2>Visão geral</h2>
+        <p class="muted">Este painel opera sobre a mesma identidade canônica exibida no card da Agenda. Dados privados são carregados somente após autorização server-side.</p>
+      </div>
+
+      <div id="adminContextPassengers0470" class="card adminContextSection0470">
+        <h2>Passageiros</h2>
+        <div id="adminTripBookings0468" class="adminDetails0417"><p class="muted">Carregando passageiros e reservas…</p></div>
+      </div>
+
+      <div id="adminContextBlaBla0470" class="card adminContextSection0470">
+        <h2>BlaBlaCar</h2>
+        <div id="adminTripPublicUrlEditor0465" class="hidden">
+          <h3 id="adminTripPublicUrlTitle0465">URL pública BlaBlaCar</h3>
+          <p id="adminTripPublicUrlHint0465" class="muted">A URL é validada no servidor e vinculada à identidade forte desta viagem.</p>
+          <label>URL pública da viagem
+            <input id="adminTripPublicUrlInput0465" type="url" inputmode="url" autocomplete="off" placeholder="https://www.blablacar.com.br/trip?...">
+          </label>
+          <button id="adminSaveTripPublicUrl0465" class="primary" type="button">Validar e salvar</button>
+        </div>
+        <p id="adminTripPublicUrlUnavailable0470" class="muted hidden">Esta viagem ainda não possui identidade forte BlaBlaCar para vincular uma URL pública.</p>
+      </div>
+
+      <div id="adminContextHistory0470" class="card adminContextSection0470">
+        <h2 id="adminTripHistoryTitle0417">Histórico / Auditoria</h2>
+        <div id="adminTripHistory0417" class="adminDetails0417"><p class="muted">Carregando histórico da viagem…</p></div>
+      </div>
+    </div>
 
     <div id="adminPanel0417">
       <div class="card">
@@ -371,22 +422,8 @@
 
       <div class="card">
         <h2>Viagens e MATCH ponta a ponta</h2>
+        <p class="muted">A lista abaixo permanece como diagnóstico global. A gestão diária de cada viagem começa no próprio card da Home.</p>
         <div id="adminTrips0417"></div>
-        <div id="adminTripPublicUrlEditor0465" class="hidden">
-          <div class="adminDivider0417"></div>
-          <h3 id="adminTripPublicUrlTitle0465">URL pública BlaBlaCar</h3>
-          <p id="adminTripPublicUrlHint0465" class="muted">Selecione uma viagem verde para preencher o link público BlaBlaCar.</p>
-          <label>URL pública da viagem
-            <input id="adminTripPublicUrlInput0465" type="url" inputmode="url" autocomplete="off" placeholder="https://www.blablacar.com.br/trip?...">
-          </label>
-          <button id="adminSaveTripPublicUrl0465" class="primary" type="button">Salvar URL no Rota Certa</button>
-        </div>
-        <div class="adminDivider0417"></div>
-        <h3>Passageiros e reservas</h3>
-        <div id="adminTripBookings0468" class="adminDetails0417"><p class="muted">Toque em uma viagem para carregar passageiros e reservas.</p></div>
-        <div class="adminDivider0417"></div>
-        <h3 id="adminTripHistoryTitle0417">Histórico da viagem</h3>
-        <div id="adminTripHistory0417" class="adminDetails0417"><p class="muted">Toque em uma viagem para abrir sua cronologia técnica.</p></div>
       </div>
 
       <div class="card">
@@ -524,7 +561,7 @@
   </section>
 </main>
 <script src="/date-selection.js" defer></script>
-<script src="/app.js?v=0.1.428" defer></script>
-<script src="/admin-0417.js?v=0.1.428" defer></script>
+<script src="/app.js?v=0.1.470" defer></script>
+<script src="/admin-0417.js?v=0.1.470" defer></script>
 </body>
 </html>
