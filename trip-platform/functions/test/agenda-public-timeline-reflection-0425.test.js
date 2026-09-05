@@ -278,12 +278,12 @@ test("unsafe non-endpoint legacy shape still fails closed", () => {
 });
 
 test("public profile scope remains intact and independent from projection repair", () => {
-  const agenda = source.slice(
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
     source.indexOf("async function getPublicDriverAgenda"),
-    source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicTripProfileUuids0417/);
-  assert.match(agenda, /publicProfileScope0417\.has\(profileUuid\)/);
+  assert.match(visibility, /publicTripProfileUuids0417/);
+  assert.match(visibility, /publicProfileScope0417\.has\(profileUuid\)/);
 });
 
 
@@ -307,11 +307,18 @@ test("public agenda renders committed canonical projection without falsely grant
   assert.match(attested, /publicAttestationState0417[^\n]+VERIFIED/);
   assert.match(attested, /publicAttestedHash0417/);
 
+  const visibility = source.slice(
+    source.indexOf("function publicAgendaTripVisibility0466"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(visibility, /publicProjectionCommittedCurrent0434\(token, data\)/);
+  assert.doesNotMatch(visibility, /publicProjectionAttestedCurrent0429\(token, data\)/);
+
   const agenda = source.slice(
     source.indexOf("async function getPublicDriverAgenda"),
     source.indexOf("async function createDriverTrip"),
   );
-  assert.match(agenda, /publicProjectionCommittedCurrent0434\(doc\.id, doc\.data\(\)\)/);
+  assert.match(agenda, /publicAgendaTripVisibility0466\(driver, doc\.id, doc\.data\(\)\)\.visible/);
   assert.doesNotMatch(agenda, /publicProjectionAttestedCurrent0429\(doc\.id, doc\.data\(\)\)/);
 });
 
