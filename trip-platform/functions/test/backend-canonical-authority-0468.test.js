@@ -132,7 +132,7 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
 });
 
 test("0469 public visibility is the exact card-renderability contract", () => {
-  const visibility = between(api, "function publicAgendaTripVisibility0466", "function adminPublicTripState0469");
+  const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
   assert.match(visibility, /applyPublicTripVisibility0434/);
   assert.match(visibility, /safePublicTrip\(token, data\)/);
   assert.match(visibility, /rendered0469\.publicBookingEnabled !== true/);
@@ -144,7 +144,7 @@ test("0469 public visibility is the exact card-renderability contract", () => {
 });
 
 test("0469 Admin green and blue derive from the same visible public card state", () => {
-  const classifier = between(api, "function adminPublicTripState0469", "async function getPublicDriverAgenda");
+  const classifier = between(api, "function adminPublicTripState0469", "async function createDriverTrip");
   assert.match(classifier, /publicAgendaTripVisibility0466/);
   assert.match(classifier, /state: "PUBLISHED"/);
   assert.match(classifier, /BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469/);
