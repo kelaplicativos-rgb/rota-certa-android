@@ -1,16 +1,16 @@
-name: Backend canonical authority 0.1.469
+name: Agenda contextual admin Home 0.1.470
 
 on:
   push:
     branches:
-      - agent/backend-canonical-authority-0.1.468
+      - agent/agenda-contextual-admin-home-0.1.470
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: backend-canonical-authority-0468-${{ github.ref }}
+  group: agenda-contextual-admin-0470-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -79,14 +79,14 @@ jobs:
           fi
           grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
-      - name: Validate backend syntax and 0.1.469 contracts
+      - name: Validate backend syntax and 0.1.470 contextual contracts
         shell: bash
         run: |
           set -euo pipefail
           cd trip-platform/functions
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
-          node --test test/backend-canonical-authority-0468.test.js
+          node --test test/backend-canonical-authority-0468.test.js test/agenda-contextual-admin-home-0470.test.js
           cd ../..
           rm -rf /tmp/rota-certa-base-0468
           git worktree add --detach /tmp/rota-certa-base-0468 c34dac6d54ba1bd1c1d233701669a1c80017844c
@@ -208,8 +208,8 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -F 'versionCode = 5762' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.469"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5763' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.470"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -257,12 +257,16 @@ jobs:
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/" > live-public.html
           grep -Fq 'Administração da Agenda' live-public.html
           grep -Fq 'adminTripBookings0468' live-public.html
+          grep -Fq 'adminTripContext0470' live-public.html
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.470" > live-app.js
+          grep -Fq 'Administrar esta viagem' live-app.js
+          grep -Fq '/v1/admin/card-capabilities' live-app.js
           printf '%s\n' "${GITHUB_SHA}" > deployed-source-head.txt
 
       - name: Upload installable APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-backend-canonical-0469-${{ github.sha }}
+          name: rota-certa-agenda-contextual-admin-0470-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
@@ -284,4 +288,6 @@ jobs:
             android-baseline-tests.log
             android-current-tests.log
             live-health.json
+            live-public.html
+            live-app.js
             deployed-source-head.txt
