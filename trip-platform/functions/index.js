@@ -6753,7 +6753,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   if (!sourceComplete && !preserveManagedClaims0436) {
     return fail(res, 409, "capacity_snapshot_incomplete", "O snapshot de capacidade ainda não está completo.");
   }
-  if (preserveManagedClaims0436 && (!incomingPublicProjection0434 || !expectedPublicProjectionHash0425)) {
+  if (preserveManagedClaims0436 && !serverCanonicalAuthority0468 && (!incomingPublicProjection0434 || !expectedPublicProjectionHash0425)) {
     return fail(res, 409, "partial_projection_requires_canonical_bytes", "Reparo parcial exige a projeção canônica exata.");
   }
   if (preserveManagedClaims0436 && rawClaims.length) {
