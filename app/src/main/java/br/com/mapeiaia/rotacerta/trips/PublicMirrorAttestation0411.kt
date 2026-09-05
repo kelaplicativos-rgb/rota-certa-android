@@ -98,6 +98,28 @@ internal fun serverPublicAttestationConfirmed0433(
         response.canonicalRevision == expectedCanonicalRevision &&
         response.publicationRevision == expectedPublicationRevision
 
+internal fun serverPublicProjectionConfirmed0469(
+    expectedCanonicalRevision: Long,
+    expectedPublicationRevision: Long,
+    expectBlue: Boolean,
+    response: DriverPublicAttestationResponse0417?,
+): Boolean {
+    if (
+        response == null ||
+        expectedCanonicalRevision <= 0L ||
+        expectedPublicationRevision <= 0L ||
+        response.canonicalRevision != expectedCanonicalRevision ||
+        response.publicationRevision != expectedPublicationRevision
+    ) {
+        return false
+    }
+    return if (expectBlue) {
+        response.verified && response.state.equals("VERIFIED", ignoreCase = true)
+    } else {
+        !response.verified && response.state.equals("PUBLISHED", ignoreCase = true)
+    }
+}
+
 internal fun canonicalPublicProjectionPayload0411(
     trip: Trip,
     bookings: List<Booking>,
