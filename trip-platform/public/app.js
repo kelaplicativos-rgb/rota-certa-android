@@ -1844,7 +1844,6 @@ function renderAgendaCards(entries, container, filtered = false) {
         : availableForTripSegment(item, fromIndex, toIndex))
       : 0;
     const soldOut = item.capacityReliable === true && segmentAvailable === 0;
-    const actionsEnabled = publicOnline0471 && item.capacityReliable === true && segmentAvailable > 0;
     const from = stops[fromIndex]?.name || "Origem";
     const to = stops[toIndex]?.name || "Destino";
     const fare = filtered ? fareForTripSegment(item, fromIndex, toIndex) : fullFareFor(item);
@@ -1857,6 +1856,7 @@ function renderAgendaCards(entries, container, filtered = false) {
       adminContext0470 && adminContext0470.capabilities && adminContext0470.capabilities.canManageTrip === true
     );
     const publicOnline0471 = !adminManageable0471 || adminContext0470.agendaOnline0471 !== false;
+    const actionsEnabled = publicOnline0471 && item.capacityReliable === true && segmentAvailable > 0;
     if (!publicOnline0471) card.classList.add("agendaTripOffline0471");
 
     if (adminManageable0471 && adminContext0470.capabilities.canTogglePublicVisibility === true && canonicalTripId0470) {
