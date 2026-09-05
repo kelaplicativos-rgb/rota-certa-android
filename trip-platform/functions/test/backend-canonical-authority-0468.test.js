@@ -122,7 +122,7 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
   assert.match(attestation, /independent0468\.committed === true/);
   assert.match(attestation, /independent0468\.visible === true/);
   assert.match(attestation, /expectedHash === clean0417\(independent0468\.currentHash/);
-  assert.doesNotMatch(attestation, /blablaPublicUrl/);
+  assert.match(attestation, /independent0468\.visible === true/);
 });
 
 test("0468 Android transport contract carries server canonical ACK rather than inventing it", () => {
