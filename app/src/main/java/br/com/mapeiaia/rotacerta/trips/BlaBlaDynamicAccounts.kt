@@ -3763,7 +3763,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
-        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 0
+        private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2
         private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
         private const val MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS = 3
         private const val PUBLIC_TRIP_SEARCH_SETTLE_MS = 2_500L
