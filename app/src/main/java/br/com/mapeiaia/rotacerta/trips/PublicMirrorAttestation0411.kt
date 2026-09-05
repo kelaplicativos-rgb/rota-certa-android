@@ -65,6 +65,8 @@ internal data class DriverPublicTripReadback0411(
     val payload: CanonicalPublicTripPayload0411,
     val publicProjectionHash: String,
     val persistedAtMillis: Long = 0L,
+    val agendaVisible: Boolean = false,
+    val agendaVisibilityReason: String = "",
 )
 
 internal data class PublicMirrorAttestationDecision0411(
@@ -347,6 +349,8 @@ internal fun evaluatePublicMirrorReadback0411(
     val persistedCommitValid = readback.persistedAtMillis > 0L
     if (!persistedCommitValid) mismatch += "persistedAtMillis"
     val revisionValid = logicalRevisionValid && transportRevisionValid && persistedCommitValid
+    val agendaVisible = readback.agendaVisible
+    if (!agendaVisible) mismatch += "agendaVisibility"
 
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
@@ -387,10 +391,11 @@ internal fun evaluatePublicMirrorReadback0411(
     if (readbackHash != expectedHash) mismatch += "publicHash"
 
     val uniqueMismatch = mismatch.distinct()
-    val validated = identityValid && revisionValid && linkValid && uniqueMismatch.isEmpty()
+    val validated = identityValid && revisionValid && linkValid && agendaVisible && uniqueMismatch.isEmpty()
     val optionalLinkOnlyUnproven =
         identityValid &&
             revisionValid &&
+            agendaVisible &&
             linkRequired &&
             expectedLink.isBlank() &&
             uniqueMismatch.all { it == "blablaPublicUrl" }
@@ -404,8 +409,9 @@ internal fun evaluatePublicMirrorReadback0411(
         readbackHash = readbackHash,
         mismatchFields = uniqueMismatch,
         reason = when {
-            validated -> "PUBLIC_READBACK_MATCH"
-            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_PENDING"
+            validated -> "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466"
+            !agendaVisible -> readback.agendaVisibilityReason.trim().ifBlank { "PUBLIC_AGENDA_NOT_VISIBLE_0466" }
+            linkRequired && expectedLink.isBlank() -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466"
             !transportRevisionValid -> "STALE_TRANSPORT_REVISION"
             !logicalRevisionValid -> "STALE_LOGICAL_REVISION"
             !persistedCommitValid -> "PUBLIC_COMMIT_TIMESTAMP_MISSING"
@@ -419,6 +425,7 @@ internal fun evaluatePublicMirrorReadback0411(
 
 internal fun Trip.publicMirrorAttestationCurrent0411(): Boolean =
     publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.VALIDATED &&
+        publicMirrorAttestationReason0411 == "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466" &&
         publicMirrorAttestedCanonicalRevision0411 == canonicalRevision &&
         publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
         publicMirrorAttestedPublicationRevision0411 == publicationRevision &&
@@ -437,7 +444,7 @@ internal fun Trip.publicMirrorProjectionCurrent0411(): Boolean =
     publicMirrorAttestationCurrent0411() ||
         (
             publicMirrorAttestationState0411 == PublicMirrorAttestationState0411.UNPROVEN &&
-                publicMirrorAttestationReason0411 in setOf("BLABLACAR_PUBLIC_URL_PENDING", "BLABLACAR_PUBLIC_URL_UNRESOLVED") &&
+                publicMirrorAttestationReason0411 == "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466" &&
                 publicMirrorMismatchFields0411.isNotEmpty() &&
                 publicMirrorMismatchFields0411.all { it == "blablaPublicUrl" } &&
                 publicMirrorReadbackCanonicalRevision0421 == canonicalRevision &&
