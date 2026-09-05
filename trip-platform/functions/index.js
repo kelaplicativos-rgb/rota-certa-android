@@ -4353,14 +4353,13 @@ async function cancelActiveBookingsForBlockedPassenger(driverUsername, passenger
         source: "PASSENGER_BLOCK",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(tripRef.id, trip, {
         ...canonicalCapacityPersistence(trip, updatedRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
       return { bookingIds: activeIds, entityRevision };
     });
     if (result.bookingIds.length) {
@@ -5454,15 +5453,14 @@ async function createBooking(req, res, token) {
         source: "PUBLIC_AGENDA",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
         ...canonicalCapacityPersistence(trip, candidateRecords, reconciledCapacityState, now),
         bookingsCount: existing.length + 1,
         status: statusForReconciledLoads(trip, reconciled),
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
       return {
         replayed: false,
         eventId,
@@ -5797,14 +5795,13 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
           source: "PUBLIC_AGENDA",
           sourceEventId: eventId,
         });
-        tx.update(tripRef, {
+        tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
           ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           publicationRevision: entityRevision,
           publicationTombstone: false,
           publicationEventId: eventId,
-          updatedAtMillis: now,
-        });
+        }, entityRevision, now));
       }
       return {
         booking: updated,
@@ -5973,14 +5970,13 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
         source: "TIMELINE_RESERVATION_DECISION",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
         ...canonicalCapacityPersistence(trip, candidates, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
       const safe = { ...updated, passengerId };
       delete safe.cancellationHash;
       delete safe.idempotencyFingerprint;
@@ -6156,14 +6152,13 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         source: "TIMELINE_PASSENGER_STATUS",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
         ...tripCapacityPersistence,
         status: tripStatus,
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
 
       const safe = { ...updated, passengerId };
       delete safe.cancellationHash;
@@ -6350,14 +6345,13 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         source: cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
         ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
       const safeBooking = { ...updated };
       delete safeBooking.cancellationHash;
       delete safeBooking.idempotencyFingerprint;
@@ -6468,14 +6462,13 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
           source: "PASSENGER_MY_TRIPS",
           sourceEventId: eventId,
         });
-        tx.update(tripRef, {
+        tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
           ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
           status: statusForReconciledLoads(trip, loads),
           publicationRevision: entityRevision,
           publicationTombstone: false,
           publicationEventId: eventId,
-          updatedAtMillis: now,
-        });
+        }, entityRevision, now));
       }
       const safeBooking = { ...updated };
       delete safeBooking.cancellationHash;
@@ -6598,14 +6591,13 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         source: "PASSENGER_MY_TRIPS",
         sourceEventId: eventId,
       });
-      tx.update(tripRef, {
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
         ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         status: statusForReconciledLoads(trip, loads),
         publicationRevision: entityRevision,
         publicationTombstone: false,
         publicationEventId: eventId,
-        updatedAtMillis: now,
-      });
+      }, entityRevision, now));
       return {
         changed: true,
         driverUsername,
