@@ -139,7 +139,7 @@ fun BlaBlaCollectorPanel(
     var syncDateScope by remember { mutableStateOf<List<LocalDate>?>(null) }
     var syncScriptSelection0449 by remember { mutableStateOf<BlaBlaDateScopeScriptSelection0449?>(null) }
     var dateScopeSelectedAccountIds0449 by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var dateScopeSelectedScripts0449 by remember { mutableStateOf(BlaBlaDateScopeScriptCatalog0449.all) }
+    var dateScopeSelectedScripts0449 by remember { mutableStateOf(BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478) }
     var message by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -664,7 +664,7 @@ fun BlaBlaCollectorPanel(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
                     dateScopeSelectedAccountIds0449 = accounts.map { it.id }.toSet()
-                    dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all
+                    dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478
                     showDateScopeSelector = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -783,7 +783,8 @@ fun BlaBlaCollectorPanel(
                     Text(
                         "Ligado = sincroniza esse script. Desligado = pula esse resultado. " +
                             "Dependências técnicas mínimas podem ser usadas apenas para alcançar um script ligado; " +
-                            "os dados dos scripts desligados não são gravados.",
+                            "os dados dos scripts desligados não são gravados. " +
+                            "Vagas ficam desligadas por padrão para não bloquear a listagem quando a BlaBlaCar não expõe o link de opções.",
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TextButton(onClick = {
