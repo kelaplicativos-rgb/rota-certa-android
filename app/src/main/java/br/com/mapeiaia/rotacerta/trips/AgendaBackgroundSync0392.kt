@@ -1148,50 +1148,16 @@ internal object AgendaBackgroundSync0392 {
                 finishedAtMillis = System.currentTimeMillis(),
             )
         }
-        var canonical = store.saveTrip(matches.single())
+        val canonical = store.saveTrip(matches.single())
         if (canonicalBoundBlaBlaPublicUrl0423(canonical.blablaPublicUrl, target.tripId).isNullOrBlank()) {
-            val acquisition = BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
-                context = appContext,
-                target = target,
-                commandId = work.commandId,
-                origin = "card_verify_missing_public_url_0442",
-                timeoutMillis = CARD_PUBLIC_URL_TARGET_TIMEOUT_MS_0442,
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_OPTIONAL_0465",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonical.tripKey.ifBlank { canonical.id }) +
+                    " tripIdPresent=true profileUuidPresent=true" +
+                    " reason=manual_admin_enrichment_available" +
+                    " publicationBlocked=false",
             )
-            val resolvedPublicUrl = if (acquisition.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
-                targetedCollectorPublicUrl0442(
-                    response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
-                    target = target,
-                )
-            } else {
-                null
-            }
-            if (!resolvedPublicUrl.isNullOrBlank()) {
-                canonical = store.saveTrip(
-                    canonical.copy(
-                        blablaPublicUrl = resolvedPublicUrl,
-                        lastObservedAtMillis = maxOf(canonical.lastObservedAtMillis, System.currentTimeMillis()),
-                    ),
-                )
-                UnifiedDebugEventStore.record(
-                    "BLABLACAR_PUBLIC_URL_CANONICALIZED_0442",
-                    appContext.packageName,
-                    "canonicalTripId=" + seatSyncDiagnosticKey(canonical.tripKey.ifBlank { canonical.id }) +
-                        " tripIdPresent=true profileUuidPresent=true" +
-                        " canonicalRevision=" + canonical.canonicalRevision +
-                        " source=targeted_headless networkFirst=true" +
-                        " publicUrlFingerprint=" + sha256TripPublication0387(resolvedPublicUrl).take(16),
-                )
-            } else {
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_UNAVAILABLE",
-                    appContext.packageName,
-                    "canonicalTripId=" + seatSyncDiagnosticKey(canonical.tripKey.ifBlank { canonical.id }) +
-                        " tripIdPresent=true profileUuidPresent=true" +
-                        " reason=optional_public_url_enrichment_unresolved" +
-                        " acquisitionStatus=" + acquisition.status.name +
-                        " publicationBlocked=false",
-                )
-            }
         }
         val source = canonical.externalSnapshot
             ?: return BlaBlaCommandResult0407(
@@ -1267,18 +1233,18 @@ internal object AgendaBackgroundSync0392 {
                 before = "CANONICAL_TIMELINE",
                 after = when {
                     verified -> "PRIVATE_AND_PUBLIC_ATTESTED"
-                    projectionCurrent -> "PUBLIC_PUBLISHED_URL_UNPROVEN"
+                    projectionCurrent -> "PUBLIC_PUBLISHED_URL_PENDING"
                     else -> "PUBLIC_READBACK_NOT_ATTESTED"
                 },
-                status = if (verified) BlaBlaCommandStatus0407.VERIFIED_SUCCESS else BlaBlaCommandStatus0407.UNVERIFIED,
-                errorCode = when {
-                    verified -> ""
-                    projectionCurrent && !urlResolved -> "BLABLACAR_PUBLIC_URL_UNRESOLVED"
-                    else -> "PUBLIC_MIRROR_NOT_ATTESTED"
+                status = when {
+                    verified -> BlaBlaCommandStatus0407.VERIFIED_SUCCESS
+                    projectionCurrent && !urlResolved -> BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING
+                    else -> BlaBlaCommandStatus0407.UNVERIFIED
                 },
+                errorCode = if (verified || (projectionCurrent && !urlResolved)) "" else "PUBLIC_MIRROR_NOT_ATTESTED",
                 verification = when {
                     verified -> "canonical_outbox_public_readback_attested"
-                    projectionCurrent -> "canonical_outbox_public_readback_url_enrichment_unproven"
+                    projectionCurrent -> "canonical_outbox_public_readback_published_without_optional_url"
                     else -> "canonical_outbox_public_readback_not_confirmed"
                 },
                 startedAtMillis = startedAt,
@@ -2276,12 +2242,78 @@ internal object AgendaBackgroundSync0392 {
         )
     }
 
+    private suspend fun runAdminPublicUrlDelta0465(
+        appContext: Context,
+        tenantId: String,
+        remoteTripId: String,
+    ): AgendaBackgroundSyncRun0392 {
+        val store = TripStore(appContext)
+        val settings = store.onlineSettings()
+        require(settings.configured) { "AGENDA_ONLINE_NOT_CONFIGURED" }
+        val assignment = TripRemoteApi(settings).adminSyncPolicy0417().manualPublicUrlAssignments0465
+            .singleOrNull { it.remoteTripId.trim() == remoteTripId.trim() }
+            ?: return AgendaBackgroundSyncRun0392()
+        val matches = store.trips().filter { trip ->
+            !trip.deleted && resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(assignment.blablaProfileUuid.trim(), ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == assignment.blablaTripId.trim() &&
+                (assignment.canonicalTripId.isBlank() || trip.tripKey.trim() == assignment.canonicalTripId.trim())
+        }
+        require(matches.size == 1) { "ADMIN_PUBLIC_URL_CANONICAL_IDENTITY_NOT_UNIQUE" }
+        val before = matches.single()
+        val canonicalUrl = canonicalBoundBlaBlaPublicUrl0423(assignment.blablaPublicUrl, assignment.blablaTripId)
+            ?: throw IllegalArgumentException("ADMIN_PUBLIC_URL_INVALID")
+        val currentUrl = canonicalBoundBlaBlaPublicUrl0423(before.blablaPublicUrl, before.blablaTripId)
+        val canonical = if (currentUrl == canonicalUrl) before else store.saveTrip(
+            before.copy(
+                blablaPublicUrl = canonicalUrl,
+                lastObservedAtMillis = maxOf(before.lastObservedAtMillis, System.currentTimeMillis()),
+            ),
+        )
+        val canonicalTripId = canonical.tripKey.trim()
+        require(canonicalTripId.isNotBlank()) { "CANONICAL_IDENTITY_UNRESOLVED" }
+        val source = canonical.externalSnapshot ?: throw IllegalStateException("CANONICAL_SOURCE_SNAPSHOT_MISSING")
+        val coordinator = TripMutationCoordinator0387(appContext, store)
+        val queued = if (currentUrl == canonicalUrl && canonical.publicMirrorAttestationCurrent0411()) null else
+            coordinator.recordExternalCollectionMutation(
+                sourceTrip = source,
+                configuredRotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation ?: 0,
+                seatAllocationVersion = canonical.seatAllocationVersionUsed,
+                remoteProjectionDivergenceObserved = true,
+            )
+        val delivered = coordinator.drainPending(canonicalTripIds = setOf(canonicalTripId))
+        BookingRealtimeEvents0356.notifyChanged()
+        TripWidgetProvider.updateAll(appContext)
+        val refreshed = store.getTrip(canonical.id) ?: canonical
+        val blue = refreshed.publicMirrorAttestationCurrent0411()
+        val green = refreshed.publicMirrorPublishedWithoutBlaBlaUrl0465()
+        UnifiedDebugEventStore.record(
+            "ADMIN_PUBLIC_URL_CANONICAL_APPLIED_0465",
+            appContext.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                " requestRevision=" + assignment.requestRevision +
+                " canonicalRevision=" + refreshed.canonicalRevision +
+                " queued=" + (queued != null) + " delivered=" + delivered + " blue=" + blue + " green=" + green,
+        )
+        return AgendaBackgroundSyncRun0392(
+            outboxDelivered = delivered,
+            collectorChangedTrips = if (currentUrl == canonicalUrl) 0 else 1,
+            projectionExpected0411 = 1,
+            projectionValidated0411 = if (blue) 1 else 0,
+            projectionPending0411 = if (!blue && green) 1 else 0,
+            projectionDivergent0411 = if (!blue && !green) 1 else 0,
+        )
+    }
+
     private suspend fun runBookingCardDelta0431(
         appContext: Context,
         reason: String,
         tenantId: String,
         remoteTripId: String,
     ): AgendaBackgroundSyncRun0392 {
+        if (reason == "booking_push:admin_public_url_saved") {
+            return runAdminPublicUrlDelta0465(appContext, tenantId, remoteTripId)
+        }
         val store = TripStore(appContext)
         UnifiedDebugEventStore.record(
             "AGENDA_CARD_DELTA_START_0431",
@@ -2878,7 +2910,13 @@ class AgendaBackgroundSyncWorker0392(
                 AgendaBackgroundSyncRun0392(
                     projectionExpected0411 = 1,
                     projectionValidated0411 = if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) 1 else 0,
-                    projectionDivergent0411 = if (targetedResult?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) 0 else 1,
+                    projectionPending0411 = if (targetedResult?.status == BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING) 1 else 0,
+                    projectionDivergent0411 = if (
+                        targetedResult?.status in setOf(
+                            BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
+                            BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING,
+                        )
+                    ) 0 else 1,
                 )
             } else {
                 AgendaBackgroundSync0392.runCycle(
@@ -2895,7 +2933,12 @@ class AgendaBackgroundSyncWorker0392(
             val collectorAuthRequired = collectorWasRequested && collectorState.status == "PENDING_AUTH"
             val targetedRetryable = false
             val targetedAuthRequired = targetedResult?.status == BlaBlaCommandStatus0407.AUTH_REQUIRED
-            val targetedFailure = targetedResult != null && targetedResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS
+            val targetedPublishedOnly0465 = targetedResult?.status == BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING
+            val targetedFailure = targetedResult != null &&
+                targetedResult.status !in setOf(
+                    BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
+                    BlaBlaCommandStatus0407.PUBLISHED_URL_PENDING,
+                )
             val bookingCardDeltaSuccess0431 = bookingTargetRemoteTripId0431.isNotBlank() && cycle.failures == 0
             val collectorCardDeltaSuccess0431 =
                 reason == "blablacar_collection_result" &&
@@ -2940,6 +2983,7 @@ class AgendaBackgroundSyncWorker0392(
                 retryPending -> "RETRY"
                 bookingCardDeltaSuccess0431 -> "SUCCESS"
                 collectorCardDeltaSuccess0431 -> "SUCCESS"
+                targetedPublishedOnly0465 -> "PUBLISHED"
                 cycle.collectorPending -> "COLLECTOR_PENDING"
                 collectorAuthRequired -> "PENDING_AUTH"
                 collectorTerminalProblem -> "PARTIAL"
