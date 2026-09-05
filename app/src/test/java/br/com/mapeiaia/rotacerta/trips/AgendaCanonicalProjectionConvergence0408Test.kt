@@ -120,13 +120,14 @@ class AgendaCanonicalProjectionConvergence0408Test {
     }
 
     @Test
-    fun staleBindingCannotBlockRecreationAfterRemote404() {
+    fun remote404RecreationIsLegacyOnlyWhileServerAuthorityOwnsCanonicalCreation() {
         val publisher = source("PublicAgendaAutoSync0300.kt")
-        assertTrue(publisher.contains("isRemoteTripNotFound(firstError) ->"))
-        assertFalse(publisher.contains("existingBinding == null && isRemoteTripNotFound(firstError)"))
+        assertTrue(publisher.contains("isRemoteTripNotFound(firstError) && !serverCanonicalAuthority0468 ->"))
         assertTrue(publisher.contains("PUBLIC_PROJECTION_REMOTE_MISSING_RECREATED_0410"))
         assertTrue(publisher.contains("val created = api.publish(publicTrip.copy(capacityReliable = false))"))
         assertTrue(publisher.contains("remoteTripId = created.tripId"))
+        assertTrue(publisher.contains("serverCanonicalAuthority0468 = serverCanonicalAuthority0468"))
+        assertTrue(publisher.contains("SERVER_CANONICAL_INGESTION_REQUIRES_COMPLETE_INITIAL_SNAPSHOT"))
     }
 
     @Test
