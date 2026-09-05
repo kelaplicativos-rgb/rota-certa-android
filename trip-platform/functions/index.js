@@ -5950,9 +5950,10 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
   }
 }
 
-async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
-  const driver = await requireDriver(req, res);
+async function mutateDriverBookingDecision(req, res, token, bookingIdRaw, driverOverride0468 = null) {
+  const driver = driverOverride0468 || await requireDriver(req, res);
   if (!driver) return;
+  const adminActor0468 = driverOverride0468 && driverOverride0468.adminActor0468 === true;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const action = cleanText(req.body && req.body.action, 24).toUpperCase();
   const reason = cleanText(req.body && req.body.reason, 240);
@@ -6030,8 +6031,8 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
         bookingId,
         version: changeVersion,
         driverUsername: driver.username,
-        actor: "DRIVER",
-        source: "TIMELINE_RESERVATION_DECISION",
+        actor: adminActor0468 ? "ADMIN" : "DRIVER",
+        source: adminActor0468 ? "ADMIN_WEB" : "TIMELINE_RESERVATION_DECISION",
         passengerId,
         boardingStopId: cleanText(updated.boardingStopId, 80),
         dropoffStopId: cleanText(updated.dropoffStopId, 80),
@@ -6054,7 +6055,7 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
         revision: entityRevision,
         operation: "UPSERT",
         mutationType: eventType,
-        source: "TIMELINE_RESERVATION_DECISION",
+        source: adminActor0468 ? "ADMIN_WEB" : "TIMELINE_RESERVATION_DECISION",
         sourceEventId: eventId,
       });
       tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
@@ -6097,9 +6098,10 @@ async function mutateDriverBookingDecision(req, res, token, bookingIdRaw) {
   }
 }
 
-async function mutateDriverPassengerOperationalStatus(req, res, token, bookingIdRaw) {
-  const driver = await requireDriver(req, res);
+async function mutateDriverPassengerOperationalStatus(req, res, token, bookingIdRaw, driverOverride0468 = null) {
+  const driver = driverOverride0468 || await requireDriver(req, res);
   if (!driver) return;
+  const adminActor0468 = driverOverride0468 && driverOverride0468.adminActor0468 === true;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   const selection = cleanText(req.body && req.body.selection, 32).toUpperCase();
   const allowed = new Set(["CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED"]);
@@ -6214,8 +6216,8 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         bookingId,
         version: changeVersion,
         driverUsername: driver.username,
-        actor: "DRIVER",
-        source: "TIMELINE_PASSENGER_STATUS",
+        actor: adminActor0468 ? "ADMIN" : "DRIVER",
+        source: adminActor0468 ? "ADMIN_WEB" : "TIMELINE_PASSENGER_STATUS",
         passengerId,
         changes: [
           changedField("operationalStatus", beforeOperational, afterOperational),
@@ -6236,7 +6238,7 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         revision: entityRevision,
         operation: "UPSERT",
         mutationType: eventType,
-        source: "TIMELINE_PASSENGER_STATUS",
+        source: adminActor0468 ? "ADMIN_WEB" : "TIMELINE_PASSENGER_STATUS",
         sourceEventId: eventId,
       });
       tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
@@ -6298,9 +6300,10 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
   }
 }
 
-async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly = false) {
-  const driver = await requireDriver(req, res);
+async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly = false, driverOverride0468 = null) {
+  const driver = driverOverride0468 || await requireDriver(req, res);
   if (!driver) return;
+  const adminActor0468 = driverOverride0468 && driverOverride0468.adminActor0468 === true;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
   const tripRef = db.collection("trips").doc(token);
@@ -6411,8 +6414,8 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         bookingId,
         version: changeVersion,
         driverUsername: driver.username,
-        actor: "DRIVER",
-        source: cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT",
+        actor: adminActor0468 ? "ADMIN" : "DRIVER",
+        source: adminActor0468 ? "ADMIN_WEB" : (cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT"),
         passengerId: cleanText(updated.passengerId, 120),
         changes: eventChanges,
         passengerRecipients: [{
@@ -6429,7 +6432,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         revision: entityRevision,
         operation: "UPSERT",
         mutationType: eventType,
-        source: cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT",
+        source: adminActor0468 ? "ADMIN_WEB" : (cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT"),
         sourceEventId: eventId,
       });
       tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
@@ -7578,8 +7581,8 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
   }
 }
 
-async function listDriverBookings(req, res, token) {
-  const driver = await requireDriver(req, res);
+async function listDriverBookings(req, res, token, driverOverride0468 = null) {
+  const driver = driverOverride0468 || await requireDriver(req, res);
   if (!driver) return;
   const tripSnap = await db.collection("trips").doc(token).get();
   if (!tripSnap.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
@@ -7629,6 +7632,10 @@ const agendaAdmin0417 = createAgendaAdmin0417({
   sendDriverBookingPush,
   touchPassengerSessionActivity0427,
   validatePublicAttestationCurrent0468,
+  mutateDriverBookingDecision0468: mutateDriverBookingDecision,
+  mutateDriverPassengerOperationalStatus0468: mutateDriverPassengerOperationalStatus,
+  mutateProtectedBooking0468: mutateProtectedBooking,
+  listDriverBookings0468: listDriverBookings,
 });
 
 exports.assistantApi = onRequest(
