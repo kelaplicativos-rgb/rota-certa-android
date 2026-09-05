@@ -50,6 +50,15 @@ internal object PublicMirrorAttestationCoordinator0411 {
         val evidenceId = publicationEvidenceId0421(traceId, current.canonicalRevision)
         val resolvedCanonicalTripId0453 = remote.canonicalTripId.trim()
             .ifBlank { current.tripKey.trim().ifBlank { current.id } }
+        val transportEvidence0421 = RemotePublicationEvidenceContext0421(
+            evidenceId = evidenceId,
+            traceId = traceId,
+            canonicalTripId = resolvedCanonicalTripId0453,
+            logicalRevision = current.canonicalRevision,
+            transportRevision = current.publicationRevision,
+            mutationId = "",
+            idempotencyKey = "",
+        )
 
         fun evidence(stage: String, status: String, reason: String, extra: String = "") {
             UnifiedDebugEventStore.record(
@@ -119,7 +128,10 @@ internal object PublicMirrorAttestationCoordinator0411 {
 
         val startedNs = System.nanoTime()
         val readback = try {
-            api.readPublicTripProjection0411(publicIdentity0453)
+            api.readPublicTripProjection0411(
+                remoteTripId = publicIdentity0453,
+                evidence0421 = transportEvidence0421,
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
