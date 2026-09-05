@@ -11,6 +11,9 @@ const admin = fs.readFileSync(path.join(__dirname, "..", "agenda-admin-0417.js")
 const outbox = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripPublicationOutbox0387.kt"), "utf8");
 const autoSync = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"), "utf8");
 const remoteApi = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripRemoteApi.kt"), "utf8");
+const activity0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripsActivity.kt"), "utf8");
+const navigation0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "AgendaHeaderNavigation0396.kt"), "utf8");
+const syncUi0468 = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "AgendaAutomaticSyncUi0397.kt"), "utf8");
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -132,4 +135,25 @@ test("0468 Android transport contract carries server canonical ACK rather than i
   assert.match(remoteApi, /val canonicalStateHash: String = ""/);
   assert.match(remoteApi, /val publicProjectionHash: String = ""/);
   assert.match(remoteApi, /serverCanonicalAuthority0468 = serverCanonicalAuthority0468/);
+});
+
+
+test("0468 Android normal navigation opens the BlaBlaCar collector and keeps legacy Timeline out of the drawer", () => {
+  assert.match(activity0468, /val initialScreen0396 = TripScreen\.AUTO_SYNC/);
+  assert.match(activity0468, /legacyTimelineDeepLink0468/);
+  assert.match(activity0468, /A Timeline local foi retirada da operação/);
+  assert.match(activity0468, /TripScreen\.AUTO_SYNC -> AgendaAutomaticSyncScreen0397/);
+  assert.match(activity0468, /store = store/);
+  const drawer = between(navigation0468, "listOf(", ").forEach { section");
+  assert.match(drawer, /AgendaRootSection0396\.AUTOMATIC_SYNC/);
+  assert.doesNotMatch(drawer, /AgendaRootSection0396\.ALL_TRIPS/);
+  assert.match(navigation0468, /AUTOMATIC_SYNC\("BlaBlaCar"\)/);
+});
+
+test("0468 collector panel identifies backend as authority and exposes the existing administrative surface", () => {
+  assert.match(syncUi0468, /O servidor é a fonte canônica/);
+  assert.match(syncUi0468, /ABRIR ÁREA ADMINISTRATIVA/);
+  assert.match(syncUi0468, /store\.onlineSettings\(\)\.publicAgendaUrl/);
+  assert.match(syncUi0468, /Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\)\)/);
+  assert.match(syncUi0468, /O Android mantém apenas cache, sessão e transporte offline/);
 });
