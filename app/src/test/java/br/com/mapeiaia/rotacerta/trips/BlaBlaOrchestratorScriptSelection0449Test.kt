@@ -104,6 +104,46 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     }
 
     @Test
+    fun datePeriodDefaultsKeepCanonicalListingAndPassengersButDoNotRequireSeatFlow0478() {
+        val defaults = BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478
+
+        assertEquals(29, defaults.size)
+        assertTrue(BlaBlaDateScopeScriptCatalog0449.coreTripRequests.all(defaults::contains))
+        assertTrue(BlaBlaDateScopeScriptCatalog0449.passengerRequests.all(defaults::contains))
+        assertTrue(BlaBlaDateScopeScriptCatalog0449.publicUrlRequests.all(defaults::contains))
+        assertTrue(BlaBlaDateScopeScriptCatalog0449.seatFlowRequests0478.none(defaults::contains))
+        assertFalse(BlaBlaBrowserRequest.SEAT_OPTIONS in defaults)
+        assertTrue(ui.contains("dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478"))
+        assertTrue(ui.contains("Vagas ficam desligadas por padrão"))
+        assertTrue(ui.contains("dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all"))
+    }
+
+    @Test
+    fun datePeriodDefault0478MaterializesNewTripWithoutSeatOptionsAndPreservesKnownSeats() {
+        val selection = BlaBlaDateScopeScriptSelection0449.explicit(
+            BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478,
+        )
+        val fresh = trip(
+            publicUrl = "https://www.blablacar.com.br/trip?id=fresh-0478",
+            seats = null,
+            passenger = "Passageiro atual",
+            time = "11:00",
+        )
+        val newTrip = mergeSelectiveCollectorTrip0449(null, fresh, selection)
+        assertEquals("11:00", newTrip?.departure_time)
+        assertEquals("Passageiro atual", newTrip?.passengers?.singleOrNull()?.name)
+        assertEquals("https://www.blablacar.com.br/trip?id=fresh-0478", newTrip?.public_trip_href)
+        assertNull(newTrip?.published_seats)
+        assertFalse(selection.wantsSeatData())
+
+        val previous = trip(seats = 3, passenger = "Anterior", time = "10:00")
+        val refreshed = mergeSelectiveCollectorTrip0449(previous, fresh, selection)
+        assertEquals(3, refreshed?.published_seats)
+        assertEquals("11:00", refreshed?.departure_time)
+        assertEquals("Passageiro atual", refreshed?.passengers?.singleOrNull()?.name)
+    }
+
+    @Test
     fun onlySeatsUpdatesPublishedSeatsAndPreservesEveryUnselectedField() {
         val previous = trip(seats = 2, passenger = "Anterior")
         val fresh = trip(
