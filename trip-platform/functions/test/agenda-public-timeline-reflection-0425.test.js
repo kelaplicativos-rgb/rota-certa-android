@@ -193,7 +193,7 @@ test("server canonical normalizer hashes explicit null stop timestamps byte for 
 });
 
 test("legacy two-endpoint booked shape migrates atomically to canonical stop ids", () => {
-  const start = source.indexOf("function canonicalEndpointStopShapeMigration0439");
+  const start = source.indexOf("function canonicalStopSemanticKey0477");
   const end = source.indexOf("function normalizeDriverTrip", start);
   assert.ok(start >= 0 && end > start);
   const context = {
@@ -255,7 +255,7 @@ test("booked stop migration is authorized only by exact provider identity and ca
 });
 
 test("unsafe non-endpoint legacy shape still fails closed", () => {
-  const start = source.indexOf("function canonicalEndpointStopShapeMigration0439");
+  const start = source.indexOf("function canonicalStopSemanticKey0477");
   const end = source.indexOf("function normalizeDriverTrip", start);
   const context = {
     cleanText(value, max = 240) {
