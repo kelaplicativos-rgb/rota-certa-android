@@ -33,11 +33,17 @@ internal data class PublicAgendaExternalTrip(
     val realAvailableSeats: Int = 0,
 )
 
-private data class ExternalCapacitySnapshotSyncResult(
+internal data class ExternalCapacitySnapshotSyncResult(
     val published: Boolean,
     val claimsApplied: Int = 0,
     val changed: Boolean = false,
     val shapePreserved: Boolean = false,
+    val remoteTripId: String = "",
+    val canonicalTripId: String = "",
+    val canonicalRevision: Long = 0L,
+    val canonicalStateHash: String = "",
+    val publicProjectionHash: String = "",
+    val publicationRevision: Long = 0L,
 )
 
 internal fun remotePublicProjectionMatches0425(
@@ -783,12 +789,12 @@ internal object PublicAgendaAutoSync0300 {
         seatAllocationVersion: Long = 0L,
         canonicalTripSnapshot: Trip? = null,
         remoteStateHint0402: DriverTripSyncState0402? = null,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): ExternalCapacitySnapshotSyncResult = withContext(Dispatchers.IO) {
         if (source.identity_conflict) {
             if (outboxEventId.isNotBlank()) {
                 error("EXTERNAL_SOURCE_IDENTITY_CONFLICT")
             }
-            return@withContext false
+            return@withContext ExternalCapacitySnapshotSyncResult(published = false)
         }
         val profileUuid = source.profile_uuid.trim()
         val tripId = source.trip_id?.trim().orEmpty()
@@ -975,7 +981,7 @@ internal object PublicAgendaAutoSync0300 {
             if (outboxEventId.isNotBlank()) {
                 error("AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY")
             }
-            return@withContext false
+            return@withContext ExternalCapacitySnapshotSyncResult(published = false)
         }
         val canonical = preOperationalEvidenceStep0457(
             stage = "CANONICAL_SOURCE_RESOLUTION",
@@ -1033,7 +1039,7 @@ internal object PublicAgendaAutoSync0300 {
             if (outboxEventId.isNotBlank()) {
                 error(projectionReason0460)
             }
-            return@withContext false
+            return@withContext ExternalCapacitySnapshotSyncResult(published = false)
         }
         val startedAt = System.nanoTime()
         val tripKey = preOperationalEvidenceStep0457(
@@ -1251,7 +1257,7 @@ internal object PublicAgendaAutoSync0300 {
             context.packageName,
             "tripKey=$tripKey changed=${result.changed} claims=${result.claimsApplied} sourceComplete=${synthesized.sourceComplete} durationMs=$elapsedMs fullSyncRequested=false",
         )
-        result.changed
+        result
     }
 
     private suspend fun syncExternalCapacitySnapshot(
@@ -1333,7 +1339,16 @@ internal object PublicAgendaAutoSync0300 {
                     context.packageName,
                     "tripKey=$diagnosticTripKey capacityReliable=false reason=first_snapshot_incomplete reservationBlocked=true",
                 )
-                return ExternalCapacitySnapshotSyncResult(published = true, changed = true)
+                return ExternalCapacitySnapshotSyncResult(
+                    published = true,
+                    changed = true,
+                    remoteTripId = response.tripId,
+                    canonicalTripId = response.canonicalTripId,
+                    canonicalRevision = response.canonicalRevision,
+                    canonicalStateHash = response.canonicalStateHash,
+                    publicProjectionHash = response.publicProjectionHash,
+                    publicationRevision = response.entityRevision,
+                )
             }
         }
 
@@ -1410,6 +1425,12 @@ internal object PublicAgendaAutoSync0300 {
                 published = true,
                 changed = false,
                 shapePreserved = shapePreserved,
+                remoteTripId = remoteTripId,
+                canonicalTripId = remoteStateHint0402?.canonicalTripId.orEmpty(),
+                canonicalRevision = remoteStateHint0402?.canonicalRevision ?: 0L,
+                canonicalStateHash = remoteStateHint0402?.canonicalStateHash.orEmpty(),
+                publicProjectionHash = remoteStateHint0402?.publicProjectionHash.orEmpty(),
+                publicationRevision = remoteStateHint0402?.publicationRevision ?: 0L,
             )
         }
 
@@ -1521,6 +1542,12 @@ internal object PublicAgendaAutoSync0300 {
             claimsApplied = if (response.changed && synthesized.sourceComplete) effectiveClaims.size else 0,
             changed = response.changed,
             shapePreserved = shapePreserved,
+            remoteTripId = response.tripId.ifBlank { remoteTripId },
+            canonicalTripId = response.canonicalTripId,
+            canonicalRevision = response.canonicalRevision,
+            canonicalStateHash = response.canonicalStateHash,
+            publicProjectionHash = response.publicProjectionHash,
+            publicationRevision = response.entityRevision,
         )
     }
 
