@@ -898,6 +898,7 @@ internal class TripMutationCoordinator0387(
             )
             try {
                 var backendCanonicalVerified0468 = false
+                var backendCanonicalBlue0469 = false
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot local ausente." }
@@ -1042,45 +1043,68 @@ internal class TripMutationCoordinator0387(
                                 if (readback0468.persistedAtMillis <= 0L) add("persistedAtMillis")
                             }
                             val proofOk0468 = mismatch0468.isEmpty()
+                            val blablaUrlPending0469 =
+                                proofOk0468 &&
+                                    readback0468.payload.blablaTripId.isNotBlank() &&
+                                    canonicalBoundBlaBlaPublicUrl0423(
+                                        readback0468.payload.blablaPublicUrl,
+                                        readback0468.payload.blablaTripId,
+                                    ).isNullOrBlank()
+                            val attestationMismatch0469 = if (blablaUrlPending0469) {
+                                listOf("blablaPublicUrl")
+                            } else {
+                                mismatch0468
+                            }
+                            backendCanonicalBlue0469 = proofOk0468 && !blablaUrlPending0469
                             recordEvidence0421(
                                 stage = "SERVER_CANONICAL_PUBLIC_READBACK_0468",
                                 status = if (proofOk0468) "OK" else "FAILED",
-                                reason = if (proofOk0468) "SERVER_CANONICAL_PUBLIC_MATCH_0468" else "SERVER_CANONICAL_PUBLIC_MISMATCH_0468",
+                                reason = when {
+                                    !proofOk0468 -> "SERVER_CANONICAL_PUBLIC_MISMATCH_0468"
+                                    blablaUrlPending0469 -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469"
+                                    else -> "SERVER_CANONICAL_PUBLIC_MATCH_0468"
+                                },
                                 event = event,
                                 extra = "remoteTripId=" + seatSyncDiagnosticKey(remoteTripId0468) +
                                     " canonicalRevision=" + canonicalAck0468.canonicalRevision +
                                     " publicationRevision=" + canonicalAck0468.publicationRevision +
                                     " agendaVisible=" + readback0468.agendaVisible +
-                                    " mismatchFields=" + mismatch0468.joinToString(",") +
+                                    " blue=" + backendCanonicalBlue0469 +
+                                    " mismatchFields=" + attestationMismatch0469.joinToString(",") +
                                     " previousStage=SERVER_ACK nextStage=ATTESTATION",
                             )
                             val attestation0468 = api0468.reportPublicTripAttestation0417(
                                 remoteTripId = remoteTripId0468,
                                 request = DriverPublicAttestationRequest0417(
-                                    state = if (proofOk0468) "VERIFIED" else "DIVERGENT",
+                                    state = when {
+                                        !proofOk0468 -> "DIVERGENT"
+                                        blablaUrlPending0469 -> "PUBLISHED"
+                                        else -> "VERIFIED"
+                                    },
                                     canonicalRevision = canonicalAck0468.canonicalRevision,
                                     publicationRevision = canonicalAck0468.publicationRevision,
                                     canonicalStateHash = canonicalAck0468.canonicalStateHash,
                                     expectedHash = canonicalAck0468.publicProjectionHash,
                                     readbackHash = readback0468.publicProjectionHash,
-                                    mismatchFields = mismatch0468,
-                                    reason = if (proofOk0468) {
-                                        "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0468"
-                                    } else {
-                                        readback0468.agendaVisibilityReason.ifBlank { "PUBLIC_READBACK_MISMATCH_0468" }
+                                    mismatchFields = attestationMismatch0469,
+                                    reason = when {
+                                        !proofOk0468 -> readback0468.agendaVisibilityReason.ifBlank { "PUBLIC_READBACK_MISMATCH_0468" }
+                                        blablaUrlPending0469 -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469"
+                                        else -> "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0469"
                                     },
                                     correlationId = event.id,
                                 ),
                             )
                             backendCanonicalVerified0468 =
                                 proofOk0468 &&
-                                    serverPublicAttestationConfirmed0433(
+                                    serverPublicProjectionConfirmed0469(
                                         expectedCanonicalRevision = canonicalAck0468.canonicalRevision,
                                         expectedPublicationRevision = canonicalAck0468.publicationRevision,
+                                        expectBlue = backendCanonicalBlue0469,
                                         response = attestation0468,
                                     )
                             require(backendCanonicalVerified0468) {
-                                "BACKEND_CANONICAL_ATTESTATION_NOT_VERIFIED_0468"
+                                "BACKEND_CANONICAL_PUBLIC_PROJECTION_NOT_CONFIRMED_0469"
                             }
                         } else {
                         val currentCanonicalMatches0456 = store.trips().filter { trip ->
@@ -1250,8 +1274,10 @@ internal class TripMutationCoordinator0387(
                     recordEvent(
                         "TRIP_MUTATION_OUTBOX_DELIVERED",
                         event,
-                        "publicationResult=server_canonical_readback_confirmed_0468 blue=true localCanonicalRead=false retryCount=" +
-                            event.attempts + " latencyMs=" + ((System.nanoTime() - startedNs) / 1_000_000L),
+                        "publicationResult=server_canonical_readback_confirmed_0469 blue=" + backendCanonicalBlue0469 +
+                            " green=" + (!backendCanonicalBlue0469) +
+                            " localCanonicalRead=false retryCount=" + event.attempts +
+                            " latencyMs=" + ((System.nanoTime() - startedNs) / 1_000_000L),
                     )
                     return@eventLoop
                 }
