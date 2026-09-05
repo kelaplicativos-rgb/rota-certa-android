@@ -37,7 +37,7 @@ class AgendaTimelineSurface0415Test {
     @Test
     fun synchronizationStatusLivesOnlyInItsExistingCentralSurface() {
         assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
-        assertTrue(automaticSync.contains("Esta é a única central de sincronização"))
+        assertTrue(automaticSync.contains("O servidor é a fonte canônica"))\n        assertTrue(automaticSync.contains("central de coleta BlaBlaCar do Android"))
         assertTrue(automaticSync.contains("AgendaBackgroundSyncConfig0392.status(context)"))
         assertFalse(timeline.contains("AgendaAutomaticSyncTimelineStatus0398("))
         assertFalse(timeline.contains("AgendaBackgroundSyncConfig0392.status(context)"))
