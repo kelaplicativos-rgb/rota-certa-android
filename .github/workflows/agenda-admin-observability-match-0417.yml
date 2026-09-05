@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.460 durable canonical replay evidence
+name: Rota Certa 0.1.461 durable past-trip readback verification
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blablacar-public-url-attestation-0460-${{ github.ref }}
+  group: blablacar-public-url-attestation-0461-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,8 +43,8 @@ jobs:
           SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           git merge-base --is-ancestor "$BASE" HEAD
-          grep -Fq 'versionCode = 5753' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.460"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5754' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.461"' app/build.gradle.kts
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'dateScopeSelectedAccountIds0449' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           grep -Fq 'BlaBlaDateScopeScriptCatalog0449.groups.forEach' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
@@ -111,6 +111,7 @@ jobs:
           node --test trip-platform/functions/test/agenda-readback-forensics-0421.test.js
           node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
           node --test trip-platform/functions/test/public-blablacar-link-0409.test.js
+          node --test trip-platform/functions/test/driver-trip-sync-state-0402.test.js
 
       - uses: actions/setup-java@v4
         with:
@@ -139,6 +140,7 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaFailureEvidence0382Test.structuredPublicationEvidenceCoversSerializationSanitizationAndCausalFailure' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test.canonicalReplayUsesAuthoritativeTripEvenWhenRawCollectorIsNoLongerDiscoverable' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test.durableReplayCannotSilentlyAcceptPreTransportAbort' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test.durableReadbackIdentityResolutionDoesNotReuseFutureDiscoveryFilter' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPrivateMirror0434Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalCentralSync0403Test' \
@@ -166,8 +168,8 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5753'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.460'" /tmp/aapt.txt
+          grep -Fq "versionCode='5754'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.461'" /tmp/aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}" /tmp/dex-strings.txt
           sha256sum "$APK" > /tmp/apk.sha256
@@ -230,6 +232,10 @@ jobs:
           grep -Fq 'DIAGNOSTIC_KEY_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'REMOTE_API_CONTEXT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'CANONICAL_PROJECTION_RESULT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'includePastForVerification0429 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'includePastForVerification' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_IDENTITY_LOOKUP_FAILED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'successNextStage0421 = "PUBLIC_READBACK_RESPONSE"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'AGENDA_ONLINE_NOT_CONFIGURED_DURABLE_REPLAY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PRIVATE_MIRROR_INPUT_BUILD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PRE_OPERATIONAL_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
@@ -244,25 +250,25 @@ jobs:
           grep -Fq 'private fun sanitizeForRecord' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
           ! grep -Fq 'recordFlight(stage, packageName, sanitizeForExport(details), nowMillis)' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
           grep -Fq 'UNCAUGHT_PUBLICATION_EXCEPTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
-          echo "STRUCTURED_BYTE_EVIDENCE_0460_LIVE=PASS"
+          echo "STRUCTURED_BYTE_EVIDENCE_0461_LIVE=PASS"
           echo "SOURCE_HEAD=${{ github.event.pull_request.head.sha || github.sha }}"
 
       - name: Stage exact SHA artifact
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0460
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0460/rota-certa-0.1.460-structured-byte-evidence.apk
-          cp /tmp/source-head.txt /tmp/0460/source-head.txt
-          cp /tmp/source-branch.txt /tmp/0460/source-branch.txt
-          cp /tmp/changed-files.txt /tmp/0460/changed-files.txt
-          cp /tmp/apk.sha256 /tmp/0460/apk.sha256
-          cp /tmp/aapt.txt /tmp/0460/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0460/apksigner.txt
+          mkdir -p /tmp/0461
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/0461/rota-certa-0.1.461-structured-byte-evidence.apk
+          cp /tmp/source-head.txt /tmp/0461/source-head.txt
+          cp /tmp/source-branch.txt /tmp/0461/source-branch.txt
+          cp /tmp/changed-files.txt /tmp/0461/changed-files.txt
+          cp /tmp/apk.sha256 /tmp/0461/apk.sha256
+          cp /tmp/aapt.txt /tmp/0461/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0461/apksigner.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.460-structured-byte-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-0.1.461-structured-byte-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0460
+          path: /tmp/0461
