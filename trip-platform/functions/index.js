@@ -3260,42 +3260,6 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
 }
 
-function adminPublicTripState0469(driverData, token, data, nowMillis = Date.now()) {
-  const visibility = publicAgendaTripVisibility0466(driverData, token, data, nowMillis);
-  if (!visibility.visible) {
-    const stored = cleanText(data && data.publicAttestationState0417, 24).toUpperCase();
-    return {
-      state: stored === "DIVERGENT" || stored === "ERROR" ? "DIVERGENT" : "PENDING",
-      visible: false,
-      reason: visibility.reason,
-    };
-  }
-
-  const blablaTripId = cleanText(data && data.blablaTripId, 160);
-  const blablaPublicUrl = blablaTripId
-    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(data && data.blablaPublicUrl, blablaTripId)
-    : "";
-  if (blablaTripId && !blablaPublicUrl) {
-    return {
-      state: "PUBLISHED",
-      visible: true,
-      reason: "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469",
-    };
-  }
-  if (publicProjectionAttestedCurrent0429(token, data)) {
-    return {
-      state: "VERIFIED",
-      visible: true,
-      reason: "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0469",
-    };
-  }
-  return {
-    state: "PENDING",
-    visible: true,
-    reason: "PUBLIC_ATTESTATION_PENDING_AGENDA_VISIBLE_0469",
-  };
-}
-
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -3352,6 +3316,43 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     trips,
     authenticationRequired,
   });
+}
+
+
+function adminPublicTripState0469(driverData, token, data, nowMillis = Date.now()) {
+  const visibility = publicAgendaTripVisibility0466(driverData, token, data, nowMillis);
+  if (!visibility.visible) {
+    const stored = cleanText(data && data.publicAttestationState0417, 24).toUpperCase();
+    return {
+      state: stored === "DIVERGENT" || stored === "ERROR" ? "DIVERGENT" : "PENDING",
+      visible: false,
+      reason: visibility.reason,
+    };
+  }
+
+  const blablaTripId = cleanText(data && data.blablaTripId, 160);
+  const blablaPublicUrl = blablaTripId
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(data && data.blablaPublicUrl, blablaTripId)
+    : "";
+  if (blablaTripId && !blablaPublicUrl) {
+    return {
+      state: "PUBLISHED",
+      visible: true,
+      reason: "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469",
+    };
+  }
+  if (publicProjectionAttestedCurrent0429(token, data)) {
+    return {
+      state: "VERIFIED",
+      visible: true,
+      reason: "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0469",
+    };
+  }
+  return {
+    state: "PENDING",
+    visible: true,
+    reason: "PUBLIC_ATTESTATION_PENDING_AGENDA_VISIBLE_0469",
+  };
 }
 
 async function createDriverTrip(req, res) {
