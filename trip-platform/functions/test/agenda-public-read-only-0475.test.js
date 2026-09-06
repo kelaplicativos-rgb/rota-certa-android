@@ -22,11 +22,13 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.489/);
+  assert.match(html, /app\.js\?v=0\.1\.491/);
+  assert.match(html, /id="passengerAreaLink0491"/);
+  assert.match(html, /href="\/minha-area\.html"/);
   for (const forbidden of [
-    "Minha Área", "Administrador", "Administração da Agenda", "Administrar esta viagem",
+    "Administrador", "Administração da Agenda", "Administrar esta viagem",
     "accessGate", "privateAuth", "passengerPortal", "agendaAdmin0417", "admin-0417.js",
-    "agendaVisibilityToggle0471", "online", "offline",
+    "agendaVisibilityToggle0471", "type=\"password\"", "/v1/passenger/session",
   ]) assert.doesNotMatch(html, new RegExp(forbidden, "i"), forbidden);
 });
 
@@ -70,6 +72,6 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5781/);
-  assert.match(gradle, /versionName = "0\.1\.489"/);
+  assert.match(gradle, /versionCode = 5783/);
+  assert.match(gradle, /versionName = "0\.1\.491"/);
 });
