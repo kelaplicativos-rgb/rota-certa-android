@@ -148,7 +148,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 }
 
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
-    TripScreen.TIMELINE -> "Timeline antiga · somente migração"
+    TripScreen.TIMELINE -> "Todas as viagens"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "BlaBlaCar"
@@ -245,11 +245,14 @@ private fun TripApp(
     var addPassengerResumePassengerId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeTripId by remember { mutableStateOf<String?>(null) }
     var addPassengerResumeToken by remember { mutableStateOf(0) }
-    val legacyTimelineDeepLink0468 =
-        startCreating || openReservationRequests || initialBookingId != null || initialPendingOnly || initialTripId != null
-    val initialScreen0396 = TripScreen.AUTO_SYNC
+    val initialScreen0396 = when {
+        startCreating -> TripScreen.CREATE
+        openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.TIMELINE
+        initialTripId != null -> TripScreen.LIST
+        else -> TripScreen.TIMELINE
+    }
     var screen by rememberSaveable { mutableStateOf(initialScreen0396) }
-    var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.AUTO_SYNC) }
+    var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }
     var passengerSubscreenOpen0396 by rememberSaveable { mutableStateOf(false) }
     var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
     var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
@@ -259,15 +262,7 @@ private fun TripApp(
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
     var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
-    var message by remember {
-        mutableStateOf<String?>(
-            if (legacyTimelineDeepLink0468) {
-                "A Timeline local foi retirada da operação. Use BlaBlaCar para coletar e a Área Administrativa para operar esta viagem."
-            } else {
-                null
-            },
-        )
-    }
+    var message by remember { mutableStateOf<String?>(null) }
     val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
     val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
     val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
@@ -507,9 +502,9 @@ private fun TripApp(
         onSelect = { section ->
             when (section) {
                 AgendaRootSection0396.ALL_TRIPS -> {
-                    parentRootScreen0396 = TripScreen.AUTO_SYNC
+                    parentRootScreen0396 = TripScreen.TIMELINE
                     passengerSubscreenOpen0396 = false
-                    screen = TripScreen.AUTO_SYNC
+                    screen = TripScreen.TIMELINE
                 }
                 AgendaRootSection0396.ASSISTANT -> {
                     parentRootScreen0396 = TripScreen.ASSISTANT
@@ -744,9 +739,8 @@ private fun TripApp(
                                             focusedRemoteTripId = item.tripId
                                             focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
                                             reservationPendingOnly = false
-                                            parentRootScreen0396 = TripScreen.AUTO_SYNC
-                                            screen = TripScreen.AUTO_SYNC
-                                            message = "Abra a Área Administrativa para operar a viagem desta notificação."
+                                            parentRootScreen0396 = TripScreen.TIMELINE
+                                            screen = TripScreen.TIMELINE
                                         }
                                         refreshDriverNotifications()
                                     }
@@ -769,7 +763,7 @@ private fun TripApp(
                 )
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
-                    onBack = { screen = TripScreen.AUTO_SYNC },
+                    onBack = { screen = TripScreen.TIMELINE },
                     onChanged = { text -> refresh(); message = text },
                     showHeader = false,
                     externalBackToken = passengerExternalBackToken0396,
