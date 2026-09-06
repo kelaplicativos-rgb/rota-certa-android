@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -19,6 +21,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Editable workspace layered on top of the canonical BlaBlaCar browser-script registry.
@@ -36,6 +42,23 @@ import androidx.compose.ui.unit.dp
  * device's effective script for the already-registered request; restoring removes the
  * override and immediately returns execution to the packaged asset.
  */
+internal data class BlaBlaCustomScript0488(
+    val id: String,
+    val title: String,
+    val code: String,
+    val targetRequestName: String? = null,
+) {
+    val targetRequest: BlaBlaBrowserRequest?
+        get() = targetRequestName?.let { raw ->
+            runCatching { BlaBlaBrowserRequest.valueOf(raw) }.getOrNull()
+        }
+}
+
+internal enum class BlaBlaScriptsCommand0488 {
+    NEW_SCRIPT,
+    RESTORE_SELECTION_DEFAULTS,
+}
+
 internal class BlaBlaScriptWorkspace0486(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
@@ -80,12 +103,97 @@ internal class BlaBlaScriptWorkspace0486(context: Context) {
     fun restoreDateScopeDefaults(): Boolean =
         prefs.edit().remove(KEY_DATE_SCOPE_ENABLED).commit()
 
+    fun customScripts(): List<BlaBlaCustomScript0488> {
+        val raw = prefs.getString(KEY_CUSTOM_SCRIPTS, null).orEmpty()
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id").trim()
+                    val title = item.optString("title").trim()
+                    val code = item.optString("code")
+                    val target = item.optString("targetRequestName").trim().takeIf(String::isNotEmpty)
+                    if (id.isNotEmpty() && title.isNotEmpty() && code.isNotBlank()) {
+                        add(
+                            BlaBlaCustomScript0488(
+                                id = id,
+                                title = title,
+                                code = code,
+                                targetRequestName = target,
+                            ),
+                        )
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveCustomScript(
+        id: String? = null,
+        title: String,
+        code: String,
+        targetRequest: BlaBlaBrowserRequest?,
+    ): Pair<BlaBlaCustomScript0488?, String?> {
+        val normalizedTitle = title.trim()
+        if (normalizedTitle.isBlank()) return null to "Informe um nome para o script."
+        BlaBlaScriptWorkspacePolicy0486.validationError(code)?.let { return null to it }
+
+        val item = BlaBlaCustomScript0488(
+            id = id?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString(),
+            title = normalizedTitle,
+            code = code,
+            targetRequestName = targetRequest?.name,
+        )
+
+        if (targetRequest != null) {
+            saveOverride(targetRequest, code)?.let { return null to it }
+        }
+
+        val next = customScripts()
+            .filterNot { it.id == item.id }
+            .plus(item)
+            .sortedBy { it.title.lowercase() }
+        val array = JSONArray()
+        next.forEach { script ->
+            array.put(
+                JSONObject()
+                    .put("id", script.id)
+                    .put("title", script.title)
+                    .put("code", script.code)
+                    .put("targetRequestName", script.targetRequestName ?: ""),
+            )
+        }
+        return if (prefs.edit().putString(KEY_CUSTOM_SCRIPTS, array.toString()).commit()) {
+            item to null
+        } else {
+            null to "Não foi possível salvar o novo script neste aparelho."
+        }
+    }
+
+    fun deleteCustomScript(id: String): Boolean {
+        val next = customScripts().filterNot { it.id == id }
+        val array = JSONArray()
+        next.forEach { script ->
+            array.put(
+                JSONObject()
+                    .put("id", script.id)
+                    .put("title", script.title)
+                    .put("code", script.code)
+                    .put("targetRequestName", script.targetRequestName ?: ""),
+            )
+        }
+        return prefs.edit().putString(KEY_CUSTOM_SCRIPTS, array.toString()).commit()
+    }
+
     private fun scriptKey(request: BlaBlaBrowserRequest): String =
         "script_override_" + request.name
 
     private companion object {
         const val PREFS_NAME = "rota_certa_blablacar_script_workspace_0486"
         const val KEY_DATE_SCOPE_ENABLED = "date_scope_enabled_requests"
+        const val KEY_CUSTOM_SCRIPTS = "custom_scripts_0488"
     }
 }
 
@@ -103,6 +211,8 @@ internal object BlaBlaScriptWorkspacePolicy0486 {
 @Composable
 internal fun BlaBlaScriptsScreen0486(
     onChanged: (String) -> Unit,
+    uiCommand0488: BlaBlaScriptsCommand0488? = null,
+    uiCommandToken0488: Int = 0,
 ) {
     val context = LocalContext.current
     val workspace = remember(context) { BlaBlaScriptWorkspace0486(context) }
@@ -111,6 +221,37 @@ internal fun BlaBlaScriptsScreen0486(
     var editing by remember { mutableStateOf<BlaBlaBrowserRequest?>(null) }
     var draft by remember { mutableStateOf("") }
     var editorError by remember { mutableStateOf<String?>(null) }
+    var customEditing by remember { mutableStateOf<BlaBlaCustomScript0488?>(null) }
+    var showCustomEditor by remember { mutableStateOf(false) }
+    var customTitle by remember { mutableStateOf("") }
+    var customCode by remember { mutableStateOf("") }
+    var customTarget by remember { mutableStateOf<BlaBlaBrowserRequest?>(null) }
+    var customTargetMenuExpanded by remember { mutableStateOf(false) }
+    var customError by remember { mutableStateOf<String?>(null) }
+
+    fun openNewCustomScript() {
+        customEditing = null
+        customTitle = ""
+        customCode = ""
+        customTarget = null
+        customError = null
+        showCustomEditor = true
+    }
+
+    LaunchedEffect(uiCommandToken0488, uiCommand0488) {
+        when (uiCommand0488) {
+            BlaBlaScriptsCommand0488.NEW_SCRIPT -> openNewCustomScript()
+            BlaBlaScriptsCommand0488.RESTORE_SELECTION_DEFAULTS -> {
+                if (workspace.restoreDateScopeDefaults()) {
+                    revision++
+                    onChanged("Seleção padrão de scripts restaurada para Sincronizar por data/período.")
+                } else {
+                    onChanged("Não foi possível restaurar a seleção padrão de scripts.")
+                }
+            }
+            null -> Unit
+        }
+    }
 
     val enabled = remember(revision) { workspace.dateScopeEnabledRequests() }
     val overriddenCount = remember(revision) {
@@ -140,15 +281,62 @@ internal fun BlaBlaScriptsScreen0486(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedButton(
-                    onClick = {
-                        workspace.restoreDateScopeDefaults()
-                        revision++
-                        onChanged("Seleção padrão de scripts restaurada para Sincronizar por data/período.")
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Restaurar seleção padrão")
+                Text(
+                    "Use ⋮ para criar um novo script ou restaurar a seleção padrão de sincronização.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        val customScripts0488 = remember(revision) { workspace.customScripts() }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("Meus scripts", style = MaterialTheme.typography.titleMedium)
+                if (customScripts0488.isEmpty()) {
+                    Text(
+                        "Nenhum script criado. Use ⋮ → Novo script.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    customScripts0488.forEachIndexed { index, script ->
+                        if (index > 0) HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(script.title)
+                                val target = script.targetRequest
+                                Text(
+                                    if (target == null) {
+                                        "Biblioteca • sem vínculo • não executa automaticamente"
+                                    } else {
+                                        "Vinculado a " + BlaBlaDateScopeScriptCatalog0449.label(target) +
+                                            " • " + BlaBlaDateScopeScriptCatalog0449.operationLabel(target)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    customEditing = script
+                                    customTitle = script.title
+                                    customCode = script.code
+                                    customTarget = script.targetRequest
+                                    customError = null
+                                    showCustomEditor = true
+                                },
+                            ) {
+                                Text("Editar")
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -336,4 +524,158 @@ internal fun BlaBlaScriptsScreen0486(
             },
         )
     }
+
+    if (showCustomEditor) {
+        AlertDialog(
+            onDismissRequest = {
+                showCustomEditor = false
+                customError = null
+            },
+            title = { Text(if (customEditing == null) "Novo script" else "Editar script") },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = customTitle,
+                        onValueChange = {
+                            customTitle = it
+                            customError = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nome do script") },
+                        singleLine = true,
+                    )
+                    OutlinedButton(
+                        onClick = { customTargetMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            customTarget?.let { "Vincular a: " + BlaBlaDateScopeScriptCatalog0449.label(it) }
+                                ?: "Sem vínculo com o coletor",
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = customTargetMenuExpanded,
+                        onDismissRequest = { customTargetMenuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Sem vínculo • biblioteca") },
+                            onClick = {
+                                customTarget = null
+                                customTargetMenuExpanded = false
+                            },
+                        )
+                        BlaBlaDateScopeScriptCatalog0449.groups.forEach { group ->
+                            group.requests.forEach { request ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            group.title + " • " +
+                                                BlaBlaDateScopeScriptCatalog0449.label(request),
+                                        )
+                                    },
+                                    onClick = {
+                                        customTarget = request
+                                        customTargetMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        if (customTarget == null) {
+                            "Sem vínculo: o script fica guardado para você editar e preparar, mas não executa automaticamente."
+                        } else {
+                            "Vinculado: ao salvar, este código vira a versão efetiva dessa ação no coletor. " +
+                                "REMOTE_WRITE continua exigindo a operação explícita do orquestrador."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = customCode,
+                        onValueChange = {
+                            customCode = it
+                            customError = null
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 280.dp),
+                        label = { Text("JavaScript") },
+                        minLines = 12,
+                    )
+                    Text(
+                        "${customCode.length} caracteres",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    customError?.let {
+                        Text("⚠️ $it", color = MaterialTheme.colorScheme.error)
+                    }
+                    customEditing?.let { current ->
+                        OutlinedButton(
+                            onClick = {
+                                if (workspace.deleteCustomScript(current.id)) {
+                                    showCustomEditor = false
+                                    customEditing = null
+                                    revision++
+                                    onChanged(
+                                        "Script removido da biblioteca. Um override já aplicado ao coletor não é apagado automaticamente.",
+                                    )
+                                } else {
+                                    customError = "Não foi possível excluir o script."
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Excluir da biblioteca")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val (saved, error) = workspace.saveCustomScript(
+                            id = customEditing?.id,
+                            title = customTitle,
+                            code = customCode,
+                            targetRequest = customTarget,
+                        )
+                        if (error == null && saved != null) {
+                            showCustomEditor = false
+                            customEditing = null
+                            revision++
+                            onChanged(
+                                if (saved.targetRequest == null) {
+                                    "Script ${saved.title} salvo na biblioteca."
+                                } else {
+                                    "Script ${saved.title} salvo e vinculado a " +
+                                        BlaBlaDateScopeScriptCatalog0449.label(saved.targetRequest!!) + "."
+                                },
+                            )
+                        } else {
+                            customError = error ?: "Não foi possível salvar o script."
+                        }
+                    },
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCustomEditor = false
+                        customError = null
+                    },
+                ) {
+                    Text("Cancelar")
+                }
+            },
+        )
+    }
+
 }
