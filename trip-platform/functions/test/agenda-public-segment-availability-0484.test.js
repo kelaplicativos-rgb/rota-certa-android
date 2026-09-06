@@ -195,5 +195,5 @@ test("0484 public labels are exact and privacy-safe", () => {
   assert.equal(segmentAvailabilityLabel0484(2), "2 vagas");
   assert.match(html, /agendaSegmentAvailability0484/);
   assert.match(html, /agendaSegmentPassengers0489/);
-  assert.match(html, /app\.js\?v=0\.1\.491/);
+  assert.match(html, /app\.js\?v=0\.1\.492/);
 });
