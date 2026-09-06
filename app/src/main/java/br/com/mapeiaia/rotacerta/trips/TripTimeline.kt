@@ -52,6 +52,15 @@ data class TripTimelineEntry(
 }
 
 /**
+ * 0.1.490 single URL projection for every Timeline action that opens the public
+ * BlaBlaCar publication. The canonical Trip.blablaPublicUrl reaches this model as
+ * blablaPublicHref; the administrative/manage href is deliberately excluded.
+ */
+internal fun canonicalTimelineBlaBlaPublicHref0490(entry: TripTimelineEntry): String? =
+    canonicalBoundBlaBlaPublicUrl0423(entry.blablaPublicHref, entry.blablaTripId)
+
+
+/**
  * Resolves public availability from the canonical operational inventory.
  * The synchronized BlaBlaCar quota contributes to that inventory exactly once;
  * confirmed occupancy is subtracted separately.
