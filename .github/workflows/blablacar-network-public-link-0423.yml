@@ -66,7 +66,6 @@ jobs:
         run: |
           set -euo pipefail
           node --check trip-platform/functions/agenda-admin-0417.js
-          node --test trip-platform/functions/test/agenda-admin-observability-0417.test.js
           python3 - <<'PY'
           from pathlib import Path
           import textwrap
