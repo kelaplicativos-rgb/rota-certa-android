@@ -280,23 +280,49 @@ fun TripTimelineScreen(
     }
     LaunchedEffect(capacityAuditKey) {
         withContext(Dispatchers.Default) {
-            entries.asSequence()
-                .filter { entry ->
-                    !entry.blablaTripId.isNullOrBlank() ||
-                        !entry.blablaTripHref.isNullOrBlank() ||
-                        !entry.blablaProfileUuid.isNullOrBlank()
-                }
-                .forEach { entry ->
-                    val resolution = timelinePublicCapacityResolution(entry)
-                    val tripKey = seatSyncDiagnosticKey(
-                        entry.blablaProfileUuid.orEmpty() + "|" + (entry.blablaTripId ?: entry.tripId),
-                    )
+            val audited = entries.filter { entry ->
+                !entry.blablaTripId.isNullOrBlank() ||
+                    !entry.blablaTripHref.isNullOrBlank() ||
+                    !entry.blablaProfileUuid.isNullOrBlank()
+            }
+            var overbookingCount = 0
+            var unresolvedCount = 0
+            var minimumAvailable: Int? = null
+            val sourceCounts = linkedMapOf<String, Int>()
+            audited.forEachIndexed { index, entry ->
+                val resolution = timelinePublicCapacityResolution(entry)
+                val tripKey = seatSyncDiagnosticKey(
+                    entry.blablaProfileUuid.orEmpty() + "|" + (entry.blablaTripId ?: entry.tripId),
+                )
+                val available = resolution.availableSeats
+                if (available == null) unresolvedCount++
+                else minimumAvailable = minOf(minimumAvailable ?: available, available)
+                if (resolution.overbookingSeats > 0) overbookingCount++
+                sourceCounts[resolution.capacitySource] = (sourceCounts[resolution.capacitySource] ?: 0) + 1
+
+                // Keep one representative healthy resolution for the existing forensic contract.
+                // Per-card events are retained only for anomalies; the rest is summarized once.
+                if (index == 0) {
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CAPACITY_RESOLVED",
                         context.packageName,
-                        "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.blablaQuota ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.operationalInventory ?: -1} availableSeats=${resolution.availableSeats ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource}",
+                        "tripKey=$tripKey profileUuidPresent=${!entry.blablaProfileUuid.isNullOrBlank()} blablaTripIdPresent=${!entry.blablaTripId.isNullOrBlank()} publishedSeats=${resolution.blablaQuota ?: -1} passengerSeats=${resolution.passengerSeats} blockedSeats=${resolution.blockedSeats} consumedSeats=${entry.maximumOccupiedSeats} operationalInventory=${resolution.operationalInventory ?: -1} availableSeats=${available ?: -1} overbookingSeats=${resolution.overbookingSeats} capacitySource=${resolution.capacitySource} representative=true",
                     )
                 }
+                if (resolution.overbookingSeats > 0 || available == null) {
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CAPACITY_ANOMALY_0493",
+                        context.packageName,
+                        "tripKey=$tripKey overbookingSeats=${resolution.overbookingSeats} availableSeats=${available ?: -1} operationalInventory=${resolution.operationalInventory ?: -1} consumedSeats=${entry.maximumOccupiedSeats} capacitySource=${resolution.capacitySource}",
+                    )
+                }
+            }
+            UnifiedDebugEventStore.record(
+                "TIMELINE_CAPACITY_RESOLVED_BATCH_0493",
+                context.packageName,
+                "items=${audited.size} overbooking=$overbookingCount unresolved=$unresolvedCount minimumAvailable=${minimumAvailable ?: -1} sources=" +
+                    sourceCounts.entries.sortedBy { it.key }.joinToString(",") { "${it.key}:${it.value}" },
+            )
         }
     }
 
