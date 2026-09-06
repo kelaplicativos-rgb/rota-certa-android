@@ -116,7 +116,7 @@ test("Timeline no longer exposes the legacy exact-card manual synchronization ch
   assert.doesNotMatch(timeline, /manual_card_shortcut/);
   assert.doesNotMatch(timeline, /Sincronização individual indisponível/);
   assert.match(background, /AgendaBackgroundSyncMode0392\.COLLECTOR_RECONCILE/);
-  assert.match(background, /TripMutationCoordinator0387\(appContext, store\)\.drainPending\(\)/);
+  assert.match(background, /TripMutationCoordinator0387\(appContext, store\)\.drainPending\(/);
 });
 
 test("operational Timeline no longer has bulk clear while durable tombstones remain available to real lifecycle mutations", () => {
