@@ -313,7 +313,15 @@ private fun TripApp(
             rotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
             seatAllocationVersion = appSettings.rotaCertaSeatAllocationVersion,
         )
-        trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+        if (fanOut.localCanonicalUpdated > 0) {
+            trips = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { store.trips() }
+        } else {
+            UnifiedDebugEventStore.record(
+                "OPERATIONAL_INVENTORY_RENDER_INVALIDATION_SKIPPED_0493",
+                activity.packageName,
+                "reason=canonical_state_unchanged localCanonicalUpdated=0 avoidsNoOpTimelineRecomposition=true",
+            )
+        }
         UnifiedDebugEventStore.record(
             "OPERATIONAL_INVENTORY_RECONCILED",
             activity.packageName,
