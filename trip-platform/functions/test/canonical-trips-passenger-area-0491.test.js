@@ -83,7 +83,7 @@ test("0491 public Agenda stays anonymous, read-only and free of internal trip id
   assert.match(publicApp, /setInterval\([\s\S]*15000/);
 
   const sanitizer = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
-  for (const field of ["tripId", "publicToken", "canonicalTripId", "blablaTripId", "notes"]) {
+  for (const field of ["tripId", "publicToken", "canonicalTripId", "blablaTripId", "driverUsername", "notes"]) {
     assert.match(sanitizer, new RegExp("delete out\\." + field));
   }
   assert.match(sanitizer, /delete safe\.id/);
@@ -130,6 +130,8 @@ test("0491 passenger history is keyed by stable passengerId while contact index 
   assert.match(list, /requestedDriverUsername0491/);
 
   const privateBooking = between(api, "function passengerPrivateBooking0491", "function passengerNotificationResponse0491");
+  assert.match(privateBooking, /boardingAddress/);
+  assert.match(privateBooking, /dropoffAddress/);
   assert.doesNotMatch(privateBooking, /passengerContact\s*:|passengerId\s*:|bookingId\s*:/);
 });
 
