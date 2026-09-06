@@ -27,11 +27,18 @@ internal object AgendaForensicReportBuilder {
     fun build(context: Context): String {
         val snapshot = frozenSnapshot.getAndSet(null) ?: UnifiedDebugEventStore.snapshot()
         val agendaEvents = snapshot.events.filter(::isAgendaEvent)
-        val operationStarts = agendaEvents
+        val traces = agendaEvents.groupBy { eventTrace(it) }
+        val summarySelection = selectLatestAgendaTrace0493(agendaEvents)
+        val summaryEvents = summarySelection.events
+        val backgroundEvents = agendaEvents.filter { event ->
+            val trace = eventTrace(event)
+            trace == "sem-trace" || trace == "trace_unavailable" || !trace.startsWith("ag-")
+        }
+        val operationStarts = summaryEvents
             .filter { it.stage == "OPERATION_START" }
             .associateBy { detail(it, "operationId") }
             .filterKeys(String::isNotBlank)
-        val operationTerminals = agendaEvents
+        val operationTerminals = summaryEvents
             .filter { it.stage in setOf("OPERATION_END", "OPERATION_ERROR", "OPERATION_CANCELLED") }
             .associateBy { detail(it, "operationId") }
             .filterKeys(String::isNotBlank)
@@ -49,9 +56,9 @@ internal object AgendaForensicReportBuilder {
         val longestOperation = completed.maxByOrNull { it.durationMs }
         val incompleteOperations = operationStarts.keys - operationTerminals.keys
 
-        val openRequested = agendaEvents.firstOrNull { it.stage == "AGENDA_OPEN_REQUESTED" }
-        val firstInteractive = agendaEvents.firstOrNull { it.stage == "AGENDA_FIRST_INTERACTIVE_FRAME" }
-        val openDurationMs = agendaEvents
+        val openRequested = summarySelection.openRequested
+        val firstInteractive = summarySelection.firstInteractive
+        val openDurationMs = summaryEvents
             .lastOrNull { it.stage == "AGENDA_OPEN_TOTAL_MS" }
             ?.let { detailLong(it, "value") }
             ?: if (openRequested != null && firstInteractive != null) {
@@ -60,11 +67,11 @@ internal object AgendaForensicReportBuilder {
                 null
             }
 
-        val capacityInitial = agendaEvents.firstOrNull { it.stage == "CAPACITY_INITIAL_STATE" }
-        val localSettingsCapacity = agendaEvents.firstOrNull {
+        val capacityInitial = summaryEvents.firstOrNull { it.stage == "CAPACITY_INITIAL_STATE" }
+        val localSettingsCapacity = summaryEvents.firstOrNull {
             it.stage in setOf("INVENTORY_LOCAL_SETTINGS_RECEIVED", "CAPACITY_LOCAL_SETTINGS_RECEIVED")
         }
-        val resolvedCapacity = agendaEvents.firstOrNull {
+        val resolvedCapacity = summaryEvents.firstOrNull {
             it.stage == "TIMELINE_CAPACITY_RESOLVED" &&
                 (detailLong(it, "operationalInventory") ?: -1L) >= 0L &&
                 (detailLong(it, "availableSeats") ?: -1L) >= 0L
@@ -76,25 +83,34 @@ internal object AgendaForensicReportBuilder {
             null
         }
 
-        val jankDurations = agendaEvents
+        val jankDurations = summaryEvents
             .filter { it.stage.startsWith("AGENDA_JANK_") }
             .mapNotNull { detailLong(it, "durationMs") }
         val worstFrame = jankDurations.maxOrNull() ?: 0L
         val over100 = jankDurations.count { it >= 100L }
         val over250 = jankDurations.count { it >= 250L }
         val over500 = jankDurations.count { it >= 500L }
-        val emptyVisual = agendaEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE" }
-        val emptyVisualLong = agendaEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE_LONG" }
-        val errors = agendaEvents.count { it.stage == "OPERATION_ERROR" }
-        val failureEvidenceEvents = dedupeFailureEvidence(agendaEvents.filter(::isFailureEvidenceEvent))
+        val emptyDurations = summaryEvents
+            .filter { it.stage == "AGENDA_EMPTY_VISUAL_STATE_END" }
+            .mapNotNull { detailLong(it, "durationMs") }
+        val emptyWorstMs = emptyDurations.maxOrNull() ?: 0L
+        val emptyVisual = summaryEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE" }
+        val emptyVisualLong = summaryEvents.any { it.stage == "AGENDA_EMPTY_VISUAL_STATE_LONG" } || emptyWorstMs >= 500L
+        val emptyVisualClass = when {
+            !emptyVisual -> "NONE"
+            emptyVisualLong -> "EMPTY_PROLONGED"
+            else -> "EMPTY_TRANSIENT"
+        }
+        val errors = summaryEvents.count { it.stage == "OPERATION_ERROR" }
+        val failureEvidenceEvents = dedupeFailureEvidence(summaryEvents.filter(::isFailureEvidenceEvent))
         val byteLevelFailures = failureEvidenceEvents.count { event ->
             structuredDetail(event, "requestBytes").isNotBlank() ||
                 structuredDetail(event, "responseBytes").isNotBlank() ||
                 structuredDetail(event, "networkCallId").isNotBlank()
         }
-        val cancelled = agendaEvents.count { it.stage == "OPERATION_CANCELLED" }
-        val retries = agendaEvents.count { "RETRY" in it.stage }
-        val largestGapMs = agendaEvents.zipWithNext()
+        val cancelled = summaryEvents.count { it.stage == "OPERATION_CANCELLED" }
+        val retries = summaryEvents.count { "RETRY" in it.stage }
+        val largestGapMs = summaryEvents.sortedBy { it.monotonicNs }.zipWithNext()
             .maxOfOrNull { (left, right) ->
                 ((right.monotonicNs - left.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
             } ?: 0L
@@ -102,9 +118,8 @@ internal object AgendaForensicReportBuilder {
         val processTerminatedDuringOperation =
             crashEvidence.contains("OPERATION_INCOMPLETE_DUE_PROCESS_TERMINATION=true")
 
-        val traces = agendaEvents.groupBy { eventTrace(it) }
         val alerts = buildAlerts(
-            agendaEvents = agendaEvents,
+            agendaEvents = summaryEvents,
             longestOperation = longestOperation,
             capacityDelayMs = capacityDelayMs,
             over500 = over500,
@@ -121,6 +136,14 @@ internal object AgendaForensicReportBuilder {
         return buildString {
             appendLine("--- RESUMO FORENSE DA AGENDA ---")
             appendLine("Sessão Agenda:")
+            appendLine("- summaryTraceId=${summarySelection.traceId.ifBlank { "não disponível" }}")
+            appendLine("- traceComplete=${summarySelection.complete}")
+            appendLine("- mixedTraceDetected=${summarySelection.inconsistent}")
+            appendLine("- summaryStart=${summarySelection.openRequested?.let { formatWall(it.atMillis) } ?: "não registrado"}")
+            appendLine("- summaryEnd=${summarySelection.lastEvent?.let { formatWall(it.atMillis) } ?: "não registrado"}")
+            if (summarySelection.inconsistent) {
+                appendLine("- FORENSIC_TRACE_INCONSISTENT: evento do trace possui monotonic timestamp anterior à abertura; duração cruzada não será calculada")
+            }
             appendLine("- abertura solicitada: ${openRequested?.let { formatWall(it.atMillis) } ?: "não registrada"}")
             appendLine("- primeiro frame utilizável: ${firstInteractive?.let { formatWall(it.atMillis) } ?: "não registrado"}")
             appendLine("- duração de abertura: ${openDurationMs?.let { "$it ms" } ?: "não calculada"}")
@@ -160,7 +183,7 @@ internal object AgendaForensicReportBuilder {
             appendLine("- frames >250 ms: $over250")
             appendLine("- frames >500 ms: $over500")
             appendLine("- pior frame: $worstFrame ms")
-            appendLine("- tela vazia anormal: ${if (emptyVisual) "sim" else "não"}")
+            appendLine("- estado visual vazio: $emptyVisualClass" + if (emptyVisual) " • pior duração=${emptyWorstMs} ms" else "")
             appendLine("- tela vazia prolongada: ${if (emptyVisualLong) "sim" else "não"}")
             appendLine("- operações com erro: $errors")
             appendLine("- evidências estruturadas de falha: ${failureEvidenceEvents.size}")
@@ -204,6 +227,35 @@ internal object AgendaForensicReportBuilder {
             appendLine("Stage38.recordCalls=${stage38.recordCalls}")
             appendLine("Stage38.recordOverheadTotalNs=${stage38.recordOverheadTotalNs}")
             appendLine("Stage38.recordOverheadMaxNs=${stage38.recordOverheadMaxNs}")
+            appendLine()
+            appendLine("--- BACKGROUND / GLOBAL OPERATIONS ---")
+            val backgroundStarts = backgroundEvents
+                .filter { it.stage == "OPERATION_START" }
+                .associateBy { detail(it, "operationId") }
+                .filterKeys(String::isNotBlank)
+            val backgroundTerminals = backgroundEvents
+                .filter { it.stage in setOf("OPERATION_END", "OPERATION_ERROR", "OPERATION_CANCELLED") }
+                .associateBy { detail(it, "operationId") }
+                .filterKeys(String::isNotBlank)
+            val backgroundCompleted = backgroundStarts.mapNotNull { (operationId, start) ->
+                val terminal = backgroundTerminals[operationId] ?: return@mapNotNull null
+                val duration = detailLong(terminal, "durationMs")
+                    ?: ((terminal.monotonicNs - start.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
+                CompletedOperation(
+                    name = detail(start, "operation").ifBlank { "UNKNOWN_OPERATION" },
+                    durationMs = duration,
+                    terminal = terminal.stage,
+                )
+            }.sortedByDescending { it.durationMs }
+            if (backgroundCompleted.isEmpty()) {
+                appendLine("(nenhuma operação global concluída)")
+            } else {
+                backgroundCompleted.take(20).forEach { operation ->
+                    appendLine("- ${operation.name}: ${operation.durationMs} ms • ${operation.terminal}")
+                }
+            }
+            val backgroundFailures = dedupeFailureEvidence(backgroundEvents.filter(::isFailureEvidenceEvent))
+            appendLine("- backgroundFailureEvidence=${backgroundFailures.size}")
             appendLine()
             appendLine("--- CADEIA CAUSAL DA AGENDA ---")
             if (traces.isEmpty()) {
@@ -273,8 +325,7 @@ internal object AgendaForensicReportBuilder {
             add("SLOW_OPERATION operation=${longestOperation?.name} durationMs=${longestOperation?.durationMs}")
         }
         if (worstFrame >= 1_000L) add("UI_FREEZE durationMs=$worstFrame")
-        if (emptyVisual) add("EMPTY_VISUAL_STATE")
-        if (emptyVisualLong) add("EMPTY_VISUAL_STATE_LONG")
+        if (emptyVisualLong) add("EMPTY_PROLONGED")
         if ((capacityDelayMs ?: 0L) >= 1_000L) {
             add("LATE_STATE_DELIVERY source=capacity delayMs=$capacityDelayMs")
             add("CAPACITY_LATE_RENDER delayMs=$capacityDelayMs")
@@ -391,4 +442,59 @@ internal object AgendaForensicReportBuilder {
         val durationMs: Long,
         val terminal: String,
     )
+}
+
+internal data class AgendaTraceSelection0493(
+    val traceId: String = "",
+    val events: List<UnifiedDebugEventStore.SnapshotEvent> = emptyList(),
+    val openRequested: UnifiedDebugEventStore.SnapshotEvent? = null,
+    val firstInteractive: UnifiedDebugEventStore.SnapshotEvent? = null,
+    val lastEvent: UnifiedDebugEventStore.SnapshotEvent? = null,
+    val complete: Boolean = false,
+    val inconsistent: Boolean = false,
+)
+
+internal fun selectLatestAgendaTrace0493(
+    events: List<UnifiedDebugEventStore.SnapshotEvent>,
+): AgendaTraceSelection0493 {
+    fun traceOf(event: UnifiedDebugEventStore.SnapshotEvent): String {
+        val match = Regex("(?:^|\\s)traceId=([^\\s|]+)").find(event.details)
+        return match?.groupValues?.getOrNull(1).orEmpty().ifBlank { "sem-trace" }
+    }
+
+    val candidates = events
+        .groupBy(::traceOf)
+        .mapNotNull { (traceId, traceEvents) ->
+            if (traceId == "sem-trace" || traceId == "trace_unavailable" || !traceId.startsWith("ag-")) {
+                return@mapNotNull null
+            }
+            val ordered = traceEvents.sortedBy { it.monotonicNs }
+            val open = ordered.firstOrNull { it.stage == "AGENDA_OPEN_REQUESTED" } ?: return@mapNotNull null
+            val interactive = ordered.firstOrNull {
+                it.stage == "AGENDA_FIRST_INTERACTIVE_FRAME" && it.monotonicNs >= open.monotonicNs
+            }
+            val inconsistent = traceEvents.any { it.monotonicNs < open.monotonicNs }
+            AgendaTraceSelection0493(
+                traceId = traceId,
+                events = ordered.filter { it.monotonicNs >= open.monotonicNs },
+                openRequested = open,
+                firstInteractive = interactive,
+                lastEvent = ordered.lastOrNull(),
+                complete = interactive != null,
+                inconsistent = inconsistent,
+            )
+        }
+    val selected = candidates
+        .filter(AgendaTraceSelection0493::complete)
+        .maxByOrNull { it.openRequested?.monotonicNs ?: Long.MIN_VALUE }
+        ?: candidates.maxByOrNull { it.openRequested?.monotonicNs ?: Long.MIN_VALUE }
+        ?: return AgendaTraceSelection0493()
+
+    if (selected.inconsistent) {
+        return selected.copy(
+            firstInteractive = null,
+            complete = false,
+        )
+    }
+    return selected
 }
