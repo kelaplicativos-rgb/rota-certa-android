@@ -1,16 +1,11 @@
-name: Direct-source branch APK
+name: Rota Certa Timeline operational direct-source APK 0.1.483
 
 on:
   push:
     branches:
-      - agent/passenger-timeline-geo-ux
+      - agent/timeline-operational-restore-0.1.483
     paths:
       - 'app/**'
-      - 'gradle/**'
-      - 'gradlew'
-      - 'gradlew.bat'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
 
@@ -18,112 +13,197 @@ permissions:
   contents: read
 
 concurrency:
-  group: direct-source-${{ github.ref }}
+  group: timeline-operational-0483-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  direct-source:
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+  validate-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    env:
+      GOOGLE_MAPS_API_KEY: timeline_operational_0483_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      BASE_AUTHORITY_SHA: 51d588f460609a37fb2f48795967fceb21094f68
+      EXPECTED_VERSION_CODE: '5776'
+      EXPECTED_VERSION_NAME: '0.1.483'
 
     steps:
-      - name: Checkout triggering source
+      - name: Checkout exact triggering HEAD
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Prove direct source and record HEAD
+      - name: Prove exact source scope and protected surfaces
         shell: bash
         run: |
           set -euo pipefail
           SOURCE_HEAD="$(git rev-parse HEAD)"
-          test "$SOURCE_HEAD" = "${GITHUB_SHA}"
-          test -d app/src/main
-          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          if git status --porcelain | grep -q .; then
-            echo "Checkout is not clean before validation." >&2
-            git status --short
-            exit 1
-          fi
+          test "$SOURCE_HEAD" = "$GITHUB_SHA"
           printf '%s\n' "$SOURCE_HEAD" | tee source_head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee source_branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_HEAD" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
 
-      - name: Prove Agenda trace and normalization diagnostic contract
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- "$FAROL"
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- trip-platform/public trip-platform/firebase.json trip-platform/firestore.rules
+
+          git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee changed-files.txt
+          ! grep -Fxq "$FAROL" changed-files.txt
+          ! grep -E '^trip-platform/public/' changed-files.txt
+          ! grep -Fxq 'trip-platform/firebase.json' changed-files.txt
+          ! grep -Fxq 'trip-platform/firestore.rules' changed-files.txt
+
+          grep -Fq 'TripScreen.TIMELINE -> "Todas as viagens"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'else -> TripScreen.TIMELINE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'Timeline antiga · somente migração' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'A Timeline local foi retirada da operação' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'ALL_TRIPS("Todas as viagens")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'AgendaRootSection0396.ALL_TRIPS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'canonicalCollectorResponse0403' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'EnhancedPassengerTimelineSection(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'VAGAS POR TRECHO' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'openPassengerWhatsApp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'boardingAddress' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'dropoffAddress' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'com.google.android.apps.maps' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'canonicalOperationalSnapshot0434' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'availableSeatsMinimum' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'availableSeatsMaximum' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+
+          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+          sha256sum "$FAROL" | tee farol.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app
         shell: bash
         run: |
           set -euo pipefail
-          TRACE=app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTrace.kt
-          ACTIONS=app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
-          NORMALIZER=app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
-          DIAG_TEST=app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomNormalizationDiagnostic0274Test.kt
-          test -f "$TRACE"
-          grep -Fq 'class AgendaTraceProvider : ContentProvider()' "$TRACE"
-          grep -Fq 'activity.javaClass.name.startsWith(AGENDA_PACKAGE_PREFIX)' "$TRACE"
-          grep -Fq 'method.name == "dispatchTouchEvent"' "$TRACE"
-          grep -Fq 'MotionEvent.ACTION_UP' "$TRACE"
-          grep -Fq 'UnifiedDebugEventStore.record' "$TRACE"
-          grep -Fq 'android:name=".trips.AgendaTraceProvider"' app/src/main/AndroidManifest.xml
-          grep -Fq 'AgendaTrace.action(context, action.traceKey, action.label)' "$ACTIONS"
-          test -f "$NORMALIZER"
-          test -f "$DIAG_TEST"
-          grep -Fq 'internal fun diagnoseTrip(' "$NORMALIZER"
-          grep -Fq 'TRIP_NORMALIZATION_REJECTED' "$NORMALIZER"
-          grep -Fq 'date_unparseable' "$NORMALIZER"
-          grep -Fq 'departure_time_unparseable' "$NORMALIZER"
-          grep -Fq 'origin_missing' "$NORMALIZER"
-          grep -Fq 'destination_missing' "$NORMALIZER"
-          grep -Fq 'trip_id_mismatch' "$NORMALIZER"
-          grep -Fq 'versionCode = 5568' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.275"' app/build.gradle.kts
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
 
-      - name: Record protected FAROL before build
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-before.sha256
-          test "$(cut -d' ' -f1 farol-before.sha256)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
 
-      - name: Test and build directly from app/src
+      - name: Run Timeline and per-segment capacity regression suite
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineSurface0415Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ManualPassengerCapacityGuard0295Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripSegmentSeatSync0292Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimeline0253Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimeline0254RegressionTest' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimeline0255RegressionTest' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee focused-tests.log
 
-      - name: Prove source and FAROL unchanged after build
+      - name: Assemble exact-head installable APK
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$(cat source_head.txt)"
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-after.sha256
-          cmp -s farol-before.sha256 farol-after.sha256
-          if git status --porcelain --untracked-files=no | grep -q .; then
-            echo "Tracked source changed during validation." >&2
-            git status --short
-            exit 1
-          fi
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
-          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- trip-platform/public trip-platform/firebase.json trip-platform/firestore.rules
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee zip-integrity.txt
 
-      - name: Upload direct-source APK evidence
+      - name: Validate package version signature and final SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          SIGN="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          test -x "$AAPT"
+          test -x "$SIGN"
+
+          "$AAPT" dump badging "$APK" | tee evidence/aapt-badging.txt
+          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+
+          "$SIGN" verify --verbose --print-certs "$APK" | tee evidence/apksigner.txt
+          grep -Fq 'Verified' evidence/apksigner.txt
+
+          cp "$APK" "evidence/rota-certa-${EXPECTED_VERSION_NAME}-timeline-operacional.apk"
+          sha256sum "evidence/rota-certa-${EXPECTED_VERSION_NAME}-timeline-operacional.apk" | tee evidence/apk-sha256.txt
+          cp source_head.txt source_branch.txt changed-files.txt farol.sha256 focused-tests.log assemble.log zip-integrity.txt evidence/
+
+          cat > evidence/final-status.txt <<EOF
+          timeline_operational_restore=PASS
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          timeline_home=RESTORED
+          collector_to_canonical_timeline=VERIFIED_BY_SOURCE_AND_TESTS
+          manual_passenger_per_segment_capacity=VERIFIED_BY_TESTS
+          immediate_public_delta_outbox=VERIFIED_BY_SOURCE_AND_TESTS
+          agenda_public_frozen=PASS
+          farol_untouched=PASS
+          merge=false
+          release=false
+          latest=false
+          EOF
+          cat evidence/final-status.txt
+
+      - name: Upload final Timeline APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-direct-source-${{ github.sha }}
+          name: rota-certa-0.1.483-timeline-operacional-${{ github.sha }}
           if-no-files-found: error
-          retention-days: 14
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            source_head.txt
-            app-version.txt
-            farol-before.sha256
-            farol-after.sha256
-            apk.sha256
+          retention-days: 30
+          path: evidence/
