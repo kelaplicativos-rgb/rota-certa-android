@@ -2553,15 +2553,38 @@ internal object AgendaBackgroundSync0392 {
                 store = store,
                 targetRemoteTripId = remoteTripId,
             )
+            val publicationOperation = AgendaTrace.operationStart(
+                appContext,
+                "BOOKING_PUBLICATION_DRAIN",
+                "AgendaBackgroundSync0392.runBookingCardDelta0431",
+            )
+            val delivered = try {
+                TripMutationCoordinator0387(appContext, store).drainPending(
+                    canonicalTripIds = booking.changedTripIds,
+                )
+            } catch (cancelled: CancellationException) {
+                AgendaTrace.operationCancelled(appContext, publicationOperation, result = "cancelled")
+                throw cancelled
+            } catch (error: Throwable) {
+                AgendaTrace.operationError(appContext, publicationOperation, error)
+                throw error
+            }
+            AgendaTrace.operationEnd(
+                appContext,
+                publicationOperation,
+                result = "background_transport_complete",
+                processedCount = delivered,
+            )
             BookingRealtimeEvents0356.notifyChanged()
             TripWidgetProvider.updateAll(appContext)
             UnifiedDebugEventStore.record(
                 "AGENDA_CARD_DELTA_END_0431",
                 appContext.packageName,
-                "remoteTripKey=${seatSyncDiagnosticKey(remoteTripId)} imported=${booking.importedCount} changedCards=${booking.changedTripIds.size} timelineUpdated=true publicEchoCompleted=true fullSyncRequested=false",
+                "remoteTripKey=${seatSyncDiagnosticKey(remoteTripId)} imported=${booking.importedCount} changedCards=${booking.changedTripIds.size} timelineUpdated=true durableQueued=${booking.seatSyncQueued} outboxDelivered=$delivered publicHandoffCompleted=true fullSyncRequested=false",
             )
             AgendaBackgroundSyncRun0392(
                 bookingImports = booking.importedCount,
+                outboxDelivered = delivered,
             )
         } catch (cancelled: CancellationException) {
             throw cancelled
