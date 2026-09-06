@@ -19,6 +19,8 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
+        assertTrue(header.contains("SCRIPTS(\"Scripts\")"))
+        assertTrue(drawer.contains("AgendaRootSection0396.SCRIPTS"))
         assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
@@ -102,6 +104,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(activity.contains("showTitle = false"))
         assertTrue(activity.contains("TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410("))
         assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
+        assertTrue(activity.contains("TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486("))
         assertTrue(activity.contains("TripScreen.NOTIFICATIONS -> {"))
     }
 
