@@ -322,6 +322,17 @@ internal class TripPublicationOutbox0387(context: Context) {
         }
     }
 
+    fun markSuperseded(id: String, reason: String) {
+        update(id) { event ->
+            event.copy(
+                status = TripPublicationStatus0387.SUPERSEDED,
+                updatedAtMillis = System.currentTimeMillis(),
+                lastError = reason.take(160),
+                nextAttemptAtMillis = 0L,
+            )
+        }
+    }
+
     fun markFailure(id: String, error: Throwable, retryable: Boolean) {
         update(id) { event ->
             val now = System.currentTimeMillis()
@@ -513,8 +524,7 @@ internal class TripMutationCoordinator0387(
             ?: original.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
         val allocated = original.copy(rotaCertaSeatAllocation = allocation)
         val publicTrip = allocated.copy(capacity = operationalInventoryCapacity(allocated, bookings))
-        val signature = PublicAgendaAutoSync0300.localCapacitySnapshotRevision(publicTrip, bookings, allocation) +
-            "|state:" + publicTrip.canonicalStateHash
+        val signature = localPublicationSnapshotSignature0493(publicTrip, bookings, allocation)
         outbox.ensureRevisionAtLeast(canonicalTripId, (publicTrip.canonicalRevision - 1L).coerceAtLeast(0L))
         return outbox.enqueue(
             canonicalTripId = canonicalTripId,
@@ -902,6 +912,42 @@ internal class TripMutationCoordinator0387(
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot local ausente." }
+                        val currentTrip = store.getTrip(event.canonicalTripId)
+                        val currentBookings = currentTrip?.let { store.bookingsFor(event.canonicalTripId) }.orEmpty()
+                        val currentAllocation = currentTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+                        val currentPublicTrip = currentTrip?.let { trip ->
+                            trip.copy(capacity = operationalInventoryCapacity(trip, currentBookings))
+                        }
+                        val currentSignature = currentPublicTrip?.let { trip ->
+                            localPublicationSnapshotSignature0493(trip, currentBookings, currentAllocation)
+                        }.orEmpty()
+                        val snapshotStillCurrent =
+                            currentTrip != null &&
+                                currentTrip.isCanonicalLocalPublishSource() &&
+                                currentSignature == event.snapshot.semanticSignature
+                        if (!snapshotStillCurrent) {
+                            outbox.markSuperseded(event.id, "canonical_snapshot_advanced_before_transport")
+                            val rebuilt = if (currentTrip != null && currentTrip.isCanonicalLocalPublishSource()) {
+                                recordLocalMutation(
+                                    canonicalTripId = event.canonicalTripId,
+                                    mutationType = "OUTBOX_STALE_SNAPSHOT_REBUILT_0493",
+                                    source = "OUTBOX_STALE_GUARD",
+                                    configuredRotaCertaSeatAllocation = currentAllocation,
+                                    reconcileBookingInventory = false,
+                                    remoteProjectionDivergenceObserved = true,
+                                )
+                            } else {
+                                null
+                            }
+                            recordEvidence0421(
+                                stage = "OUTBOX_STALE_SNAPSHOT_GUARD_0493",
+                                status = "DENIED",
+                                reason = "CANONICAL_STATE_ADVANCED_BEFORE_TRANSPORT",
+                                event = event,
+                                extra = "snapshotCanonicalRevision=${snapshotTrip.canonicalRevision} currentCanonicalRevision=${currentTrip?.canonicalRevision ?: -1L} rebuilt=${rebuilt != null} previousStage=OUTBOX_DEQUEUE nextStage=OUTBOX_ENQUEUE",
+                            )
+                            return@eventLoop
+                        }
                         if (snapshotTrip.status == TripStatus.COMPLETED) {
                             val settings = store.onlineSettings()
                             require(settings.configured) { "Agenda Pública não configurada." }
@@ -1361,6 +1407,20 @@ internal class TripMutationCoordinator0387(
                     },
                 )
                 outbox.markFailure(event.id, error, retryable)
+                val requiresReconciliation0493 = publicationFailureRequiresReconciliation0493(error)
+                if (requiresReconciliation0493) {
+                    recordEvidence0421(
+                        stage = "OUTBOX_REQUIRES_RECONCILIATION_0493",
+                        status = "PENDING",
+                        reason = remote?.backendErrorCode.orEmpty().ifBlank { "SEMANTIC_CONFLICT" },
+                        event = event,
+                        extra = "retryable=false blindRetry=false authoritativeReconcileScheduled=true previousStage=HTTP_RESPONSE nextStage=BOOKING_RECONCILE",
+                    )
+                    AgendaBackgroundSync0392.enqueueImmediate(
+                        appContext,
+                        "outbox_semantic_reconcile:" + remote?.backendErrorCode.orEmpty().take(48),
+                    )
+                }
                 val persistedFailureStage0458 = when {
                     remote?.httpStatus?.let { it > 0 } == true -> "HTTP_RESPONSE"
                     remote?.networkCallId?.isNotBlank() == true || (remote?.requestBytes ?: 0) > 0 -> "HTTP_SEND"
@@ -1714,6 +1774,25 @@ internal fun TripPublicationOutboxEvent0387.resolvedMutationId0421(): String =
 
 internal fun TripPublicationOutboxEvent0387.resolvedIdempotencyKey0421(): String =
     idempotencyKey0421.ifBlank { publicationMutationIdentity0421(canonicalTripId, snapshot).second }
+
+internal fun localPublicationSnapshotSignature0493(
+    trip: Trip,
+    bookings: List<Booking>,
+    allocation: Int,
+): String =
+    PublicAgendaAutoSync0300.localCapacitySnapshotRevision(trip, bookings, allocation) +
+        "|state:" + trip.canonicalStateHash
+
+internal fun publicationFailureRequiresReconciliation0493(error: Throwable): Boolean {
+    val remote = generateSequence(error) { it.cause }.filterIsInstance<TripRemoteApiException>().firstOrNull()
+        ?: return false
+    return remote.httpStatus == 409 && remote.backendErrorCode in setOf(
+        "protected_booking_required",
+        "protected_snapshot_requires_revision",
+        "publication_revision_conflict",
+        "inventory_mismatch",
+    )
+}
 
 private fun retryDelayMillis(attempt: Int): Long {
     val multiplier = 1 shl (attempt - 1).coerceIn(0, 6)
