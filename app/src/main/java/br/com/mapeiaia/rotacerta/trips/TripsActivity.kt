@@ -126,7 +126,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -135,11 +135,13 @@ private fun TripScreen.isAgendaRoot0396(): Boolean =
         this == TripScreen.PASSENGERS ||
         this == TripScreen.SETTINGS ||
         this == TripScreen.APP_SETTINGS ||
-        this == TripScreen.AUTO_SYNC
+        this == TripScreen.AUTO_SYNC ||
+        this == TripScreen.SCRIPTS
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
     TripScreen.ASSISTANT -> AgendaRootSection0396.ASSISTANT
     TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
+    TripScreen.SCRIPTS -> AgendaRootSection0396.SCRIPTS
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
     TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
@@ -152,6 +154,7 @@ private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "BlaBlaCar"
+    TripScreen.SCRIPTS -> "Scripts"
     TripScreen.APP_SETTINGS -> "Configurações"
     TripScreen.EXTRA_SEATS -> "Vagas extra"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
@@ -516,6 +519,11 @@ private fun TripApp(
                     passengerSubscreenOpen0396 = false
                     screen = TripScreen.AUTO_SYNC
                 }
+                AgendaRootSection0396.SCRIPTS -> {
+                    parentRootScreen0396 = TripScreen.SCRIPTS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.SCRIPTS
+                }
                 AgendaRootSection0396.PUBLIC_SEARCH -> {
                     parentRootScreen0396 = TripScreen.PUBLIC_SEARCH
                     passengerSubscreenOpen0396 = false
@@ -772,6 +780,9 @@ private fun TripApp(
                 TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397(
                     trips = trips,
                     store = store,
+                    onChanged = { text -> message = text },
+                )
+                TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486(
                     onChanged = { text -> message = text },
                 )
                 TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
