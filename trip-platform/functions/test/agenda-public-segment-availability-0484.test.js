@@ -155,6 +155,13 @@ test("0485 real overbooking stays fail-closed as FULL", () => {
 test("0484 public API exposes backend-resolved segmentAvailability on canonical and legacy-safe paths", () => {
   const canonical = between(api, "function safePublicTripFromCanonical0434", "function safePublicTrip(token");
   const fallback = between(api, "function safePublicTrip(token", "function canonicalPublicStop0411");
+  const canonicalStateCall = between(canonical, "const capacityState0485 =", "const passengerLoads");
+  const fallbackStateCall = between(fallback, "const capacityState0485 =", "const itineraryAuthoritative");
+  assert.match(canonicalStateCall, /capacityReliable: reliable/);
+  assert.doesNotMatch(canonicalStateCall, /capacityReliable: capacityState0485\.reliable/);
+  assert.match(fallbackStateCall, /capacityReliable,/);
+  assert.doesNotMatch(fallbackStateCall, /capacityReliable: capacityState0485\.reliable/);
+  assert.doesNotMatch(canonical, /\bavailableMaximum\b(?!\s*:)/);
   assert.match(canonical, /publicSegmentAvailability0484/);
   assert.match(canonical, /canonicalPublicCapacityState0485/);
   assert.match(canonical, /status: capacityState0485\.status/);
