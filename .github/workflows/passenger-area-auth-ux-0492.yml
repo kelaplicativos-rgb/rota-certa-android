@@ -1,0 +1,221 @@
+name: Rota Certa 0.1.492 passenger area auth UX
+
+on:
+  push:
+    branches:
+      - agent/passenger-area-auth-ux-0.1.492
+  pull_request:
+    branches:
+      - agent/canonical-trips-passenger-area-0.1.491
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: passenger-area-auth-ux-0492-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Prove source lineage and protected FAROL isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=71d65bc1e05324d4648690526c43968bb86e3064
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          grep -Fq 'versionCode = 5784' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.492"' app/build.gradle.kts
+          test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
+          git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol-before.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Canonical backend and web contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --check trip-platform/public/minha-area.js
+          node --test trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js
+          node --test trip-platform/functions/test/passenger-area-auth-ux-0492.test.js
+          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          node --test trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          test -n "$APP_ID"
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests, lint and installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SOURCE_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          export ROTA_CERTA_GIT_SHA="$SOURCE_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$SOURCE_BRANCH"
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/gradle.txt
+          ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
+          ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
+
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cmp -s /tmp/farol-before.sha256 <(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5783'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.491'" /tmp/aapt.txt
+
+          mkdir -p /tmp/0492
+          cp "$APK" /tmp/0492/rota-certa-0.1.492-passenger-area-auth-ux.apk
+          sha256sum /tmp/0492/rota-certa-0.1.492-passenger-area-auth-ux.apk | tee /tmp/0492/apk.sha256
+          cp /tmp/aapt.txt /tmp/0492/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0492/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0492/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0492/changed-files.txt
+          git rev-parse HEAD > /tmp/0492/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0492/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0492/dex-strings.txt
+
+      - name: Configure exact-SHA Firebase deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy canonical backend and public/private projections from exact HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+          printf '%s\n' "$SOURCE_SHA" > /tmp/0492/deployed-source-head.txt
+
+      - name: Smoke live canonical Agenda and Minha Area boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          BUST="$(date +%s%N)"
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/0492/live-health.json
+          grep -Fq '"ok":true' /tmp/0492/live-health.json
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/0492/live-index.html
+          grep -Fq 'id="passengerAreaLink0491"' /tmp/0492/live-index.html
+          grep -Fq 'href="/minha-area.html"' /tmp/0492/live-index.html
+          ! grep -Eiq 'Administrar esta viagem|agenda-admin-0417.js|type="password"' /tmp/0492/live-index.html
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/0492/live-app.js
+          grep -Fq 'authoritativeUpdatedLabel0491' /tmp/0492/live-app.js
+          grep -Fq 'configurePassengerAreaLink0491' /tmp/0492/live-app.js
+          ! grep -Fq '/v1/admin/' /tmp/0492/live-app.js
+          cmp -s trip-platform/public/app.js /tmp/0492/live-app.js
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/minha-area.html?v=$BUST" -o /tmp/0492/live-minha-area.html
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/minha-area.js?v=$BUST" -o /tmp/0492/live-minha-area.js
+          grep -Fq '<h1>Minha Área</h1>' /tmp/0492/live-minha-area.html
+          grep -Fq 'placeholder="Digite seu telefone/WhatsApp"' /tmp/0492/live-minha-area.html
+          grep -Fq 'id="loginPanel0491" class="card hidden"' /tmp/0492/live-minha-area.html
+          grep -Fq 'id="authLoading0492" class="card hidden"' /tmp/0492/live-minha-area.html
+          test "$(grep -o 'minlength="4"' /tmp/0492/live-minha-area.html | wc -l)" -eq 3
+          ! grep -Fq '+ código do país e número' /tmp/0492/live-minha-area.html
+          grep -Fq '/v1/passenger/session' /tmp/0492/live-minha-area.js
+          grep -Fq 'renderAuthState0492' /tmp/0492/live-minha-area.js
+          grep -Fq 'sessionStorage' /tmp/0492/live-minha-area.js
+          ! grep -Fq '/v1/admin/' /tmp/0492/live-minha-area.js
+          node --check /tmp/0492/live-app.js
+          node --check /tmp/0492/live-minha-area.js
+          cmp -s trip-platform/public/minha-area.js /tmp/0492/live-minha-area.js
+
+          CODE_PASSENGER="$(curl --silent --show-error -o /tmp/0492/passenger-auth-boundary.json -w "%{http_code}" "$BASE/v1/passenger/me")"
+          test "$CODE_PASSENGER" = "401"
+          CODE_DRIVER="$(curl --silent --show-error -o /tmp/0492/driver-auth-boundary.json -w "%{http_code}" -X PUT "$BASE/v1/driver/trips/ci-probe/public-visibility" -H 'Content-Type: application/json' --data '{"online":false}')"
+          test "$CODE_DRIVER" = "401"
+
+          echo "LIVE_PASSENGER_AREA_AUTH_UX_0492=PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.492-passenger-area-auth-ux-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0492
