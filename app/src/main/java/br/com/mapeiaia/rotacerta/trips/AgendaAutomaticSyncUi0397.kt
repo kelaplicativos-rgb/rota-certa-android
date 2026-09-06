@@ -29,6 +29,22 @@ import java.util.Date
 
 internal val agendaAutomaticSyncIntervals0397 = listOf(15L, 30L, 60L, 180L, 360L, 720L, 1_440L)
 
+internal fun openPublicAgenda0397(
+    context: android.content.Context,
+    store: TripStore,
+): String {
+    val url = store.onlineSettings().publicAgendaUrl
+    if (url.isNullOrBlank()) {
+        return "Configure a integração online para abrir a Agenda Pública."
+    }
+    return runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    }.fold(
+        onSuccess = { "Abrindo a Agenda Pública do Rota Certa." },
+        onFailure = { "Não foi possível abrir a Agenda Pública neste aparelho." },
+    )
+}
+
 internal fun agendaAutomaticSyncIntervalLabel0397(minutes: Long): String = when {
     minutes < 60L -> "$minutes min"
     minutes % 60L == 0L -> {
@@ -170,18 +186,7 @@ internal fun AgendaAutomaticSyncScreen0397(
                 )
                 OutlinedButton(
                     onClick = {
-                        val url = store.onlineSettings().publicAgendaUrl
-                        if (url.isNullOrBlank()) {
-                            message = "Configure a integração online para abrir a Agenda Pública."
-                        } else {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                            }.onSuccess {
-                                message = "Abrindo a Agenda Pública do Rota Certa."
-                            }.onFailure {
-                                message = "Não foi possível abrir a Agenda Pública neste aparelho."
-                            }
-                        }
+                        message = openPublicAgenda0397(context, store)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = onlineSettings.configured,

@@ -7,16 +7,23 @@ import java.util.concurrent.ConcurrentHashMap
 internal class BlaBlaBrowserScriptRegistry(context: Context) {
     private val appContext = context.applicationContext
     private val cache = ConcurrentHashMap<String, String>()
+    private val workspace = BlaBlaScriptWorkspace0486(appContext)
+
+    fun originalTemplate(request: BlaBlaBrowserRequest): String =
+        cache.getOrPut(request.assetName) {
+            appContext.assets.open("blablacar/scripts/${request.assetName}")
+                .bufferedReader(Charsets.UTF_8)
+                .use { it.readText() }
+        }
+
+    fun template(request: BlaBlaBrowserRequest): String =
+        workspace.overrideScript(request) ?: originalTemplate(request)
 
     fun script(
         request: BlaBlaBrowserRequest,
         arguments: Map<String, String> = emptyMap(),
     ): String {
-        val template = cache.getOrPut(request.assetName) {
-            appContext.assets.open("blablacar/scripts/${request.assetName}")
-                .bufferedReader(Charsets.UTF_8)
-                .use { it.readText() }
-        }
+        val template = template(request)
         val rendered = arguments.entries.fold(template) { value, (key, replacement) ->
             value.replace("{{$key}}", replacement)
         }

@@ -126,7 +126,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -135,11 +135,13 @@ private fun TripScreen.isAgendaRoot0396(): Boolean =
         this == TripScreen.PASSENGERS ||
         this == TripScreen.SETTINGS ||
         this == TripScreen.APP_SETTINGS ||
-        this == TripScreen.AUTO_SYNC
+        this == TripScreen.AUTO_SYNC ||
+        this == TripScreen.SCRIPTS
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
     TripScreen.ASSISTANT -> AgendaRootSection0396.ASSISTANT
     TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
+    TripScreen.SCRIPTS -> AgendaRootSection0396.SCRIPTS
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
     TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
@@ -152,6 +154,7 @@ private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "BlaBlaCar"
+    TripScreen.SCRIPTS -> "Scripts"
     TripScreen.APP_SETTINGS -> "Configurações"
     TripScreen.EXTRA_SEATS -> "Vagas extra"
     TripScreen.PUBLIC_SEARCH -> "Consulta pública"
@@ -257,6 +260,8 @@ private fun TripApp(
     var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
     var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
     var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
+    var scriptsUiCommand0488 by remember { mutableStateOf<BlaBlaScriptsCommand0488?>(null) }
+    var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
@@ -462,6 +467,16 @@ private fun TripApp(
         Unit
     }
     val headerActions0396 = when (screen) {
+        TripScreen.SCRIPTS -> listOf(
+            AgendaHeaderAction0396("Novo script") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.NEW_SCRIPT
+                scriptsUiCommandToken0488 += 1
+            },
+            AgendaHeaderAction0396("Restaurar seleção padrão") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.RESTORE_SELECTION_DEFAULTS
+                scriptsUiCommandToken0488 += 1
+            },
+        )
         TripScreen.TIMELINE -> listOf(
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
@@ -496,9 +511,15 @@ private fun TripApp(
         screen.agendaHeaderLabel0396()
     }
     val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
+    val drawerOnlineSettings0397 = store.onlineSettings()
 
     AgendaModuleDrawer0396(
         currentSection = currentRootScreen0396.agendaRootSection0396(),
+        publicAgendaEnabled = drawerOnlineSettings0397.configured &&
+            !drawerOnlineSettings0397.publicAgendaUrl.isNullOrBlank(),
+        onOpenPublicAgenda = {
+            message = openPublicAgenda0397(activity, store)
+        },
         onSelect = { section ->
             when (section) {
                 AgendaRootSection0396.ALL_TRIPS -> {
@@ -515,6 +536,11 @@ private fun TripApp(
                     parentRootScreen0396 = currentRootScreen0396
                     passengerSubscreenOpen0396 = false
                     screen = TripScreen.AUTO_SYNC
+                }
+                AgendaRootSection0396.SCRIPTS -> {
+                    parentRootScreen0396 = TripScreen.SCRIPTS
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.SCRIPTS
                 }
                 AgendaRootSection0396.PUBLIC_SEARCH -> {
                     parentRootScreen0396 = TripScreen.PUBLIC_SEARCH
@@ -773,6 +799,11 @@ private fun TripApp(
                     trips = trips,
                     store = store,
                     onChanged = { text -> message = text },
+                )
+                TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486(
+                    onChanged = { text -> message = text },
+                    uiCommand0488 = scriptsUiCommand0488,
+                    uiCommandToken0488 = scriptsUiCommandToken0488,
                 )
                 TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
                     initial = store.onlineSettings(),

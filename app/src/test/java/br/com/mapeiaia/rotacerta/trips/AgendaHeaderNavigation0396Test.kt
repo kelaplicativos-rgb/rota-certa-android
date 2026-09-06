@@ -15,11 +15,15 @@ class AgendaHeaderNavigation0396Test {
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
         assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
-        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
+        val drawer = header.substringAfter("ModalDrawerSheet").substringBefore("@Composable\ninternal fun AgendaModuleHeader0396")
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
-        assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
+        assertTrue(header.contains("SCRIPTS(\"Scripts\")"))
+        assertTrue(drawer.contains("AgendaRootSection0396.SCRIPTS"))
+        assertTrue(drawer.contains("Text(\"Abrir Agenda Pública\""))
+        assertTrue(drawer.contains("if (publicAgendaEnabled)"))
+        assertTrue(drawer.contains("onOpenPublicAgenda()"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
         assertTrue(header.contains("NavigationDrawerItem("))
@@ -31,7 +35,7 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun timelineRootIsVisibleAndCollectorRemainsASeparateDestination() {
-        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
+        val drawer = header.substringAfter("ModalDrawerSheet").substringBefore("@Composable\ninternal fun AgendaModuleHeader0396")
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertTrue(drawer.contains("AgendaRootSection0396.AUTOMATIC_SYNC"))
         assertTrue(activity.contains("parentRootScreen0396 = TripScreen.TIMELINE"))
@@ -79,6 +83,9 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Vagas extra\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Próximas / arquivadas\")"))
         assertTrue(overflow.contains("AgendaHeaderAction0396(\"Baixar Timeline\")"))
+        assertTrue(overflow.contains("TripScreen.SCRIPTS -> listOf("))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Novo script\")"))
+        assertTrue(overflow.contains("AgendaHeaderAction0396(\"Restaurar seleção padrão\")"))
         assertFalse(overflow.contains("Contas e navegadores"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronização automática\")"))
         assertFalse(overflow.contains("AgendaHeaderAction0396(\"Sincronizar agora\")"))
@@ -102,6 +109,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(activity.contains("showTitle = false"))
         assertTrue(activity.contains("TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410("))
         assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
+        assertTrue(activity.contains("TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486("))
         assertTrue(activity.contains("TripScreen.NOTIFICATIONS -> {"))
     }
 

@@ -117,6 +117,7 @@ fun BlaBlaCollectorPanel(
     val manualSeatStore = remember(context) { BlaBlaManualSeatSyncRequestStore(context) }
     val manualSeatAttemptStore = remember(context) { BlaBlaManualSeatSyncAttemptStore(context) }
     val publicationSeatStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
+    val scriptWorkspace0486 = remember(context) { BlaBlaScriptWorkspace0486(context) }
     val dateLocale = remember(context) {
         RotaCertaTenantRegistry(context).activeTenant().localeTag
             .trim()
@@ -139,7 +140,7 @@ fun BlaBlaCollectorPanel(
     var syncDateScope by remember { mutableStateOf<List<LocalDate>?>(null) }
     var syncScriptSelection0449 by remember { mutableStateOf<BlaBlaDateScopeScriptSelection0449?>(null) }
     var dateScopeSelectedAccountIds0449 by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var dateScopeSelectedScripts0449 by remember { mutableStateOf(BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478) }
+    var dateScopeSelectedScripts0449 by remember { mutableStateOf(scriptWorkspace0486.dateScopeEnabledRequests()) }
     var message by remember { mutableStateOf<String?>(null) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
@@ -664,7 +665,7 @@ fun BlaBlaCollectorPanel(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
                     dateScopeSelectedAccountIds0449 = accounts.map { it.id }.toSet()
-                    dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478
+                    dateScopeSelectedScripts0449 = scriptWorkspace0486.dateScopeEnabledRequests()
                     showDateScopeSelector = true
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -779,124 +780,18 @@ fun BlaBlaCollectorPanel(
                         }
                     }
 
-                    Text("Scripts do orquestrador", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
+                    Text("Scripts", style = androidx.compose.material3.MaterialTheme.typography.titleSmall)
                     Text(
-                        "Ligado = sincroniza esse script. Desligado = pula esse resultado. " +
-                            "Dependências técnicas mínimas podem ser usadas apenas para alcançar um script ligado; " +
-                            "os dados dos scripts desligados não são gravados. " +
-                            "Vagas ficam desligadas por padrão para não bloquear a listagem quando a BlaBlaCar não expõe o link de opções.",
+                        "${dateScopeSelectedScripts0449.size}/${BlaBlaDateScopeScriptCatalog0449.all.size} ativos para esta sincronização. " +
+                            "A seleção e o código de cada script agora ficam centralizados no menu Scripts.",
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(onClick = {
-                            dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all
-                        }) { Text("Todos") }
-                        TextButton(onClick = {
-                            dateScopeSelectedScripts0449 = emptySet()
-                        }) { Text("Nenhum") }
-                        TextButton(onClick = {
-                            dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.seatRequests
-                        }) { Text("Só vagas") }
-                    }
-
-                    val publicUrlEnabled0449 =
-                        BlaBlaDateScopeScriptCatalog0449.publicUrlRequests.all(dateScopeSelectedScripts0449::contains)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("URL pública")
-                            Text(
-                                "Desligado impede captura, fallback e atualização do link público.",
-                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        Switch(
-                            checked = publicUrlEnabled0449,
-                            onCheckedChange = { enabled ->
-                                dateScopeSelectedScripts0449 = if (enabled) {
-                                    dateScopeSelectedScripts0449 + BlaBlaDateScopeScriptCatalog0449.publicUrlRequests
-                                } else {
-                                    dateScopeSelectedScripts0449 - BlaBlaDateScopeScriptCatalog0449.publicUrlRequests
-                                }
-                            },
-                        )
-                    }
-
                     Text(
-                        "32 scripts registrados • 22 CAPTURE • 8 NAVIGATION • 2 REMOTE_WRITE",
+                        "Edite, cole, corrija, ative/desative ou restaure scripts em ☰ → Scripts. " +
+                            "Esta tela usa exatamente a seleção salva nessa central.",
                         style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
                     )
-                    BlaBlaDateScopeScriptCatalog0449.groups.forEach { group ->
-                        val groupAllEnabled0449 = group.requests.all(dateScopeSelectedScripts0449::contains)
-                        Card(modifier = Modifier.fillMaxWidth()) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            group.title,
-                                            style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
-                                        )
-                                        Text(
-                                            group.description,
-                                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                                        )
-                                    }
-                                    Switch(
-                                        checked = groupAllEnabled0449,
-                                        onCheckedChange = { enabled ->
-                                            dateScopeSelectedScripts0449 = if (enabled) {
-                                                dateScopeSelectedScripts0449 + group.requests
-                                            } else {
-                                                dateScopeSelectedScripts0449 - group.requests.toSet()
-                                            }
-                                        },
-                                    )
-                                }
-
-                                group.requests.forEach { request ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(BlaBlaDateScopeScriptCatalog0449.label(request))
-                                            Text(
-                                                request.assetName + " • " +
-                                                    BlaBlaDateScopeScriptCatalog0449.operationLabel(request),
-                                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                                            )
-                                            if (request.operation == BlaBlaBrowserOperation.REMOTE_WRITE) {
-                                                Text(
-                                                    "Escrita remota: o toggle autoriza o script, mas ele só executa quando " +
-                                                        "já existir uma operação explícita de alteração de vagas.",
-                                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                                                )
-                                            }
-                                        }
-                                        Switch(
-                                            checked = request in dateScopeSelectedScripts0449,
-                                            onCheckedChange = { enabled ->
-                                                dateScopeSelectedScripts0449 = if (enabled) {
-                                                    dateScopeSelectedScripts0449 + request
-                                                } else {
-                                                    dateScopeSelectedScripts0449 - request
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    if (dateScopeSelectedScripts0449.isEmpty()) {
+                        Text("⚠️ Nenhum script está ativo. Abra ☰ → Scripts antes de iniciar.")
                     }
 
                     validation.error?.let { Text("⚠️ $it") }
