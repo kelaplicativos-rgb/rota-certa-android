@@ -71,10 +71,10 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_WAITING"))
         assertTrue(activity.contains("INVENTORY_LOCAL_SETTINGS_RECEIVED"))
         assertTrue(activity.contains("OPERATIONAL_INVENTORY_RECONCILED"))
-        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_OPENED"))
-        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_SAVE_REQUESTED"))
-        assertTrue(timeline.contains("ROTA_CERTA_SEAT_ALLOCATION_SAVE"))
-        assertTrue(timeline.contains("Vagas disponibilizadas no Rota Certa"))
+        assertTrue(activity.contains("TripExtraSeatsScreen0416"))
+        assertTrue(activity.contains("Text(\"Vagas extra\""))
+        assertTrue(activity.contains("ROTA_CERTA_EXTRA_SEATS_CHANGED"))
+        assertTrue(activity.contains("source = \"EXTRA_SEATS_SCREEN\""))
         assertFalse(timeline.contains("Capacidade de passageiros"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_DEFERRED"))
         assertTrue(activity.contains("CAPACITY_PUBLIC_SYNC_TRIGGERED"))
@@ -107,7 +107,7 @@ class AgendaForensicBlackBox0345Test {
             "PASSENGER_DIRECTORY_SYNC",
             "LOCAL_TRIPS_DISCOVERY",
             "LOCAL_CAPACITY_SNAPSHOT",
-            "CONNECTED_ACCOUNTS_READ",
+            "BlaBlaDynamicAccountRegistry",
             "EXTERNAL_TRIPS_DISCOVERY",
             "EXTERNAL_CAPACITY_SNAPSHOT",
             "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED",
@@ -130,8 +130,11 @@ class AgendaForensicBlackBox0345Test {
         assertTrue(activity.contains("TIMELINE_STARTUP"))
         assertTrue(activity.contains("TIMELINE_LOCAL_TRIPS_LOAD"))
         assertTrue(activity.contains("TIMELINE_LOCAL_BOOKINGS_LOAD"))
-        assertTrue(activity.contains("TIMELINE_PUBLIC_BOOKING_RECONCILE_START"))
-        assertTrue(activity.contains("TIMELINE_PUBLIC_BOOKING_RECONCILE_END"))
+        assertFalse(activity.contains("TIMELINE_PUBLIC_BOOKING_RECONCILE_START"))
+        assertFalse(activity.contains("TIMELINE_PUBLIC_BOOKING_RECONCILE_END"))
+        val background = source("br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt")
+        assertTrue(background.contains("PublicBookingRemoteSync0296.pullAndReconcile"))
+        assertTrue(background.contains("BACKGROUND_BOOKING_RECONCILE"))
         assertTrue(timeline.contains("TIMELINE_MERGE"))
         assertTrue(timeline.contains("TIMELINE_PHYSICAL_CONSOLIDATION"))
         assertTrue(timeline.contains("TIMELINE_SORT"))
@@ -234,7 +237,7 @@ class AgendaForensicBlackBox0345Test {
             "PUBLIC_PRIVATE_AUTH_FAILED",
             "PUBLIC_PASSENGER_PORTAL_OPENED",
         ).forEach {
-            assertTrue(app.contains(it))
+            assertFalse(app.contains(it))
             assertTrue(api.contains(it))
         }
         assertTrue(api.contains("tripRefHash"))
