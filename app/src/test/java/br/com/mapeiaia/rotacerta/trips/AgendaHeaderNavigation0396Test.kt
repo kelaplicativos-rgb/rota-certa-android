@@ -14,9 +14,9 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
-        assertTrue(header.contains("ALL_TRIPS(\"Timeline antiga\")"))
+        assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
         val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
-        assertFalse(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
+        assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
         assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
@@ -27,6 +27,16 @@ class AgendaHeaderNavigation0396Test {
         assertFalse(header.contains("horizontalScroll"))
         assertFalse(header.contains("Nova viagem"))
         assertFalse(header.contains("Sincronizar BlaBlaCar"))
+    }
+
+    @Test
+    fun timelineRootIsVisibleAndCollectorRemainsASeparateDestination() {
+        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
+        assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
+        assertTrue(drawer.contains("AgendaRootSection0396.AUTOMATIC_SYNC"))
+        assertTrue(activity.contains("parentRootScreen0396 = TripScreen.TIMELINE"))
+        assertTrue(activity.contains("onBack = { screen = TripScreen.TIMELINE }"))
+        assertFalse(activity.contains("Abra a Área Administrativa para operar a viagem desta notificação."))
     }
 
     @Test

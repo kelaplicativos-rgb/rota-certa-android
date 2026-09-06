@@ -13,6 +13,21 @@ class AgendaTimelineSurface0415Test {
     private val assistant = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaAssistantUi0410.kt").readText()
 
     @Test
+    fun timelineIsRestoredAsOperationalAndroidHomeWithoutDuplicatingSyncSurface() {
+        assertTrue(activity.contains("TripScreen.TIMELINE -> \"Todas as viagens\""))
+        assertTrue(activity.contains("else -> TripScreen.TIMELINE"))
+        assertTrue(activity.contains("var parentRootScreen0396 by rememberSaveable { mutableStateOf(TripScreen.TIMELINE) }"))
+        assertTrue(activity.contains("AgendaRootSection0396.ALL_TRIPS -> {"))
+        assertTrue(activity.contains("screen = TripScreen.TIMELINE"))
+        assertFalse(activity.contains("Timeline antiga · somente migração"))
+        assertFalse(activity.contains("A Timeline local foi retirada da operação"))
+        assertTrue(activity.contains("TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397("))
+        assertTrue(timeline.contains("EnhancedPassengerTimelineSection("))
+        assertTrue(timeline.contains("onAddManualPassenger = {"))
+        assertTrue(timeline.contains("VAGAS POR TRECHO"))
+    }
+
+    @Test
     fun timelineCompositionContainsOnlyTimelineControlsAndTripProjection() {
         assertTrue(timeline.contains("label = { Text(\"Buscar na Timeline\") }"))
         assertTrue(timeline.contains("LazyColumn("))
