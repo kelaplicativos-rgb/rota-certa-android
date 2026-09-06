@@ -137,10 +137,12 @@ class PublicAgendaIncrementalAvailability0375Test {
         assertTrue(publisher.contains("syncExternalTripIncremental"))
         assertTrue(publisher.contains("syncLocalTripIncremental"))
         assertTrue(remote.contains("/capacity-snapshot"))
-        assertTrue(timeline.contains("recordExternalManualMutation("))
+        assertTrue(timeline.contains("mutationCoordinator.recordLocalMutation("))
+        assertTrue(timeline.contains("mutationType = \"PASSENGER_MUTATION\""))
+        assertTrue(timeline.contains("AgendaBackgroundSync0392.enqueueImmediate(context, \"trip_mutation\")"))
         assertTrue(outbox.contains("PublicAgendaAutoSync0300.syncExternalTripIncremental("))
         assertTrue(outbox.contains("PublicAgendaAutoSync0300.syncLocalTripIncremental("))
-        assertTrue(timeline.contains("incrementalPublishMutex.withLock"))
+        assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
     }
 
     private fun collectorTrip(publishedSeats: Int?, rosterComplete: Boolean) = BlaBlaCollectorTrip(
