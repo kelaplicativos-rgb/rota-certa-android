@@ -220,16 +220,27 @@ function renderNotifications0491(items, unreadCount) {
   $("markRead0491").classList.toggle("hidden", Number(unreadCount || 0) <= 0);
 }
 
+function renderAuthState0492(state) {
+  const loading = state === "loading";
+  const authenticated = state === "authenticated";
+  show0491("authLoading0492", loading);
+  show0491("loginPanel0491", state === "unauthenticated");
+  show0491("privatePanel0491", authenticated);
+}
+
+function setAuthLoadingMessage0492(text) {
+  const node = $("authLoadingMessage0492");
+  if (node) node.textContent = text || "Carregando sua sessão...";
+}
+
 function enterPrivateMode0491() {
-  show0491("loginPanel0491", false);
-  show0491("privatePanel0491", true);
+  renderAuthState0492("authenticated");
 }
 
 function leavePrivateMode0491() {
   sessionToken0491 = "";
   sessionStorage.removeItem(sessionKey0491);
-  show0491("privatePanel0491", false);
-  show0491("loginPanel0491", true);
+  renderAuthState0492("unauthenticated");
   if (pollHandle0491) window.clearInterval(pollHandle0491);
   pollHandle0491 = 0;
 }
@@ -265,7 +276,8 @@ async function refreshPrivateArea0491(silent = false) {
       leavePrivateMode0491();
       if (!silent) message0491("loginMessage0491", error.message || "Entre novamente.");
     } else if (!silent) {
-      $("refreshMessage0491").textContent = error.message || "Atualização temporariamente indisponível.";
+      renderAuthState0492("loading");
+      setAuthLoadingMessage0492(error.message || "Não foi possível confirmar sua sessão agora. Tente novamente.");
     }
   } finally {
     refreshInFlight0491 = false;
@@ -276,8 +288,10 @@ async function login0491() {
   message0491("loginMessage0491", "");
   const contact = $("contact0491").value.trim();
   const password = $("password0491").value;
-  if (!contact || password.length < 8) {
-    return message0491("loginMessage0491", "Informe seu telefone/WhatsApp e a senha.");
+  if (!contact || password.length < 4) {
+    return message0491("loginMessage0491", password.length > 0 && password.length < 4
+      ? "A senha deve ter pelo menos 4 caracteres."
+      : "Informe seu telefone/WhatsApp e a senha.");
   }
 
   $("login0491").disabled = true;
@@ -307,8 +321,8 @@ async function changePassword0491() {
   message0491("passwordMessage0491", "");
   const password = $("newPassword0491").value;
   const confirmation = $("newPasswordConfirm0491").value;
-  if (password.length < 8 || password !== confirmation) {
-    return message0491("passwordMessage0491", "Use pelo menos 8 caracteres e confirme a mesma senha.");
+  if (password.length < 4 || password !== confirmation) {
+    return message0491("passwordMessage0491", "Use pelo menos 4 caracteres e confirme a mesma senha.");
   }
 
   $("changePassword0491").disabled = true;
@@ -371,7 +385,13 @@ function init0491() {
     }
   });
 
-  if (sessionToken0491) refreshPrivateArea0491(false);
+  if (sessionToken0491) {
+    renderAuthState0492("loading");
+    setAuthLoadingMessage0492("Carregando sua sessão...");
+    refreshPrivateArea0491(false);
+  } else {
+    renderAuthState0492("unauthenticated");
+  }
 }
 
 init0491();
