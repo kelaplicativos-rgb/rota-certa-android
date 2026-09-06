@@ -260,6 +260,8 @@ private fun TripApp(
     var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
     var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
     var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
+    var scriptsUiCommand0488 by remember { mutableStateOf<BlaBlaScriptsCommand0488?>(null) }
+    var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
@@ -465,6 +467,16 @@ private fun TripApp(
         Unit
     }
     val headerActions0396 = when (screen) {
+        TripScreen.SCRIPTS -> listOf(
+            AgendaHeaderAction0396("Novo script") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.NEW_SCRIPT
+                scriptsUiCommandToken0488 += 1
+            },
+            AgendaHeaderAction0396("Restaurar seleção padrão") {
+                scriptsUiCommand0488 = BlaBlaScriptsCommand0488.RESTORE_SELECTION_DEFAULTS
+                scriptsUiCommandToken0488 += 1
+            },
+        )
         TripScreen.TIMELINE -> listOf(
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
@@ -790,6 +802,8 @@ private fun TripApp(
                 )
                 TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486(
                     onChanged = { text -> message = text },
+                    uiCommand0488 = scriptsUiCommand0488,
+                    uiCommandToken0488 = scriptsUiCommandToken0488,
                 )
                 TripScreen.APP_SETTINGS -> AgendaAppSettingsScreen0416(
                     initial = store.onlineSettings(),
