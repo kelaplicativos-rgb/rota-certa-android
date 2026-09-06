@@ -58,9 +58,13 @@
     .agendaExpandedStopLast0480 .agendaExpandedStopBody0480{padding-bottom:4px}
     .agendaSegmentAvailability0484{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
     .agendaSegmentAvailabilityTitle0484{margin:0 0 12px;font-size:20px;line-height:1.2;font-weight:950;color:var(--ink)}
-    .agendaSegmentAvailabilityRow0484{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:9px 0;border-bottom:1px solid #edf0f3}
+    .agendaSegmentAvailabilityRow0484{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #edf0f3}
     .agendaSegmentAvailabilityRow0484:last-child{border-bottom:0}
     .agendaSegmentAvailabilityRoute0484{min-width:0;font-size:17px;line-height:1.3;font-weight:750;color:#243142;overflow-wrap:anywhere}
+    .agendaSegmentPassengers0489{display:flex;align-items:center;justify-content:flex-end;min-width:0;padding-left:2px}
+    .agendaSegmentPassengers0489 .agendaPassengerDot0473,.agendaSegmentPassengers0489 .agendaPassengerMore0473{width:30px;height:30px;border-width:2px;margin-left:-7px;box-shadow:0 0 0 1px #fff}
+    .agendaSegmentPassengers0489 .agendaPassengerDot0473:first-child,.agendaSegmentPassengers0489 .agendaPassengerMore0473:first-child{margin-left:0}
+    .agendaSegmentPassengers0489 .agendaPassengerMore0473{font-size:12px}
     .agendaSegmentAvailabilitySeats0484{font-size:16px;line-height:1.2;font-weight:950;white-space:nowrap;color:var(--ink)}
     .agendaSegmentAvailabilityPending0484{font-size:16px;line-height:1.35;font-weight:750;color:var(--muted)}
     .agendaExpandHint0480{margin-top:12px;text-align:center;font-size:14px;line-height:1.2;font-weight:900;color:#176f98}
@@ -93,6 +97,7 @@
       .agendaSegmentAvailabilityTitle0484{font-size:19px}
       .agendaSegmentAvailabilityRoute0484{font-size:16px}
       .agendaSegmentAvailabilitySeats0484{font-size:15px}
+      .agendaSegmentPassengers0489 .agendaPassengerDot0473,.agendaSegmentPassengers0489 .agendaPassengerMore0473{width:27px;height:27px}
       .agendaPassengerDot0473,.agendaPassengerMore0473{width:40px;height:40px}
       .agendaCar0473{width:38px;min-width:38px}
       .agendaCardAvailability0473{font-size:12px}
@@ -115,6 +120,6 @@
     <div id="agendaTrips" aria-live="polite"></div>
   </section>
 </main>
-<script src="/app.js?v=0.1.484" defer></script>
+<script src="/app.js?v=0.1.489" defer></script>
 </body>
 </html>

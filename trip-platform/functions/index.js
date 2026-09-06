@@ -1116,6 +1116,7 @@ function safePublicTripFromCanonical0434(token, data) {
     { capacity, stops: payload.stops },
     payload.segmentLoads,
     capacityState0485.reliable,
+    passengerLoads,
   );
   return {
     tripId: token,
@@ -1246,6 +1247,7 @@ function safePublicTrip(token, data) {
     { capacity, stops: data.stops },
     segmentLoads,
     capacityState0485.reliable,
+    segmentPassengerLoads,
   );
   return {
     tripId: token,
@@ -2138,17 +2140,24 @@ function canonicalSegmentAvailableSeats0484(trip, loads) {
   );
 }
 
-function publicSegmentAvailability0484(trip, loads, reliable) {
+function publicSegmentAvailability0484(trip, loads, reliable, passengerLoads) {
   const stops = Array.isArray(trip && trip.stops) ? trip.stops : [];
   const expectedSegments = Math.max(0, stops.length - 1);
   if (reliable !== true || expectedSegments < 1 || !Array.isArray(loads) || loads.length !== expectedSegments) {
     return [];
   }
+  const anonymousPassengerLoads = Array.isArray(passengerLoads) && passengerLoads.length === expectedSegments
+    ? passengerLoads.map((passengers, index) => Math.min(
+        Math.max(0, Math.floor(Number(passengers || 0))),
+        Math.max(0, Math.floor(Number(loads[index] || 0))),
+      ))
+    : null;
   const availableSeats = canonicalSegmentAvailableSeats0484(trip, loads);
   return availableSeats.map((available, index) => ({
     from: cleanText(stops[index] && stops[index].name, 160),
     to: cleanText(stops[index + 1] && stops[index + 1].name, 160),
     availableSeats: available,
+    passengerSeats: anonymousPassengerLoads ? anonymousPassengerLoads[index] : null,
   })).filter((segment) => segment.from && segment.to);
 }
 

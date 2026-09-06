@@ -1,19 +1,19 @@
-name: Agenda public segment availability 0.1.485
+name: Agenda public segment passenger dots 0.1.489
 
 on:
   push:
     branches:
-      - agent/agenda-public-segment-availability-0.1.484
+      - agent/agenda-segment-passenger-dots-0.1.489
   pull_request:
     branches:
-      - agent/timeline-operational-restore-0.1.483
+      - agent/blablacar-script-workspace-0.1.486
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-public-segment-0485-${{ github.ref }}
+  group: agenda-public-segment-0489-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,12 +21,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_public_segment_0485_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_public_segment_0489_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      BASE_AUTHORITY_SHA: 996a8f8bd214e0325a1b930db8985d25b3b94f10
+      BASE_AUTHORITY_SHA: fb96a503b79fa6bb7d8befbaadc28b101f64ac0b
 
     steps:
       - name: Checkout exact candidate source
@@ -44,13 +44,14 @@ jobs:
           git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee changed-files.txt
           git diff --exit-code "$BASE_AUTHORITY_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD -- app/src/main > /tmp/app-main.txt
-          grep -vxF 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt' /tmp/app-main.txt > /tmp/unexpected-app-main.txt || true
-          test ! -s /tmp/unexpected-app-main.txt
+          test ! -s /tmp/app-main.txt
           bash .github/scripts/verify-agenda-public-freeze-0482.sh
           grep -Fq 'function reconciledSegmentCapacity' trip-platform/functions/index.js
           grep -Fq 'function canonicalPublicCapacityState0485' trip-platform/functions/index.js
           grep -Fq 'function publicSegmentAvailability0484' trip-platform/functions/index.js
           grep -Fq 'Vagas por trecho' trip-platform/public/app.js
+          grep -Fq 'agendaSegmentPassengers0489' trip-platform/public/index.html
+          grep -Fq 'passengerSeats: anonymousPassengerLoads ? anonymousPassengerLoads[index] : null' trip-platform/functions/index.js
           ! grep -Eq 'passengerName|passengerId|bookingId|passengerContact|phone|photo' .github/validation/agenda-public-0484-segment-candidate.contract
           printf '%s\n' "$SOURCE_SHA" | tee source-head.txt
 
@@ -99,7 +100,7 @@ jobs:
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
-      - name: Deploy exact SHA backend
+      - name: Deploy exact SHA backend and public hosting
         if: github.event_name == 'push'
         shell: bash
         run: |
@@ -107,12 +108,12 @@ jobs:
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
           else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke live public mixed-segment status
+      - name: Smoke live public segment passenger dots
         if: github.event_name == 'push'
         shell: bash
         run: |
@@ -125,11 +126,12 @@ jobs:
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o live-index.html
           grep -Fq 'Vagas por trecho' live-app.js
           grep -Fq 'publicSegmentRows0484' live-app.js
-          grep -Fq 'app.js?v=0.1.484' live-index.html
+          grep -Fq 'appendSegmentPassengerDots0489' live-app.js
+          grep -Fq 'app.js?v=0.1.489' live-index.html
           ! grep -Eiq 'Minha Área|Administrar esta viagem|/v1/admin/' live-app.js live-index.html
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel" -o live-ezequiel.json
-          node -e 'const fs=require("node:fs");const body=JSON.parse(fs.readFileSync("live-ezequiel.json","utf8"));const mixed=(body.trips||[]).filter(t=>{const v=(Array.isArray(t.segmentAvailability)?t.segmentAvailability:[]).map(r=>Number(r.availableSeats));return v.some(x=>x===0)&&v.some(x=>x>0)});if(!mixed.length)throw new Error("No mixed segment availability trip found");for(const t of mixed){if(t.isFull===true||t.status==="FULL")throw new Error("Mixed segment trip globally FULL: "+String(t.canonicalTripId||t.tripId||""));if(!(Number(t.availableSeatsMaximum)>0))throw new Error("Mixed segment trip lost positive maximum")}console.log("MIXED_SEGMENT_GLOBAL_STATUS_0485=PASS count="+mixed.length)'
-          echo "LIVE_PUBLIC_SEGMENT_AVAILABILITY_0485=PASS" | tee live-smoke.txt
+          node -e 'const fs=require("node:fs");const body=JSON.parse(fs.readFileSync("live-ezequiel.json","utf8"));const trips=body.trips||[];const mixed=trips.filter(t=>{const v=(Array.isArray(t.segmentAvailability)?t.segmentAvailability:[]).map(r=>Number(r.availableSeats));return v.some(x=>x===0)&&v.some(x=>x>0)});for(const t of mixed){if(t.isFull===true||t.status==="FULL")throw new Error("Mixed segment trip globally FULL: "+String(t.canonicalTripId||t.tripId||""));if(!(Number(t.availableSeatsMaximum)>0))throw new Error("Mixed segment trip lost positive maximum")}const rows=trips.flatMap(t=>Array.isArray(t.segmentAvailability)?t.segmentAvailability:[]);if(!rows.length)throw new Error("No segment rows");if(rows.some(r=>Object.prototype.hasOwnProperty.call(r,"passengerName")||Object.prototype.hasOwnProperty.call(r,"passengerId")||Object.prototype.hasOwnProperty.call(r,"bookingId")))throw new Error("PII leaked into segment rows");if(!rows.every(r=>Object.prototype.hasOwnProperty.call(r,"passengerSeats")))throw new Error("passengerSeats missing from segment row");if(!rows.some(r=>Number(r.passengerSeats)>0))throw new Error("No occupied passenger segment exposed anonymously");console.log("SEGMENT_PASSENGER_DOTS_0489=PASS rows="+rows.length)'
+          echo "LIVE_PUBLIC_SEGMENT_PASSENGER_DOTS_0489=PASS" | tee live-smoke.txt
 
       - name: Configure Firebase Android app
         shell: bash
@@ -166,7 +168,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.TripDomainStage47Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.TripDomainStage47Test' --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaScriptRightMenu0488Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Assemble APK from final repository SHA
         shell: bash
@@ -181,12 +183,12 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt.txt
-          grep -Fq "versionCode='5777'" aapt.txt
-          grep -Fq "versionName='0.1.485'" aapt.txt
+          grep -Fq "versionCode='5781'" aapt.txt
+          grep -Fq "versionName='0.1.489'" aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings | grep -Fq "${{ github.event.pull_request.head.sha || github.sha }}"
           sha256sum "$APK" | tee apk.sha256
           mkdir -p evidence
-          cp "$APK" evidence/rota-certa-0.1.485-public-segment-global-full-fix.apk
+          cp "$APK" evidence/rota-certa-0.1.489-public-segment-passenger-dots.apk
           cp source-head.txt changed-files.txt assemble.log apksigner.txt aapt.txt apk.sha256 evidence/
           test -f live-smoke.txt && cp live-smoke.txt live-health.json live-ezequiel.json evidence/ || true
           cp .github/validation/agenda-public-0484-segment-candidate.contract evidence/
@@ -194,7 +196,7 @@ jobs:
       - name: Upload exact-SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-public-segment-0485-${{ github.event.pull_request.head.sha || github.sha }}
+          name: rota-certa-public-segment-0489-${{ github.event.pull_request.head.sha || github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: evidence/

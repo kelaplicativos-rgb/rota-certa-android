@@ -79,13 +79,13 @@ test("0484 public projection turns canonical segment loads into exact anonymous 
       { id: "4", name: "Atibaia" },
       { id: "5", name: "Santo André" },
     ],
-  }, [1, 2, 1, 0], true);
+  }, [1, 2, 1, 0], true, [1, 1, 1, 0]);
 
   assert.deepEqual(rows, [
-    { from: "Três Corações", to: "Pouso Alegre", availableSeats: 1 },
-    { from: "Pouso Alegre", to: "Extrema", availableSeats: 0 },
-    { from: "Extrema", to: "Atibaia", availableSeats: 1 },
-    { from: "Atibaia", to: "Santo André", availableSeats: 2 },
+    { from: "Três Corações", to: "Pouso Alegre", availableSeats: 1, passengerSeats: 1 },
+    { from: "Pouso Alegre", to: "Extrema", availableSeats: 0, passengerSeats: 1 },
+    { from: "Extrema", to: "Atibaia", availableSeats: 1, passengerSeats: 1 },
+    { from: "Atibaia", to: "Santo André", availableSeats: 2, passengerSeats: 0 },
   ]);
 });
 
@@ -176,12 +176,16 @@ test("0484 browser renders server rows without recomputing capacity from passeng
   const helpers = between(app, "function publicSegmentRows0484", "function fullFareFor");
   const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
   assert.match(helpers, /item\.segmentAvailability/);
-  assert.doesNotMatch(helpers, /segmentLoads|confirmedPassengerSeats|capacity\s*-/);
+  assert.match(helpers, /segment\.passengerSeats/);
+  assert.doesNotMatch(helpers, /segmentLoads|segmentPassengerLoads|confirmedPassengerSeats|capacity\s*-/);
   assert.match(cards, /"Vagas por trecho"/);
   assert.match(cards, /publicSegmentRows0484\(item\)/);
   assert.match(cards, /segmentAvailabilityLabel0484\(segment\.availableSeats\)/);
+  assert.match(cards, /appendSegmentPassengerDots0489\(passengers0489, segment\.passengerSeats\)/);
   const section = cards.slice(cards.indexOf("const segmentAvailability0484"), cards.indexOf("const bottom"));
   assert.doesNotMatch(section, /passengerName|passengerId|bookingId|phone|photo|sourceReference/);
+  const bottom = cards.slice(cards.indexOf("const bottom"), cards.indexOf("const summary0473"));
+  assert.doesNotMatch(bottom, /confirmedPassengerSeats|passengerStack0473|passengerCount0473/);
 });
 
 test("0484 public labels are exact and privacy-safe", () => {
@@ -190,5 +194,6 @@ test("0484 public labels are exact and privacy-safe", () => {
   assert.equal(segmentAvailabilityLabel0484(1), "1 vaga");
   assert.equal(segmentAvailabilityLabel0484(2), "2 vagas");
   assert.match(html, /agendaSegmentAvailability0484/);
-  assert.match(html, /app\.js\?v=0\.1\.484/);
+  assert.match(html, /agendaSegmentPassengers0489/);
+  assert.match(html, /app\.js\?v=0\.1\.489/);
 });
