@@ -147,7 +147,7 @@ function agendaLongDateLabel0480(ms) {
   if (!Number.isFinite(date.getTime())) return "";
   const weekdays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
   const months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  return weekdays[date.getDay()] + ", " + date.getDate() + " de " + months[date.getMonth()];
+  return weekdays[date.getDay()] + ", " + date.getDate() + " de " + months[date.getMonth()] + " de " + date.getFullYear();
 }
 
 function agendaStopMoment0480(item, stop, index, lastIndex) {

@@ -51,7 +51,7 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.480/);
+  assert.match(html, /app\.js\?v=0\.1\.480\.1/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem|Minha Área/i);
 });
 
@@ -81,4 +81,14 @@ test("0480 expansion stays read-only and exposes no administrative or private ac
   assert.match(html, /\.agendaTripExpanded0480 \.agendaExpandedItinerary0480\{display:block\}/);
   assert.match(html, /\.agendaExpandedStopAddress0480/);
   assert.match(html, /@media\(max-width:480px\).*agendaExpandedStop0480/s);
+});
+
+
+test("0480 expanded card date is complete and includes the four-digit year", () => {
+  const longDate = between(app, "function agendaLongDateLabel0480", "function agendaStopMoment0480");
+  assert.match(longDate, /date\.getFullYear\(\)/);
+  assert.match(longDate, /months\[date\.getMonth\(\)\] \+ " de " \+ date\.getFullYear\(\)/);
+
+  const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
+  assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
 });

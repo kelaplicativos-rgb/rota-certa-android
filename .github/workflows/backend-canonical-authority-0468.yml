@@ -186,8 +186,8 @@ jobs:
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/" | tee live-index.html
-          grep -Fq 'app.js?v=0.1.480' live-index.html
-          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.480" | tee live-app.js
+          grep -Fq 'app.js?v=0.1.480.1' live-index.html
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.480.1" | tee live-app.js
           grep -Fq 'agendaExpandedItinerary0480' live-app.js
           grep -Fq 'toggleAgendaTripDetails0480' live-app.js
           grep -Fq 'Ver paradas' live-app.js
