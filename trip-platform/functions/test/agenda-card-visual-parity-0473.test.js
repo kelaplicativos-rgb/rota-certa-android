@@ -22,7 +22,8 @@ test("0475 public Home keeps exactly one canonical visual card renderer", () => 
   assert.match(cards, /agendaCanonicalVisual0473/);
   assert.match(cards, /canonical-trip-0473/);
   assert.match(cards, /agendaJourney0473/);
-  assert.match(cards, /agendaPassengerStack0473/);
+  assert.match(cards, /agendaSegmentPassengers0489/);
+  assert.match(cards, /appendSegmentPassengerDots0489/);
   assert.equal((app.match(/function renderAgendaCards/g) || []).length, 1);
   assert.doesNotMatch(app, /renderAdminAgendaCards|renderPrivateTripCards|adminManageable0471/);
 });
@@ -38,10 +39,11 @@ test("0475 compact journey hierarchy preserves the approved 0.1.474 visual struc
   assert.match(cards, /endCity0473\.textContent = to/);
 });
 
-test("0475 occupancy remains privacy-safe", () => {
+test("0489 per-segment occupancy remains anonymous and privacy-safe", () => {
   const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
-  assert.match(cards, /normalizedSeatCount\(item\.confirmedPassengerSeats\)/);
-  assert.match(cards, /agendaPassengerMore0473/);
+  assert.match(cards, /appendSegmentPassengerDots0489\(passengers0489, segment\.passengerSeats\)/);
+  assert.match(cards, /agendaSegmentPassengers0489/);
+  assert.doesNotMatch(cards, /normalizedSeatCount\(item\.confirmedPassengerSeats\)/);
   assert.doesNotMatch(cards, /passengerName|passengerPhoto|passengerWhatsapp|booking\.passenger/i);
 });
 
@@ -51,7 +53,7 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.484/);
+  assert.match(html, /app\.js\?v=0\.1\.489/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem|Minha Área/i);
 });
 
