@@ -1,26 +1,34 @@
-name: Agenda date-year regression guard 0.1.482
+name: Agenda public frozen baseline 0.1.482
 
 on:
   push:
     branches:
       - agent/agenda-expandable-itinerary-0.1.480
     paths:
-      - 'trip-platform/public/app.js'
-      - 'trip-platform/public/index.html'
+      - 'trip-platform/public/**'
+      - 'trip-platform/firebase.json'
+      - 'trip-platform/firestore.rules'
+      - 'trip-platform/functions/index.js'
       - 'trip-platform/functions/test/agenda-date-year-contract-0482.test.js'
       - 'trip-platform/functions/test/agenda-card-visual-parity-0473.test.js'
       - 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
+      - 'trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js'
+      - '.github/scripts/verify-agenda-public-freeze-0482.sh'
+      - '.github/validation/agenda-public-0482-freeze.manifest'
       - '.github/validation/agenda-date-year-0482-contract.txt'
       - '.github/workflows/agenda-date-year-regression-guard-0482.yml'
   pull_request:
-    branches:
-      - agent/agenda-expandable-itinerary-0.1.480
     paths:
-      - 'trip-platform/public/app.js'
-      - 'trip-platform/public/index.html'
+      - 'trip-platform/public/**'
+      - 'trip-platform/firebase.json'
+      - 'trip-platform/firestore.rules'
+      - 'trip-platform/functions/index.js'
       - 'trip-platform/functions/test/agenda-date-year-contract-0482.test.js'
       - 'trip-platform/functions/test/agenda-card-visual-parity-0473.test.js'
       - 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
+      - 'trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js'
+      - '.github/scripts/verify-agenda-public-freeze-0482.sh'
+      - '.github/validation/agenda-public-0482-freeze.manifest'
       - '.github/validation/agenda-date-year-0482-contract.txt'
       - '.github/workflows/agenda-date-year-regression-guard-0482.yml'
   workflow_dispatch:
@@ -29,25 +37,30 @@ permissions:
   contents: read
 
 jobs:
-  date-year-contract:
+  public-surface-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Enforce public date-year contract
+      - name: Enforce physically approved public freeze before any deploy
         shell: bash
         run: |
           set -euo pipefail
-          node --check trip-platform/public/app.js
-          grep -Fq 'physicalApprovedSha=a6a76fc2122928bbbd4dad747027b24656895c18' .github/validation/agenda-date-year-0482-contract.txt
-          grep -Fq 'compactOtherYear=YEAR_REQUIRED' .github/validation/agenda-date-year-0482-contract.txt
-          grep -Fq 'expandedDate=FULL_YEAR_REQUIRED' .github/validation/agenda-date-year-0482-contract.txt
+          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+
+      - name: Enforce canonical read-only and date contracts
+        shell: bash
+        run: |
+          set -euo pipefail
           node --test \
             trip-platform/functions/test/agenda-date-year-contract-0482.test.js \
             trip-platform/functions/test/agenda-card-visual-parity-0473.test.js \
-            trip-platform/functions/test/agenda-public-read-only-0475.test.js
+            trip-platform/functions/test/agenda-public-read-only-0475.test.js \
+            trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js

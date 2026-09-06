@@ -1,0 +1,15 @@
+# Rota Certa — Agenda Pública 0.1.482 — baseline física congelada
+approvedPublicSourceSha=25f056a1b9ba3dc63249a2df3e62a644e05f2923
+approvedVersion=0.1.482/5775
+physicalDevice=Samsung_SM-S911B
+physicalAndroid=16
+anonymousWindow=APPROVED_BY_USER
+publicSurface=READ_ONLY
+changePolicy=EXPLICIT_USER_REQUEST_REQUIRED
+
+public-file 100644 a466c3f98c8ef42b0ef032263289feec7fa2ce01 trip-platform/public/admin-0417.js
+public-file 100644 7932986e30e8abdf034892fb37156d9af27cb8e9 trip-platform/public/app.js
+public-file 100644 e807d8765aeafe8ad5964c4216afb1c87430d5bf trip-platform/public/date-selection.js
+public-file 100644 c1b532b4fa8d2fcc8d8abb59a0de2ee952c7192d trip-platform/public/index.html
+config-file 100644 1fbcbc38a43c7c7fc453679a48b8334eca6669f6 trip-platform/firebase.json
+config-file 100644 1a4111e9212503c042edadbc2b13192586288b65 trip-platform/firestore.rules

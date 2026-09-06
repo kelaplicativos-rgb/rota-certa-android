@@ -57,6 +57,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Enforce physically approved Agenda Pública freeze
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+
       - name: Validate canonical backend migration
         shell: bash
         run: |
@@ -66,7 +72,8 @@ jobs:
           npm run check
           node --check index.js
           node --check ../public/app.js
-          grep -Fq 'physicalApprovedSha=a6a76fc2122928bbbd4dad747027b24656895c18' ../../.github/validation/agenda-date-year-0482-contract.txt
+          grep -Fq 'physicalApprovedSha=25f056a1b9ba3dc63249a2df3e62a644e05f2923' ../../.github/validation/agenda-date-year-0482-contract.txt
+          grep -Fq 'publicFreeze=ENFORCED' ../../.github/validation/agenda-date-year-0482-contract.txt
           node --test \
             test/backend-canonical-authority-0468.test.js \
             test/agenda-public-timeline-reflection-0425.test.js \
@@ -216,3 +223,5 @@ jobs:
             farol.sha256
             node-focused-tests.log
             android-focused-tests.log
+            .github/validation/agenda-public-0482-freeze.manifest
+            .github/validation/agenda-date-year-0482-contract.txt
