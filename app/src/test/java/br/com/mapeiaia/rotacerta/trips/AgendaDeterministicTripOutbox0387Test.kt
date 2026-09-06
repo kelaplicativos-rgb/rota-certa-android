@@ -287,12 +287,17 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
-    fun publicBookingReconcileQueuesOnlyChangedCanonicalTrips() {
+    fun publicBookingReconcileCommitsChangedCanonicalTripsAndHandsTransportToBackground() {
         val bookingSync = source("PublicBookingSync0296.kt")
+        val background = source("AgendaBackgroundSync0392.kt")
         assertTrue(bookingSync.contains("changed.forEach { tripId ->"))
         assertTrue(bookingSync.contains("mutationCoordinator.recordLocalMutation("))
+        assertTrue(bookingSync.contains("mutationCoordinator.recordRemoteAppliedLocal("))
         assertTrue(bookingSync.contains("canonicalTripId = tripId"))
-        assertTrue(bookingSync.contains("mutationCoordinator.drainPending(canonicalTripIds = changed)"))
+        assertTrue(bookingSync.contains("BOOKING_PUBLICATION_HANDOFF"))
+        assertFalse(bookingSync.contains("drainPending(canonicalTripIds = changed)"))
+        assertTrue(background.contains("BOOKING_PUBLICATION_DRAIN"))
+        assertTrue(background.contains("canonicalTripIds = booking.changedTripIds"))
         assertFalse(bookingSync.contains("publicAgendaSyncRevision"))
     }
 
