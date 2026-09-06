@@ -159,3 +159,12 @@ test("0491 credential handling keeps password hashes server-side, rate limits at
   assert.equal(normalizeBrazilWhatsapp("11999999999"), "+5511999999999");
   assert.throws(() => normalizeBrazilWhatsapp("+00000000"));
 });
+
+
+test("0491 individual public trip read is also open and never requires passenger credentials", () => {
+  const publicTrip = between(api, "async function getPublicTrip", "function normalizeBrazilWhatsapp");
+  assert.doesNotMatch(publicTrip, /requirePassengerAgendaView|agendaAuthenticationRequired0428/);
+  assert.match(publicTrip, /sessionType: tester \? "TESTER" : "OPEN"/);
+  assert.match(publicTrip, /authenticationRequired: false/);
+  assert.match(publicTrip, /publicTripProjection0491/);
+});
