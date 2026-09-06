@@ -113,6 +113,66 @@ class PostBuild0493IntegrityTest {
     }
 
     @Test
+    fun staleLocalSnapshotSignatureChangesWhenProtectedBookingStateAdvances() {
+        val trip = Trip(
+            id = "canonical-trip",
+            title = "A → B",
+            departureAtMillis = 1_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A"),
+                TripStop(id = "b", order = 1, name = "B"),
+            ),
+            remoteId = "remote-trip",
+            rotaCertaSeatAllocation = 0,
+            canonicalStateHash = "state-10",
+        )
+        val revision10 = Booking(
+            id = "booking-1",
+            tripId = trip.id,
+            passengerName = "Passenger",
+            passengerContact = "contact",
+            boardingStopId = "a",
+            dropoffStopId = "b",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            updatedAtMillis = 10L,
+        )
+        val revision11 = revision10.copy(
+            operationalStatus = PassengerOperationalStatus.IN_CAR,
+            updatedAtMillis = 11L,
+        )
+
+        val signature10 = localPublicationSnapshotSignature0493(trip, listOf(revision10), 0)
+        val signature11 = localPublicationSnapshotSignature0493(trip, listOf(revision11), 0)
+
+        assertFalse(signature10 == signature11)
+    }
+
+    @Test
+    fun protectedBookingConflictRequiresCanonicalReconciliationAndNeverBlindRetry() {
+        val conflict = TripRemoteApiException(
+            httpMethod = "PUT",
+            endpoint = "/capacity-snapshot",
+            httpStatus = 409,
+            backendErrorCode = "protected_booking_required",
+            sanitizedResponse = "{}",
+            requestId = "request",
+            correlationId = "correlation",
+        )
+        assertFalse(publicationFailureRetryable0387(conflict))
+        assertTrue(publicationFailureRequiresReconciliation0493(conflict))
+
+        val background = source("br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt")
+        val outbox = source("br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt")
+        assertTrue(background.contains("outbox_semantic_reconcile:"))
+        assertTrue(background.contains("AgendaBackgroundSyncMode0392.FULL_RECONCILE"))
+        assertTrue(outbox.contains("OUTBOX_REQUIRES_RECONCILIATION_0493"))
+        assertTrue(outbox.contains("blindRetry=false"))
+    }
+
+    @Test
     fun forensicReportIsTraceScopedAndSeparatesGlobalOperations() {
         val report = source("br/com/mapeiaia/rotacerta/trips/AgendaForensicReport.kt")
 
