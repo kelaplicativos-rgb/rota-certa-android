@@ -4201,7 +4201,6 @@ async function getPublicTrip(res, req, token) {
     ? await db.collection("tripDrivers").doc(driverUsername).get().catch(() => null)
     : null;
   const driverData = driverSnap && driverSnap.exists ? driverSnap.data() : null;
-  const authenticationRequired = agendaAuthenticationRequired0428(driverData);
   const testerRequested0471 = Boolean(testerSessionHeader(req));
   if (!testerRequested0471 && !tripPublicOnline0471(data)) {
     await appendPublicDebugEvent({
@@ -4219,9 +4218,6 @@ async function getPublicTrip(res, req, token) {
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
-  } else if (authenticationRequired) {
-    const view = await requirePassengerAgendaView(req, res, driverUsername);
-    if (!view) return;
   }
   if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
     return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
@@ -4265,8 +4261,8 @@ async function getPublicTrip(res, req, token) {
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : (authenticationRequired ? "PASSENGER" : "OPEN"),
-    authenticationRequired,
+    sessionType: tester ? "TESTER" : "OPEN",
+    authenticationRequired: false,
   });
 }
 
