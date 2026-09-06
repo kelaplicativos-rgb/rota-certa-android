@@ -108,10 +108,11 @@ internal fun AgendaModuleDrawer0396(
                 NavigationDrawerItem(
                     label = { Text("Abrir Agenda Pública", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                     selected = false,
-                    enabled = publicAgendaEnabled,
                     onClick = {
-                        onOpenPublicAgenda()
-                        scope.launch { drawerState.close() }
+                        if (publicAgendaEnabled) {
+                            onOpenPublicAgenda()
+                            scope.launch { drawerState.close() }
+                        }
                     },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                 )
