@@ -1,4 +1,4 @@
-name: BlaBlaCar script workspace 0.1.487
+name: BlaBlaCar script workspace 0.1.488
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: blablacar_script_workspace_0487_dummy_key
+      GOOGLE_MAPS_API_KEY: blablacar_script_workspace_0488_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -56,6 +56,8 @@ jobs:
           grep -Fq 'SCRIPTS("Scripts")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
           grep -Fq 'Text("Abrir Agenda Pública"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
           grep -Fq 'message = openPublicAgenda0397(activity, store)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AgendaHeaderAction0396("Novo script")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'fun saveCustomScript(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaScriptWorkspace0486.kt
           grep -Fq 'val url = store.onlineSettings().publicAgendaUrl' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt
           grep -Fq 'BlaBlaScriptsScreen0486' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'workspace.overrideScript(request) ?: originalTemplate(request)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
@@ -121,7 +123,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaScriptWorkspace0486Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaOrchestratorScriptSelection0449Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicOpenDrawer0487Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaSyncMenuRestore0424Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee tests.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaScriptWorkspace0486Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaOrchestratorScriptSelection0449Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeaderNavigation0396Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicOpenDrawer0487Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaScriptRightMenu0488Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaSyncMenuRestore0424Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee tests.log
 
       - name: Assemble exact-SHA APK
         shell: bash
@@ -137,19 +139,19 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt.txt
-          grep -Fq "versionCode='5779'" aapt.txt
-          grep -Fq "versionName='0.1.487'" aapt.txt
+          grep -Fq "versionCode='5780'" aapt.txt
+          grep -Fq "versionName='0.1.488'" aapt.txt
           unzip -p "$APK" 'classes*.dex' | strings | grep -Fq "${{ github.sha }}"
           sha256sum "$APK" | tee apk.sha256
 
           mkdir -p evidence
-          cp "$APK" evidence/rota-certa-0.1.487-blablacar-script-workspace-agenda-public.apk
+          cp "$APK" evidence/rota-certa-0.1.488-scripts-right-menu-new.apk
           cp source-head.txt changed-files.txt tests.log assemble.log apksigner.txt aapt.txt apk.sha256 evidence/
 
       - name: Upload exact-SHA APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-script-workspace-0487-${{ github.sha }}
+          name: rota-certa-script-workspace-0488-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: evidence/
