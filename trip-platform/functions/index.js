@@ -1296,6 +1296,23 @@ function safePublicTrip(token, data) {
   };
 }
 
+function publicTripProjection0491(value) {
+  const out = { ...(value || {}) };
+  delete out.tripId;
+  delete out.publicToken;
+  delete out.canonicalTripId;
+  delete out.blablaTripId;
+  delete out.notes;
+  if (Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const safe = { ...(stop || {}) };
+      delete safe.id;
+      return safe;
+    });
+  }
+  return out;
+}
+
 function canonicalPublicStop0411(raw, index) {
   const stop = raw || {};
   return {
@@ -3593,7 +3610,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
     : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
   const trips = rawTrips.map((trip, index) =>
-    applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver)
+    publicTripProjection0491(applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver))
   );
   if (!tester) {
     await appendPublicDebugEvent({
@@ -4233,7 +4250,7 @@ async function getPublicTrip(res, req, token) {
   let publicDriver = safePublicDriverProfile(data, driverUsername);
   if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
   const rawPublicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
-  const publicTrip = applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {});
+  const publicTrip = publicTripProjection0491(applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {}));
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
@@ -4243,14 +4260,24 @@ async function getPublicTrip(res, req, token) {
 }
 
 function normalizeBrazilWhatsapp(value) {
-  let digits = String(value || "").replace(/\D/g, "");
+  const raw = String(value || "").trim();
+  const explicitInternational = raw.startsWith("+");
+  let digits = raw.replace(/\D/g, "");
+  if (explicitInternational) {
+    if (!/^[1-9]\d{7,14}$/.test(digits)) {
+      throw Object.assign(new Error("Informe um telefone internacional válido com código do país."), { httpStatus: 400, code: "invalid_whatsapp" });
+    }
+    return `+${digits}`;
+  }
+  // Compatibilidade com cadastros brasileiros legados sem +55. Novos mercados
+  // devem enviar E.164 explícito, evitando transformar o Brasil em regra global.
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
   if (!/^\d{10,11}$/.test(digits)) {
-    throw Object.assign(new Error("Informe um WhatsApp brasileiro com DDD."), { httpStatus: 400, code: "invalid_whatsapp" });
+    throw Object.assign(new Error("Informe o telefone com código do país (ex.: +...)."), { httpStatus: 400, code: "invalid_whatsapp" });
   }
   const ddd = Number(digits.slice(0, 2));
   if (ddd < 11 || ddd > 99) {
-    throw Object.assign(new Error("Informe um DDD brasileiro válido."), { httpStatus: 400, code: "invalid_whatsapp" });
+    throw Object.assign(new Error("Informe o telefone com código do país (ex.: +...)."), { httpStatus: 400, code: "invalid_whatsapp" });
   }
   return `+55${digits}`;
 }
