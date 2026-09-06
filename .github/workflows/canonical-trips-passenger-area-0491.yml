@@ -54,9 +54,11 @@ jobs:
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
-          node --test trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js
-          if [ -f trip-platform/public/minha-area.js ]; then node --check trip-platform/public/minha-area.js; fi
           node --check trip-platform/public/app.js
+          node --check trip-platform/public/minha-area.js
+          node --test trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js
+          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          node --test trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
 
       - name: Configure Firebase Android app
         shell: bash
