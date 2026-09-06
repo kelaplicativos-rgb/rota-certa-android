@@ -51,7 +51,7 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.480\.1/);
+  assert.match(html, /app\.js\?v=0\.1\.481/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem|Minha Área/i);
 });
 
@@ -91,4 +91,19 @@ test("0480 expanded card date is complete and includes the four-digit year", () 
 
   const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
   assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+});
+
+
+test("0481 compact card shows the year when the trip is outside the current calendar year", () => {
+  const compactDateSource = between(app, "function agendaDateLabel0473", "function orderedStops");
+  assert.match(compactDateSource, /date\.getFullYear\(\) !== now\.getFullYear\(\)/);
+  assert.match(compactDateSource, /yearSuffix/);
+
+  const compactDate = Function(compactDateSource + "\nreturn agendaDateLabel0473;")();
+  const currentYear = new Date().getFullYear();
+  const sameYear = new Date(currentYear, 9, 2, 19, 0, 0, 0).getTime();
+  const nextYear = new Date(currentYear + 1, 7, 7, 10, 30, 0, 0).getTime();
+
+  assert.doesNotMatch(compactDate(sameYear), new RegExp(String(currentYear) + "$"));
+  assert.match(compactDate(nextYear), new RegExp(String(currentYear + 1) + "$"));
 });
