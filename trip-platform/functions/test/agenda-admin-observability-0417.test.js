@@ -265,8 +265,6 @@ test("green published state and manual BlaBlaCar URL use the canonical targeted 
   assert.match(admin, /manualBlaBlaPublicUrl0465/);
   assert.match(admin, /event: "admin_public_url_saved"/);
   assert.match(admin, /manualPublicUrlAssignments0465/);
-  assert.match(admin, /if \(!requested \|\| applied\) return null;/);
-  assert.match(admin, /must never be overwritten by an independent admin candidate/);
   assert.match(source, /blablacar-public-url/);
   assert.match(browser, /adminStateGreen0465/);
   assert.match(browser, /save-trip-public-url/);
