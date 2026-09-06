@@ -50,7 +50,8 @@ test("0475 browser bundle is read-only and keeps the canonical 0473 card hierarc
 
 test("0475 public backend lists every future committed canonical profile without login or legacy admin switches", () => {
   const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
-  assert.doesNotMatch(visibility, /tripPublicOnline0471/);
+  assert.match(visibility, /tripPublicOnline0471/);
+  assert.match(visibility, /PUBLIC_AGENDA_OFFLINE_0491/);
   assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
   assert.doesNotMatch(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
   assert.doesNotMatch(visibility, /publicBookingEnabled !== true/);
