@@ -922,6 +922,32 @@ internal fun canonicalBoundBlaBlaPublicUrl0423(
             boundAdministrativeTripId = expectedTripId,
         )
 
+
+/**
+ * 0.1.490: the last collector observation is the only source allowed to replace a
+ * canonical BlaBlaCar public permalink. Both strong provider identities must match
+ * the canonical Trip before the observed /trip URL is accepted. Absence is not
+ * evidence of removal, so callers preserve the last validated canonical URL.
+ */
+internal fun canonicalCollectorAuthorityPublicUrl0490(trip: Trip): String? {
+    if (resolvedTripRecordOrigin(trip) != TripRecordOrigin.EXTERNAL_BACKING) return null
+    val expectedTripId = trip.blablaTripId?.trim()?.takeIf(String::isNotBlank) ?: return null
+    val expectedProfileUuid = trip.blablaProfileUuid?.trim()?.takeIf(String::isNotBlank) ?: return null
+    val source = trip.externalSnapshot ?: return null
+    if (source.identity_conflict) return null
+    if (source.trip_id?.trim() != expectedTripId) return null
+    if (!source.profile_uuid.trim().equals(expectedProfileUuid, ignoreCase = true)) return null
+    return BlaBlaCollectorUrlModule.publicTripForCollectorState(
+        raw = source.public_trip_href,
+        expectedTripId = expectedTripId,
+        binding = source.public_trip_href_binding,
+    )
+}
+
+internal fun reconciledCanonicalBlaBlaPublicUrl0490(trip: Trip): String? =
+    canonicalCollectorAuthorityPublicUrl0490(trip)
+        ?: canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId)
+
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
     incomingFingerprint: String,
@@ -2443,12 +2469,28 @@ internal object AgendaBackgroundSync0392 {
         }
         require(matches.size == 1) { "ADMIN_PUBLIC_URL_CANONICAL_IDENTITY_NOT_UNIQUE" }
         val before = matches.single()
-        val canonicalUrl = canonicalBoundBlaBlaPublicUrl0423(assignment.blablaPublicUrl, assignment.blablaTripId)
+        val requested = canonicalBoundBlaBlaPublicUrl0423(assignment.blablaPublicUrl, assignment.blablaTripId)
             ?: throw IllegalArgumentException("ADMIN_PUBLIC_URL_INVALID")
+        val authoritative = canonicalCollectorAuthorityPublicUrl0490(before)
+        if (authoritative == null) {
+            UnifiedDebugEventStore.record(
+                "ADMIN_PUBLIC_URL_AWAITING_COLLECTOR_0490",
+                appContext.packageName,
+                "tenantKey=" + seatSyncDiagnosticKey(tenantId) +
+                    " canonicalTripId=" + seatSyncDiagnosticKey(before.tripKey.ifBlank { before.id }) +
+                    " requestRevision=" + assignment.requestRevision +
+                    " candidateAcceptedAsAuthority=false canonicalMutated=false",
+            )
+            return AgendaBackgroundSyncRun0392(
+                projectionExpected0411 = 1,
+                projectionPending0411 = 1,
+            )
+        }
+
         val currentUrl = canonicalBoundBlaBlaPublicUrl0423(before.blablaPublicUrl, before.blablaTripId)
-        val canonical = if (currentUrl == canonicalUrl) before else store.saveTrip(
+        val canonical = if (currentUrl == authoritative) before else store.saveTrip(
             before.copy(
-                blablaPublicUrl = canonicalUrl,
+                blablaPublicUrl = authoritative,
                 lastObservedAtMillis = maxOf(before.lastObservedAtMillis, System.currentTimeMillis()),
             ),
         )
@@ -2456,7 +2498,7 @@ internal object AgendaBackgroundSync0392 {
         require(canonicalTripId.isNotBlank()) { "CANONICAL_IDENTITY_UNRESOLVED" }
         val source = canonical.externalSnapshot ?: throw IllegalStateException("CANONICAL_SOURCE_SNAPSHOT_MISSING")
         val coordinator = TripMutationCoordinator0387(appContext, store)
-        val queued = if (currentUrl == canonicalUrl && canonical.publicMirrorAttestationCurrent0411()) null else
+        val queued = if (currentUrl == authoritative && canonical.publicMirrorAttestationCurrent0411()) null else
             coordinator.recordExternalCollectionMutation(
                 sourceTrip = source,
                 configuredRotaCertaSeatAllocation = canonical.rotaCertaSeatAllocation ?: 0,
@@ -2470,16 +2512,19 @@ internal object AgendaBackgroundSync0392 {
         val blue = refreshed.publicMirrorAttestationCurrent0411()
         val green = refreshed.publicMirrorPublishedWithoutBlaBlaUrl0465()
         UnifiedDebugEventStore.record(
-            "ADMIN_PUBLIC_URL_CANONICAL_APPLIED_0465",
+            "ADMIN_PUBLIC_URL_COLLECTOR_AUTHORITY_APPLIED_0490",
             appContext.packageName,
-            "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+            "tenantKey=" + seatSyncDiagnosticKey(tenantId) +
+                " canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
                 " requestRevision=" + assignment.requestRevision +
+                " requestedMatchesAuthority=" + (requested == authoritative) +
                 " canonicalRevision=" + refreshed.canonicalRevision +
+                " canonicalChanged=" + (currentUrl != authoritative) +
                 " queued=" + (queued != null) + " delivered=" + delivered + " blue=" + blue + " green=" + green,
         )
         return AgendaBackgroundSyncRun0392(
             outboxDelivered = delivered,
-            collectorChangedTrips = if (currentUrl == canonicalUrl) 0 else 1,
+            collectorChangedTrips = if (currentUrl == authoritative) 0 else 1,
             projectionExpected0411 = 1,
             projectionValidated0411 = if (blue) 1 else 0,
             projectionPending0411 = if (!blue && green) 1 else 0,
