@@ -3547,14 +3547,16 @@ function tripPublicOnline0471(data) {
 }
 
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
-  // 0475: legacy online/offline and per-profile publication switches no longer
-  // decide the public list. A future, committed canonical trip is listed from
-  // every synchronized BlaBlaCar profile belonging to this driver.
+  // 0491: public visibility is a publication state, distinct from operational
+  // status and source. Administration remains in the authenticated Android path.
   if (!driverData || typeof driverData !== "object") {
     return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
   }
   if (!data || data.publicationTombstone === true) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
+  }
+  if (!tripPublicOnline0471(data)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_OFFLINE_0491" };
   }
   if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
@@ -7998,6 +8000,63 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   }
 }
 
+async function updateDriverTripPublicVisibility0491(req, res, token) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!req.body || typeof req.body.online !== "boolean") {
+    return fail(res, 400, "invalid_public_visibility", "Informe online como verdadeiro ou falso.");
+  }
+  const requestedOnline = req.body.online === true;
+  const expectedRevision = Object.prototype.hasOwnProperty.call(req.body, "expectedVisibilityRevision0471")
+    ? Math.max(0, Number(req.body.expectedVisibilityRevision0471 || 0))
+    : null;
+  const tripRef = db.collection("trips").doc(token);
+  try {
+    const outcome = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(tripRef);
+      if (!snap.exists) {
+        throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      }
+      const before = snap.data();
+      if (normalizeUsername(before.driverUsername || "") !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+      const currentOnline = tripPublicOnline0471(before);
+      const currentRevision = Math.max(0, Number(before.publicAgendaVisibilityRevision0471 || 0));
+      if (expectedRevision != null && currentRevision !== expectedRevision) {
+        throw Object.assign(new Error("A visibilidade pública mudou em outra operação."), {
+          httpStatus: 409,
+          code: "trip_visibility_revision_conflict",
+        });
+      }
+      const changed = currentOnline !== requestedOnline;
+      const nextRevision = currentRevision + (changed ? 1 : 0);
+      if (changed) {
+        tx.set(tripRef, {
+          publicAgendaOnline0471: requestedOnline,
+          publicAgendaVisibilityRevision0471: nextRevision,
+          publicAgendaVisibilityUpdatedAtMillis0471: Date.now(),
+        }, { merge: true });
+      }
+      return { changed, nextRevision };
+    });
+    return json(res, 200, {
+      accepted: true,
+      changed: outcome.changed,
+      remoteTripId: token,
+      online: requestedOnline,
+      visibilityRevision0471: outcome.nextRevision,
+    });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "public_visibility_update_failed",
+      error.message || "Falha ao alterar visibilidade pública.",
+    );
+  }
+}
+
 async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -8044,6 +8103,8 @@ async function listDriverTripSyncState0402(req, res) {
           availableSeatsMinimum: Math.max(0, Number(availability.minimum || 0)),
           availableSeatsMaximum: Math.max(0, Number(availability.maximum || 0)),
           occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
+          publicAgendaOnline0471: tripPublicOnline0471(data),
+          publicAgendaVisibilityRevision0471: Math.max(0, Number(data.publicAgendaVisibilityRevision0471 || 0)),
         };
       })
       .filter((trip) =>
@@ -8490,6 +8551,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/tester/me/notifications") return await listTesterNotifications(req, res);
     if (req.method === "POST" && path === "/v1/tester/me/notifications/read-all") return await markTesterNotification(req, res, "", true);
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-visibility" && req.method === "PUT") {
+      return await updateDriverTripPublicVisibility0491(req, res, parts[3]);
+    }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
     }
