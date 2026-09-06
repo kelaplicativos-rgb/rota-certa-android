@@ -43,6 +43,28 @@ function stopShapeMigration0477() {
   return sandbox.migrate0477;
 }
 
+function authoritativeRebase0479() {
+  const canonical = between(api, "function canonicalStopSemanticKey0477", "function normalizeDriverTrip");
+  const managed = between(api, "function managedCapacityClaim", "async function reconcileDriverCapacitySnapshot");
+  const sandbox = {};
+  vm.runInNewContext(
+    `
+      function cleanText(value, maxLength = 1000) {
+        return String(value == null ? "" : value).trim().slice(0, maxLength);
+      }
+      ${canonical}
+      ${managed}
+      this.rebase0479 = authoritativeBlaBlaPreservedBookingMigration0479;
+      this.managed0479 = managedCapacityClaim;
+    `,
+    sandbox,
+  );
+  return {
+    rebase: sandbox.rebase0479,
+    managed: sandbox.managed0479,
+  };
+}
+
 function plain(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -134,134 +156,128 @@ test("0477 multi-stop rekey remains behind deterministic strong-identity authori
   assert.match(fn, /expectedPublicProjectionHash0425/);
 });
 
-test("0478 canonical stop migration accepts ordered insertion while preserving booked stops", () => {
-  const migrate = stopShapeMigration0477();
+test("0479 managed BlaBla claims from the obsolete stop shape are replaceable and do not block authoritative rebase", () => {
+  const { rebase, managed } = authoritativeRebase0479();
   const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Pouso Alegre" },
-    { id: "old-2", name: "Três Corações" },
+    { id: "old-sa", name: "Santo André" },
+    { id: "old-stl", name: "São Tomé das Letras" },
+    { id: "old-tc", name: "Três Corações" },
   ];
   const next = [
-    { id: "new-0", name: "Santo André" },
-    { id: "new-1", name: "Extrema" },
-    { id: "new-2", name: "Pouso Alegre" },
-    { id: "new-3", name: "Três Corações" },
+    { id: "new-sa", name: "Santo André" },
+    { id: "new-extrema", name: "Extrema" },
+    { id: "new-pouso", name: "Pouso Alegre" },
+    { id: "new-tc", name: "Três Corações" },
   ];
-  const result = plain(migrate(previous, next, [
-    { id: "booking-a", boardingStopId: "old-0", dropoffStopId: "old-1" },
-    { id: "booking-b", boardingStopId: "old-1", dropoffStopId: "old-2" },
-  ]));
-  assert.deepEqual(
-    result.records.map(({ boardingStopId, dropoffStopId }) => ({ boardingStopId, dropoffStopId })),
-    [
-      { boardingStopId: "new-0", dropoffStopId: "new-2" },
-      { boardingStopId: "new-2", dropoffStopId: "new-3" },
-    ],
-  );
-});
-
-test("0478 canonical stop migration accepts removal of an unreferenced intermediate stop", () => {
-  const migrate = stopShapeMigration0477();
-  const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Extrema" },
-    { id: "old-2", name: "Pouso Alegre" },
-    { id: "old-3", name: "Três Corações" },
-  ];
-  const next = [
-    { id: "new-0", name: "Santo André" },
-    { id: "new-1", name: "Pouso Alegre" },
-    { id: "new-2", name: "Três Corações" },
-  ];
-  const result = plain(migrate(previous, next, [
-    { id: "booking-a", boardingStopId: "old-0", dropoffStopId: "old-2" },
-  ]));
-  assert.deepEqual(
+  const records = [
     {
-      boardingStopId: result.records[0].boardingStopId,
-      dropoffStopId: result.records[0].dropoffStopId,
+      id: "bbp-bbae1dc05ac20f799f907a5b-old",
+      source: "BLABLACAR",
+      sourceReference: "BLABLACAR_SYNC:legacy",
+      boardingStopId: "old-stl",
+      dropoffStopId: "old-tc",
+      seats: 1,
     },
-    { boardingStopId: "new-0", dropoffStopId: "new-1" },
-  );
+  ];
+
+  assert.equal(managed(records[0], "BLABLACAR_SYNC:"), true);
+  const preserved = records.filter((record) => !managed(record, "BLABLACAR_SYNC:"));
+  assert.equal(preserved.length, 0);
+
+  const result = plain(rebase(previous, next, preserved));
+  assert.equal(result.authoritativeRebase0479, true);
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.records, []);
+  assert.deepEqual(result.changes, []);
 });
 
-test("0478 canonical stop migration rejects removal of a booked intermediate stop", () => {
-  const migrate = stopShapeMigration0477();
+test("0479 preserved Rota Certa booking can survive mixed external itinerary replacement when its semantic stops still exist", () => {
+  const { rebase, managed } = authoritativeRebase0479();
   const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Extrema" },
-    { id: "old-2", name: "Pouso Alegre" },
-    { id: "old-3", name: "Três Corações" },
+    { id: "old-sa", name: "Santo André" },
+    { id: "old-stl", name: "São Tomé das Letras" },
+    { id: "old-tc", name: "Três Corações" },
   ];
   const next = [
-    { id: "new-0", name: "Santo André" },
-    { id: "new-1", name: "Pouso Alegre" },
-    { id: "new-2", name: "Três Corações" },
+    { id: "new-sa", name: "Santo André" },
+    { id: "new-extrema", name: "Extrema" },
+    { id: "new-pouso", name: "Pouso Alegre" },
+    { id: "new-tc", name: "Três Corações" },
   ];
+  const protectedBooking = {
+    id: "rc-booking",
+    source: "ROTA_CERTA",
+    boardingStopId: "old-sa",
+    dropoffStopId: "old-tc",
+    seats: 1,
+  };
+
+  assert.equal(managed(protectedBooking, "BLABLACAR_SYNC:"), false);
+  const result = plain(rebase(previous, next, [protectedBooking]));
+  assert.equal(result.records[0].boardingStopId, "new-sa");
+  assert.equal(result.records[0].dropoffStopId, "new-tc");
+  assert.equal(result.changes.length, 1);
+});
+
+test("0479 preserved booking still blocks authoritative rebase when it references a removed stop", () => {
+  const { rebase } = authoritativeRebase0479();
+  const previous = [
+    { id: "old-sa", name: "Santo André" },
+    { id: "old-stl", name: "São Tomé das Letras" },
+    { id: "old-tc", name: "Três Corações" },
+  ];
+  const next = [
+    { id: "new-sa", name: "Santo André" },
+    { id: "new-extrema", name: "Extrema" },
+    { id: "new-pouso", name: "Pouso Alegre" },
+    { id: "new-tc", name: "Três Corações" },
+  ];
+
   assert.throws(
-    () => migrate(previous, next, [
-      { id: "booking-x", boardingStopId: "old-1", dropoffStopId: "old-3" },
-    ]),
+    () => rebase(previous, next, [{
+      id: "rc-booking-stl",
+      source: "ROTA_CERTA",
+      boardingStopId: "old-stl",
+      dropoffStopId: "old-tc",
+      seats: 1,
+    }]),
     (error) => error && error.code === "canonical_stop_shape_booking_migration_unsafe" && error.httpStatus === 409,
   );
 });
 
-test("0478 canonical stop migration rejects reordered shared waypoints", () => {
-  const migrate = stopShapeMigration0477();
+test("0479 preserved booking still blocks authoritative rebase when its direction would reverse", () => {
+  const { rebase } = authoritativeRebase0479();
   const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Extrema" },
-    { id: "old-2", name: "Pouso Alegre" },
-    { id: "old-3", name: "Três Corações" },
+    { id: "old-sa", name: "Santo André" },
+    { id: "old-tc", name: "Três Corações" },
   ];
   const next = [
-    { id: "new-0", name: "Santo André" },
-    { id: "new-1", name: "Pouso Alegre" },
-    { id: "new-2", name: "Extrema" },
-    { id: "new-3", name: "Três Corações" },
+    { id: "new-tc", name: "Três Corações" },
+    { id: "new-sa", name: "Santo André" },
   ];
+
   assert.throws(
-    () => migrate(previous, next, []),
-    (error) => error && error.code === "canonical_stop_shape_migration_unsafe" && error.httpStatus === 409,
+    () => rebase(previous, next, [{
+      id: "rc-direction",
+      source: "ROTA_CERTA",
+      boardingStopId: "old-sa",
+      dropoffStopId: "old-tc",
+      seats: 1,
+    }]),
+    (error) => error && error.code === "canonical_stop_shape_booking_migration_unsafe" && error.httpStatus === 409,
   );
 });
 
-test("0478 canonical stop migration rejects mixed intermediate replacement", () => {
-  const migrate = stopShapeMigration0477();
-  const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Extrema" },
-    { id: "old-2", name: "Pouso Alegre" },
-    { id: "old-3", name: "Três Corações" },
-  ];
-  const next = [
-    { id: "new-0", name: "Santo André" },
-    { id: "new-1", name: "Camanducaia" },
-    { id: "new-2", name: "Pouso Alegre" },
-    { id: "new-3", name: "Três Corações" },
-  ];
-  assert.throws(
-    () => migrate(previous, next, []),
-    (error) => error && error.code === "canonical_stop_shape_migration_unsafe" && error.httpStatus === 409,
-  );
-});
-
-test("0478 canonical stop migration rejects endpoint replacement", () => {
-  const migrate = stopShapeMigration0477();
-  const previous = [
-    { id: "old-0", name: "Santo André" },
-    { id: "old-1", name: "Pouso Alegre" },
-    { id: "old-2", name: "Três Corações" },
-  ];
-  const next = [
-    { id: "new-0", name: "São Paulo" },
-    { id: "new-1", name: "Pouso Alegre" },
-    { id: "new-2", name: "Três Corações" },
-  ];
-  assert.throws(
-    () => migrate(previous, next, []),
-    (error) => error && error.code === "canonical_stop_shape_migration_unsafe" && error.httpStatus === 409,
-  );
+test("0479 authoritative rebase is gated to complete BlaBla replacement and only excludes managed claims from migration", () => {
+  const fn = between(api, "const bookingsSnap = await tx.get(tripRef.collection(\"bookings\"))", "const now = Date.now()");
+  assert.match(fn, /authoritativeManagedReplacement0479/);
+  assert.match(fn, /bookedStopShapeMigrationAuthorized0439/);
+  assert.match(fn, /claimNamespace === "BLABLACAR_SYNC:"/);
+  assert.match(fn, /sourceComplete/);
+  assert.match(fn, /!preserveManagedClaims0436/);
+  assert.match(fn, /records\.filter\(\(record\) => !managedCapacityClaim\(record, claimNamespace\)\)/);
+  assert.match(fn, /authoritativeBlaBlaPreservedBookingMigration0479/);
+  assert.match(fn, /records\.map\(\(record\) =>[\s\S]*migratedPreservedById0479\.get\(record\.id\) \|\| record/);
 });
 
 test("0468 backend is the logical revision and public projection authority", () => {
