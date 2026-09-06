@@ -168,6 +168,7 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("admin_update_now:") -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason.startsWith("admin_full_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
+    reason.startsWith("outbox_semantic_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     else -> AgendaBackgroundSyncMode0392.DELTA_ONLY
 }
 
@@ -181,6 +182,7 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     reason == "trip_reverify" -> "TRIP_REVERIFY"
     reason.startsWith("admin_update_now:") -> "ADMIN_UPDATE_NOW"
     reason.startsWith("admin_full_reconcile:") -> "ADMIN_FULL_RECONCILE"
+    reason.startsWith("outbox_semantic_reconcile:") -> "SEMANTIC_RECONCILE"
     else -> "EVENT_DELTA"
 }
 
