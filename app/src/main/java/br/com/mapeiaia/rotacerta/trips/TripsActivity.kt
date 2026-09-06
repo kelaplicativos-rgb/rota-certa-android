@@ -499,9 +499,15 @@ private fun TripApp(
         screen.agendaHeaderLabel0396()
     }
     val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
+    val drawerOnlineSettings0397 = store.onlineSettings()
 
     AgendaModuleDrawer0396(
         currentSection = currentRootScreen0396.agendaRootSection0396(),
+        publicAgendaEnabled = drawerOnlineSettings0397.configured &&
+            !drawerOnlineSettings0397.publicAgendaUrl.isNullOrBlank(),
+        onOpenPublicAgenda = {
+            message = openPublicAgenda0397(activity, store)
+        },
         onSelect = { section ->
             when (section) {
                 AgendaRootSection0396.ALL_TRIPS -> {
