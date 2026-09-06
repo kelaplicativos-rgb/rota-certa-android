@@ -43,7 +43,7 @@ jobs:
           grep -Fq 'versionName = "0.1.480"' app/build.gradle.kts
           grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
           grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
-          grep -Fq 'orderedEndpointPreservingMigration0478' trip-platform/functions/index.js
+          grep -Fq 'function authoritativeBlaBlaPreservedBookingMigration0479' trip-platform/functions/index.js
           grep -Fq 'dateScopeDefaultRequests0478' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'Vagas ficam desligadas por padrão' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           ! grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
