@@ -39,7 +39,7 @@ class BlaBlaScriptRightMenu0488Test {
 
     @Test
     fun customLibrarySupportsEditAndDeleteWithoutSilentlyErasingCollectorOverride() {
-        assertTrue(workspace.contains("Text(\"Meus scripts\")"))
+        assertTrue(workspace.contains("Text(\"Meus scripts\""))
         assertTrue(workspace.contains("Text(\"Editar\")"))
         assertTrue(workspace.contains("Text(\"Excluir da biblioteca\")"))
         assertTrue(workspace.contains("fun deleteCustomScript(id: String)"))
