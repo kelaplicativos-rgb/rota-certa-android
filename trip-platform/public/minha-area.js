@@ -139,6 +139,19 @@ function renderBooking0491(entry) {
   seatLine.textContent = seats === 1 ? "1 lugar" : seats + " lugares";
   facts.appendChild(seatLine);
 
+  const boardingAddress = String(booking.boardingAddress || "").trim();
+  if (boardingAddress) {
+    const boardingLine = document.createElement("span");
+    boardingLine.textContent = "Embarque: " + boardingAddress;
+    facts.appendChild(boardingLine);
+  }
+  const dropoffAddress = String(booking.dropoffAddress || "").trim();
+  if (dropoffAddress) {
+    const dropoffLine = document.createElement("span");
+    dropoffLine.textContent = "Desembarque: " + dropoffAddress;
+    facts.appendChild(dropoffLine);
+  }
+
   const status = document.createElement("span");
   status.className = "pill";
   status.textContent = bookingStatusLabel0491(booking);
