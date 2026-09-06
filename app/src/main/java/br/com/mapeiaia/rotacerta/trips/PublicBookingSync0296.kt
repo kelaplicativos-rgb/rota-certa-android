@@ -129,10 +129,14 @@ internal object PublicBookingRemoteSync0296 {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING && !it.remoteId.isNullOrBlank()
         }
         val externalBindings = store.publicExternalBindings()
+        val localCandidateIds = candidates.mapTo(linkedSetOf(), Trip::id)
+        val shadowedExternalBindings = externalBindings.filter { binding ->
+            binding.bookingTripId in localCandidateIds
+        }
         UnifiedDebugEventStore.record(
             "BOOKING_RECONCILE_SOURCE_CLASSIFIED",
             context.packageName,
-            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings",
+            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings shadowedExternalBindings=${shadowedExternalBindings.size} bookingAuthority=canonical_trip_origin",
         )
         val bookingSnapshot = store.bookings().associateBy(Booking::id).toMutableMap()
         AgendaTrace.operationEnd(
@@ -157,16 +161,18 @@ internal object PublicBookingRemoteSync0296 {
                     ),
                 )
             }
-            externalBindings.forEach { binding ->
-                add(
-                    BookingFetchTarget0373(
-                        localTripId = binding.bookingTripId,
-                        remoteTripId = binding.remoteTripId,
-                        publicOnly = true,
-                        localCandidate = false,
-                    ),
-                )
-            }
+            externalBindings.asSequence()
+                .filterNot { binding -> binding.bookingTripId in localCandidateIds }
+                .forEach { binding ->
+                    add(
+                        BookingFetchTarget0373(
+                            localTripId = binding.bookingTripId,
+                            remoteTripId = binding.remoteTripId,
+                            publicOnly = true,
+                            localCandidate = false,
+                        ),
+                    )
+                }
         }.distinctBy { target ->
             "${target.localTripId}|${target.remoteTripId}|${target.publicOnly}"
         }.filter { target ->
@@ -294,30 +300,60 @@ internal object PublicBookingRemoteSync0296 {
             AgendaTrace.operationEnd(context, reconcileOperation, result = "no_changes", processedCount = remoteFetched)
             return PublicBookingPullResult(imported, changed, 0)
         }
+        val postImportOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_POST_IMPORT",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            reconcileOperation.operationId,
+        )
         // Booking changes consume the canonical Rota Certa inventory immediately.
         // The BlaBlaCar seat-editor value is an independent CURRENT-REMAINING input;
         // mutating it here and also counting this booking would subtract the same seat twice.
         // A normal collector refresh remains responsible for observing genuine external changes.
-        val queued = 0
+        val inventoryOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_INVENTORY_RECALC",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            postImportOperation.operationId,
+        )
         val inventoryUpdated = store.reconcileBookingDerivedInventory(changed)
+        AgendaTrace.operationEnd(
+            context,
+            inventoryOperation,
+            processedCount = changed.size,
+        )
+
         val tripsAfterImport = store.trips().associateBy(Trip::id)
         val bookingsAfterImport = store.bookings().groupBy(Booking::tripId)
         val mutationCoordinator = TripMutationCoordinator0387(context, store)
+        val outboxOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_OUTBOX_ENQUEUE",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            postImportOperation.operationId,
+        )
+        var durableQueued = 0
+        var remoteAppliedJournaled = 0
         changed.forEach { tripId ->
             val trip = tripsAfterImport[tripId] ?: return@forEach
             val bookingsForTrip = bookingsAfterImport[tripId].orEmpty()
             val remoteRevision = fetchedBatches.asSequence()
-                .filterNotNull()
                 .filter { it.target.localTripId == tripId }
                 .maxOfOrNull(BookingFetchBatch0373::entityRevision) ?: 0L
-            if (remoteRevision > 0L) {
-                // Passenger mutation reached the backend first. The Timeline still owns the
-                // authoritative public snapshot, so its next transport revision must be newer
-                // than the observed server revision and must be sent back for readback/attestation.
-                mutationCoordinator.ensureRevisionAtLeast(tripId, remoteRevision)
-            }
-            val outboxQueued = when (resolvedTripRecordOrigin(trip)) {
+            val origin = resolvedTripRecordOrigin(trip)
+
+            // A booking pulled with a versioned entity revision was already committed on that
+            // exact public trip by the backend. Re-sending the whole local protected-booking
+            // snapshot here creates a second authority window and can reference a booking that
+            // belongs to another projection. Journal the server-applied revision instead.
+            val publicationJournaled = when (origin) {
                 TripRecordOrigin.EXTERNAL_BACKING -> {
+                    if (remoteRevision > 0L) {
+                        mutationCoordinator.ensureRevisionAtLeast(tripId, remoteRevision)
+                    }
                     val source = trip.externalSnapshot
                     source != null &&
                         mutationCoordinator.recordExternalCollectionMutation(
@@ -327,25 +363,67 @@ internal object PublicBookingRemoteSync0296 {
                             remoteProjectionDivergenceObserved = true,
                         ) != null
                 }
-                else -> mutationCoordinator.recordLocalMutation(
-                    canonicalTripId = tripId,
-                    mutationType = if (remoteRevision > 0L) {
-                        "PUBLIC_BOOKING_CANONICAL_ECHO_0431"
+                TripRecordOrigin.LOCAL -> {
+                    if (remoteRevision > 0L) {
+                        mutationCoordinator.recordRemoteAppliedLocal(
+                            canonicalTripId = tripId,
+                            revision = remoteRevision,
+                            mutationType = "PUBLIC_BOOKING_REMOTE_APPLIED_0493",
+                            source = "PUBLIC_AGENDA_PUSH_PULL",
+                            reconcileBookingInventory = false,
+                        ) != null
                     } else {
-                        "PUBLIC_BOOKING_RECONCILED_LEGACY"
-                    },
-                    source = "PUBLIC_AGENDA_PUSH_PULL",
-                    reconcileBookingInventory = false,
-                    remoteProjectionDivergenceObserved = remoteRevision > 0L,
-                ) != null
+                        mutationCoordinator.recordLocalMutation(
+                            canonicalTripId = tripId,
+                            mutationType = "PUBLIC_BOOKING_RECONCILED_LEGACY",
+                            source = "PUBLIC_AGENDA_PUSH_PULL",
+                            reconcileBookingInventory = false,
+                            remoteProjectionDivergenceObserved = false,
+                        ) != null
+                    }
+                }
+            }
+            if (publicationJournaled) {
+                if (origin == TripRecordOrigin.LOCAL && remoteRevision > 0L) remoteAppliedJournaled++
+                else durableQueued++
             }
             UnifiedDebugEventStore.record(
                 "BOOKING_INVENTORY_RECALCULATED",
                 context.packageName,
-                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated entityRevisionObserved=$remoteRevision outboxQueued=$outboxQueued publicationAlreadyAppliedServerSide=${remoteRevision > 0L} canonicalEchoRequired=true targetRemoteTripPresent=${targetRemoteTripId.isNotBlank()}",
+                "trip=$tripId available=${SeatAvailabilityEngine.remainingSeatsForWholeTrip(trip, bookingsForTrip)} externalSeatMutation=false reason=independent_channel_inventory batchInventoryUpdated=$inventoryUpdated entityRevisionObserved=$remoteRevision publicationJournaled=$publicationJournaled durableOutboxQueued=${origin == TripRecordOrigin.EXTERNAL_BACKING || remoteRevision <= 0L} publicationAlreadyAppliedServerSide=${origin == TripRecordOrigin.LOCAL && remoteRevision > 0L} canonicalEchoRequired=${origin != TripRecordOrigin.LOCAL || remoteRevision <= 0L} targetRemoteTripPresent=${targetRemoteTripId.isNotBlank()}",
             )
         }
-        mutationCoordinator.drainPending(canonicalTripIds = changed)
+        AgendaTrace.operationEnd(
+            context,
+            outboxOperation,
+            result = "durable",
+            processedCount = durableQueued + remoteAppliedJournaled,
+        )
+        val handoffOperation = AgendaTrace.operationStart(
+            context,
+            "BOOKING_PUBLICATION_HANDOFF",
+            "PublicBookingRemoteSync0296",
+            traceId,
+            postImportOperation.operationId,
+        )
+        UnifiedDebugEventStore.record(
+            "BOOKING_PUBLICATION_HANDOFF_0493",
+            context.packageName,
+            "changedTrips=${changed.size} durableQueued=$durableQueued remoteAppliedJournaled=$remoteAppliedJournaled transportAwaited=false existingBackgroundDrainer=true",
+        )
+        AgendaTrace.operationEnd(
+            context,
+            handoffOperation,
+            result = "durable_async",
+            processedCount = durableQueued,
+        )
+        AgendaTrace.operationEnd(
+            context,
+            postImportOperation,
+            result = "canonical_committed",
+            processedCount = changed.size,
+        )
+        val queued = durableQueued
         UnifiedDebugEventStore.record(
             "PUBLIC_BOOKING_PULL_RECONCILED",
             context.packageName,
