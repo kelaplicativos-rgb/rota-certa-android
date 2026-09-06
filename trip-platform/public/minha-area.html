@@ -42,14 +42,14 @@
 
   <section id="contextError0491" class="card error hidden" role="alert"></section>
 
-  <section id="loginPanel0491" class="card">
+  <section id="authLoading0492" class="card hidden" aria-live="polite">\n    <p id="authLoadingMessage0492" class="muted">Carregando sua sessão...</p>\n  </section>\n\n  <section id="loginPanel0491" class="card hidden">
     <h2>Entrar</h2>
     <p class="muted">Use o telefone/WhatsApp vinculado ao seu cadastro e sua senha.</p>
     <label>Telefone/WhatsApp
-      <input id="contact0491" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="+ código do país e número">
+      <input id="contact0491" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="Digite seu telefone/WhatsApp">
     </label>
     <label>Senha
-      <input id="password0491" type="password" autocomplete="current-password" minlength="8" maxlength="72">
+      <input id="password0491" type="password" autocomplete="current-password" minlength="4" maxlength="72">
     </label>
     <p id="loginMessage0491" class="error hidden" role="alert"></p>
     <button id="login0491" class="primary" type="button">Entrar</button>
@@ -60,10 +60,10 @@
       <h2>Defina uma nova senha</h2>
       <p class="muted">Sua credencial temporária precisa ser substituída.</p>
       <label>Nova senha
-        <input id="newPassword0491" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+        <input id="newPassword0491" type="password" autocomplete="new-password" minlength="4" maxlength="72">
       </label>
       <label>Confirme a nova senha
-        <input id="newPasswordConfirm0491" type="password" autocomplete="new-password" minlength="8" maxlength="72">
+        <input id="newPasswordConfirm0491" type="password" autocomplete="new-password" minlength="4" maxlength="72">
       </label>
       <p id="passwordMessage0491" class="error hidden" role="alert"></p>
       <button id="changePassword0491" class="primary" type="button">Salvar nova senha</button>
@@ -93,6 +93,6 @@
     </section>
   </section>
 </main>
-<script src="/minha-area.js?v=0.1.491" defer></script>
+<script src="/minha-area.js?v=0.1.492" defer></script>
 </body>
 </html>
