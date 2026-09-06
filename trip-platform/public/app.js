@@ -125,6 +125,29 @@ function publicAvailabilityLabel(item) {
   return range.minimum + "–" + range.maximum + " vagas disponíveis por trecho";
 }
 
+function publicSegmentRows0484(item) {
+  if (item?.capacityReliable !== true || !Array.isArray(item?.segmentAvailability)) return [];
+  return item.segmentAvailability
+    .filter((segment) =>
+      segment &&
+      String(segment.from || "").trim() &&
+      String(segment.to || "").trim() &&
+      Number.isFinite(Number(segment.availableSeats)),
+    )
+    .map((segment) => ({
+      from: String(segment.from).trim(),
+      to: String(segment.to).trim(),
+      availableSeats: Math.max(0, Math.floor(Number(segment.availableSeats))),
+    }));
+}
+
+function segmentAvailabilityLabel0484(availableSeats) {
+  const count = Math.max(0, Math.floor(Number(availableSeats || 0)));
+  if (count === 0) return "LOTADO";
+  if (count === 1) return "1 vaga";
+  return count + " vagas";
+}
+
 function fullFareFor(item) {
   const stops = orderedStops(item);
   return stops.slice(0, -1).reduce(
@@ -296,6 +319,45 @@ function renderAgendaCards(entries, container) {
       row0480.append(time0480, rail0480, body0480);
       expandedItinerary0480.appendChild(row0480);
     });
+
+    const segmentAvailability0484 = document.createElement("section");
+    segmentAvailability0484.className = "agendaSegmentAvailability0484";
+
+    const segmentTitle0484 = document.createElement("h3");
+    segmentTitle0484.className = "agendaSegmentAvailabilityTitle0484";
+    segmentTitle0484.textContent = "Vagas por trecho";
+    segmentAvailability0484.appendChild(segmentTitle0484);
+
+    const segmentRows0484 = publicSegmentRows0484(item);
+    const expectedSegmentRows0484 = Math.max(0, stops.length - 1);
+    if (item?.capacityReliable !== true) {
+      const pending0484 = document.createElement("div");
+      pending0484.className = "agendaSegmentAvailabilityPending0484";
+      pending0484.textContent = "Disponibilidade sendo atualizada";
+      segmentAvailability0484.appendChild(pending0484);
+    } else if (expectedSegmentRows0484 < 1 || segmentRows0484.length !== expectedSegmentRows0484) {
+      const unavailable0484 = document.createElement("div");
+      unavailable0484.className = "agendaSegmentAvailabilityPending0484";
+      unavailable0484.textContent = "Disponibilidade por trecho indisponível";
+      segmentAvailability0484.appendChild(unavailable0484);
+    } else {
+      segmentRows0484.forEach((segment) => {
+        const row0484 = document.createElement("div");
+        row0484.className = "agendaSegmentAvailabilityRow0484";
+
+        const route0484 = document.createElement("span");
+        route0484.className = "agendaSegmentAvailabilityRoute0484";
+        route0484.textContent = segment.from + " → " + segment.to;
+
+        const seats0484 = document.createElement("strong");
+        seats0484.className = "agendaSegmentAvailabilitySeats0484";
+        seats0484.textContent = segmentAvailabilityLabel0484(segment.availableSeats);
+
+        row0484.append(route0484, seats0484);
+        segmentAvailability0484.appendChild(row0484);
+      });
+    }
+    expandedItinerary0480.appendChild(segmentAvailability0484);
 
     const bottom = document.createElement("div");
     bottom.className = "agendaBottom0473";
