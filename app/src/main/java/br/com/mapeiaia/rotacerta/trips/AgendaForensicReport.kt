@@ -58,14 +58,18 @@ internal object AgendaForensicReportBuilder {
 
         val openRequested = summarySelection.openRequested
         val firstInteractive = summarySelection.firstInteractive
-        val openDurationMs = summaryEvents
-            .lastOrNull { it.stage == "AGENDA_OPEN_TOTAL_MS" }
-            ?.let { detailLong(it, "value") }
-            ?: if (openRequested != null && firstInteractive != null) {
-                ((firstInteractive.monotonicNs - openRequested.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
-            } else {
-                null
-            }
+        val openDurationMs = if (summarySelection.inconsistent) {
+            null
+        } else {
+            summaryEvents
+                .lastOrNull { it.stage == "AGENDA_OPEN_TOTAL_MS" }
+                ?.let { detailLong(it, "value") }
+                ?: if (openRequested != null && firstInteractive != null) {
+                    ((firstInteractive.monotonicNs - openRequested.monotonicNs).coerceAtLeast(0L) / 1_000_000L)
+                } else {
+                    null
+                }
+        }
 
         val capacityInitial = summaryEvents.firstOrNull { it.stage == "CAPACITY_INITIAL_STATE" }
         val localSettingsCapacity = summaryEvents.firstOrNull {
