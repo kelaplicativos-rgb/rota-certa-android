@@ -1377,10 +1377,13 @@ private fun TimelineEntryCard(
             lastVerifiedAtMillis = trip?.lastObservedAtMillis ?: 0L,
         )
     }
-    val actionPalette0407 = remember(capabilitySnapshot0407, entry.blablaPublicHref, entry.blablaTripHref) {
+    val canonicalPublicationHref0490 = remember(entry.blablaPublicHref, entry.blablaTripId) {
+        canonicalTimelineBlaBlaPublicHref0490(entry)
+    }
+    val actionPalette0407 = remember(capabilitySnapshot0407, canonicalPublicationHref0490) {
         buildBlaBlaTripActionPalette0407(
             snapshot = capabilitySnapshot0407,
-            hasPublicationHref = !entry.blablaPublicHref.isNullOrBlank() || !entry.blablaTripHref.isNullOrBlank(),
+            hasPublicationHref = canonicalPublicationHref0490 != null,
         )
     }
     var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
@@ -1583,9 +1586,9 @@ private fun TimelineEntryCard(
                                     text = { Text("Ver publicação BlaBlaCar") },
                                     onClick = {
                                         actionMenuExpanded0407 = false
-                                        val href = entry.blablaPublicHref ?: entry.blablaTripHref.orEmpty()
-                                        if (!openBlaBlaHref(context, entry, href)) {
-                                            onChanged("Não foi possível abrir a publicação com a conta vinculada a este card.")
+                                        val href = canonicalPublicationHref0490
+                                        if (href == null || !openBlaBlaHref(context, entry, href)) {
+                                            onChanged("A URL pública canônica desta viagem ainda não está disponível.")
                                         }
                                     },
                                 )

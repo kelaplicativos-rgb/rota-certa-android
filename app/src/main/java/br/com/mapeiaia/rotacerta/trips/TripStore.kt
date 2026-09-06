@@ -528,13 +528,29 @@ class TripStore(context: Context) {
                 val conflictAware = if (identityConflict) {
                     trip.invalidatePublicMirror0411("STRONG_IDENTITY_CONFLICT_0421")
                 } else trip
-                val migrated = if (conflictAware.publicTimezoneId0411.isBlank()) {
+                val authoritativePublicUrl0490 = if (identityConflict) {
+                    null
+                } else {
+                    canonicalCollectorAuthorityPublicUrl0490(conflictAware)
+                }
+                val currentPublicUrl0490 = canonicalBoundBlaBlaPublicUrl0423(
+                    conflictAware.blablaPublicUrl,
+                    conflictAware.blablaTripId,
+                )
+                val publicUrlNeedsRepair0490 =
+                    authoritativePublicUrl0490 != null && authoritativePublicUrl0490 != currentPublicUrl0490
+                val timezoneNeedsMigration = conflictAware.publicTimezoneId0411.isBlank()
+                val migrated = if (timezoneNeedsMigration || publicUrlNeedsRepair0490) {
                     conflictAware.copy(
-                        publicTimezoneId0411 = activeTimezone,
-                        canonicalRevision = trip.canonicalRevision.coerceAtLeast(0L) + 1L,
+                        publicTimezoneId0411 = conflictAware.publicTimezoneId0411.ifBlank { activeTimezone },
+                        blablaPublicUrl = authoritativePublicUrl0490 ?: conflictAware.blablaPublicUrl,
+                        canonicalRevision = conflictAware.canonicalRevision.coerceAtLeast(0L) + 1L,
                         canonicalStateHash = "",
                         updatedAtMillis = nowMillis,
-                    ).invalidatePublicMirror0411("LEGACY_PUBLIC_TIMEZONE_MIGRATED")
+                    ).invalidatePublicMirror0411(
+                        if (publicUrlNeedsRepair0490) "BLABLACAR_PUBLIC_URL_RECONCILED_0490"
+                        else "LEGACY_PUBLIC_TIMEZONE_MIGRATED",
+                    )
                 } else {
                     conflictAware
                 }
@@ -563,9 +579,16 @@ class TripStore(context: Context) {
                     providerTripId = binding.blablaTripId,
                 )
                 val canonical = key?.let { canonicalByStrongExternalKey0421[it] ?: canonicalByKey[it] }
+                val canonicalPublicHref0490 = canonical?.let { trip ->
+                    canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId)
+                }.orEmpty()
+                val bindingPublicHrefNeedsRepair0490 =
+                    canonicalPublicHref0490.isNotBlank() &&
+                        canonicalBoundBlaBlaPublicUrl0423(binding.blablaPublicHref, binding.blablaTripId) != canonicalPublicHref0490
                 if (canonical != null && binding.bookingTripId != canonical.id) {
                     binding.copy(
                         bookingTripId = canonical.id,
+                        blablaPublicHref = canonicalPublicHref0490.ifBlank { binding.blablaPublicHref },
                         canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
                         stateHash = canonical.canonicalStateHash,
                         updatedAtMillis = nowMillis,
@@ -573,9 +596,11 @@ class TripStore(context: Context) {
                 } else if (
                     canonical != null &&
                     (binding.stateHash != canonical.canonicalStateHash ||
-                        binding.canonicalRevision != canonical.canonicalRevision)
+                        binding.canonicalRevision != canonical.canonicalRevision ||
+                        bindingPublicHrefNeedsRepair0490)
                 ) {
                     binding.copy(
+                        blablaPublicHref = canonicalPublicHref0490.ifBlank { binding.blablaPublicHref },
                         canonicalRevision = canonical.canonicalRevision.coerceAtLeast(0L),
                         stateHash = canonical.canonicalStateHash,
                         updatedAtMillis = nowMillis,

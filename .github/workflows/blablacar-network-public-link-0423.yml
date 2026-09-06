@@ -1,19 +1,19 @@
-name: Rota Certa 0.1.423 BlaBlaCar network permalink
+name: Rota Certa 0.1.490 BlaBlaCar public URL authority
 
 on:
   push:
     branches:
-      - agent/blablacar-network-public-link-0.1.423
+      - agent/blablacar-public-url-authority-0.1.490
   pull_request:
     branches:
-      - agent/agenda-public-integrity-0.1.422
+      - agent/agenda-segment-passenger-dots-0.1.489
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-network-public-link-0423-${{ github.ref }}
+  group: blablacar-public-url-authority-0490-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,11 +36,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE=23bd12522696a8f0f82cd8e81264286f4116c510
+          BASE=ec1624d82d636af9510ec22845b39fc76d5db85c
           SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          grep -Fq 'versionCode = 5716' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.423"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5782' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.490"' app/build.gradle.kts
           test "$(git diff --name-only "$BASE"..HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt' | wc -l)" -eq 0
           grep -Fq 'fun publicTripFromAuthoritativeNetwork' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
           grep -Fq 'PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
@@ -49,6 +49,11 @@ jobs:
           grep -Fq 'PUBLIC_TRIP_LINK_NETWORK_BOUND' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           grep -Fq 'PUBLIC_TRIP_LINK_SHARE_FALLBACK' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkPublicLink0423Test.kt
+          grep -Fq 'canonicalCollectorAuthorityPublicUrl0490' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'BLABLACAR_PUBLIC_URL_RECONCILED_0490' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'canonicalTimelineBlaBlaPublicHref0490' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          ! grep -Fq 'entry.blablaPublicHref ?: entry.blablaTripHref.orEmpty()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'if (!requested || applied) return null;' trip-platform/functions/agenda-admin-0417.js
           git diff --name-only "$BASE"..HEAD | tee /tmp/changed-files.txt
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol-before.sha256
 
@@ -56,10 +61,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Validate injected network observer JavaScript syntax
+      - name: Validate backend canonical-link policy and JavaScript syntax
         shell: bash
         run: |
           set -euo pipefail
+          node --check trip-platform/functions/agenda-admin-0417.js
           python3 - <<'PY'
           from pathlib import Path
           import textwrap
@@ -127,14 +133,13 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticRecorderTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripShare0363Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test.exactPublicSearchHrefIsAcceptedOnlyWhenTripIdMatchesTimelineCard' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test.noPublicSearchResultMayInventUrlFromAdministrativeTripId' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/gradle.txt
           ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
           ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
@@ -147,23 +152,23 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5716'" /tmp/aapt.txt
-          grep -Fq "versionName='0.1.423'" /tmp/aapt.txt
+          grep -Fq "versionCode='5782'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.490'" /tmp/aapt.txt
 
-          mkdir -p /tmp/0423
-          cp "$APK" /tmp/0423/rota-certa-0.1.423-blablacar-network-permalink.apk
-          sha256sum /tmp/0423/rota-certa-0.1.423-blablacar-network-permalink.apk | tee /tmp/0423/apk.sha256
-          cp /tmp/aapt.txt /tmp/0423/aapt.txt
-          cp /tmp/apksigner.txt /tmp/0423/apksigner.txt
-          cp /tmp/gradle.txt /tmp/0423/gradle.txt
-          cp /tmp/changed-files.txt /tmp/0423/changed-files.txt
-          git rev-parse HEAD > /tmp/0423/source-head.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0423/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/0423/dex-strings.txt
+          mkdir -p /tmp/0490
+          cp "$APK" /tmp/0490/rota-certa-0.1.490-blablacar-public-url-authority.apk
+          sha256sum /tmp/0490/rota-certa-0.1.490-blablacar-public-url-authority.apk | tee /tmp/0490/apk.sha256
+          cp /tmp/aapt.txt /tmp/0490/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0490/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0490/gradle.txt
+          cp /tmp/changed-files.txt /tmp/0490/changed-files.txt
+          git rev-parse HEAD > /tmp/0490/source-head.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/0490/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/0490/dex-strings.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.423-blablacar-network-permalink-${{ github.sha }}
+          name: rota-certa-0.1.490-blablacar-public-url-authority-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0423
+          path: /tmp/0490

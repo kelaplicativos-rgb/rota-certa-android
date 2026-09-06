@@ -1841,13 +1841,14 @@ private fun TripBlaBlaTripActionRow(
                 contentPadding = COMPACT_ACTION_PADDING,
             ) { Text("👤➕") }
         }
-        if (!entry.blablaPublicHref.isNullOrBlank()) {
+        val canonicalPublicHref0490 = canonicalTimelineBlaBlaPublicHref0490(entry)
+        if (canonicalPublicHref0490 != null) {
             TextButton(
                 onClick = {
-                    if (!openPublicTripBlaBla(context, entry.blablaPublicHref, entry.blablaTripId)) {
+                    if (!openPublicTripBlaBla(context, canonicalPublicHref0490)) {
                         Toast.makeText(
                             context,
-                            "Link público desta viagem não confere com o card. Aguarde a próxima atualização automática.",
+                            "A URL pública canônica desta viagem ainda não está disponível.",
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -1903,12 +1904,12 @@ internal fun externalPassengerTarget(row: EnhancedPassengerCardRow): ExternalPas
     return ExternalPassengerTarget(profileUuid = profileUuid, href = href)
 }
 
-private fun openPublicTripBlaBla(context: Context, href: String?, expectedTripId: String?): Boolean {
-    val target = BlaBlaCollectorUrlModule.publicTrip(href, expectedTripId) ?: return false
+private fun openPublicTripBlaBla(context: Context, canonicalHref: String?): Boolean {
+    val target = canonicalHref?.trim()?.takeIf(String::isNotBlank) ?: return false
     UnifiedDebugEventStore.record(
         "BLABLACAR_PUBLIC_TRIP_OPEN_EXPLICIT",
         context.packageName,
-        "timeline=true expected_trip_id_present=${!expectedTripId.isNullOrBlank()} public_href_present=true",
+        "timeline=true canonical_public_href=true",
     )
     return runCatching {
         context.startActivity(
