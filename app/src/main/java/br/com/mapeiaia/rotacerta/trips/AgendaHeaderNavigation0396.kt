@@ -66,6 +66,8 @@ internal data class AgendaHeaderAction0396(
 internal fun AgendaModuleDrawer0396(
     currentSection: AgendaRootSection0396,
     onSelect: (AgendaRootSection0396) -> Unit,
+    publicAgendaEnabled: Boolean,
+    onOpenPublicAgenda: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit,
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -92,6 +94,28 @@ internal fun AgendaModuleDrawer0396(
                     AgendaRootSection0396.ALL_TRIPS,
                     AgendaRootSection0396.AUTOMATIC_SYNC,
                     AgendaRootSection0396.SCRIPTS,
+                ).forEach { section ->
+                    NavigationDrawerItem(
+                        label = { Text(section.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        selected = section == currentSection,
+                        onClick = {
+                            onSelect(section)
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                    )
+                }
+                NavigationDrawerItem(
+                    label = { Text("Abrir Agenda Pública", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    selected = false,
+                    enabled = publicAgendaEnabled,
+                    onClick = {
+                        onOpenPublicAgenda()
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
+                )
+                listOf(
                     AgendaRootSection0396.PUBLIC_SEARCH,
                     AgendaRootSection0396.PASSENGERS,
                     AgendaRootSection0396.INTEGRATIONS,
