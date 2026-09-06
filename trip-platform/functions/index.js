@@ -1106,6 +1106,11 @@ function safePublicTripFromCanonical0434(token, data) {
   const isFull = payload.status === "FULL";
   const passengerLoads = Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : [];
   const blockedLoads = Array.isArray(payload.segmentBlockedLoads) ? payload.segmentBlockedLoads : [];
+  const segmentAvailability = publicSegmentAvailability0484(
+    { capacity, stops: payload.stops },
+    payload.segmentLoads,
+    reliable,
+  );
   return {
     tripId: token,
     publicToken: token,
@@ -1118,6 +1123,7 @@ function safePublicTripFromCanonical0434(token, data) {
     segmentLoads: payload.segmentLoads,
     segmentPassengerLoads: passengerLoads,
     segmentBlockedLoads: blockedLoads,
+    segmentAvailability,
     availableSeatsMinimum: reliable ? availableMinimum : 0,
     availableSeatsMaximum: reliable ? availableMaximum : 0,
     isFull: reliable && isFull,
@@ -1225,6 +1231,11 @@ function safePublicTrip(token, data) {
   const capacityReliable = capacityIsReliable(token, data) && operationalBreakdownReliable;
   const fullyOccupied = capacityReliable && (data.status === "FULL" || operationalAvailableSeats === 0 || operationalOverbookingSeats > 0);
   const itineraryAuthoritative = itineraryIsAuthoritative(token, data);
+  const segmentAvailability = publicSegmentAvailability0484(
+    { capacity, stops: data.stops },
+    segmentLoads,
+    capacityReliable,
+  );
   return {
     tripId: token,
     publicToken: token,
@@ -1237,6 +1248,7 @@ function safePublicTrip(token, data) {
     segmentLoads,
     segmentPassengerLoads,
     segmentBlockedLoads,
+    segmentAvailability,
     availableSeatsMinimum: capacityReliable ? (fullyOccupied ? 0 : availableMinimum) : 0,
     availableSeatsMaximum: capacityReliable ? (fullyOccupied ? 0 : availableMaximum) : 0,
     isFull: capacityReliable && fullyOccupied,
@@ -2105,9 +2117,33 @@ function currentSeatCapacityMessage(available) {
   return `Agora este carro tem apenas ${seats} vagas disponíveis para este trecho.`;
 }
 
+function canonicalSegmentAvailableSeats0484(trip, loads) {
+  const capacity = Math.max(0, Number(trip && trip.capacity || 0));
+  return (Array.isArray(loads) ? loads : []).map(
+    (load) => Math.max(0, capacity - Math.max(0, Number(load || 0))),
+  );
+}
+
+function publicSegmentAvailability0484(trip, loads, reliable) {
+  const stops = Array.isArray(trip && trip.stops) ? trip.stops : [];
+  const expectedSegments = Math.max(0, stops.length - 1);
+  if (reliable !== true || expectedSegments < 1 || !Array.isArray(loads) || loads.length !== expectedSegments) {
+    return [];
+  }
+  const availableSeats = canonicalSegmentAvailableSeats0484(trip, loads);
+  return availableSeats.map((available, index) => ({
+    from: cleanText(stops[index] && stops[index].name, 160),
+    to: cleanText(stops[index + 1] && stops[index + 1].name, 160),
+    availableSeats: available,
+  })).filter((segment) => segment.from && segment.to);
+}
+
 function capacityAvailabilityRange(trip, loads) {
-  if (!loads.length) return { minimum: Number(trip.capacity || 0), maximum: Number(trip.capacity || 0) };
-  const available = loads.map((load) => Math.max(0, Number(trip.capacity || 0) - Number(load || 0)));
+  const available = canonicalSegmentAvailableSeats0484(trip, loads);
+  if (!available.length) {
+    const capacity = Math.max(0, Number(trip && trip.capacity || 0));
+    return { minimum: capacity, maximum: capacity };
+  }
   return { minimum: Math.min(...available), maximum: Math.max(...available) };
 }
 

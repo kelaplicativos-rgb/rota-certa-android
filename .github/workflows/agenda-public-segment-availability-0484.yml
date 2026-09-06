@@ -1,0 +1,181 @@
+name: Agenda public segment availability 0.1.484
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-segment-availability-0.1.484
+  pull_request:
+    branches:
+      - agent/timeline-operational-restore-0.1.483
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-public-segment-0484-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    env:
+      GOOGLE_MAPS_API_KEY: agenda_public_segment_0484_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      BASE_AUTHORITY_SHA: 996a8f8bd214e0325a1b930db8985d25b3b94f10
+
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Prove scope baseline and privacy
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee changed-files.txt
+          git diff --exit-code "$BASE_AUTHORITY_SHA"...HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --exit-code "$BASE_AUTHORITY_SHA"...HEAD -- app/src/main
+          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+          grep -Fq 'function reconciledSegmentCapacity' trip-platform/functions/index.js
+          grep -Fq 'function publicSegmentAvailability0484' trip-platform/functions/index.js
+          grep -Fq 'segmentAvailability,' trip-platform/functions/index.js
+          grep -Fq 'Vagas por trecho' trip-platform/public/app.js
+          ! grep -Eq 'passengerName|passengerId|bookingId|passengerContact|phone|photo' .github/validation/agenda-public-0484-segment-candidate.contract
+          printf '%s\n' "$SOURCE_SHA" | tee source-head.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate canonical segment availability contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-date-year-contract-0482.test.js             trip-platform/functions/test/agenda-card-visual-parity-0473.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             trip-platform/functions/test/stage47-unified-capacity-r4-step2.test.js
+
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy exact SHA backend and Hosting
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke live public surface
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee live-health.json
+          grep -Fq '"ok":true' live-health.json
+          BUST="$(date +%s%N)"
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o live-app.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o live-index.html
+          grep -Fq 'Vagas por trecho' live-app.js
+          grep -Fq 'publicSegmentRows0484' live-app.js
+          grep -Fq 'app.js?v=0.1.484' live-index.html
+          ! grep -Eiq 'Minha Área|Administrar esta viagem|/v1/admin/' live-app.js live-index.html
+          echo "LIVE_PUBLIC_SEGMENT_AVAILABILITY_0484=PASS" | tee live-smoke.txt
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble APK from final repository SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          export ROTA_CERTA_GIT_BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble.log
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt.txt
+          grep -Fq "versionCode='5776'" aapt.txt
+          grep -Fq "versionName='0.1.483'" aapt.txt
+          sha256sum "$APK" | tee apk.sha256
+          mkdir -p evidence
+          cp "$APK" evidence/rota-certa-0.1.483-public-segment-0484.apk
+          cp source-head.txt changed-files.txt assemble.log apksigner.txt aapt.txt apk.sha256 evidence/
+          test -f live-smoke.txt && cp live-smoke.txt live-health.json evidence/ || true
+          cp .github/validation/agenda-public-0484-segment-candidate.contract evidence/
+
+      - name: Upload exact-SHA APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-public-segment-0484-${{ github.event.pull_request.head.sha || github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: evidence/
