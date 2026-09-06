@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          BASE=05e56491ea319dcb1aacd49b8dd8c840a1948be4
+          BASE=c18ecf6cf592a709525e8bbcb5c7996b17f70c78
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
@@ -44,6 +44,8 @@ jobs:
           grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
           grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
           grep -Fq 'function authoritativeBlaBlaPreservedBookingMigration0479' trip-platform/functions/index.js
+          grep -Fq 'authoritativeManagedReplacement0479' trip-platform/functions/index.js
+          ! grep -Fq 'orderedEndpointPreservingMigration0478' trip-platform/functions/index.js
           grep -Fq 'dateScopeDefaultRequests0478' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'Vagas ficam desligadas por padrão' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           ! grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
@@ -64,6 +66,7 @@ jobs:
           npm run check
           node --check index.js
           node --test \
+            test/backend-canonical-authority-0468.test.js \
             test/agenda-public-timeline-reflection-0425.test.js \
             test/agenda-card-visual-parity-0473.test.js \
             test/agenda-public-read-only-0475.test.js | tee ../../node-focused-tests.log

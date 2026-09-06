@@ -1,1 +1,0 @@
-(function(){const clone=document.documentElement.cloneNode(true);clone.querySelectorAll('script,style,noscript').forEach((n)=>n.remove());clone.querySelectorAll('input,textarea').forEach((n)=>{n.removeAttribute('value');n.textContent='';});return JSON.stringify({url:location.href||'',html:(clone.outerHTML||'').slice(0,350000)});})();
