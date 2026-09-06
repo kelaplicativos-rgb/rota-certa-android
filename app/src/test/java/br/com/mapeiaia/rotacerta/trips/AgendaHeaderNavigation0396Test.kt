@@ -22,7 +22,7 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(header.contains("SCRIPTS(\"Scripts\")"))
         assertTrue(drawer.contains("AgendaRootSection0396.SCRIPTS"))
         assertTrue(drawer.contains("Text(\"Abrir Agenda Pública\""))
-        assertTrue(drawer.contains("enabled = publicAgendaEnabled"))
+        assertTrue(drawer.contains("if (publicAgendaEnabled)"))
         assertTrue(drawer.contains("onOpenPublicAgenda()"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
