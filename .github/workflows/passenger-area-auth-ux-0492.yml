@@ -132,11 +132,72 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.TripUnifiedOccupancyStage47R4Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/focused-tests.log
 
-      - name: Run complete debug unit suite
+      - name: Compare complete debug unit suite against 0.1.492 baseline
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/full-tests.log
+          BASE=8e22f674f61334bd1d4b00b8c90b958f768f128e
+          CURRENT_SHA="$GITHUB_SHA"
+
+          rm -rf /tmp/rotacerta-baseline
+          git worktree add --detach /tmp/rotacerta-baseline "$BASE"
+          cp app/google-services.json /tmp/rotacerta-baseline/app/google-services.json
+
+          set +e
+          (
+            cd /tmp/rotacerta-baseline
+            export ROTA_CERTA_GIT_SHA="$BASE"
+            export ROTA_CERTA_GIT_BRANCH="agent/passenger-area-auth-ux-0.1.492"
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) 2>&1 | tee /tmp/baseline-full-tests.log
+          BASE_STATUS=${PIPESTATUS[0]}
+
+          export ROTA_CERTA_GIT_SHA="$CURRENT_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee /tmp/full-tests.log
+          CURRENT_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          def failures(root: Path):
+              out = set()
+              if not root.exists():
+                  return out
+              for xml in root.rglob("TEST-*.xml"):
+                  try:
+                      tree = ET.parse(xml)
+                  except Exception:
+                      continue
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          out.add(f"{case.attrib.get('classname','')}#{case.attrib.get('name','')}")
+              return out
+
+          baseline = failures(Path("/tmp/rotacerta-baseline/app/build/test-results/testDebugUnitTest"))
+          current = failures(Path("app/build/test-results/testDebugUnitTest"))
+          Path("/tmp/baseline-failures.txt").write_text("\n".join(sorted(baseline)) + ("\n" if baseline else ""))
+          Path("/tmp/current-failures.txt").write_text("\n".join(sorted(current)) + ("\n" if current else ""))
+          Path("/tmp/new-failures.txt").write_text("\n".join(sorted(current - baseline)) + ("\n" if current - baseline else ""))
+          Path("/tmp/resolved-baseline-failures.txt").write_text("\n".join(sorted(baseline - current)) + ("\n" if baseline - current else ""))
+          print(f"baseline_failures={len(baseline)}")
+          print(f"current_failures={len(current)}")
+          print(f"new_failures={len(current - baseline)}")
+          print(f"resolved_baseline_failures={len(baseline - current)}")
+          if current - baseline:
+              print("NEW FAILURES:")
+              print("\n".join(sorted(current - baseline)))
+              raise SystemExit(2)
+          PY
+
+          echo "baseline_gradle_status=$BASE_STATUS"
+          echo "current_gradle_status=$CURRENT_STATUS"
+          test ! -s /tmp/new-failures.txt
+          echo "FULL_SUITE_NO_NEW_FAILURES_VS_0_1_492=PASS"
+
+          git worktree remove --force /tmp/rotacerta-baseline
 
       - name: Lint and assemble installable exact-SHA APK
         shell: bash
@@ -165,7 +226,8 @@ jobs:
           sha256sum /tmp/0493/rota-certa-0.1.493-postbuild-booking-forensics.apk | tee /tmp/0493/apk.sha256
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/0493/
           cp /tmp/farol-base.sha256 /tmp/farol-head.sha256 /tmp/0493/
-          cp /tmp/focused-tests.log /tmp/full-tests.log /tmp/lint.log /tmp/assemble.log /tmp/0493/
+          cp /tmp/focused-tests.log /tmp/full-tests.log /tmp/baseline-full-tests.log /tmp/lint.log /tmp/assemble.log /tmp/0493/
+          cp /tmp/baseline-failures.txt /tmp/current-failures.txt /tmp/new-failures.txt /tmp/resolved-baseline-failures.txt /tmp/0493/
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/0493/
 
           cat > /tmp/0493/final-status.txt <<EOF
