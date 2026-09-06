@@ -19,7 +19,7 @@ concurrency:
 jobs:
   validate-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     env:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -130,6 +130,81 @@ jobs:
           git rev-parse HEAD > /tmp/0491/source-head.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/0491/dex-strings.txt
           grep -Fq "$SOURCE_SHA" /tmp/0491/dex-strings.txt
+
+      - name: Configure exact-SHA Firebase deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy canonical backend and public/private projections from exact HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+          printf '%s\n' "$SOURCE_SHA" > /tmp/0491/deployed-source-head.txt
+
+      - name: Smoke live canonical Agenda and Minha Area boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          BUST="$(date +%s%N)"
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/0491/live-health.json
+          grep -Fq '"ok":true' /tmp/0491/live-health.json
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/0491/live-index.html
+          grep -Fq 'id="passengerAreaLink0491"' /tmp/0491/live-index.html
+          grep -Fq 'href="/minha-area.html"' /tmp/0491/live-index.html
+          ! grep -Eiq 'Administrar esta viagem|agenda-admin-0417.js|type="password"' /tmp/0491/live-index.html
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/0491/live-app.js
+          grep -Fq 'authoritativeUpdatedLabel0491' /tmp/0491/live-app.js
+          grep -Fq 'configurePassengerAreaLink0491' /tmp/0491/live-app.js
+          ! grep -Fq '/v1/admin/' /tmp/0491/live-app.js
+          cmp -s trip-platform/public/app.js /tmp/0491/live-app.js
+
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/minha-area.html?v=$BUST" -o /tmp/0491/live-minha-area.html
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/minha-area.js?v=$BUST" -o /tmp/0491/live-minha-area.js
+          grep -Fq '<h1>Minha Área</h1>' /tmp/0491/live-minha-area.html
+          grep -Fq '/v1/passenger/session' /tmp/0491/live-minha-area.js
+          grep -Fq 'sessionStorage' /tmp/0491/live-minha-area.js
+          ! grep -Fq '/v1/admin/' /tmp/0491/live-minha-area.js
+          node --check /tmp/0491/live-app.js
+          node --check /tmp/0491/live-minha-area.js
+          cmp -s trip-platform/public/minha-area.js /tmp/0491/live-minha-area.js
+
+          CODE_PASSENGER="$(curl --silent --show-error -o /tmp/0491/passenger-auth-boundary.json -w "%{http_code}" "$BASE/v1/passenger/me")"
+          test "$CODE_PASSENGER" = "401"
+          CODE_DRIVER="$(curl --silent --show-error -o /tmp/0491/driver-auth-boundary.json -w "%{http_code}" -X PUT "$BASE/v1/driver/trips/ci-probe/public-visibility" -H 'Content-Type: application/json' --data '{"online":false}')"
+          test "$CODE_DRIVER" = "401"
+
+          echo "LIVE_CANONICAL_PASSENGER_BOUNDARIES=PASS"
 
       - uses: actions/upload-artifact@v4
         with:
