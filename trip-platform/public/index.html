@@ -24,7 +24,8 @@
     .card{background:#fff;border-radius:24px;padding:22px;margin-top:16px;box-shadow:0 5px 22px #0000000b;border:1px solid #ebedf0}
     .error{color:#9b1c1c;font-weight:800;font-size:20px}
     .muted{color:var(--muted);font-size:18px;line-height:1.5}
-    .agendaTrip{position:relative;display:block;color:inherit;border:2px solid var(--line);border-radius:26px;padding:22px;margin-top:18px;background:#fff}
+    .agendaTrip{position:relative;display:block;color:inherit;border:2px solid var(--line);border-radius:26px;padding:22px;margin-top:18px;background:#fff;cursor:pointer}
+    .agendaTrip:focus-visible{outline:3px solid #1186d8;outline-offset:3px}
     .agendaTripFull{background:#f0f1f3;color:#7c8189}
     .agendaCanonicalVisual0473{display:block;color:var(--ink)}
     .agendaCanonicalVisual0473 .agendaDate0473{font-size:31px;line-height:1.08;font-weight:950;margin:0 0 24px;letter-spacing:-.02em}
@@ -40,6 +41,22 @@
     .agendaJourneyCity0473{grid-column:3;font-size:29px;line-height:1.12;font-weight:950;letter-spacing:-.018em;padding:0 0 10px;overflow-wrap:anywhere}
     .agendaJourneyStartCity0473{grid-row:1}
     .agendaJourneyEndCity0473{grid-row:2}
+    .agendaExpandedItinerary0480{display:none}
+    .agendaTripExpanded0480 .agendaJourney0473{display:none}
+    .agendaTripExpanded0480 .agendaExpandedItinerary0480{display:block}
+    .agendaExpandedStop0480{display:grid;grid-template-columns:82px 28px minmax(0,1fr);column-gap:10px;align-items:stretch;min-height:66px}
+    .agendaExpandedStopTime0480{grid-column:1;display:grid;gap:5px;align-content:start;line-height:1.05;padding-top:1px}
+    .agendaExpandedStopTime0480 strong{font-size:25px;font-weight:950;letter-spacing:-.025em}
+    .agendaExpandedDuration0480{font-size:19px;line-height:1.05;font-weight:850;color:var(--muted)}
+    .agendaExpandedStopRail0480{grid-column:2;display:flex;flex-direction:column;align-items:center;align-self:stretch;min-height:66px;padding-top:3px}
+    .agendaExpandedStopDot0480{width:16px;height:16px;border:4px solid #58718d;border-radius:50%;background:#fff;flex:0 0 auto;z-index:2}
+    .agendaExpandedStopLine0480{width:5px;flex:1 1 auto;min-height:38px;background:#58718d;margin-top:2px}
+    .agendaExpandedStopBody0480{grid-column:3;min-width:0;padding:0 0 20px}
+    .agendaExpandedStopCity0480{display:block;font-size:28px;line-height:1.12;font-weight:950;letter-spacing:-.018em;overflow-wrap:anywhere}
+    .agendaExpandedStopAddress0480{margin-top:5px;font-size:20px;line-height:1.28;font-weight:650;color:#243142;overflow-wrap:anywhere}
+    .agendaExpandedStopLast0480{min-height:48px}
+    .agendaExpandedStopLast0480 .agendaExpandedStopBody0480{padding-bottom:4px}
+    .agendaExpandHint0480{margin-top:12px;text-align:center;font-size:14px;line-height:1.2;font-weight:900;color:#176f98}
     .agendaBottom0473{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;padding-top:18px;border-top:1px solid var(--line);flex-wrap:nowrap}
     .agendaOccupancy0473{display:flex;align-items:center;gap:12px;min-width:0}
     .agendaCar0473{display:inline-flex;align-items:center;justify-content:center;width:44px;min-width:44px;height:44px;font-size:25px;filter:grayscale(1);opacity:.78}
@@ -61,6 +78,11 @@
       .agendaJourneyTime0473 strong{font-size:23px}
       .agendaJourneyDuration0473{font-size:18px}
       .agendaJourneyCity0473{font-size:25px}
+      .agendaExpandedStop0480{grid-template-columns:70px 24px minmax(0,1fr);column-gap:8px}
+      .agendaExpandedStopTime0480 strong{font-size:22px}
+      .agendaExpandedDuration0480{font-size:17px}
+      .agendaExpandedStopCity0480{font-size:24px}
+      .agendaExpandedStopAddress0480{font-size:18px}
       .agendaPassengerDot0473,.agendaPassengerMore0473{width:40px;height:40px}
       .agendaCar0473{width:38px;min-width:38px}
       .agendaCardAvailability0473{font-size:12px}
@@ -83,6 +105,6 @@
     <div id="agendaTrips" aria-live="polite"></div>
   </section>
 </main>
-<script src="/app.js?v=0.1.475" defer></script>
+<script src="/app.js?v=0.1.480" defer></script>
 </body>
 </html>

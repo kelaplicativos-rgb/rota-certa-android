@@ -142,6 +142,34 @@ function publicCardEligible0475(item) {
     orderedStops(item).length >= 2;
 }
 
+function agendaLongDateLabel0480(ms) {
+  const date = new Date(Number(ms || 0));
+  if (!Number.isFinite(date.getTime())) return "";
+  const weekdays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+  const months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  return weekdays[date.getDay()] + ", " + date.getDate() + " de " + months[date.getMonth()];
+}
+
+function agendaStopMoment0480(item, stop, index, lastIndex) {
+  if (!stop) return 0;
+  if (index === 0) {
+    return Number(stop.plannedDepartureMillis || stop.plannedArrivalMillis || item.departureAtMillis || 0);
+  }
+  if (index === lastIndex) {
+    return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || 0);
+  }
+  return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || 0);
+}
+
+function toggleAgendaTripDetails0480(card, dateNode, detailsNode, hintNode) {
+  const expanded = card.getAttribute("aria-expanded") !== "true";
+  card.setAttribute("aria-expanded", expanded ? "true" : "false");
+  card.classList.toggle("agendaTripExpanded0480", expanded);
+  detailsNode.setAttribute("aria-hidden", expanded ? "false" : "true");
+  dateNode.textContent = expanded ? dateNode.dataset.expandedLabel : dateNode.dataset.compactLabel;
+  hintNode.textContent = expanded ? "Recolher trajeto" : "Ver paradas";
+}
+
 function renderAgendaCards(entries, container) {
   entries.forEach((item) => {
     const stops = orderedStops(item);
@@ -155,6 +183,10 @@ function renderAgendaCards(entries, container) {
     const card = document.createElement("article");
     card.className = full ? "agendaTrip agendaTripFull" : "agendaTrip";
     card.setAttribute("data-card-surface", "canonical-trip-0473");
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-expanded", "false");
+    card.setAttribute("aria-label", "Ver detalhes da viagem de " + from + " para " + to);
     if (item.canonicalTripId) card.dataset.canonicalTripId = String(item.canonicalTripId);
 
     const startStop0473 = stops[fromIndex];
@@ -168,7 +200,9 @@ function renderAgendaCards(entries, container) {
 
     const date = document.createElement("div");
     date.className = "agendaDate0473";
-    date.textContent = agendaDateLabel0473(item.departureAtMillis);
+    date.dataset.compactLabel = agendaDateLabel0473(item.departureAtMillis);
+    date.dataset.expandedLabel = agendaLongDateLabel0480(item.departureAtMillis);
+    date.textContent = date.dataset.compactLabel;
 
     const journey0473 = document.createElement("div");
     journey0473.className = "agendaJourney0473";
@@ -205,6 +239,62 @@ function renderAgendaCards(entries, container) {
     endCity0473.textContent = to;
 
     journey0473.append(startTime0473, rail0473, startCity0473, endTime0473, endCity0473);
+
+    const expandedItinerary0480 = document.createElement("div");
+    expandedItinerary0480.className = "agendaExpandedItinerary0480";
+    expandedItinerary0480.setAttribute("aria-hidden", "true");
+
+    stops.forEach((stop, index) => {
+      const row0480 = document.createElement("div");
+      row0480.className = "agendaExpandedStop0480";
+      if (index === 0) row0480.classList.add("agendaExpandedStopFirst0480");
+      if (index === toIndex) row0480.classList.add("agendaExpandedStopLast0480");
+
+      const time0480 = document.createElement("div");
+      time0480.className = "agendaExpandedStopTime0480";
+      const moment0480 = agendaStopMoment0480(item, stop, index, toIndex);
+      if (moment0480) {
+        const clock0480 = document.createElement("strong");
+        clock0480.textContent = formatTime(moment0480);
+        time0480.appendChild(clock0480);
+      }
+      if (index === 0 && duration0473) {
+        const duration0480 = document.createElement("small");
+        duration0480.className = "agendaExpandedDuration0480";
+        duration0480.textContent = duration0473;
+        time0480.appendChild(duration0480);
+      }
+
+      const rail0480 = document.createElement("div");
+      rail0480.className = "agendaExpandedStopRail0480";
+      rail0480.setAttribute("aria-hidden", "true");
+      const dot0480 = document.createElement("span");
+      dot0480.className = "agendaExpandedStopDot0480";
+      rail0480.appendChild(dot0480);
+      if (index < toIndex) {
+        const line0480 = document.createElement("span");
+        line0480.className = "agendaExpandedStopLine0480";
+        rail0480.appendChild(line0480);
+      }
+
+      const body0480 = document.createElement("div");
+      body0480.className = "agendaExpandedStopBody0480";
+      const city0480 = document.createElement("strong");
+      city0480.className = "agendaExpandedStopCity0480";
+      city0480.textContent = String(stop?.name || (index === 0 ? "Origem" : (index === toIndex ? "Destino" : "Parada")));
+      body0480.appendChild(city0480);
+
+      const address0480 = String(stop?.address || "").trim();
+      if (address0480) {
+        const addressNode0480 = document.createElement("div");
+        addressNode0480.className = "agendaExpandedStopAddress0480";
+        addressNode0480.textContent = address0480;
+        body0480.appendChild(addressNode0480);
+      }
+
+      row0480.append(time0480, rail0480, body0480);
+      expandedItinerary0480.appendChild(row0480);
+    });
 
     const bottom = document.createElement("div");
     bottom.className = "agendaBottom0473";
@@ -259,8 +349,13 @@ function renderAgendaCards(entries, container) {
       summary0473.appendChild(price);
     }
 
+    const expandHint0480 = document.createElement("div");
+    expandHint0480.className = "agendaExpandHint0480";
+    expandHint0480.textContent = "Ver paradas";
+    expandHint0480.setAttribute("aria-hidden", "true");
+
     bottom.append(occupancy0473, summary0473);
-    canonicalVisual0473.append(date, journey0473, bottom);
+    canonicalVisual0473.append(date, journey0473, expandedItinerary0480, bottom, expandHint0480);
     card.appendChild(canonicalVisual0473);
 
     if (full) {
@@ -269,6 +364,16 @@ function renderAgendaCards(entries, container) {
       fullWord.textContent = "LOTADO";
       card.appendChild(fullWord);
     }
+
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("a,button,input,select,textarea")) return;
+      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480);
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480);
+    });
 
     container.appendChild(card);
   });

@@ -51,6 +51,34 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.475/);
+  assert.match(html, /app\.js\?v=0\.1\.480/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem|Minha Área/i);
+});
+
+
+test("0480 card expands inline to every canonical stop with times and public addresses", () => {
+  const cards = between(app, "function agendaLongDateLabel0480", "function renderAgenda(");
+  assert.match(cards, /agendaLongDateLabel0480/);
+  assert.match(cards, /agendaExpandedItinerary0480/);
+  assert.match(cards, /stops\.forEach\(\(stop, index\) =>/);
+  assert.match(cards, /agendaStopMoment0480/);
+  assert.match(cards, /stop\?\.address/);
+  assert.match(cards, /agendaExpandedStopCity0480/);
+  assert.match(cards, /agendaExpandedStopAddress0480/);
+  assert.match(cards, /Ver paradas/);
+  assert.match(cards, /Recolher trajeto/);
+  assert.match(cards, /aria-expanded/);
+  assert.match(cards, /event\.key !== "Enter" && event\.key !== " "/);
+});
+
+test("0480 expansion stays read-only and exposes no administrative or private action", () => {
+  const cards = between(app, "function agendaLongDateLabel0480", "function renderAgenda(");
+  for (const forbidden of [
+    "/v1/admin/", "Administrar esta viagem", "Minha Área", "public-visibility",
+    "agendaVisibilityToggle0471", "passengerWhatsapp", "privateAuth",
+  ]) assert.doesNotMatch(cards, new RegExp(forbidden, "i"), forbidden);
+  assert.match(html, /\.agendaTripExpanded0480 \.agendaJourney0473\{display:none\}/);
+  assert.match(html, /\.agendaTripExpanded0480 \.agendaExpandedItinerary0480\{display:block\}/);
+  assert.match(html, /\.agendaExpandedStopAddress0480/);
+  assert.match(html, /@media\(max-width:480px\).*agendaExpandedStop0480/s);
 });
