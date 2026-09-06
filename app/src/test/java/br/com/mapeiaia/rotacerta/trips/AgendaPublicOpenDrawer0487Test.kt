@@ -12,7 +12,7 @@ class AgendaPublicOpenDrawer0487Test {
     @Test
     fun drawerUsesConfiguredPublicAgendaActionInsteadOfInventingAnotherRoute() {
         assertTrue(header.contains("Text(\"Abrir Agenda Pública\""))
-        assertTrue(header.contains("enabled = publicAgendaEnabled"))
+        assertTrue(header.contains("if (publicAgendaEnabled)"))
         assertTrue(header.contains("onOpenPublicAgenda()"))
         assertTrue(activity.contains("publicAgendaEnabled = drawerOnlineSettings0397.configured"))
         assertTrue(activity.contains("!drawerOnlineSettings0397.publicAgendaUrl.isNullOrBlank()"))
