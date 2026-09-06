@@ -5372,6 +5372,52 @@ function movePassengerBookingIndex(tx, previousContact, nextContact, tripToken, 
   writePassengerBookingIndex(tx, nextContact, tripToken, bookingId, updatedAtMillis);
 }
 
+function passengerBookingIdentityIndexRef0491(passengerId, tripToken, bookingId) {
+  const stablePassengerId = cleanText(passengerId, 120);
+  const identityHash = sha256Hex(stablePassengerId);
+  const refId = sha256Hex(`${tripToken}:${bookingId}`).slice(0, 48);
+  return db.collection("passengerBookingIdentityIndex0491").doc(identityHash).collection("bookings").doc(refId);
+}
+
+function writePassengerBookingIdentityIndex0491(tx, passengerId, tripToken, bookingId, updatedAtMillis = Date.now()) {
+  const stablePassengerId = cleanText(passengerId, 120);
+  if (!stablePassengerId || !tripToken || !bookingId) return;
+  tx.set(
+    passengerBookingIdentityIndexRef0491(stablePassengerId, tripToken, bookingId),
+    { tripToken, bookingId, updatedAtMillis },
+    { merge: true },
+  );
+}
+
+async function passengerBookingIndexEntries0491(session) {
+  const reads = [
+    db.collection("passengerBookingIndex").doc(session.contactHash)
+      .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get(),
+  ];
+  if (cleanText(session.passengerId, 120)) {
+    reads.push(
+      db.collection("passengerBookingIdentityIndex0491").doc(sha256Hex(session.passengerId))
+        .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get(),
+    );
+  }
+  const snapshots = await Promise.all(reads);
+  const deduped = new Map();
+  snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+    const data = doc.data();
+    const tripToken = cleanText(data.tripToken, 120);
+    const bookingId = cleanText(data.bookingId, 120);
+    if (!tripToken || !bookingId) return;
+    const key = tripToken + ":" + bookingId;
+    const previous = deduped.get(key);
+    if (!previous || Number(data.updatedAtMillis || 0) > Number(previous.updatedAtMillis || 0)) {
+      deduped.set(key, { tripToken, bookingId, updatedAtMillis: Number(data.updatedAtMillis || 0) });
+    }
+  }));
+  return [...deduped.values()]
+    .sort((a, b) => b.updatedAtMillis - a.updatedAtMillis)
+    .slice(0, 100);
+}
+
 function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
@@ -5834,6 +5880,7 @@ async function createBooking(req, res, token) {
           throw Object.assign(new Error("Esta tentativa já foi usada para outra reserva."), { httpStatus: 409, code: "idempotency_conflict" });
         }
         writePassengerBookingIndex(tx, existingData.passengerContact || passengerContact, token, bookingId, Date.now());
+        writePassengerBookingIdentityIndex0491(tx, cleanText(existingData.passengerId || session.passengerId, 120), token, bookingId, Date.now());
         return {
           replayed: true,
           availableSeats: null,
@@ -5930,6 +5977,7 @@ async function createBooking(req, res, token) {
         });
       }
       writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, passengerId, token, bookingId, now);
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "RESERVATION_REQUESTED",
         tripToken: token,
@@ -6273,6 +6321,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
       movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId || session.passengerId, 120), token, bookingId, now);
       let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
         const eventId = writeChangeEventAndNotifications(tx, {
@@ -6821,6 +6870,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       if (!cancelOnly && cleanText(previous.passengerContact, 40) !== cleanText(updated.passengerContact, 40)) {
         movePassengerBookingIndex(tx, previous.passengerContact, updated.passengerContact, token, bookingId, now);
       }
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId, 120), token, bookingId, now);
       const eventType = updated.status === "CANCELLED" && previous.status !== "CANCELLED"
         ? "BOOKING_CANCELLED_BY_DRIVER"
         : (updated.status === "CONFIRMED" && previous.status !== "CONFIRMED" ? "BOOKING_CONFIRMED_BY_DRIVER" : "BOOKING_CHANGED_BY_DRIVER");
@@ -6949,6 +6999,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId || session.passengerId, 120), token, bookingId, now);
       let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
         const eventId = writeChangeEventAndNotifications(tx, {
@@ -7080,6 +7131,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(previous.passengerId || session.passengerId, 120), token, bookingId, now);
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "BOOKING_CANCELLED",
         tripToken: token,
@@ -8135,6 +8187,7 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
         if (persistedBooking.passengerContact) {
           writePassengerBookingIndex(tx, persistedBooking.passengerContact, token, bookingId, persistedBooking.updatedAtMillis);
         }
+        writePassengerBookingIdentityIndex0491(tx, persistedBooking.passengerId, token, bookingId, persistedBooking.updatedAtMillis);
         return {
           booking: persistedBooking,
           ...capacityPatch,
@@ -8156,6 +8209,7 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
         bookingId,
         now,
       );
+      writePassengerBookingIdentityIndex0491(tx, persistedBooking.passengerId, token, bookingId, now);
 
       const eventType = persistedBooking.status === "CANCELLED"
         ? "BOOKING_CANCELLED_BY_DRIVER"
