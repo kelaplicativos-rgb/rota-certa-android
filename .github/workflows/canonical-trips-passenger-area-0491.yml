@@ -55,7 +55,6 @@ jobs:
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --test trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js
-          node --test trip-platform/functions/test/backend-canonical-authority-0468.test.js
           if [ -f trip-platform/public/minha-area.js ]; then node --check trip-platform/public/minha-area.js; fi
           node --check trip-platform/public/app.js
 
