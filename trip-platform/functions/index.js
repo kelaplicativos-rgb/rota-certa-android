@@ -892,84 +892,35 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
     return { changed: false, records, changes: [] };
   }
 
-  const idsValid0478 =
+  const idsValid0477 =
     previousStops.length >= 2 &&
     nextStops.length >= 2 &&
     previousIds.every(Boolean) &&
     nextIds.every(Boolean) &&
     new Set(previousIds).size === previousIds.length &&
     new Set(nextIds).size === nextIds.length;
-  const previousSemantic0478 = previousStops.map(canonicalStopSemanticKey0477);
-  const nextSemantic0478 = nextStops.map(canonicalStopSemanticKey0477);
-  const semanticKeysValid0478 =
-    previousSemantic0478.every(Boolean) &&
-    nextSemantic0478.every(Boolean);
+  const previousSemantic0477 = previousStops.map(canonicalStopSemanticKey0477);
+  const nextSemantic0477 = nextStops.map(canonicalStopSemanticKey0477);
   const sameOrderedSemanticShape0477 =
     previousStops.length === nextStops.length &&
-    semanticKeysValid0478 &&
-    previousSemantic0478.every((key, index) => key === nextSemantic0478[index]);
+    previousSemantic0477.every((key, index) => Boolean(key) && key === nextSemantic0477[index]);
   const legacyEndpointExpansion0439 =
     previousStops.length === 2 &&
     nextStops.length >= 2;
 
-  const uniquePreviousSemantic0478 =
-    semanticKeysValid0478 &&
-    new Set(previousSemantic0478).size === previousSemantic0478.length;
-  const uniqueNextSemantic0478 =
-    semanticKeysValid0478 &&
-    new Set(nextSemantic0478).size === nextSemantic0478.length;
-  const sameSemanticEndpoints0478 =
-    semanticKeysValid0478 &&
-    previousSemantic0478[0] === nextSemantic0478[0] &&
-    previousSemantic0478[previousSemantic0478.length - 1] === nextSemantic0478[nextSemantic0478.length - 1];
-  const nextSemanticIndex0478 = new Map(
-    nextSemantic0478.map((key, index) => [key, index]),
-  );
-  const sharedNextIndexes0478 = previousSemantic0478
-    .map((key) => nextSemanticIndex0478.has(key) ? nextSemanticIndex0478.get(key) : -1)
-    .filter((index) => index >= 0);
-  const sharedOrderPreserved0478 = sharedNextIndexes0478.every(
-    (index, position) => position === 0 || index > sharedNextIndexes0478[position - 1],
-  );
-  const previousIsSemanticSubset0478 = previousSemantic0478.every(nextSemanticIndex0478.has.bind(nextSemanticIndex0478));
-  const previousSemanticSet0478 = new Set(previousSemantic0478);
-  const nextIsSemanticSubset0478 = nextSemantic0478.every(previousSemanticSet0478.has.bind(previousSemanticSet0478));
-  const pureInsertionOrRemoval0478 =
-    previousIsSemanticSubset0478 || nextIsSemanticSubset0478;
-  const orderedEndpointPreservingMigration0478 =
-    previousStops.length > 2 &&
-    idsValid0478 &&
-    uniquePreviousSemantic0478 &&
-    uniqueNextSemantic0478 &&
-    sameSemanticEndpoints0478 &&
-    pureInsertionOrRemoval0478 &&
-    sharedOrderPreserved0478;
-
-  if (
-    !idsValid0478 ||
-    (!sameOrderedSemanticShape0477 &&
-      !legacyEndpointExpansion0439 &&
-      !orderedEndpointPreservingMigration0478)
-  ) {
+  if (!idsValid0477 || (!sameOrderedSemanticShape0477 && !legacyEndpointExpansion0439)) {
     throw Object.assign(
       new Error("A migração canônica de paradas não é segura para esta estrutura."),
       { httpStatus: 409, code: "canonical_stop_shape_migration_unsafe" },
     );
   }
 
-  const mappedStopIds0478 = new Map();
+  const mappedStopIds0477 = new Map();
   if (sameOrderedSemanticShape0477) {
-    previousIds.forEach((id, index) => mappedStopIds0478.set(id, nextIds[index]));
-  } else if (legacyEndpointExpansion0439) {
-    mappedStopIds0478.set(previousIds[0], nextIds[0]);
-    mappedStopIds0478.set(previousIds[previousIds.length - 1], nextIds[nextIds.length - 1]);
+    previousIds.forEach((id, index) => mappedStopIds0477.set(id, nextIds[index]));
   } else {
-    previousIds.forEach((id, index) => {
-      const nextIndex = nextSemanticIndex0478.get(previousSemantic0478[index]);
-      if (Number.isInteger(nextIndex) && nextIndex >= 0) {
-        mappedStopIds0478.set(id, nextIds[nextIndex]);
-      }
-    });
+    mappedStopIds0477.set(previousIds[0], nextIds[0]);
+    mappedStopIds0477.set(previousIds[previousIds.length - 1], nextIds[nextIds.length - 1]);
   }
   const nextIdSet = new Set(nextIds);
 
@@ -977,7 +928,7 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
     const id = cleanText(rawId, 80);
     if (!id) return "";
     if (nextIdSet.has(id)) return id;
-    const mapped = mappedStopIds0478.get(id);
+    const mapped = mappedStopIds0477.get(id);
     if (mapped) return mapped;
     throw Object.assign(
       new Error("Reserva existente referencia uma parada que não pode ser migrada com segurança."),
@@ -7037,6 +6988,90 @@ function managedCapacityClaim(record, namespace) {
   return false;
 }
 
+function authoritativeBlaBlaPreservedBookingMigration0479(previousStopsRaw, nextStopsRaw, recordsRaw) {
+  const previousStops = Array.isArray(previousStopsRaw) ? previousStopsRaw : [];
+  const nextStops = Array.isArray(nextStopsRaw) ? nextStopsRaw : [];
+  const records = Array.isArray(recordsRaw) ? recordsRaw : [];
+  if (!records.length) {
+    return { changed: true, records: [], changes: [], authoritativeRebase0479: true };
+  }
+
+  const previousById = new Map();
+  previousStops.forEach((stop) => {
+    const id = cleanText(stop && stop.id, 80);
+    const key = canonicalStopSemanticKey0477(stop);
+    if (id && key) previousById.set(id, key);
+  });
+
+  const nextSemanticEntries = nextStops.map((stop, index) => ({
+    id: cleanText(stop && stop.id, 80),
+    key: canonicalStopSemanticKey0477(stop),
+    index,
+  }));
+  const nextKeyCounts = new Map();
+  nextSemanticEntries.forEach(({ key }) => {
+    if (!key) return;
+    nextKeyCounts.set(key, (nextKeyCounts.get(key) || 0) + 1);
+  });
+  const nextByKey = new Map(
+    nextSemanticEntries
+      .filter(({ id, key }) => id && key && nextKeyCounts.get(key) === 1)
+      .map((entry) => [entry.key, entry]),
+  );
+  const nextIdIndex = new Map(
+    nextSemanticEntries
+      .filter(({ id }) => id)
+      .map(({ id, index }) => [id, index]),
+  );
+
+  const changes = [];
+  const migrated = records.map((record) => {
+    if (!record) return record;
+    const oldBoarding = cleanText(record.boardingStopId, 80);
+    const oldDropoff = cleanText(record.dropoffStopId, 80);
+    if (!oldBoarding && !oldDropoff) return record;
+    if (!oldBoarding || !oldDropoff) {
+      throw Object.assign(
+        new Error("Reserva preservada possui trecho incompleto e bloqueia o rebase autoritativo."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+
+    const mapPreservedStop0479 = (oldId) => {
+      if (nextIdIndex.has(oldId)) return oldId;
+      const semantic = previousById.get(oldId);
+      const next = semantic ? nextByKey.get(semantic) : null;
+      if (!next) {
+        throw Object.assign(
+          new Error("Reserva preservada referencia parada removida ou ambígua no itinerário autoritativo."),
+          { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+        );
+      }
+      return next.id;
+    };
+
+    const boardingStopId = mapPreservedStop0479(oldBoarding);
+    const dropoffStopId = mapPreservedStop0479(oldDropoff);
+    const fromIndex = nextIdIndex.get(boardingStopId);
+    const toIndex = nextIdIndex.get(dropoffStopId);
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex) || toIndex <= fromIndex) {
+      throw Object.assign(
+        new Error("Rebase autoritativo alteraria o sentido de uma reserva preservada."),
+        { httpStatus: 409, code: "canonical_stop_shape_booking_migration_unsafe" },
+      );
+    }
+    if (boardingStopId === oldBoarding && dropoffStopId === oldDropoff) return record;
+    const updated = { ...record, boardingStopId, dropoffStopId };
+    changes.push({
+      id: cleanText(record.id, 120),
+      boardingStopId,
+      dropoffStopId,
+    });
+    return updated;
+  });
+  return { changed: true, records: migrated, changes, authoritativeRebase0479: true };
+}
+
 async function reconcileDriverCapacitySnapshot(req, res, token) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -7342,10 +7377,41 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
 
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-      const stopShapeMigration0439 = bookedStopShapeMigrationAuthorized0439
-        ? canonicalEndpointStopShapeMigration0439(previous.stops, candidateTrip.stops, records)
-        : { changed: false, records, changes: [] };
-      const migratedRecords0439 = stopShapeMigration0439.records;
+      const authoritativeManagedReplacement0479 =
+        bookedStopShapeMigrationAuthorized0439 &&
+        claimNamespace === "BLABLACAR_SYNC:" &&
+        sourceComplete &&
+        !preserveManagedClaims0436;
+      const preservedForStopMigration0479 = authoritativeManagedReplacement0479
+        ? records.filter((record) => !managedCapacityClaim(record, claimNamespace))
+        : records;
+      const preservedMigration0479 = bookedStopShapeMigrationAuthorized0439
+        ? (
+            authoritativeManagedReplacement0479
+              ? authoritativeBlaBlaPreservedBookingMigration0479(
+                  previous.stops,
+                  candidateTrip.stops,
+                  preservedForStopMigration0479,
+                )
+              : canonicalEndpointStopShapeMigration0439(
+                  previous.stops,
+                  candidateTrip.stops,
+                  preservedForStopMigration0479,
+                )
+          )
+        : { changed: false, records: preservedForStopMigration0479, changes: [] };
+      const migratedPreservedById0479 = new Map(
+        preservedMigration0479.records
+          .filter(Boolean)
+          .map((record) => [record.id, record]),
+      );
+      const migratedRecords0439 = records.map((record) =>
+        migratedPreservedById0479.get(record.id) || record
+      );
+      const stopShapeMigration0439 = {
+        ...preservedMigration0479,
+        records: migratedRecords0439,
+      };
       const now = Date.now();
       const protectedIds = new Set();
       const protectedChanges = [];
