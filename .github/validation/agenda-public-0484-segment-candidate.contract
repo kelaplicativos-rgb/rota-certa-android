@@ -3,6 +3,7 @@ candidateBaseApprovedSha=25f056a1b9ba3dc63249a2df3e62a644e05f2923
 candidateBaseApprovedVersion=0.1.482/5775
 candidatePublicBundleVersion=0.1.484
 candidatePhysicalStatus=PENDING
+candidateFix=0.1.485-global-full-status
 authorization=EXPLICIT_USER_REQUEST
 privacy=NO_PASSENGER_IDENTITY
 capacityAuthority=CANONICAL_SEGMENT_LOADS

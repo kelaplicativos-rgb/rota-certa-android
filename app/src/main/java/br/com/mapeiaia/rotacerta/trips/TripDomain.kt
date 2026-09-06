@@ -654,8 +654,8 @@ object SeatAvailabilityEngine {
             return trip.status
         }
         val loads = segmentLoads(trip, bookings, nowMillis)
-        val operational = operationalSeatSummary(trip, bookings, nowMillis)
-        return if ((operational.operationalLimitConfigured && operational.availableSeats == 0) ||
+        return if (
+            loads.any { it.overbookingSeats > 0 } ||
             (loads.isNotEmpty() && loads.all { it.availableSeats == 0 })
         ) {
             TripStatus.FULL

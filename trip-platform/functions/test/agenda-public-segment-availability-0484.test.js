@@ -32,7 +32,7 @@ function compilePublicSegments() {
   return Function(
     'function cleanText(value, max) { return String(value || "").trim().slice(0, max || 9999); }\n' +
     source +
-    "\nreturn { canonicalSegmentAvailableSeats0484, publicSegmentAvailability0484, capacityAvailabilityRange };"
+    "\nreturn { canonicalSegmentAvailableSeats0484, publicSegmentAvailability0484, canonicalPublicCapacityState0485, capacityAvailabilityRange };"
   )();
 }
 
@@ -96,12 +96,72 @@ test("0484 public segment projection fails closed on unreliable or incomplete ca
   assert.deepEqual(publicSegmentAvailability0484(trip, [1], true), []);
 });
 
+test("0485 a single full segment does not mark the whole trip FULL", () => {
+  const { canonicalPublicCapacityState0485 } = compilePublicSegments();
+  const state = canonicalPublicCapacityState0485({
+    capacity: 2,
+    status: "FULL",
+    stops: [
+      { name: "Três Corações" },
+      { name: "Pouso Alegre" },
+      { name: "Extrema" },
+      { name: "Atibaia" },
+      { name: "Santo André" },
+    ],
+    segmentLoads: [1, 2, 1, 0],
+    capacityReliable: true,
+    operationalOverbookingSeats: 0,
+  });
+
+  assert.equal(state.status, "PUBLISHED");
+  assert.equal(state.isFull, false);
+  assert.equal(state.availableSeatsMinimum, 0);
+  assert.equal(state.availableSeatsMaximum, 2);
+});
+
+test("0485 all segments full still marks the whole trip FULL", () => {
+  const { canonicalPublicCapacityState0485 } = compilePublicSegments();
+  const state = canonicalPublicCapacityState0485({
+    capacity: 2,
+    status: "PUBLISHED",
+    stops: [{ name: "A" }, { name: "B" }, { name: "C" }],
+    segmentLoads: [2, 2],
+    capacityReliable: true,
+    operationalOverbookingSeats: 0,
+  });
+
+  assert.equal(state.status, "FULL");
+  assert.equal(state.isFull, true);
+  assert.equal(state.availableSeatsMinimum, 0);
+  assert.equal(state.availableSeatsMaximum, 0);
+});
+
+test("0485 real overbooking stays fail-closed as FULL", () => {
+  const { canonicalPublicCapacityState0485 } = compilePublicSegments();
+  const state = canonicalPublicCapacityState0485({
+    capacity: 2,
+    status: "PUBLISHED",
+    stops: [{ name: "A" }, { name: "B" }, { name: "C" }],
+    segmentLoads: [3, 0],
+    capacityReliable: true,
+    operationalOverbookingSeats: 1,
+  });
+
+  assert.equal(state.status, "FULL");
+  assert.equal(state.isFull, true);
+  assert.equal(state.overbookingSeats, 1);
+});
+
 test("0484 public API exposes backend-resolved segmentAvailability on canonical and legacy-safe paths", () => {
   const canonical = between(api, "function safePublicTripFromCanonical0434", "function safePublicTrip(token");
   const fallback = between(api, "function safePublicTrip(token", "function canonicalPublicStop0411");
   assert.match(canonical, /publicSegmentAvailability0484/);
+  assert.match(canonical, /canonicalPublicCapacityState0485/);
+  assert.match(canonical, /status: capacityState0485\.status/);
   assert.match(canonical, /segmentAvailability,/);
   assert.match(fallback, /publicSegmentAvailability0484/);
+  assert.match(fallback, /canonicalPublicCapacityState0485/);
+  assert.match(fallback, /status: capacityState0485\.status/);
   assert.match(fallback, /segmentAvailability,/);
 });
 

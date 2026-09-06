@@ -101,4 +101,22 @@ class TripDomainStage47Test {
         val all = listOf(booking("all", "a", "d"))
         assertEquals(TripStatus.FULL, SeatAvailabilityEngine.suggestedStatus(trip, all))
     }
+
+    @Test
+    fun configuredQuotaDoesNotMarkWholeTripFullWhenOnlyOneSegmentIsFull() {
+        val trip = trip(capacity = 2).copy(
+            publishedSeats = 2,
+            rotaCertaSeatAllocation = 0,
+            capacityReliable = true,
+        )
+        val mixed = listOf(
+            booking("first-a", "a", "b"),
+            booking("first-b", "a", "b"),
+        )
+        val loads = SeatAvailabilityEngine.segmentLoads(trip, mixed)
+
+        assertEquals(listOf(0, 2, 2), loads.map { it.availableSeats })
+        assertEquals(0, operationalSeatSummary(trip, mixed).availableSeats)
+        assertEquals(TripStatus.PUBLISHED, SeatAvailabilityEngine.suggestedStatus(trip, mixed))
+    }
 }
