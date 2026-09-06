@@ -5809,13 +5809,15 @@ function passengerPrivateTrip0491(tripToken, tripData) {
 
 function passengerPrivateBooking0491(booking, tripData) {
   const stops = Array.isArray(tripData && tripData.stops) ? tripData.stops : [];
-  const stopName = (stopId) => {
-    const match = stops.find((stop) => cleanText(stop && stop.id, 80) === cleanText(stopId, 80));
-    return cleanText(match && match.name, 160);
-  };
+  const stopFor = (stopId) =>
+    stops.find((stop) => cleanText(stop && stop.id, 80) === cleanText(stopId, 80)) || {};
+  const boardingStop = stopFor(booking && booking.boardingStopId);
+  const dropoffStop = stopFor(booking && booking.dropoffStopId);
   return {
-    boarding: stopName(booking && booking.boardingStopId),
-    dropoff: stopName(booking && booking.dropoffStopId),
+    boarding: cleanText(boardingStop.name, 160),
+    boardingAddress: cleanText(boardingStop.address, 240),
+    dropoff: cleanText(dropoffStop.name, 160),
+    dropoffAddress: cleanText(dropoffStop.address, 240),
     seats: Math.max(0, Number(booking && booking.seats || 0)),
     status: cleanText(booking && booking.status, 24),
     operationalStatus: cleanText(booking && booking.operationalStatus, 32),
