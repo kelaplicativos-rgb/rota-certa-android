@@ -1313,6 +1313,7 @@ function publicTripProjection0491(value) {
   delete out.publicToken;
   delete out.canonicalTripId;
   delete out.blablaTripId;
+  delete out.driverUsername;
   delete out.notes;
   if (Array.isArray(out.stops)) {
     out.stops = out.stops.map((stop) => {
