@@ -64,9 +64,9 @@ jobs:
           npm run check
           node --check index.js
           node --test \
-            test/backend-canonical-authority-0468.test.js \
             test/agenda-public-timeline-reflection-0425.test.js \
-            test/agenda-card-visual-parity-0473.test.js | tee ../../node-focused-tests.log
+            test/agenda-card-visual-parity-0473.test.js \
+            test/agenda-public-read-only-0475.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
         shell: bash
@@ -164,96 +164,7 @@ jobs:
             exit 3
           fi
 
-      - name: Diagnose live canonical state before deploy
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd trip-platform/functions
-          node <<'NODE' | tee ../../missing-trip-diagnostic-predeploy.json
-          const admin = require("firebase-admin");
-          (async () => {
-            if (!admin.apps.length) admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || "rota-certa-7ccc8" });
-            const db = admin.firestore();
-            const directDocIds = [
-              "bbae1dc05ac20f799f907a5b55935f8f",
-              "bb66f151315740dbd3effc4b2010ed2f",
-            ];
-            const targetTripId = "01a058be-73c8-7845-9ad2-076aaef9883c";
-
-            async function summarize(doc) {
-              if (!doc.exists) return { id: doc.id, exists: false };
-              const d = doc.data() || {};
-              const bookings = await doc.ref.collection("bookings").get();
-              return {
-                id: doc.id,
-                exists: true,
-                driverUsername: d.driverUsername || "",
-                title: d.title || "",
-                departureAtMillis: Number(d.departureAtMillis || 0),
-                status: d.status || "",
-                publicationTombstone: d.publicationTombstone === true,
-                publicBookingEnabled: d.publicBookingEnabled === true,
-                blablaProfileUuid: d.blablaProfileUuid || "",
-                blablaTripId: d.blablaTripId || "",
-                canonicalTripId: d.canonicalTripId || d.localTripId || "",
-                tripKey: d.tripKey || "",
-                publicationRevision: Number(d.publicationRevision || 0),
-                canonicalRevision: Number(d.canonicalRevision || 0),
-                capacitySnapshotRevision: d.capacitySnapshotRevision || "",
-                canonicalStateHash: d.canonicalStateHash || "",
-                publicProjectionHash0434: d.publicProjectionHash0434 || "",
-                hasCanonicalPublicProjection0434: Boolean(d.canonicalPublicProjection0434 && typeof d.canonicalPublicProjection0434 === "object"),
-                canonicalPublicProjectionTripId: d.canonicalPublicProjection0434?.blablaTripId || "",
-                canonicalPublicProjectionRevision: Number(d.canonicalPublicProjection0434?.canonicalRevision || 0),
-                publicCommittedAt0422: Boolean(d.publicCommittedAt0422),
-                publicProjectionRevision0434: Number(d.publicProjectionRevision0434 || 0),
-                publicAttestationState0417: d.publicAttestationState0417 || "",
-                publicAttestedPublicationRevision0417: Number(d.publicAttestedPublicationRevision0417 || 0),
-                publicAttestedCanonicalRevision0417: Number(d.publicAttestedCanonicalRevision0417 || 0),
-                stops: Array.isArray(d.stops)
-                  ? d.stops.map(s => ({ id:s?.id || "", name:s?.name || "", address:s?.address || "" }))
-                  : [],
-                canonicalStops: Array.isArray(d.canonicalPublicProjection0434?.stops)
-                  ? d.canonicalPublicProjection0434.stops.map(s => ({ id:s?.id || "", name:s?.name || "", address:s?.address || "" }))
-                  : [],
-                bookingsCountStored: Number(d.bookingsCount || 0),
-                bookings: bookings.docs.map(b => {
-                  const v = b.data() || {};
-                  return {
-                    id:b.id,
-                    status:v.status || "",
-                    source:v.source || "",
-                    boardingStopId:v.boardingStopId || "",
-                    dropoffStopId:v.dropoffStopId || "",
-                    seats:Number(v.seats || 0),
-                  };
-                }),
-                updatedAtMillis: Number(d.updatedAtMillis || 0),
-              };
-            }
-
-            const direct = [];
-            for (const id of directDocIds) direct.push(await summarize(await db.collection("trips").doc(id).get()));
-
-            const fallbackSnap = await db.collection("trips").where("blablaTripId", "==", targetTripId).limit(10).get();
-            const fallback = [];
-            for (const doc of fallbackSnap.docs) {
-              if (directDocIds.includes(doc.id)) continue;
-              fallback.push(await summarize(doc));
-            }
-
-            const existing = [...direct, ...fallback].filter(row => row.exists);
-            if (existing.length === 0) {
-              throw new Error("No canonical trip documents found for the physical 409 evidence.");
-            }
-            console.log(JSON.stringify({ directDocIds, targetTripId, direct, fallback }, null, 2));
-          })().catch((error) => {
-            console.error(error && error.stack || error);
-            process.exitCode = 1;
-          });
-          NODE
-
-      - name: Deploy exact SHA trip API only
+      - name: Deploy exact SHA public hosting
         shell: bash
         run: |
           set -euo pipefail
@@ -261,18 +172,22 @@ jobs:
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive --force --token "$FIREBASE_TOKEN"
           else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive --force
           fi
 
-      - name: Smoke deployed backend
+      - name: Smoke deployed public card bundle
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee live-health.json
-          grep -Fq '"ok":true' live-health.json
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/" | tee live-index.html
+          grep -Fq 'app.js?v=0.1.480' live-index.html
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.480" | tee live-app.js
+          grep -Fq 'agendaExpandedItinerary0480' live-app.js
+          grep -Fq 'toggleAgendaTripDetails0480' live-app.js
+          grep -Fq 'Ver paradas' live-app.js
           printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
 
       - name: Upload final APK and evidence
@@ -291,5 +206,5 @@ jobs:
             farol.sha256
             node-focused-tests.log
             android-focused-tests.log
-            live-health.json
-            missing-trip-diagnostic-predeploy.json
+            live-index.html
+            live-app.js
