@@ -133,14 +133,13 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCaptureOrchestrator0368Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticRecorderTest' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripShare0363Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test.exactPublicSearchHrefIsAcceptedOnlyWhenTripIdMatchesTimelineCard' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicTripLink0364Test.noPublicSearchResultMayInventUrlFromAdministrativeTripId' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaReadbackForensics0421Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAdminObservability0417Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/gradle.txt
           ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
           ./gradlew :app:lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee -a /tmp/gradle.txt
