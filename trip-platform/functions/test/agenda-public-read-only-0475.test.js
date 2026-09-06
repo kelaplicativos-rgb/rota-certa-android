@@ -22,7 +22,7 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.484/);
+  assert.match(html, /app\.js\?v=0\.1\.489/);
   for (const forbidden of [
     "Minha Área", "Administrador", "Administração da Agenda", "Administrar esta viagem",
     "accessGate", "privateAuth", "passengerPortal", "agendaAdmin0417", "admin-0417.js",
@@ -34,7 +34,8 @@ test("0475 browser bundle is read-only and keeps the canonical 0473 card hierarc
   assert.equal((app.match(/function renderAgendaCards/g) || []).length, 1);
   assert.match(app, /agendaCanonicalVisual0473/);
   assert.match(app, /agendaJourney0473/);
-  assert.match(app, /agendaPassengerStack0473/);
+  assert.match(app, /agendaSegmentPassengers0489/);
+  assert.match(app, /appendSegmentPassengerDots0489/);
   assert.match(app, /publicAvailabilityLabel/);
   assert.match(app, /fullFareFor/);
   assert.match(app, /PUBLIC_AGENDA_CARD_STATUSES_0469/);
@@ -69,6 +70,6 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5777/);
-  assert.match(gradle, /versionName = "0\.1\.485"/);
+  assert.match(gradle, /versionCode = 5781/);
+  assert.match(gradle, /versionName = "0\.1\.489"/);
 });

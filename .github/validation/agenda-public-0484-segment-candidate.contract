@@ -1,13 +1,14 @@
-candidateId=agenda-public-segment-availability-0484
+candidateId=agenda-public-segment-passenger-dots-0489
 candidateBaseApprovedSha=25f056a1b9ba3dc63249a2df3e62a644e05f2923
 candidateBaseApprovedVersion=0.1.482/5775
-candidatePublicBundleVersion=0.1.484
+candidatePublicBundleVersion=0.1.489
 candidatePhysicalStatus=PENDING
-candidateFix=0.1.485-global-full-status
+candidateFix=0.1.489-anonymous-segment-passenger-dots
 authorization=EXPLICIT_USER_REQUEST
-privacy=NO_PASSENGER_IDENTITY
-capacityAuthority=CANONICAL_SEGMENT_LOADS
+privacy=ANONYMOUS_PASSENGER_COUNTS_ONLY
+capacityAuthority=CANONICAL_SEGMENT_LOADS_AND_PASSENGER_LOADS
 frontendCalculation=FORBIDDEN
+frontendPassengerIdentity=FORBIDDEN
 
-candidate-public-file 100644 5ecfb9dc9bf6e3d013170a597c3003b809474ab9 trip-platform/public/app.js
-candidate-public-file 100644 ca93ac64432609c2d36bc3139a1b221cd90a3650 trip-platform/public/index.html
+candidate-public-file 100644 c5d9287c6f7e7dc8517e7bb1243aa6a34a83e307 trip-platform/public/app.js
+candidate-public-file 100644 5d5aebea732aee3aa333a02d8daa5b46feb5c4e9 trip-platform/public/index.html

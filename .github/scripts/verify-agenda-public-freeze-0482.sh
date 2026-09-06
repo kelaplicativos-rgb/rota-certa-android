@@ -30,10 +30,10 @@ grep -Fqx 'publicFreeze=ENFORCED' "$CONTRACT" || fail "freeze contract missing"
 
 candidate_mode=false
 if test -f "$CANDIDATE"; then
-  grep -Fqx 'candidateId=agenda-public-segment-availability-0484' "$CANDIDATE" || fail "unknown candidate"
+  grep -Fqx 'candidateId=agenda-public-segment-passenger-dots-0489' "$CANDIDATE" || fail "unknown candidate"
   grep -Fqx "candidateBaseApprovedSha=$APPROVED_SHA" "$CANDIDATE" || fail "candidate baseline mismatch"
   grep -Fqx 'candidateBaseApprovedVersion=0.1.482/5775' "$CANDIDATE" || fail "candidate baseline version mismatch"
-  grep -Fqx 'candidatePublicBundleVersion=0.1.484' "$CANDIDATE" || fail "candidate bundle version mismatch"
+  grep -Fqx 'candidatePublicBundleVersion=0.1.489' "$CANDIDATE" || fail "candidate bundle version mismatch"
   grep -Fqx 'candidatePhysicalStatus=PENDING' "$CANDIDATE" || fail "candidate must remain physically pending"
   grep -Fqx 'authorization=EXPLICIT_USER_REQUEST' "$CANDIDATE" || fail "candidate authorization missing"
   candidate_mode=true
@@ -86,7 +86,8 @@ while IFS= read -r js; do
 done < <(git ls-files 'trip-platform/public/*.js' | LC_ALL=C sort)
 
 if $candidate_mode; then
-  grep -Fq 'app.js?v=0.1.484' trip-platform/public/index.html || fail "candidate public bundle version changed"
+  grep -Fq 'app.js?v=0.1.489' trip-platform/public/index.html || fail "candidate public bundle version changed"
+  grep -Fq 'agendaSegmentPassengers0489' trip-platform/public/index.html || fail "candidate segment passenger visual missing"
   grep -Fq 'Vagas por trecho' trip-platform/public/app.js || fail "candidate segment availability surface missing"
 else
   grep -Fq 'app.js?v=0.1.482' trip-platform/public/index.html || fail "public bundle version changed"
@@ -102,7 +103,7 @@ grep -Fq '"functionId": "tripApi"' trip-platform/firebase.json || fail "public A
 grep -Fq 'allow read, write: if false;' trip-platform/firestore.rules || fail "Firestore browser deny-all changed"
 
 if $candidate_mode; then
-  printf 'AGENDA_PUBLIC_FREEZE_0484=CANDIDATE_PASS base_approved_sha=%s physical_status=PENDING\n' "$APPROVED_SHA"
+  printf 'AGENDA_PUBLIC_FREEZE_0489=CANDIDATE_PASS base_approved_sha=%s physical_status=PENDING\n' "$APPROVED_SHA"
 else
   printf 'AGENDA_PUBLIC_FREEZE_0482=PASS approved_sha=%s\n' "$APPROVED_SHA"
 fi

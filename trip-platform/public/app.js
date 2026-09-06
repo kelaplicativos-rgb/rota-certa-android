@@ -138,6 +138,9 @@ function publicSegmentRows0484(item) {
       from: String(segment.from).trim(),
       to: String(segment.to).trim(),
       availableSeats: Math.max(0, Math.floor(Number(segment.availableSeats))),
+      passengerSeats: segment.passengerSeats != null && Number.isFinite(Number(segment.passengerSeats))
+        ? Math.max(0, Math.floor(Number(segment.passengerSeats)))
+        : null,
     }));
 }
 
@@ -159,6 +162,32 @@ function fullFareFor(item) {
 function normalizedSeatCount(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+function appendSegmentPassengerDots0489(container, passengerSeats) {
+  if (passengerSeats == null) {
+    container.setAttribute("aria-label", "Ocupação de passageiros indisponível neste trecho");
+    return;
+  }
+  const count = normalizedSeatCount(passengerSeats);
+  container.setAttribute(
+    "aria-label",
+    count === 1 ? "1 passageiro confirmado neste trecho" : count + " passageiros confirmados neste trecho",
+  );
+  const shown = Math.min(4, count);
+  for (let index = 0; index < shown; index += 1) {
+    const dot = document.createElement("span");
+    dot.className = "agendaPassengerDot0473";
+    dot.setAttribute("aria-hidden", "true");
+    container.appendChild(dot);
+  }
+  if (count > 4) {
+    const more = document.createElement("span");
+    more.className = "agendaPassengerMore0473";
+    more.setAttribute("aria-hidden", "true");
+    more.textContent = "+" + (count - 4);
+    container.appendChild(more);
+  }
 }
 
 function publicCardEligible0475(item) {
@@ -349,11 +378,15 @@ function renderAgendaCards(entries, container) {
         route0484.className = "agendaSegmentAvailabilityRoute0484";
         route0484.textContent = segment.from + " → " + segment.to;
 
+        const passengers0489 = document.createElement("span");
+        passengers0489.className = "agendaSegmentPassengers0489";
+        appendSegmentPassengerDots0489(passengers0489, segment.passengerSeats);
+
         const seats0484 = document.createElement("strong");
         seats0484.className = "agendaSegmentAvailabilitySeats0484";
         seats0484.textContent = segmentAvailabilityLabel0484(segment.availableSeats);
 
-        row0484.append(route0484, seats0484);
+        row0484.append(route0484, passengers0489, seats0484);
         segmentAvailability0484.appendChild(row0484);
       });
     }
@@ -370,34 +403,6 @@ function renderAgendaCards(entries, container) {
     car0473.setAttribute("aria-label", "Viagem de carro");
     car0473.textContent = "🚗";
     occupancy0473.appendChild(car0473);
-
-    const passengerCount0473 = normalizedSeatCount(item.confirmedPassengerSeats);
-    const passengerStack0473 = document.createElement("span");
-    passengerStack0473.className = "agendaPassengerStack0473";
-    passengerStack0473.setAttribute(
-      "aria-label",
-      passengerCount0473 === 1 ? "1 passageiro confirmado" : passengerCount0473 + " passageiros confirmados",
-    );
-    const shownPassengerDots0473 = Math.min(3, passengerCount0473);
-    for (let index = 0; index < shownPassengerDots0473; index += 1) {
-      const passengerDot0473 = document.createElement("span");
-      passengerDot0473.className = "agendaPassengerDot0473";
-      passengerDot0473.setAttribute("aria-hidden", "true");
-      passengerStack0473.appendChild(passengerDot0473);
-    }
-    if (passengerCount0473 > 3) {
-      const passengerMore0473 = document.createElement("span");
-      passengerMore0473.className = "agendaPassengerMore0473";
-      passengerMore0473.setAttribute("aria-hidden", "true");
-      passengerMore0473.textContent = "+" + (passengerCount0473 - 3);
-      passengerStack0473.appendChild(passengerMore0473);
-    } else if (passengerCount0473 === 0) {
-      const passengerEmpty0473 = document.createElement("span");
-      passengerEmpty0473.className = "agendaPassengerEmpty0473";
-      passengerEmpty0473.textContent = "Sem passageiros";
-      passengerStack0473.appendChild(passengerEmpty0473);
-    }
-    occupancy0473.appendChild(passengerStack0473);
 
     const summary0473 = document.createElement("div");
     summary0473.className = "agendaCardSummary0473";
