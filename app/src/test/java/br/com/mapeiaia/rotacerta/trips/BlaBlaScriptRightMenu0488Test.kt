@@ -44,6 +44,10 @@ class BlaBlaScriptRightMenu0488Test {
         assertTrue(workspace.contains("Text(\"Excluir da biblioteca\")"))
         assertTrue(workspace.contains("fun deleteCustomScript(id: String)"))
         assertTrue(workspace.contains("Um override já aplicado ao coletor não é apagado automaticamente"))
-        assertFalse(workspace.contains("deleteCustomScript(current.id)) {"))
+        val deleteBody = workspace
+            .substringAfter("fun deleteCustomScript(id: String): Boolean {")
+            .substringBefore("private fun scriptKey")
+        assertFalse(deleteBody.contains("restoreOriginal("))
+        assertFalse(deleteBody.contains("remove(scriptKey"))
     }
 }
