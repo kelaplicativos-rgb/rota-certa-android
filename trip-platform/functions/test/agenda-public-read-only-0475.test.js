@@ -22,7 +22,7 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.480\.1/);
+  assert.match(html, /app\.js\?v=0\.1\.481/);
   for (const forbidden of [
     "Minha Área", "Administrador", "Administração da Agenda", "Administrar esta viagem",
     "accessGate", "privateAuth", "passengerPortal", "agendaAdmin0417", "admin-0417.js",

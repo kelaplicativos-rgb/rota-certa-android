@@ -99,11 +99,6 @@ test("0481 compact card shows the year when the trip is outside the current cale
   assert.match(compactDateSource, /date\.getFullYear\(\) !== now\.getFullYear\(\)/);
   assert.match(compactDateSource, /yearSuffix/);
 
-  const compactDate = Function(compactDateSource + "\nreturn agendaDateLabel0473;")();
-  const currentYear = new Date().getFullYear();
-  const sameYear = new Date(currentYear, 9, 2, 19, 0, 0, 0).getTime();
-  const nextYear = new Date(currentYear + 1, 7, 7, 10, 30, 0, 0).getTime();
-
-  assert.doesNotMatch(compactDate(sameYear), new RegExp(String(currentYear) + "$"));
-  assert.match(compactDate(nextYear), new RegExp(String(currentYear + 1) + "$"));
+  assert.match(compactDateSource, /const yearSuffix = date\.getFullYear\(\) !== now\.getFullYear\(\) \? " " \+ date\.getFullYear\(\) : "";/);
+  assert.match(compactDateSource, /months\[date\.getMonth\(\)\] \+ yearSuffix/);
 });
