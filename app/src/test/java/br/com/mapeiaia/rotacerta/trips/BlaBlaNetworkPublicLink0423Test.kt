@@ -264,6 +264,108 @@ class BlaBlaNetworkPublicLink0423Test {
         )
     }
 
+    @Test
+    fun collectorAuthorityOverwritesCorruptedCanonicalPublicLinkAndIsIdempotent0490() {
+        val corrupted = href(publicB)
+        val observed = source(adminA, href(publicA))
+        val trip = canonicalTrip0490(
+            adminId = adminA,
+            canonicalUrl = corrupted,
+            snapshot = observed,
+        )
+
+        val repaired = reconciledCanonicalBlaBlaPublicUrl0490(trip)
+        assertEquals(href(publicA), repaired)
+
+        val secondPass = reconciledCanonicalBlaBlaPublicUrl0490(
+            trip.copy(blablaPublicUrl = repaired),
+        )
+        assertEquals(repaired, secondPass)
+    }
+
+    @Test
+    fun temporaryCollectorAbsenceNeverErasesPreviouslyValidatedCanonicalLink0490() {
+        val existing = href(publicA)
+        val missingObservation = source(adminA, "")
+        val trip = canonicalTrip0490(
+            adminId = adminA,
+            canonicalUrl = existing,
+            snapshot = missingObservation,
+        )
+
+        assertNull(canonicalCollectorAuthorityPublicUrl0490(trip))
+        assertEquals(existing, reconciledCanonicalBlaBlaPublicUrl0490(trip))
+    }
+
+    @Test
+    fun collectorEvidenceFromAnotherStrongTripCannotCrossCanonicalIdentity0490() {
+        val wrongTrip = canonicalTrip0490(
+            adminId = adminA,
+            canonicalUrl = null,
+            snapshot = source(adminB, href(publicB)),
+        )
+        val wrongProfile = canonicalTrip0490(
+            adminId = adminA,
+            canonicalUrl = null,
+            snapshot = source(adminA, href(publicA)).copy(
+                profile_uuid = "22222222-2222-4222-8222-222222222222",
+            ),
+        )
+
+        assertNull(canonicalCollectorAuthorityPublicUrl0490(wrongTrip))
+        assertNull(reconciledCanonicalBlaBlaPublicUrl0490(wrongTrip))
+        assertNull(canonicalCollectorAuthorityPublicUrl0490(wrongProfile))
+        assertNull(reconciledCanonicalBlaBlaPublicUrl0490(wrongProfile))
+    }
+
+    @Test
+    fun timelinePublicAndOverflowActionsReadTheSameCanonicalProjection0490() {
+        val timelineModel = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(timelineModel.contains("canonicalTimelineBlaBlaPublicHref0490"))
+        assertTrue(timelineModel.contains("canonicalBoundBlaBlaPublicUrl0423(entry.blablaPublicHref, entry.blablaTripId)"))
+        assertTrue(timelineUi.contains("val canonicalPublicationHref0490"))
+        assertTrue(timelineUi.contains("val href = canonicalPublicationHref0490"))
+        assertTrue(passengerUi.contains("val canonicalPublicHref0490 = canonicalTimelineBlaBlaPublicHref0490(entry)"))
+        assertTrue(passengerUi.contains("openPublicTripBlaBla(context, canonicalPublicHref0490)"))
+        assertTrue(!timelineUi.contains("entry.blablaPublicHref ?: entry.blablaTripHref.orEmpty()"))
+    }
+
+    @Test
+    fun canonicalIntegrityMigrationProjectsCollectorAuthorityBackIntoExistingBindings0490() {
+        val storeSource = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt").readText()
+
+        assertTrue(storeSource.contains("canonicalCollectorAuthorityPublicUrl0490(conflictAware)"))
+        assertTrue(storeSource.contains("BLABLACAR_PUBLIC_URL_RECONCILED_0490"))
+        assertTrue(storeSource.contains("blablaPublicHref = canonicalPublicHref0490.ifBlank { binding.blablaPublicHref }"))
+    }
+
+    private fun canonicalTrip0490(
+        adminId: String,
+        canonicalUrl: String?,
+        snapshot: BlaBlaCollectorTrip,
+    ) = Trip(
+        id = "canonical-$adminId",
+        title = "Origem → Destino",
+        departureAtMillis = 1_900_000_000_000L,
+        capacity = 2,
+        status = TripStatus.PUBLISHED,
+        stops = listOf(
+            TripStop(id = "from", order = 0, name = "Origem"),
+            TripStop(id = "to", order = 1, name = "Destino"),
+        ),
+        blablaProfileUuid = "11111111-1111-4111-8111-111111111111",
+        blablaTripId = adminId,
+        blablaManageUrl = "https://www.blablacar.com.br/rides/offer/$adminId",
+        blablaPublicUrl = canonicalUrl,
+        recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+        externalSnapshot = snapshot,
+        externalSnapshotComplete = true,
+        tripKey = "tenant|blablacar|profile|$adminId",
+    )
+
     private fun evidence(adminId: String, rawHref: String) = BlaBlaNetworkTripSourceEvidence(
         tripId = adminId,
         publicTripHref = rawHref,
