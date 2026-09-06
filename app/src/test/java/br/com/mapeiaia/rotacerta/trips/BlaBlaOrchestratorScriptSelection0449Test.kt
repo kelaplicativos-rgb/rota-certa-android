@@ -11,6 +11,8 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     private val ui = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
     private val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
     private val session = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt").readText()
+    private val workspace = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaScriptWorkspace0486.kt").readText()
+    private val registry = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt").readText()
 
     private fun trip(
         publicUrl: String? = "https://www.blablacar.com.br/trip?id=old-public",
@@ -45,7 +47,7 @@ class BlaBlaOrchestratorScriptSelection0449Test {
     }
 
     @Test
-    fun datePeriodUiExposesAll32RegisteredScriptsGroupedByFunctionWithToggles() {
+    fun centralScriptWorkspaceExposesAll32RegisteredScriptsWithoutDuplicatingDatePeriodUi() {
         assertEquals(32, BlaBlaDateScopeScriptCatalog0449.selectableRequests.size)
         assertEquals(32, BlaBlaDateScopeScriptCatalog0449.selectableRequests.distinct().size)
         assertEquals(
@@ -73,17 +75,20 @@ class BlaBlaOrchestratorScriptSelection0449Test {
             BlaBlaDateScopeScriptCatalog0449.remoteWriteRequests,
         )
 
-        assertTrue(ui.contains("Scripts do orquestrador"))
-        assertTrue(ui.contains("32 scripts registrados • 22 CAPTURE • 8 NAVIGATION • 2 REMOTE_WRITE"))
-        assertTrue(ui.contains("BlaBlaDateScopeScriptCatalog0449.groups.forEach"))
-        assertTrue(ui.contains("group.requests.forEach"))
-        assertTrue(ui.contains("Text(\"Todos\")"))
-        assertTrue(ui.contains("Text(\"Nenhum\")"))
-        assertTrue(ui.contains("Text(\"Só vagas\")"))
-        assertTrue(ui.contains("Text(\"URL pública\")"))
-        assertTrue(ui.contains("request.assetName"))
-        assertTrue(ui.contains("operationLabel(request)"))
-        assertTrue(ui.contains("Escrita remota: o toggle autoriza o script"))
+        assertTrue(workspace.contains("BlaBlaDateScopeScriptCatalog0449.groups.forEach"))
+        assertTrue(workspace.contains("group.requests.forEachIndexed"))
+        assertTrue(workspace.contains("Text(\"Editar\")"))
+        assertTrue(workspace.contains("Text(\"Salvar\")"))
+        assertTrue(workspace.contains("Text(\"Restaurar original\")"))
+        assertTrue(workspace.contains("Usar em Sincronizar por data/período"))
+        assertTrue(workspace.contains("REMOTE_WRITE protegido"))
+        assertTrue(registry.contains("workspace.overrideScript(request) ?: originalTemplate(request)"))
+
+        assertTrue(ui.contains("scriptWorkspace0486.dateScopeEnabledRequests()"))
+        assertTrue(ui.contains("centralizados no menu Scripts"))
+        assertFalse(ui.contains("BlaBlaDateScopeScriptCatalog0449.groups.forEach"))
+        assertFalse(ui.contains("Text(\"Todos\")"))
+        assertFalse(ui.contains("Text(\"Só vagas\")"))
     }
 
     @Test
@@ -113,9 +118,9 @@ class BlaBlaOrchestratorScriptSelection0449Test {
         assertTrue(BlaBlaDateScopeScriptCatalog0449.publicUrlRequests.all(defaults::contains))
         assertTrue(BlaBlaDateScopeScriptCatalog0449.seatFlowRequests0478.none(defaults::contains))
         assertFalse(BlaBlaBrowserRequest.SEAT_OPTIONS in defaults)
-        assertTrue(ui.contains("dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478"))
-        assertTrue(ui.contains("Vagas ficam desligadas por padrão"))
-        assertTrue(ui.contains("dateScopeSelectedScripts0449 = BlaBlaDateScopeScriptCatalog0449.all"))
+        assertTrue(workspace.contains("return BlaBlaDateScopeScriptCatalog0449.dateScopeDefaultRequests0478"))
+        assertTrue(ui.contains("dateScopeSelectedScripts0449 = scriptWorkspace0486.dateScopeEnabledRequests()"))
+        assertTrue(workspace.contains("restoreDateScopeDefaults"))
     }
 
     @Test
