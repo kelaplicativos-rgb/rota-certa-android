@@ -329,6 +329,7 @@ data class PublicBookingRequest(
 data class DriverBookingUpsertRequest(
     val passengerName: String,
     val passengerContact: String = "",
+    val passengerId: String = "",
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
@@ -581,11 +582,28 @@ data class DriverTripSyncState0402(
     val availableSeatsMinimum: Int? = null,
     val availableSeatsMaximum: Int? = null,
     val occupancyRevision: Long? = null,
+    val publicAgendaOnline0471: Boolean = true,
+    val publicAgendaVisibilityRevision0471: Long = 0L,
 )
 
 @Serializable
 data class DriverTripSyncStateResponse0402(
     val trips: List<DriverTripSyncState0402> = emptyList(),
+)
+
+@Serializable
+data class DriverTripPublicVisibilityRequest0491(
+    val online: Boolean,
+    val expectedVisibilityRevision0471: Long? = null,
+)
+
+@Serializable
+data class DriverTripPublicVisibilityResponse0491(
+    val accepted: Boolean = false,
+    val changed: Boolean = false,
+    val remoteTripId: String = "",
+    val online: Boolean = true,
+    val visibilityRevision0471: Long = 0L,
 )
 
 @Serializable
@@ -790,6 +808,22 @@ class TripRemoteApi(
         },
         requireDriverToken = true,
         successNextStage0421 = "PUBLIC_IDENTITY_RESOLUTION",
+    )
+
+    suspend fun updateDriverTripPublicVisibility0491(
+        remoteTripId: String,
+        online: Boolean,
+        expectedVisibilityRevision0471: Long? = null,
+    ): DriverTripPublicVisibilityResponse0491 = request(
+        method = "PUT",
+        path = "/v1/driver/trips/${remoteTripId.trim()}/public-visibility",
+        body = json.encodeToString(
+            DriverTripPublicVisibilityRequest0491(
+                online = online,
+                expectedVisibilityRevision0471 = expectedVisibilityRevision0471,
+            ),
+        ),
+        requireDriverToken = true,
     )
 
     internal suspend fun readPublicTripProjection0411(
@@ -1165,6 +1199,7 @@ class TripRemoteApi(
             DriverBookingUpsertRequest(
                 passengerName = booking.passengerName,
                 passengerContact = booking.passengerContact,
+                passengerId = booking.passengerId,
                 boardingStopId = booking.boardingStopId,
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,
@@ -1192,6 +1227,7 @@ class TripRemoteApi(
             DriverBookingUpsertRequest(
                 passengerName = booking.passengerName,
                 passengerContact = booking.passengerContact,
+                passengerId = booking.passengerId,
                 boardingStopId = booking.boardingStopId,
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,

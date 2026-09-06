@@ -921,48 +921,57 @@ internal fun EnhancedPassengerTimelineSection(
                 existingBookings = store.bookingsFor(currentTrip.id),
                 onDismiss = { editManualRow = null },
                 onSave = { updated ->
-                    if (updated.source == BookingSource.ROTA_CERTA) {
-                        scope.launch {
-                                runCatching {
-                                    store.saveBooking(updated)
-                                    val queued = mutationCoordinator.recordLocalMutation(
+                    scope.launch {
+                        runCatching {
+                            val settings0491 = store.onlineSettings()
+                            val remoteId0491 = currentTrip.remoteId?.takeIf(String::isNotBlank)
+                            val syncOnline0491 = settings0491.configured && remoteId0491 != null
+                            val remoteAck0491 = if (syncOnline0491) {
+                                if (updated.source == BookingSource.ROTA_CERTA) {
+                                    TripRemoteApi(settings0491).updateProtectedDriverBooking(remoteId0491!!, updated)
+                                } else {
+                                    TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, updated)
+                                }
+                            } else {
+                                null
+                            }
+                            store.saveBooking(updated)
+                            val queued0491 = if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                                mutationCoordinator.recordRemoteAppliedLocal(
+                                    canonicalTripId = currentTrip.id,
+                                    revision = remoteAck0491.entityRevision,
+                                    mutationType = "BOOKING_CHANGED_BY_DRIVER",
+                                    source = "TIMELINE_BOOKING_EDIT",
+                                )
+                                null
+                            } else if (!syncOnline0491) {
+                                when (resolvedTripRecordOrigin(currentTrip)) {
+                                    TripRecordOrigin.EXTERNAL_BACKING -> currentTrip.externalSnapshot?.let { sourceTrip ->
+                                        mutationCoordinator.recordExternalManualMutation(
+                                            sourceTrip = sourceTrip,
+                                            configuredRotaCertaSeatAllocation = currentTrip.rotaCertaSeatAllocation ?: 0,
+                                            mutationType = "BOOKING_CHANGED_BY_DRIVER",
+                                        )
+                                    }
+                                    TripRecordOrigin.LOCAL -> mutationCoordinator.recordLocalMutation(
                                         canonicalTripId = currentTrip.id,
                                         mutationType = "BOOKING_CHANGED_BY_DRIVER",
                                         source = "TIMELINE_BOOKING_EDIT",
                                     )
-                                    if (queued != null) {
-                                        AgendaBackgroundSync0392.enqueueImmediate(context, "booking_changed_by_driver")
-                                    }
-                                    BookingRealtimeEvents0356.notifyChanged()
-                                    queued
-                                }.onSuccess {
-                                    editManualRow = null
-                                    onChanged("Reserva Rota Certa atualizada. Vagas por trecho recalculadas.")
-                                    // BlaBlaCar is never synchronized automatically after an internal mutation.
-                                }.onFailure { error ->
-                                    onChanged("Não foi possível persistir a reserva Rota Certa: ${error.message ?: error.javaClass.simpleName}")
                                 }
-                            }
-                    } else {
-                        store.saveBooking(updated)
-                        val queued = mutationCoordinator.recordLocalMutation(
-                            canonicalTripId = currentTrip.id,
-                            mutationType = "LOCAL_PASSENGER_BOOKING_CHANGED",
-                            source = "TIMELINE_BOOKING_EDIT",
-                        )
-                        if (queued != null) {
-                            AgendaBackgroundSync0392.enqueueImmediate(context, "local_passenger_booking_changed")
-                        }
-                        BookingRealtimeEvents0356.notifyChanged()
-                        editManualRow = null
-                        onChanged(
-                            if (queued != null) {
-                                "Passageiro atualizado. Ocupação recalculada e delta desta viagem registrado."
                             } else {
-                                "Passageiro atualizado. Ocupação física por trecho recalculada."
-                            },
-                        )
-                        // BlaBlaCar is never synchronized automatically after an internal mutation.
+                                null
+                            }
+                            if (queued0491 != null) {
+                                AgendaBackgroundSync0392.enqueueImmediate(context, "booking_changed_by_driver")
+                            }
+                            BookingRealtimeEvents0356.notifyChanged()
+                        }.onSuccess {
+                            editManualRow = null
+                            onChanged("Passageiro atualizado. Vagas por trecho recalculadas no estado canônico.")
+                        }.onFailure { error ->
+                            onChanged("Não foi possível persistir a alteração: ${error.message ?: error.javaClass.simpleName}")
+                        }
                     }
                 },
                 onError = onChanged,
@@ -1045,23 +1054,52 @@ internal fun EnhancedPassengerTimelineSection(
                                     selectedTrip,
                                     store.bookingsFor(selectedTrip.id),
                                 )
-                                val localCancelled = store.saveBooking(
-                                    selectedBooking.copy(
-                                        status = BookingStatus.CANCELLED,
-                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                        lastDriverSelection = "CANCELLED",
-                                    ),
+                                val cancelledBooking0491 = selectedBooking.copy(
+                                    status = BookingStatus.CANCELLED,
+                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                    lastDriverSelection = "CANCELLED",
                                 )
-                                val queued = mutationCoordinator.recordLocalMutation(
-                                    canonicalTripId = selectedTrip.id,
-                                    mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                    source = "TIMELINE_BOOKING_CANCEL",
-                                )
-                                if (queued != null) {
-                                    AgendaBackgroundSync0392.enqueueImmediate(context, "booking_cancelled_by_driver")
+                                val settings0491 = store.onlineSettings()
+                                val remoteId0491 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
+                                val syncOnline0491 = settings0491.configured && remoteId0491 != null
+                                val remoteAck0491 = if (syncOnline0491) {
+                                    if (selectedBooking.source == BookingSource.ROTA_CERTA) {
+                                        TripRemoteApi(settings0491).cancelProtectedDriverBooking(remoteId0491!!, selectedBooking.id)
+                                    } else {
+                                        TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, cancelledBooking0491)
+                                    }
+                                } else {
+                                    null
+                                }
+                                val localCancelled = store.saveBooking(cancelledBooking0491)
+                                val queued = if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                                    mutationCoordinator.recordRemoteAppliedLocal(
+                                        canonicalTripId = selectedTrip.id,
+                                        revision = remoteAck0491.entityRevision,
+                                        mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                        source = "TIMELINE_BOOKING_CANCEL",
+                                    )
+                                    null
+                                } else if (!syncOnline0491) {
+                                    when (resolvedTripRecordOrigin(selectedTrip)) {
+                                        TripRecordOrigin.EXTERNAL_BACKING -> selectedTrip.externalSnapshot?.let { sourceTrip ->
+                                            mutationCoordinator.recordExternalManualMutation(
+                                                sourceTrip = sourceTrip,
+                                                configuredRotaCertaSeatAllocation = selectedTrip.rotaCertaSeatAllocation ?: 0,
+                                                mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                            )
+                                        }
+                                        TripRecordOrigin.LOCAL -> mutationCoordinator.recordLocalMutation(
+                                            canonicalTripId = selectedTrip.id,
+                                            mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                            source = "TIMELINE_BOOKING_CANCEL",
+                                        )
+                                    }
+                                } else {
+                                    null
                                 }
                                 BookingRealtimeEvents0356.notifyChanged()
-                                onlineSyncSucceeded = queued == null
+                                onlineSyncSucceeded = remoteAck0491 != null || queued == null
                                 onlineSyncPendingReason = if (queued != null) "background_delta_queued" else null
                                 UnifiedDebugEventStore.record(
                                     "PUBLIC_BOOKING_CANCEL_OUTBOX",

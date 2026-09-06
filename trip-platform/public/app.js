@@ -53,6 +53,15 @@ function formatMoney(cents) {
     .format(Math.max(0, Number(cents || 0)) / 100);
 }
 
+function authoritativeUpdatedLabel0491(ms) {
+  const value = Number(ms || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return "Atualizado às " + new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function agendaDateLabel0473(ms) {
   const date = new Date(Number(ms || 0));
   if (!Number.isFinite(date.getTime())) return "";
@@ -240,8 +249,6 @@ function renderAgendaCards(entries, container) {
     card.setAttribute("tabindex", "0");
     card.setAttribute("aria-expanded", "false");
     card.setAttribute("aria-label", "Ver detalhes da viagem de " + from + " para " + to);
-    if (item.canonicalTripId) card.dataset.canonicalTripId = String(item.canonicalTripId);
-
     const startStop0473 = stops[fromIndex];
     const endStop0473 = stops[toIndex];
     const startMillis0473 = agendaSegmentMoment0473(item, startStop0473, 0, item.departureAtMillis);
@@ -410,6 +417,13 @@ function renderAgendaCards(entries, container) {
     availability0473.className = "agendaCardAvailability0473";
     availability0473.textContent = publicAvailabilityLabel(item);
     summary0473.appendChild(availability0473);
+    const updatedLabel0491 = authoritativeUpdatedLabel0491(item.updatedAtMillis);
+    if (updatedLabel0491) {
+      const updated0491 = document.createElement("small");
+      updated0491.className = "agendaCardAvailability0473";
+      updated0491.textContent = updatedLabel0491;
+      summary0473.appendChild(updated0491);
+    }
     if (fare > 0) {
       const price = document.createElement("span");
       price.className = "agendaCardPrice0473";
@@ -466,23 +480,49 @@ function renderAgenda(trips) {
   show("agenda", true);
 }
 
-async function loadAgenda() {
+let agendaLoadInFlight0491 = false;
+
+function configurePassengerAreaLink0491() {
+  const link = $("passengerAreaLink0491");
+  if (!link || driverUsername.length < 3) return;
+  link.href = "/minha-area.html?motorista=" + encodeURIComponent(driverUsername);
+}
+
+async function loadAgenda(silent0491 = false) {
+  if (agendaLoadInFlight0491) return;
   if (driverUsername.length < 3 || (!publicSlug && agendaToken.length < 16)) {
-    return setError("Este link não identifica uma Agenda de Viagens válida.");
+    if (!silent0491) setError("Este link não identifica uma Agenda de Viagens válida.");
+    return;
   }
+  agendaLoadInFlight0491 = true;
   try {
     const endpoint = publicSlug
       ? "/v1/public/agenda/" + encodeURIComponent(publicSlug)
       : "/v1/public/drivers/" + encodeURIComponent(driverUsername) + "/" + encodeURIComponent(agendaToken) + "/agenda";
-    const response = await fetch(endpoint, { headers: { Accept: "application/json" } });
+    const response = await fetch(endpoint, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
     const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
     $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
     renderAgenda(Array.isArray(body.trips) ? body.trips : []);
   } catch (error) {
-    setError(error.message || "Não foi possível carregar a Agenda de Viagens.");
+    if (!silent0491) setError(error.message || "Não foi possível carregar a Agenda de Viagens.");
+  } finally {
+    agendaLoadInFlight0491 = false;
   }
 }
 
-loadAgenda();
+configurePassengerAreaLink0491();
+loadAgenda(false);
+window.setInterval(() => {
+  if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda(true);
+}, 15000);
+window.addEventListener("online", () => loadAgenda(true));
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda(true);
+});
+
+

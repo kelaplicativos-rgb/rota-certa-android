@@ -580,12 +580,20 @@ async function listDriverNotifications(req, res) {
 async function listPassengerNotifications(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const effectiveScope0491 = scope0491.driverUsername || normalizeUsername(session.driverScope0428);
   const docs = await ownedPassengerNotifications(session);
-  const scopedDocs = session.driverScope0428
-    ? docs.filter((doc) => normalizeUsername(doc.data().driverUsername || "") === session.driverScope0428)
+  const scopedDocs = effectiveScope0491
+    ? docs.filter((doc) => normalizeUsername(doc.data().driverUsername || "") === effectiveScope0491)
     : docs;
-  const notifications = scopedDocs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
-  return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length });
+  const notifications = scopedDocs
+    .map(passengerNotificationResponse0491)
+    .sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  return json(res, 200, {
+    notifications,
+    unreadCount: notifications.filter((item) => !item.read).length,
+  });
 }
 
 async function markDriverNotificationRead(req, res, notificationIdRaw, all = false) {
@@ -618,9 +626,12 @@ async function markPassengerNotificationRead(req, res, notificationIdRaw, all = 
   if (await blockTesterFromRealPassengerMutation(req, res)) return;
   const session = await requirePassengerSession(req, res);
   if (!session) return;
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const effectiveScope0491 = scope0491.driverUsername || normalizeUsername(session.driverScope0428);
   const now = Date.now();
   const owns = (data) => (
-    (!session.driverScope0428 || normalizeUsername(data.driverUsername || "") === session.driverScope0428) &&
+    (!effectiveScope0491 || normalizeUsername(data.driverUsername || "") === effectiveScope0491) &&
     data.recipientType === "PASSENGER" &&
     (session.passengerId
       ? cleanText(data.passengerId, 120) === session.passengerId
@@ -1294,6 +1305,24 @@ function safePublicTrip(token, data) {
     driverDisplayName: data.driverDisplayName || "",
     updatedAtMillis: data.updatedAtMillis || null,
   };
+}
+
+function publicTripProjection0491(value) {
+  const out = { ...(value || {}) };
+  delete out.tripId;
+  delete out.publicToken;
+  delete out.canonicalTripId;
+  delete out.blablaTripId;
+  delete out.driverUsername;
+  delete out.notes;
+  if (Array.isArray(out.stops)) {
+    out.stops = out.stops.map((stop) => {
+      const safe = { ...(stop || {}) };
+      delete safe.id;
+      return safe;
+    });
+  }
+  return out;
 }
 
 function canonicalPublicStop0411(raw, index) {
@@ -2229,25 +2258,38 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
   if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw new Error("Quantidade de lugares inválida.");
   const passengerName = cleanText(raw.passengerName, 120);
   if (!passengerName) throw new Error("Informe o passageiro ou a identificação da vaga.");
+  const passengerId = cleanText(raw.passengerId, 120) || cleanText(previous && previous.passengerId, 120);
+  const passengerContact = cleanText(raw.passengerContact, 180) || cleanText(previous && previous.passengerContact, 180);
   const boardingStopId = cleanText(raw.boardingStopId, 80);
   const dropoffStopId = cleanText(raw.dropoffStopId, 80);
   bookingSegmentRange(trip, boardingStopId, dropoffStopId);
   const holdExpiresAtMillis = Number.isFinite(Number(raw.holdExpiresAtMillis)) && Number(raw.holdExpiresAtMillis) > 0
     ? Number(raw.holdExpiresAtMillis)
     : null;
+  const operationalStatus = cleanText(raw.operationalStatus, 32).toUpperCase() ||
+    cleanText(previous && previous.operationalStatus, 32).toUpperCase() || "CONFIRMED";
+  const paymentStatus = cleanText(raw.paymentStatus, 32).toUpperCase() ||
+    cleanText(previous && previous.paymentStatus, 32).toUpperCase() || "UNPAID";
+  if (!PROTECTED_OPERATIONAL_STATUSES.has(operationalStatus)) {
+    throw Object.assign(new Error("Estado operacional inválido."), { httpStatus: 409, code: "invalid_operational_status" });
+  }
+  if (!PROTECTED_PAYMENT_STATUSES.has(paymentStatus)) {
+    throw Object.assign(new Error("Estado de pagamento inválido."), { httpStatus: 409, code: "invalid_payment_status" });
+  }
   const now = Date.now();
   return {
     id: bookingId,
-    tripId: trip.publicToken || bookingId,
+    tripId: cleanText(previous && previous.tripId, 160) || trip.publicToken || bookingId,
+    passengerId,
     passengerName,
-    passengerContact: cleanText(raw.passengerContact, 180),
+    passengerContact,
     boardingStopId,
     dropoffStopId,
     seats,
     status,
-    operationalStatus: cleanText(previous && previous.operationalStatus, 32) || "CONFIRMED",
-    paymentStatus: cleanText(previous && previous.paymentStatus, 32) || "UNPAID",
-    lastDriverSelection: cleanText(previous && previous.lastDriverSelection, 32),
+    operationalStatus,
+    paymentStatus,
+    lastDriverSelection: cleanText(raw.lastDriverSelection, 32) || cleanText(previous && previous.lastDriverSelection, 32),
     holdExpiresAtMillis,
     source,
     capacityClaimType,
@@ -2256,6 +2298,19 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
     createdAtMillis: Number(previous && previous.createdAtMillis) || now,
     updatedAtMillis: now,
   };
+}
+
+function driverCapacityBookingChanges0491(previous, updated) {
+  return [
+    ...bookingRelevantChanges(previous, updated),
+    changedField("passengerId", previous && previous.passengerId, updated && updated.passengerId),
+    changedField("passengerName", previous && previous.passengerName, updated && updated.passengerName),
+    changedField("passengerContact", previous && previous.passengerContact, updated && updated.passengerContact),
+    changedField("source", previous && previous.source, updated && updated.source),
+    changedField("capacityClaimType", previous && previous.capacityClaimType, updated && updated.capacityClaimType),
+    changedField("sourceReference", previous && previous.sourceReference, updated && updated.sourceReference),
+    changedField("occupancyGroupId", previous && previous.occupancyGroupId, updated && updated.occupancyGroupId),
+  ].filter(Boolean);
 }
 
 function normalizeProtectedSnapshotBooking(raw, trip, previous) {
@@ -3493,14 +3548,16 @@ function tripPublicOnline0471(data) {
 }
 
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
-  // 0475: legacy online/offline and per-profile publication switches no longer
-  // decide the public list. A future, committed canonical trip is listed from
-  // every synchronized BlaBlaCar profile belonging to this driver.
+  // 0491: public visibility is a publication state, distinct from operational
+  // status and source. Administration remains in the authenticated Android path.
   if (!driverData || typeof driverData !== "object") {
     return { visible: false, reason: "PUBLIC_AGENDA_DRIVER_MISSING" };
   }
   if (!data || data.publicationTombstone === true) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_MISSING" };
+  }
+  if (!tripPublicOnline0471(data)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_OFFLINE_0491" };
   }
   if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
@@ -3567,7 +3624,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
     : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
   const trips = rawTrips.map((trip, index) =>
-    applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver)
+    publicTripProjection0491(applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver))
   );
   if (!tester) {
     await appendPublicDebugEvent({
@@ -4147,7 +4204,6 @@ async function getPublicTrip(res, req, token) {
     ? await db.collection("tripDrivers").doc(driverUsername).get().catch(() => null)
     : null;
   const driverData = driverSnap && driverSnap.exists ? driverSnap.data() : null;
-  const authenticationRequired = agendaAuthenticationRequired0428(driverData);
   const testerRequested0471 = Boolean(testerSessionHeader(req));
   if (!testerRequested0471 && !tripPublicOnline0471(data)) {
     await appendPublicDebugEvent({
@@ -4165,9 +4221,6 @@ async function getPublicTrip(res, req, token) {
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
-  } else if (authenticationRequired) {
-    const view = await requirePassengerAgendaView(req, res, driverUsername);
-    if (!view) return;
   }
   if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
     return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
@@ -4207,24 +4260,34 @@ async function getPublicTrip(res, req, token) {
   let publicDriver = safePublicDriverProfile(data, driverUsername);
   if (driverSnap && driverSnap.exists) publicDriver = safePublicDriverProfile(driverSnap.data(), driverUsername);
   const rawPublicTrip = tester ? await testerOverlayPublicTrip(token, data, tester) : safePublicTrip(token, data);
-  const publicTrip = applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {});
+  const publicTrip = publicTripProjection0491(applyPublicTripVisibility0434(rawPublicTrip, data, driverData || {}));
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : (authenticationRequired ? "PASSENGER" : "OPEN"),
-    authenticationRequired,
+    sessionType: tester ? "TESTER" : "OPEN",
+    authenticationRequired: false,
   });
 }
 
 function normalizeBrazilWhatsapp(value) {
-  let digits = String(value || "").replace(/\D/g, "");
+  const raw = String(value || "").trim();
+  const explicitInternational = raw.startsWith("+");
+  let digits = raw.replace(/\D/g, "");
+  if (explicitInternational) {
+    if (!/^[1-9]\d{7,14}$/.test(digits)) {
+      throw Object.assign(new Error("Informe um telefone internacional válido com código do país."), { httpStatus: 400, code: "invalid_whatsapp" });
+    }
+    return `+${digits}`;
+  }
+  // Compatibilidade com cadastros brasileiros legados sem +55. Novos mercados
+  // devem enviar E.164 explícito, evitando transformar o Brasil em regra global.
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) digits = digits.slice(2);
   if (!/^\d{10,11}$/.test(digits)) {
-    throw Object.assign(new Error("Informe um WhatsApp brasileiro com DDD."), { httpStatus: 400, code: "invalid_whatsapp" });
+    throw Object.assign(new Error("Informe o telefone com código do país (ex.: +...)."), { httpStatus: 400, code: "invalid_whatsapp" });
   }
   const ddd = Number(digits.slice(0, 2));
   if (ddd < 11 || ddd > 99) {
-    throw Object.assign(new Error("Informe um DDD brasileiro válido."), { httpStatus: 400, code: "invalid_whatsapp" });
+    throw Object.assign(new Error("Informe o telefone com código do país (ex.: +...)."), { httpStatus: 400, code: "invalid_whatsapp" });
   }
   return `+55${digits}`;
 }
@@ -4380,6 +4443,27 @@ async function requirePassengerDriverAccess(req, res, driverUsername, sessionInp
     return null;
   }
   return { session, access, driverUsername: username };
+}
+
+async function passengerRequestedDriverScope0491(req, res, session) {
+  const requestedRaw = cleanText(
+    (req.query && req.query.driverUsername) || (req.body && req.body.driverUsername),
+    80,
+  );
+  const implicitScope = normalizeUsername(session && session.driverScope0428);
+  if (!requestedRaw && !implicitScope) return { driverUsername: "", access: null, driverData: null };
+  const resolved = await resolveDriverUsername(requestedRaw || implicitScope);
+  if (!resolved) {
+    fail(res, 404, "driver_not_found", "Agenda não encontrada.");
+    return null;
+  }
+  const authorized = await requirePassengerDriverAccess(req, res, resolved.canonicalUsername, session);
+  if (!authorized) return null;
+  return {
+    driverUsername: resolved.canonicalUsername,
+    access: authorized.access,
+    driverData: resolved.driverSnap && resolved.driverSnap.exists ? resolved.driverSnap.data() : null,
+  };
 }
 
 function passengerAgendaViewToken() {
@@ -5319,6 +5403,52 @@ function movePassengerBookingIndex(tx, previousContact, nextContact, tripToken, 
   writePassengerBookingIndex(tx, nextContact, tripToken, bookingId, updatedAtMillis);
 }
 
+function passengerBookingIdentityIndexRef0491(passengerId, tripToken, bookingId) {
+  const stablePassengerId = cleanText(passengerId, 120);
+  const identityHash = sha256Hex(stablePassengerId);
+  const refId = sha256Hex(`${tripToken}:${bookingId}`).slice(0, 48);
+  return db.collection("passengerBookingIdentityIndex0491").doc(identityHash).collection("bookings").doc(refId);
+}
+
+function writePassengerBookingIdentityIndex0491(tx, passengerId, tripToken, bookingId, updatedAtMillis = Date.now()) {
+  const stablePassengerId = cleanText(passengerId, 120);
+  if (!stablePassengerId || !tripToken || !bookingId) return;
+  tx.set(
+    passengerBookingIdentityIndexRef0491(stablePassengerId, tripToken, bookingId),
+    { tripToken, bookingId, updatedAtMillis },
+    { merge: true },
+  );
+}
+
+async function passengerBookingIndexEntries0491(session) {
+  const reads = [
+    db.collection("passengerBookingIndex").doc(session.contactHash)
+      .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get(),
+  ];
+  if (cleanText(session.passengerId, 120)) {
+    reads.push(
+      db.collection("passengerBookingIdentityIndex0491").doc(sha256Hex(session.passengerId))
+        .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get(),
+    );
+  }
+  const snapshots = await Promise.all(reads);
+  const deduped = new Map();
+  snapshots.forEach((snapshot) => snapshot.docs.forEach((doc) => {
+    const data = doc.data();
+    const tripToken = cleanText(data.tripToken, 120);
+    const bookingId = cleanText(data.bookingId, 120);
+    if (!tripToken || !bookingId) return;
+    const key = tripToken + ":" + bookingId;
+    const previous = deduped.get(key);
+    if (!previous || Number(data.updatedAtMillis || 0) > Number(previous.updatedAtMillis || 0)) {
+      deduped.set(key, { tripToken, bookingId, updatedAtMillis: Number(data.updatedAtMillis || 0) });
+    }
+  }));
+  return [...deduped.values()]
+    .sort((a, b) => b.updatedAtMillis - a.updatedAtMillis)
+    .slice(0, 100);
+}
+
 function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
@@ -5674,13 +5804,55 @@ async function loginPassengerAccount(req, res) {
   });
 }
 
+function passengerPrivateTrip0491(tripToken, tripData) {
+  return publicTripProjection0491(safePublicTrip(tripToken, tripData));
+}
+
+function passengerPrivateBooking0491(booking, tripData) {
+  const stops = Array.isArray(tripData && tripData.stops) ? tripData.stops : [];
+  const stopFor = (stopId) =>
+    stops.find((stop) => cleanText(stop && stop.id, 80) === cleanText(stopId, 80)) || {};
+  const boardingStop = stopFor(booking && booking.boardingStopId);
+  const dropoffStop = stopFor(booking && booking.dropoffStopId);
+  return {
+    boarding: cleanText(boardingStop.name, 160),
+    boardingAddress: cleanText(boardingStop.address, 240),
+    dropoff: cleanText(dropoffStop.name, 160),
+    dropoffAddress: cleanText(dropoffStop.address, 240),
+    seats: Math.max(0, Number(booking && booking.seats || 0)),
+    status: cleanText(booking && booking.status, 24),
+    operationalStatus: cleanText(booking && booking.operationalStatus, 32),
+    paymentStatus: cleanText(booking && booking.paymentStatus, 32),
+    lastDriverSelection: cleanText(booking && booking.lastDriverSelection, 32),
+    farePerSeatCents: Math.max(0, Number(booking && booking.farePerSeatCents || 0)),
+    totalFareCents: Math.max(0, Number(booking && booking.totalFareCents || 0)),
+    creditAppliedCents: Math.max(0, Number(booking && booking.creditAppliedCents || 0)),
+    amountDueCents: Math.max(0, Number(booking && booking.amountDueCents || 0)),
+    createdAtMillis: Math.max(0, Number(booking && booking.createdAtMillis || 0)),
+    updatedAtMillis: Math.max(0, Number(booking && booking.updatedAtMillis || 0)),
+  };
+}
+
+function passengerNotificationResponse0491(doc) {
+  const data = notificationResponse(doc);
+  return {
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    createdAtMillis: data.createdAtMillis,
+    read: data.read,
+    readAtMillis: data.readAtMillis,
+  };
+}
+
 async function listPassengerBookings(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
-  const snapshot = await db.collection("passengerBookingIndex").doc(session.contactHash)
-    .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get();
-  const entries = await Promise.all(snapshot.docs.map(async (doc) => {
-    const ref = doc.data();
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const requestedDriverUsername0491 = scope0491.driverUsername;
+  const indexedEntries0491 = await passengerBookingIndexEntries0491(session);
+  const entries = await Promise.all(indexedEntries0491.map(async (ref) => {
     const tripToken = cleanText(ref.tripToken, 120);
     const bookingId = cleanText(ref.bookingId, 120);
     if (!tripToken || !bookingId) return null;
@@ -5691,19 +5863,19 @@ async function listPassengerBookings(req, res) {
     ]);
     if (!tripSnap.exists || !bookingSnap.exists) return null;
     const tripData = tripSnap.data();
-    const access = await passengerAccessForIdentity(normalizeUsername(tripData.driverUsername || ""), session.passengerId, session.passengerContact);
+    const tripDriver0491 = normalizeUsername(tripData.driverUsername || "");
+    if (requestedDriverUsername0491 && tripDriver0491 !== requestedDriverUsername0491) return null;
+    if (session.driverScope0428 && tripDriver0491 !== session.driverScope0428) return null;
+    const access = await passengerAccessForIdentity(tripDriver0491, session.passengerId, session.passengerContact);
     if (!access || !passengerAccessIsAuthorized(access)) return null;
     const booking = bookingSnap.data();
     if (!passengerSessionOwnsBooking(session, booking)) return null;
-    const safeBooking = { id: bookingId, ...booking };
-    delete safeBooking.cancellationHash;
-    delete safeBooking.idempotencyFingerprint;
-    return { trip: safePublicTrip(tripToken, tripSnap.data()), booking: safeBooking };
+    return {
+      trip: passengerPrivateTrip0491(tripToken, tripData),
+      booking: passengerPrivateBooking0491(booking, tripData),
+    };
   }));
-  const visibleEntries = entries.filter(Boolean).filter((entry) =>
-    !session.driverScope0428 || normalizeUsername(entry.trip && entry.trip.driverUsername || "") === session.driverScope0428
-  );
-  return json(res, 200, { bookings: visibleEntries });
+  return json(res, 200, { bookings: entries.filter(Boolean) });
 }
 
 async function createBooking(req, res, token) {
@@ -5781,6 +5953,7 @@ async function createBooking(req, res, token) {
           throw Object.assign(new Error("Esta tentativa já foi usada para outra reserva."), { httpStatus: 409, code: "idempotency_conflict" });
         }
         writePassengerBookingIndex(tx, existingData.passengerContact || passengerContact, token, bookingId, Date.now());
+        writePassengerBookingIdentityIndex0491(tx, cleanText(existingData.passengerId || session.passengerId, 120), token, bookingId, Date.now());
         return {
           replayed: true,
           availableSeats: null,
@@ -5877,6 +6050,7 @@ async function createBooking(req, res, token) {
         });
       }
       writePassengerBookingIndex(tx, passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, passengerId, token, bookingId, now);
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "RESERVATION_REQUESTED",
         tripToken: token,
@@ -6220,6 +6394,7 @@ async function updatePublicBooking(req, res, token, bookingIdRaw) {
       delete updatedPersisted.id;
       tx.set(bookingRef, updatedPersisted, { merge: true });
       movePassengerBookingIndex(tx, previous.passengerContact, passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId || session.passengerId, 120), token, bookingId, now);
       let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
         const eventId = writeChangeEventAndNotifications(tx, {
@@ -6768,6 +6943,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
       if (!cancelOnly && cleanText(previous.passengerContact, 40) !== cleanText(updated.passengerContact, 40)) {
         movePassengerBookingIndex(tx, previous.passengerContact, updated.passengerContact, token, bookingId, now);
       }
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId, 120), token, bookingId, now);
       const eventType = updated.status === "CANCELLED" && previous.status !== "CANCELLED"
         ? "BOOKING_CANCELLED_BY_DRIVER"
         : (updated.status === "CONFIRMED" && previous.status !== "CONFIRMED" ? "BOOKING_CONFIRMED_BY_DRIVER" : "BOOKING_CHANGED_BY_DRIVER");
@@ -6896,6 +7072,7 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       delete persisted.id;
       tx.set(bookingRef, persisted, { merge: true });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(updated.passengerId || session.passengerId, 120), token, bookingId, now);
       let entityRevision = Math.max(0, Number(trip.publicationRevision || 0));
       if (changes.length) {
         const eventId = writeChangeEventAndNotifications(tx, {
@@ -7027,6 +7204,7 @@ async function cancelPassengerBooking(req, res, token, bookingIdRaw) {
         updatedAtMillis: now,
       });
       writePassengerBookingIndex(tx, session.passengerContact, token, bookingId, now);
+      writePassengerBookingIdentityIndex0491(tx, cleanText(previous.passengerId || session.passengerId, 120), token, bookingId, now);
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType: "BOOKING_CANCELLED",
         tripToken: token,
@@ -7825,6 +8003,63 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
   }
 }
 
+async function updateDriverTripPublicVisibility0491(req, res, token) {
+  const driver = await requireDriver(req, res);
+  if (!driver) return;
+  if (!req.body || typeof req.body.online !== "boolean") {
+    return fail(res, 400, "invalid_public_visibility", "Informe online como verdadeiro ou falso.");
+  }
+  const requestedOnline = req.body.online === true;
+  const expectedRevision = Object.prototype.hasOwnProperty.call(req.body, "expectedVisibilityRevision0471")
+    ? Math.max(0, Number(req.body.expectedVisibilityRevision0471 || 0))
+    : null;
+  const tripRef = db.collection("trips").doc(token);
+  try {
+    const outcome = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(tripRef);
+      if (!snap.exists) {
+        throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
+      }
+      const before = snap.data();
+      if (normalizeUsername(before.driverUsername || "") !== driver.username) {
+        throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
+      }
+      const currentOnline = tripPublicOnline0471(before);
+      const currentRevision = Math.max(0, Number(before.publicAgendaVisibilityRevision0471 || 0));
+      if (expectedRevision != null && currentRevision !== expectedRevision) {
+        throw Object.assign(new Error("A visibilidade pública mudou em outra operação."), {
+          httpStatus: 409,
+          code: "trip_visibility_revision_conflict",
+        });
+      }
+      const changed = currentOnline !== requestedOnline;
+      const nextRevision = currentRevision + (changed ? 1 : 0);
+      if (changed) {
+        tx.set(tripRef, {
+          publicAgendaOnline0471: requestedOnline,
+          publicAgendaVisibilityRevision0471: nextRevision,
+          publicAgendaVisibilityUpdatedAtMillis0471: Date.now(),
+        }, { merge: true });
+      }
+      return { changed, nextRevision };
+    });
+    return json(res, 200, {
+      accepted: true,
+      changed: outcome.changed,
+      remoteTripId: token,
+      online: requestedOnline,
+      visibilityRevision0471: outcome.nextRevision,
+    });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 400,
+      error.code || "public_visibility_update_failed",
+      error.message || "Falha ao alterar visibilidade pública.",
+    );
+  }
+}
+
 async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -7871,6 +8106,8 @@ async function listDriverTripSyncState0402(req, res) {
           availableSeatsMinimum: Math.max(0, Number(availability.minimum || 0)),
           availableSeatsMaximum: Math.max(0, Number(availability.maximum || 0)),
           occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
+          publicAgendaOnline0471: tripPublicOnline0471(data),
+          publicAgendaVisibilityRevision0471: Math.max(0, Number(data.publicAgendaVisibilityRevision0471 || 0)),
         };
       })
       .filter((trip) =>
@@ -8017,6 +8254,20 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
   if (!driver) return;
   const bookingId = cleanText(bookingIdRaw, 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!bookingId) return fail(res, 400, "invalid_booking_id", "Identificador de reserva inválido.");
+
+  const requestedPassengerId = cleanText(req.body && req.body.passengerId, 120);
+  const requestedPassengerContact = cleanText(req.body && req.body.passengerContact, 180);
+  const resolvedAccess0491 = (requestedPassengerId || requestedPassengerContact)
+    ? await passengerAccessForIdentity(driver.username, requestedPassengerId, requestedPassengerContact).catch(() => null)
+    : null;
+  const accessPassengerId0491 = cleanText(resolvedAccess0491 && resolvedAccess0491.passengerId, 120);
+  if (requestedPassengerId && accessPassengerId0491 && requestedPassengerId !== accessPassengerId0491) {
+    return fail(res, 409, "passenger_identity_mismatch", "A identidade do passageiro diverge do cadastro canônico.");
+  }
+  const canonicalPassengerId0491 = requestedPassengerId || accessPassengerId0491;
+  const canonicalPassengerContact0491 =
+    cleanText(resolvedAccess0491 && resolvedAccess0491.passengerContact, 180) || requestedPassengerContact;
+
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   try {
@@ -8027,37 +8278,134 @@ async function upsertDriverCapacityBooking(req, res, token, bookingIdRaw) {
       if (trip.driverUsername && trip.driverUsername !== driver.username) {
         throw Object.assign(new Error("Viagem pertence a outro motorista."), { httpStatus: 403, code: "trip_owner_mismatch" });
       }
+
       const bookingsSnap = await tx.get(tripRef.collection("bookings"));
       const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       const previous = records.find((record) => record.id === bookingId) || null;
       if (previous && (previous.source === "ROTA_CERTA" || previous.cancellationHash)) {
         throw Object.assign(new Error("Reserva pública do Rota Certa não pode ser sobrescrita por conciliação externa."), { httpStatus: 409, code: "protected_booking" });
       }
-      const normalized = normalizeDriverCapacityBooking(req.body || {}, trip, bookingId, previous);
+
+      const normalizedBase = normalizeDriverCapacityBooking(req.body || {}, trip, bookingId, previous);
+      const normalized = {
+        ...normalizedBase,
+        passengerId: canonicalPassengerId0491 || normalizedBase.passengerId,
+        passengerContact: canonicalPassengerContact0491 || normalizedBase.passengerContact,
+      };
+      const changes = driverCapacityBookingChanges0491(previous, normalized);
+      const changed = previous == null || changes.length > 0;
+      const now = Date.now();
+      const changeVersion = changed
+        ? Math.max(0, Number(previous && previous.changeVersion || 0)) + 1
+        : Math.max(0, Number(previous && previous.changeVersion || 0));
+      const persistedBooking = {
+        ...(previous || {}),
+        ...normalized,
+        changeVersion,
+        updatedAtMillis: changed ? now : Number(previous && previous.updatedAtMillis || normalized.updatedAtMillis || now),
+      };
+
       const candidateRecords = previous
-        ? records.map((record) => record.id === bookingId ? normalized : record)
-        : [...records, normalized];
-      const capacityState = reconciledSegmentCapacity(trip, candidateRecords);
+        ? records.map((record) => record.id === bookingId ? persistedBooking : record)
+        : [...records, persistedBooking];
+      const capacityState = reconciledSegmentCapacity(trip, candidateRecords, now);
       const loads = capacityState.loads;
       assertNoOverbooking(trip, loads);
-      assertNoOperationalOverbooking(trip, candidateRecords);
+      assertNoOperationalOverbooking(trip, candidateRecords, now);
       const range = capacityAvailabilityRange(trip, loads);
-      const normalizedPersisted = { ...normalized };
+      const capacityPatch = canonicalCapacityPersistence(trip, candidateRecords, capacityState, now);
+
+      if (!changed) {
+        if (persistedBooking.passengerContact) {
+          writePassengerBookingIndex(tx, persistedBooking.passengerContact, token, bookingId, persistedBooking.updatedAtMillis);
+        }
+        writePassengerBookingIdentityIndex0491(tx, persistedBooking.passengerId, token, bookingId, persistedBooking.updatedAtMillis);
+        return {
+          booking: persistedBooking,
+          ...capacityPatch,
+          range,
+          changed: false,
+          passengerNotified: false,
+          entityRevision: Math.max(0, Number(trip.publicationRevision || 0)),
+        };
+      }
+
+      const normalizedPersisted = { ...persistedBooking };
       delete normalizedPersisted.id;
       tx.set(bookingRef, normalizedPersisted, { merge: true });
-      tx.update(tripRef, {
-        ...canonicalCapacityPersistence(trip, candidateRecords, capacityState),
+      movePassengerBookingIndex(
+        tx,
+        cleanText(previous && previous.passengerContact, 180),
+        persistedBooking.passengerContact,
+        token,
+        bookingId,
+        now,
+      );
+      writePassengerBookingIdentityIndex0491(tx, persistedBooking.passengerId, token, bookingId, now);
+
+      const eventType = persistedBooking.status === "CANCELLED"
+        ? "BOOKING_CANCELLED_BY_DRIVER"
+        : (previous ? "BOOKING_CHANGED_BY_DRIVER" : "BOOKING_CONFIRMED_BY_DRIVER");
+      const passengerRecipient = persistedBooking.passengerId || persistedBooking.passengerContact
+        ? [{
+            passengerId: persistedBooking.passengerId,
+            passengerContact: persistedBooking.passengerContact,
+            bookingId,
+            tripTitle: cleanText(trip.title, 180),
+          }]
+        : [];
+      const eventId = writeChangeEventAndNotifications(tx, {
+        eventType,
+        tripToken: token,
+        bookingId,
+        version: changeVersion,
+        driverUsername: driver.username,
+        actor: "DRIVER",
+        source: "TIMELINE_DRIVER_BOOKING",
+        passengerId: persistedBooking.passengerId,
+        boardingStopId: persistedBooking.boardingStopId,
+        dropoffStopId: persistedBooking.dropoffStopId,
+        seats: persistedBooking.seats,
+        changes,
+        passengerRecipients: passengerRecipient,
+      });
+      const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
+      const canonicalTripId = cleanText(trip.canonicalTripId || trip.localTripId, 180) || token;
+      writeDeliveredTripPublicationOutbox(tx, {
+        tenantId: driver.username,
+        canonicalTripId,
+        revision: entityRevision,
+        operation: "UPSERT",
+        mutationType: eventType,
+        source: "TIMELINE_DRIVER_BOOKING",
+        sourceEventId: eventId,
+      });
+      tx.update(tripRef, canonicalServerProjectionPatch0468(token, trip, {
+        ...capacityPatch,
         bookingsCount: candidateRecords.length,
         status: statusForReconciledLoads(trip, loads),
-        updatedAtMillis: Date.now(),
-      });
-      return { booking: normalized, ...canonicalCapacityPersistence(trip, candidateRecords, capacityState), range };
+        publicationRevision: entityRevision,
+        publicationTombstone: false,
+        publicationEventId: eventId,
+      }, entityRevision, now));
+
+      return {
+        booking: persistedBooking,
+        ...capacityPatch,
+        range,
+        changed: true,
+        passengerNotified: passengerRecipient.length > 0,
+        entityRevision,
+      };
     });
     return json(res, 200, {
       booking: result.booking,
       segmentLoads: result.segmentLoads,
       availableSeatsMinimum: result.range.minimum,
       availableSeatsMaximum: result.range.maximum,
+      changed: result.changed,
+      passengerNotified: result.passengerNotified,
+      entityRevision: result.entityRevision,
     });
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "capacity_reconciliation_failed", error.message || "Falha ao conciliar as vagas.");
@@ -8206,6 +8554,9 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/tester/me/notifications") return await listTesterNotifications(req, res);
     if (req.method === "POST" && path === "/v1/tester/me/notifications/read-all") return await markTesterNotification(req, res, "", true);
     if (req.method === "POST" && path === "/v1/tester/reset") return await resetTesterSimulation(req, res);
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "public-visibility" && req.method === "PUT") {
+      return await updateDriverTripPublicVisibility0491(req, res, parts[3]);
+    }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && req.method === "PUT") {
       return await updateDriverTrip(req, res, parts[3]);
     }

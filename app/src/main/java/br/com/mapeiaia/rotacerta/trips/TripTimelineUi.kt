@@ -1581,6 +1581,51 @@ private fun TimelineEntryCard(
                                     },
                                 )
                             }
+                            DropdownMenuItem(
+                                text = { Text("Agenda pública: online/offline") },
+                                enabled = trip?.remoteId?.isNotBlank() == true || trip?.publicToken?.isNotBlank() == true,
+                                onClick = {
+                                    actionMenuExpanded0407 = false
+                                    val targetTrip0491 = trip
+                                    val settings0491 = store.onlineSettings()
+                                    val remoteId0491 = targetTrip0491?.remoteId?.takeIf(String::isNotBlank)
+                                        ?: targetTrip0491?.publicToken?.takeIf(String::isNotBlank)
+                                    when {
+                                        targetTrip0491 == null || remoteId0491 == null ->
+                                            onChanged("Esta viagem ainda não possui identidade remota para alterar a publicação.")
+                                        !settings0491.configured ->
+                                            onChanged("Integração online necessária para alterar a publicação.")
+                                        else -> scope.launch {
+                                            runCatching {
+                                                val api0491 = TripRemoteApi(settings0491)
+                                                val state0491 = api0491
+                                                    .listDriverTripSyncStates0402(includePastForVerification0429 = true)
+                                                    .trips
+                                                    .firstOrNull { it.remoteTripId == remoteId0491 }
+                                                    ?: error("Estado remoto da viagem não encontrado.")
+                                                api0491.updateDriverTripPublicVisibility0491(
+                                                    remoteTripId = remoteId0491,
+                                                    online = !state0491.publicAgendaOnline0471,
+                                                    expectedVisibilityRevision0471 = state0491.publicAgendaVisibilityRevision0471,
+                                                )
+                                            }.onSuccess { response0491 ->
+                                                onChanged(
+                                                    if (response0491.online) {
+                                                        "🟢 Viagem online na Agenda Pública."
+                                                    } else {
+                                                        "⚪ Viagem offline na Agenda Pública; o estado canônico foi preservado."
+                                                    },
+                                                )
+                                            }.onFailure { error0491 ->
+                                                onChanged(
+                                                    "Não foi possível alterar online/offline: " +
+                                                        (error0491.message ?: error0491.javaClass.simpleName),
+                                                )
+                                            }
+                                        }
+                                    }
+                                },
+                            )
                             if (BlaBlaTripAction0407.OPEN_PUBLICATION in actionPalette0407.overflow) {
                                 DropdownMenuItem(
                                     text = { Text("Ver publicação BlaBlaCar") },
