@@ -329,6 +329,7 @@ data class PublicBookingRequest(
 data class DriverBookingUpsertRequest(
     val passengerName: String,
     val passengerContact: String = "",
+    val passengerId: String = "",
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
@@ -1165,6 +1166,7 @@ class TripRemoteApi(
             DriverBookingUpsertRequest(
                 passengerName = booking.passengerName,
                 passengerContact = booking.passengerContact,
+                passengerId = booking.passengerId,
                 boardingStopId = booking.boardingStopId,
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,
@@ -1192,6 +1194,7 @@ class TripRemoteApi(
             DriverBookingUpsertRequest(
                 passengerName = booking.passengerName,
                 passengerContact = booking.passengerContact,
+                passengerId = booking.passengerId,
                 boardingStopId = booking.boardingStopId,
                 dropoffStopId = booking.dropoffStopId,
                 seats = booking.seats,

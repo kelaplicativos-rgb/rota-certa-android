@@ -42,6 +42,7 @@ fun QuickPassengerPanel(
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
     val passengerRepository = remember(context) { PassengerRepository(context) }
+    val mutationCoordinator0491 = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val moneySpec = remember(context) { PassengerMoney.spec(context) }
     val stops = trip.stops.sortedBy(TripStop::order)
     if (stops.size < 2) return
@@ -279,8 +280,38 @@ fun QuickPassengerPanel(
             val remoteTripId = trip.remoteId
             val syncOnline = settings.configured && remoteTripId != null
             runCatching {
-                if (syncOnline) TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
+                val remoteAck0491 = if (syncOnline) {
+                    TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
+                } else {
+                    null
+                }
                 store.saveBooking(plan.passenger)
+                if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                    mutationCoordinator0491.recordRemoteAppliedLocal(
+                        canonicalTripId = trip.id,
+                        revision = remoteAck0491.entityRevision,
+                        mutationType = "LOCAL_PASSENGER_ADDED",
+                        source = "TIMELINE_QUICK_PASSENGER",
+                    )
+                } else if (!syncOnline) {
+                    val queued0491 = when (resolvedTripRecordOrigin(trip)) {
+                        TripRecordOrigin.EXTERNAL_BACKING -> trip.externalSnapshot?.let { sourceTrip ->
+                            mutationCoordinator0491.recordExternalManualMutation(
+                                sourceTrip = sourceTrip,
+                                configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
+                                mutationType = "LOCAL_PASSENGER_ADDED",
+                            )
+                        }
+                        TripRecordOrigin.LOCAL -> mutationCoordinator0491.recordLocalMutation(
+                            canonicalTripId = trip.id,
+                            mutationType = "LOCAL_PASSENGER_ADDED",
+                            source = "TIMELINE_QUICK_PASSENGER",
+                        )
+                    }
+                    if (queued0491 != null) {
+                        AgendaBackgroundSync0392.enqueueImmediate(context, "local_passenger_added")
+                    }
+                }
                 val existingProfile = passengerStore.profile(plan.passenger.passengerId)
                 passengerStore.saveProfile(
                     (existingProfile ?: PassengerProfile(
@@ -376,12 +407,52 @@ fun QuickPassengerPanel(
                     TextButton(enabled = !busy, onClick = {
                         busy = true
                         scope.launch {
-                            runCatching { store.saveBooking(booking.copy(status = BookingStatus.CANCELLED)) }
-                                .onSuccess {
-                                    onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada.")
-                                    onBlaBlaSyncRequested?.invoke()
+                            val cancelled0491 = booking.copy(
+                                status = BookingStatus.CANCELLED,
+                                operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                lastDriverSelection = "CANCELLED",
+                            )
+                            runCatching {
+                                val settings0491 = store.onlineSettings()
+                                val remoteId0491 = trip.remoteId?.takeIf(String::isNotBlank)
+                                val syncOnline0491 = settings0491.configured && remoteId0491 != null
+                                val remoteAck0491 = if (syncOnline0491) {
+                                    TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, cancelled0491)
+                                } else {
+                                    null
                                 }
-                                .onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
+                                store.saveBooking(cancelled0491)
+                                if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                                    mutationCoordinator0491.recordRemoteAppliedLocal(
+                                        canonicalTripId = trip.id,
+                                        revision = remoteAck0491.entityRevision,
+                                        mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                        source = "TIMELINE_QUICK_PASSENGER",
+                                    )
+                                } else if (!syncOnline0491) {
+                                    val queued0491 = when (resolvedTripRecordOrigin(trip)) {
+                                        TripRecordOrigin.EXTERNAL_BACKING -> trip.externalSnapshot?.let { sourceTrip ->
+                                            mutationCoordinator0491.recordExternalManualMutation(
+                                                sourceTrip = sourceTrip,
+                                                configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
+                                                mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                            )
+                                        }
+                                        TripRecordOrigin.LOCAL -> mutationCoordinator0491.recordLocalMutation(
+                                            canonicalTripId = trip.id,
+                                            mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                            source = "TIMELINE_QUICK_PASSENGER",
+                                        )
+                                    }
+                                    if (queued0491 != null) {
+                                        AgendaBackgroundSync0392.enqueueImmediate(context, "booking_cancelled_by_driver")
+                                    }
+                                }
+                                BookingRealtimeEvents0356.notifyChanged()
+                            }.onSuccess {
+                                onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada e publicada.")
+                                onBlaBlaSyncRequested?.invoke()
+                            }.onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
                             busy = false
                         }
                     }) { Text("Remover") }
