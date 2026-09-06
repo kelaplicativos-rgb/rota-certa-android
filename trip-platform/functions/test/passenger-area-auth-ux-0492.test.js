@@ -101,7 +101,7 @@ test("0492 phone UX is simple while explicit international normalization remains
   assert.match(html, /placeholder="Digite seu telefone\/WhatsApp"/);
   assert.doesNotMatch(html, /\+ código do país e número/);
   assert.doesNotMatch(html, /\+55/);
-  assert.doesNotMatch(web, /\+55/);
+  assert.doesNotMatch(web, /\+55/);\n  assert.equal(html.includes("\\\\n"), false, "Minha Área HTML must not contain literal \\\\n escape text");
 
   const source = block(api, "function normalizeBrazilWhatsapp", "function publicBookingIdempotencyKey");
   const sandbox = {};
