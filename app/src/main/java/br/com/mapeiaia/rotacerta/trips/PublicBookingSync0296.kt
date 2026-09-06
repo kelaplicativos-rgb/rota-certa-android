@@ -29,6 +29,12 @@ private data class BookingFetchTarget0373(
     val localCandidate: Boolean,
 )
 
+internal fun canonicalBookingExternalBindings0493(
+    localCandidateTripIds: Set<String>,
+    externalBindings: List<PublicExternalTripBinding>,
+): List<PublicExternalTripBinding> =
+    externalBindings.filterNot { binding -> binding.bookingTripId in localCandidateTripIds }
+
 private data class BookingFetchBatch0373(
     val target: BookingFetchTarget0373,
     val bookings: List<RemoteBooking>,
@@ -130,13 +136,15 @@ internal object PublicBookingRemoteSync0296 {
         }
         val externalBindings = store.publicExternalBindings()
         val localCandidateIds = candidates.mapTo(linkedSetOf(), Trip::id)
-        val shadowedExternalBindings = externalBindings.filter { binding ->
-            binding.bookingTripId in localCandidateIds
-        }
+        val authoritativeExternalBindings = canonicalBookingExternalBindings0493(
+            localCandidateTripIds = localCandidateIds,
+            externalBindings = externalBindings,
+        )
+        val shadowedExternalBindings = externalBindings.size - authoritativeExternalBindings.size
         UnifiedDebugEventStore.record(
             "BOOKING_RECONCILE_SOURCE_CLASSIFIED",
             context.packageName,
-            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings shadowedExternalBindings=${shadowedExternalBindings.size} bookingAuthority=canonical_trip_origin",
+            "localRemoteTrips=${candidates.size} externalBindings=${externalBindings.size} externalBackingsExcluded=$excludedExternalBackings shadowedExternalBindings=$shadowedExternalBindings bookingAuthority=canonical_trip_origin",
         )
         val bookingSnapshot = store.bookings().associateBy(Booking::id).toMutableMap()
         AgendaTrace.operationEnd(
@@ -161,9 +169,7 @@ internal object PublicBookingRemoteSync0296 {
                     ),
                 )
             }
-            externalBindings.asSequence()
-                .filterNot { binding -> binding.bookingTripId in localCandidateIds }
-                .forEach { binding ->
+            authoritativeExternalBindings.forEach { binding ->
                     add(
                         BookingFetchTarget0373(
                             localTripId = binding.bookingTripId,
