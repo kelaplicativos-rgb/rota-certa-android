@@ -580,12 +580,20 @@ async function listDriverNotifications(req, res) {
 async function listPassengerNotifications(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const effectiveScope0491 = scope0491.driverUsername || normalizeUsername(session.driverScope0428);
   const docs = await ownedPassengerNotifications(session);
-  const scopedDocs = session.driverScope0428
-    ? docs.filter((doc) => normalizeUsername(doc.data().driverUsername || "") === session.driverScope0428)
+  const scopedDocs = effectiveScope0491
+    ? docs.filter((doc) => normalizeUsername(doc.data().driverUsername || "") === effectiveScope0491)
     : docs;
-  const notifications = scopedDocs.map(notificationResponse).sort((a, b) => b.createdAtMillis - a.createdAtMillis);
-  return json(res, 200, { notifications, unreadCount: notifications.filter((item) => !item.read).length });
+  const notifications = scopedDocs
+    .map(passengerNotificationResponse0491)
+    .sort((a, b) => b.createdAtMillis - a.createdAtMillis);
+  return json(res, 200, {
+    notifications,
+    unreadCount: notifications.filter((item) => !item.read).length,
+  });
 }
 
 async function markDriverNotificationRead(req, res, notificationIdRaw, all = false) {
@@ -618,9 +626,12 @@ async function markPassengerNotificationRead(req, res, notificationIdRaw, all = 
   if (await blockTesterFromRealPassengerMutation(req, res)) return;
   const session = await requirePassengerSession(req, res);
   if (!session) return;
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const effectiveScope0491 = scope0491.driverUsername || normalizeUsername(session.driverScope0428);
   const now = Date.now();
   const owns = (data) => (
-    (!session.driverScope0428 || normalizeUsername(data.driverUsername || "") === session.driverScope0428) &&
+    (!effectiveScope0491 || normalizeUsername(data.driverUsername || "") === effectiveScope0491) &&
     data.recipientType === "PASSENGER" &&
     (session.passengerId
       ? cleanText(data.passengerId, 120) === session.passengerId
@@ -4435,6 +4446,27 @@ async function requirePassengerDriverAccess(req, res, driverUsername, sessionInp
   return { session, access, driverUsername: username };
 }
 
+async function passengerRequestedDriverScope0491(req, res, session) {
+  const requestedRaw = cleanText(
+    (req.query && req.query.driverUsername) || (req.body && req.body.driverUsername),
+    80,
+  );
+  const implicitScope = normalizeUsername(session && session.driverScope0428);
+  if (!requestedRaw && !implicitScope) return { driverUsername: "", access: null, driverData: null };
+  const resolved = await resolveDriverUsername(requestedRaw || implicitScope);
+  if (!resolved) {
+    fail(res, 404, "driver_not_found", "Agenda não encontrada.");
+    return null;
+  }
+  const authorized = await requirePassengerDriverAccess(req, res, resolved.canonicalUsername, session);
+  if (!authorized) return null;
+  return {
+    driverUsername: resolved.canonicalUsername,
+    access: authorized.access,
+    driverData: resolved.driverSnap && resolved.driverSnap.exists ? resolved.driverSnap.data() : null,
+  };
+}
+
 function passengerAgendaViewToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
@@ -5773,13 +5805,53 @@ async function loginPassengerAccount(req, res) {
   });
 }
 
+function passengerPrivateTrip0491(tripToken, tripData) {
+  return publicTripProjection0491(safePublicTrip(tripToken, tripData));
+}
+
+function passengerPrivateBooking0491(booking, tripData) {
+  const stops = Array.isArray(tripData && tripData.stops) ? tripData.stops : [];
+  const stopName = (stopId) => {
+    const match = stops.find((stop) => cleanText(stop && stop.id, 80) === cleanText(stopId, 80));
+    return cleanText(match && match.name, 160);
+  };
+  return {
+    boarding: stopName(booking && booking.boardingStopId),
+    dropoff: stopName(booking && booking.dropoffStopId),
+    seats: Math.max(0, Number(booking && booking.seats || 0)),
+    status: cleanText(booking && booking.status, 24),
+    operationalStatus: cleanText(booking && booking.operationalStatus, 32),
+    paymentStatus: cleanText(booking && booking.paymentStatus, 32),
+    lastDriverSelection: cleanText(booking && booking.lastDriverSelection, 32),
+    farePerSeatCents: Math.max(0, Number(booking && booking.farePerSeatCents || 0)),
+    totalFareCents: Math.max(0, Number(booking && booking.totalFareCents || 0)),
+    creditAppliedCents: Math.max(0, Number(booking && booking.creditAppliedCents || 0)),
+    amountDueCents: Math.max(0, Number(booking && booking.amountDueCents || 0)),
+    createdAtMillis: Math.max(0, Number(booking && booking.createdAtMillis || 0)),
+    updatedAtMillis: Math.max(0, Number(booking && booking.updatedAtMillis || 0)),
+  };
+}
+
+function passengerNotificationResponse0491(doc) {
+  const data = notificationResponse(doc);
+  return {
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    createdAtMillis: data.createdAtMillis,
+    read: data.read,
+    readAtMillis: data.readAtMillis,
+  };
+}
+
 async function listPassengerBookings(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
-  const snapshot = await db.collection("passengerBookingIndex").doc(session.contactHash)
-    .collection("bookings").orderBy("updatedAtMillis", "desc").limit(100).get();
-  const entries = await Promise.all(snapshot.docs.map(async (doc) => {
-    const ref = doc.data();
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const requestedDriverUsername0491 = scope0491.driverUsername;
+  const indexedEntries0491 = await passengerBookingIndexEntries0491(session);
+  const entries = await Promise.all(indexedEntries0491.map(async (ref) => {
     const tripToken = cleanText(ref.tripToken, 120);
     const bookingId = cleanText(ref.bookingId, 120);
     if (!tripToken || !bookingId) return null;
@@ -5790,19 +5862,19 @@ async function listPassengerBookings(req, res) {
     ]);
     if (!tripSnap.exists || !bookingSnap.exists) return null;
     const tripData = tripSnap.data();
-    const access = await passengerAccessForIdentity(normalizeUsername(tripData.driverUsername || ""), session.passengerId, session.passengerContact);
+    const tripDriver0491 = normalizeUsername(tripData.driverUsername || "");
+    if (requestedDriverUsername0491 && tripDriver0491 !== requestedDriverUsername0491) return null;
+    if (session.driverScope0428 && tripDriver0491 !== session.driverScope0428) return null;
+    const access = await passengerAccessForIdentity(tripDriver0491, session.passengerId, session.passengerContact);
     if (!access || !passengerAccessIsAuthorized(access)) return null;
     const booking = bookingSnap.data();
     if (!passengerSessionOwnsBooking(session, booking)) return null;
-    const safeBooking = { id: bookingId, ...booking };
-    delete safeBooking.cancellationHash;
-    delete safeBooking.idempotencyFingerprint;
-    return { trip: safePublicTrip(tripToken, tripSnap.data()), booking: safeBooking };
+    return {
+      trip: passengerPrivateTrip0491(tripToken, tripData),
+      booking: passengerPrivateBooking0491(booking, tripData),
+    };
   }));
-  const visibleEntries = entries.filter(Boolean).filter((entry) =>
-    !session.driverScope0428 || normalizeUsername(entry.trip && entry.trip.driverUsername || "") === session.driverScope0428
-  );
-  return json(res, 200, { bookings: visibleEntries });
+  return json(res, 200, { bookings: entries.filter(Boolean) });
 }
 
 async function createBooking(req, res, token) {
