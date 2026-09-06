@@ -53,7 +53,8 @@ test("0482 expanded date contract always exposes the complete year", () => {
 
 test("0482 compact and expanded labels remain wired to the same canonical departure", () => {
   const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
+  const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
   assert.match(cards, /date\.dataset\.compactLabel = agendaDateLabel0473\(item\.departureAtMillis\)/);
   assert.match(cards, /date\.dataset\.expandedLabel = agendaLongDateLabel0480\(item\.departureAtMillis\)/);
-  assert.match(cards, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+  assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
 });
