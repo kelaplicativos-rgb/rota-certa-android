@@ -4316,8 +4316,8 @@ function publicCancellationToken(token, idempotencyKey) {
 
 function passengerPassword(value) {
   const password = String(value || "");
-  if (password.length < 8 || password.length > 72) {
-    throw Object.assign(new Error("A senha precisa ter entre 8 e 72 caracteres."), { httpStatus: 400, code: "invalid_password" });
+  if (password.length < 4 || password.length > 72) {
+    throw Object.assign(new Error("A senha precisa ter entre 4 e 72 caracteres."), { httpStatus: 400, code: "invalid_password" });
   }
   return password;
 }
