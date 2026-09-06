@@ -154,7 +154,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='5716'" /tmp/aapt.txt
+          grep -Fq "versionCode='5782'" /tmp/aapt.txt
           grep -Fq "versionName='0.1.490'" /tmp/aapt.txt
 
           mkdir -p /tmp/0490
