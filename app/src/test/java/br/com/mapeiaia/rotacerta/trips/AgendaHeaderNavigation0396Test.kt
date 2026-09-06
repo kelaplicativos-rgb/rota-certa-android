@@ -15,13 +15,15 @@ class AgendaHeaderNavigation0396Test {
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
         assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
-        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
+        val drawer = header.substringAfter("ModalDrawerSheet").substringBefore("@Composable\ninternal fun AgendaModuleHeader0396")
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))
         assertTrue(header.contains("AUTOMATIC_SYNC(\"BlaBlaCar\")"))
         assertTrue(header.contains("SCRIPTS(\"Scripts\")"))
         assertTrue(drawer.contains("AgendaRootSection0396.SCRIPTS"))
-        assertFalse(header.substringAfter("listOf(").substringBefore(").forEach").contains("AgendaRootSection0396.ASSISTANT"))
+        assertTrue(drawer.contains("Text(\"Abrir Agenda Pública\""))
+        assertTrue(drawer.contains("enabled = publicAgendaEnabled"))
+        assertTrue(drawer.contains("onOpenPublicAgenda()"))
         assertTrue(header.contains("PUBLIC_SEARCH(\"Consulta pública\")"))
         assertTrue(header.contains("PASSENGERS(\"Passageiros\")"))
         assertTrue(header.contains("NavigationDrawerItem("))
@@ -33,7 +35,7 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun timelineRootIsVisibleAndCollectorRemainsASeparateDestination() {
-        val drawer = header.substringAfter("listOf(").substringBefore(").forEach { section ->")
+        val drawer = header.substringAfter("ModalDrawerSheet").substringBefore("@Composable\ninternal fun AgendaModuleHeader0396")
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertTrue(drawer.contains("AgendaRootSection0396.AUTOMATIC_SYNC"))
         assertTrue(activity.contains("parentRootScreen0396 = TripScreen.TIMELINE"))
