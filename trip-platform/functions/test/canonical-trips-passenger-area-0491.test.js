@@ -168,3 +168,24 @@ test("0491 individual public trip read is also open and never requires passenger
   assert.match(publicTrip, /authenticationRequired: false/);
   assert.match(publicTrip, /publicTripProjection0491/);
 });
+
+
+test("0491 public online-offline is a distinct driver-controlled publication state and Agenda honors it", () => {
+  const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
+  assert.match(visibility, /tripPublicOnline0471/);
+  assert.match(visibility, /PUBLIC_AGENDA_OFFLINE_0491/);
+
+  const driverVisibility = between(api, "async function updateDriverTripPublicVisibility0491", "async function listDriverTripSyncState0402");
+  assert.match(driverVisibility, /requireDriver/);
+  assert.match(driverVisibility, /trip_owner_mismatch/);
+  assert.match(driverVisibility, /expectedVisibilityRevision0471/);
+  assert.match(driverVisibility, /publicAgendaOnline0471/);
+  assert.match(driverVisibility, /publicAgendaVisibilityRevision0471/);
+  assert.doesNotMatch(driverVisibility, /requireAdminSession|\/v1\/admin/);
+
+  assert.match(remoteApi, /updateDriverTripPublicVisibility0491/);
+  assert.match(remoteApi, /\/v1\/driver\/trips\/\$\{remoteTripId\.trim\(\)\}\/public-visibility/);
+  assert.match(timeline, /Agenda pública: online\/offline/);
+  assert.match(timeline, /updateDriverTripPublicVisibility0491/);
+  assert.doesNotMatch(timeline, /\/v1\/admin\//);
+});
