@@ -25,17 +25,21 @@ class AgendaImmediateCardDelta0431Test {
     }
 
     @Test
-    fun passengerBookingBecomesTimelineCanonicalThenEchoesSameCardBackToAgenda() {
+    fun passengerBookingCommitsCanonicalStateThenHandsTransportToExistingOutboxWorker() {
         val booking = source("PublicBookingSync0296.kt")
         val outbox = source("TripPublicationOutbox0387.kt")
+        val background = source("AgendaBackgroundSync0392.kt")
 
         assertTrue(booking.contains("target.remoteTripId == targetRemoteTripId"))
         assertTrue(booking.contains("mutationCoordinator.ensureRevisionAtLeast(tripId, remoteRevision)"))
-        assertTrue(booking.contains("PUBLIC_BOOKING_CANONICAL_ECHO_0431"))
+        assertTrue(booking.contains("mutationCoordinator.recordRemoteAppliedLocal("))
         assertTrue(booking.contains("source = \"PUBLIC_AGENDA_PUSH_PULL\""))
-        assertTrue(booking.contains("canonicalEchoRequired=true"))
-        assertTrue(booking.contains("drainPending(canonicalTripIds = changed)"))
-        assertFalse(booking.contains("mutationCoordinator.recordRemoteAppliedLocal("))
+        assertTrue(booking.contains("publicationAlreadyAppliedServerSide="))
+        assertTrue(booking.contains("BOOKING_PUBLICATION_HANDOFF"))
+        assertTrue(booking.contains("transportAwaited=false"))
+        assertFalse(booking.contains("drainPending(canonicalTripIds = changed)"))
+        assertTrue(background.contains("BOOKING_PUBLICATION_DRAIN"))
+        assertTrue(background.contains("canonicalTripIds = booking.changedTripIds"))
         assertTrue(outbox.contains("canonicalTripIds: Set<String>? = null"))
         assertTrue(outbox.contains("canonicalTripIds == null || it.canonicalTripId in canonicalTripIds"))
     }
