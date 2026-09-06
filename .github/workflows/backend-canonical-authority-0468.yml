@@ -1,16 +1,16 @@
-name: Agenda complete listing final 0.1.478
+name: Agenda authoritative rebase 0.1.479
 
 on:
   push:
     branches:
-      - agent/agenda-complete-list-final-0.1.478
+      - agent/agenda-authoritative-rebase-0.1.479
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-complete-list-final-0478-${{ github.ref }}
+  group: agenda-authoritative-rebase-0479-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_complete_list_0478_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_authoritative_rebase_0479_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -35,15 +35,17 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          BASE=05e56491ea319dcb1aacd49b8dd8c840a1948be4
+          BASE=61dedb443a6d185dc38c92e6fc9338ae8cc7ae63
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
-          grep -Fq 'versionCode = 5771' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.478"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5772' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.479"' app/build.gradle.kts
           grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
           grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
-          grep -Fq 'orderedEndpointPreservingMigration0478' trip-platform/functions/index.js
+          grep -Fq 'function authoritativeBlaBlaPreservedBookingMigration0479' trip-platform/functions/index.js
+          grep -Fq 'authoritativeManagedReplacement0479' trip-platform/functions/index.js
+          ! grep -Fq 'orderedEndpointPreservingMigration0478' trip-platform/functions/index.js
           grep -Fq 'dateScopeDefaultRequests0478' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
           grep -Fq 'Vagas ficam desligadas por padrão' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
           ! grep -Fq 'automaticAgendaListing0476()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
@@ -134,11 +136,11 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
           "$AAPT" dump badging "$APK" | tee aapt-badging.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
-          grep -Fq "versionCode='5771'" aapt-badging.txt
-          grep -Fq "versionName='0.1.478'" aapt-badging.txt
+          grep -Fq "versionCode='5772'" aapt-badging.txt
+          grep -Fq "versionName='0.1.479'" aapt-badging.txt
           sha256sum "$APK" | tee apk.sha256
-          grep -F 'versionCode = 5771' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.478"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5772' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.479"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -277,7 +279,7 @@ jobs:
       - name: Upload final APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-complete-list-0478-${{ github.sha }}
+          name: rota-certa-agenda-authoritative-rebase-0479-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |
