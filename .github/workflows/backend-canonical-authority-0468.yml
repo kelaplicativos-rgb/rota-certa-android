@@ -1,4 +1,4 @@
-name: Agenda future-year label 0.1.481
+name: Agenda date-year hardened 0.1.482
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-future-year-label-0481-${{ github.ref }}
+  group: agenda-date-year-hardened-0482-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     env:
-      GOOGLE_MAPS_API_KEY: agenda_future_year_label_0481_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_date_year_hardened_0482_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -39,8 +39,8 @@ jobs:
           FAROL=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git show "$BASE:$FAROL" > /tmp/farol-base.kt
           cmp -s /tmp/farol-base.kt "$FAROL"
-          grep -Fq 'versionCode = 5774' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.481"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5775' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.482"' app/build.gradle.kts
           grep -Fq 'function canonicalStopSemanticKey0477' trip-platform/functions/index.js
           grep -Fq 'sameOrderedSemanticShape0477' trip-platform/functions/index.js
           grep -Fq 'function authoritativeBlaBlaPreservedBookingMigration0479' trip-platform/functions/index.js
@@ -65,11 +65,14 @@ jobs:
           npm install --package-lock=false --ignore-scripts --no-audit --no-fund
           npm run check
           node --check index.js
+          node --check ../public/app.js
+          grep -Fq 'physicalApprovedSha=a6a76fc2122928bbbd4dad747027b24656895c18' ../../.github/validation/agenda-date-year-0482-contract.txt
           node --test \
             test/backend-canonical-authority-0468.test.js \
             test/agenda-public-timeline-reflection-0425.test.js \
             test/agenda-card-visual-parity-0473.test.js \
-            test/agenda-public-read-only-0475.test.js | tee ../../node-focused-tests.log
+            test/agenda-public-read-only-0475.test.js \
+            test/agenda-date-year-contract-0482.test.js | tee ../../node-focused-tests.log
 
       - name: Configure Firebase Android app
         shell: bash
@@ -138,11 +141,11 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
           "$AAPT" dump badging "$APK" | tee aapt-badging.txt
           grep -Fq "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
-          grep -Fq "versionCode='5774'" aapt-badging.txt
-          grep -Fq "versionName='0.1.481'" aapt-badging.txt
+          grep -Fq "versionCode='5775'" aapt-badging.txt
+          grep -Fq "versionName='0.1.482'" aapt-badging.txt
           sha256sum "$APK" | tee apk.sha256
-          grep -F 'versionCode = 5774' app/build.gradle.kts | tee app-version.txt
-          grep -F 'versionName = "0.1.481"' app/build.gradle.kts | tee -a app-version.txt
+          grep -F 'versionCode = 5775' app/build.gradle.kts | tee app-version.txt
+          grep -F 'versionName = "0.1.482"' app/build.gradle.kts | tee -a app-version.txt
           git status --short --untracked-files=no | tee tracked-status.txt
           test ! -s tracked-status.txt
 
@@ -186,17 +189,21 @@ jobs:
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/" | tee live-index.html
-          grep -Fq 'app.js?v=0.1.481' live-index.html
-          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.481" | tee live-app.js
+          grep -Fq 'app.js?v=0.1.482' live-index.html
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=0.1.482" | tee live-app.js
           grep -Fq 'agendaExpandedItinerary0480' live-app.js
           grep -Fq 'toggleAgendaTripDetails0480' live-app.js
-          grep -Fq 'Ver paradas' live-app.js\n          grep -Fq 'date.getFullYear() !== now.getFullYear()' live-app.js\n          grep -Fq 'yearSuffix' live-app.js
+          grep -Fq 'Ver paradas' live-app.js
+          grep -Fq 'date.getFullYear() !== now.getFullYear()' live-app.js
+          grep -Fq 'yearSuffix' live-app.js
+          node --check live-app.js
+          cmp -s trip-platform/public/app.js live-app.js
           printf '%s\n' "${GITHUB_SHA}" | tee deployed-source-head.txt
 
       - name: Upload final APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-future-year-0481-${{ github.sha }}
+          name: rota-certa-agenda-date-year-hardened-0482-${{ github.sha }}
           if-no-files-found: error
           retention-days: 14
           path: |

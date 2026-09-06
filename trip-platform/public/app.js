@@ -65,7 +65,8 @@ function agendaDateLabel0473(ms) {
   if (deltaDays === 1) return "Amanhã";
   const weekdays = ["Dom.", "Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb."];
   const months = ["Jan.", "Fev.", "Mar.", "Abr.", "Mai.", "Jun.", "Jul.", "Ago.", "Set.", "Out.", "Nov.", "Dez."];
-  const yearSuffix = date.getFullYear() !== now.getFullYear() ? " " + date.getFullYear() : "";\n  return weekdays[date.getDay()] + " " + String(date.getDate()).padStart(2, "0") + " " + months[date.getMonth()] + yearSuffix;
+  const yearSuffix = date.getFullYear() !== now.getFullYear() ? " " + date.getFullYear() : "";
+  return weekdays[date.getDay()] + " " + String(date.getDate()).padStart(2, "0") + " " + months[date.getMonth()] + yearSuffix;
 }
 
 function orderedStops(source) {

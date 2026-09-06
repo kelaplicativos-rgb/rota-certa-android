@@ -1,0 +1,12 @@
+contract=agenda-date-year
+physicalApprovedSha=a6a76fc2122928bbbd4dad747027b24656895c18
+physicalApprovedVersion=0.1.481/5774
+physicalDevice=Samsung SM-S911B
+physicalAndroid=16
+physicalStatus=APPROVED_BY_USER
+compactCurrentYear=YEAR_OMITTED
+compactOtherYear=YEAR_REQUIRED
+expandedDate=FULL_YEAR_REQUIRED
+publicSurface=READ_ONLY
+successorVersion=0.1.482/5775
+successorReason=SYNTAX_AND_REGRESSION_HARDENING
