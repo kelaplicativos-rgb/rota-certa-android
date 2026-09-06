@@ -1,0 +1,17 @@
+name: Stage47 persisted source import locator (completed)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  completed:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo 'stage47_persisted_source_import_locator=COMPLETED'
+          echo 'persist_run=32403970835'
+          echo 'validated_source_commit=9b022148da15f16e12835a8f43e9f163b5037544'
+          echo 'apk_generated=false'

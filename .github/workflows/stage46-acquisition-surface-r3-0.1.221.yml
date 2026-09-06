@@ -1,0 +1,296 @@
+name: Validate Stage46 acquisition-surface R3 0.1.221
+on:
+  pull_request:
+    branches: [agent/stage45-ocr-multiline-address-reconstruction-0.1.218]
+    paths:
+      - '.github/workflows/stage46-acquisition-surface-r3-0.1.221.yml'
+      - 'scripts/apply_stage46_visual_epoch_no_result.py'
+      - 'scripts/apply_stage46_target_surface_r2.py'
+      - 'scripts/apply_stage46_target_surface_r2_order_fix.py'
+      - 'scripts/apply_stage46_acquisition_surface_r3.py'
+      - 'scripts/apply_stage46_r3_semantic_promotion_fix.py'
+      - 'scripts/apply_stage46_version.py'
+      - 'scripts/apply_stage46_r2_version.py'
+      - 'scripts/apply_stage46_r2_test_compat.py'
+      - 'scripts/apply_stage46_r3_version.py'
+      - 'scripts/apply_stage46_r3_test_compat.py'
+      - 'stage46/FarolVisualEpochNoResultStage46.kt'
+      - 'stage46/FarolTargetSurfaceStage46R2.kt'
+      - 'stage46/FarolAcquisitionSurfaceStage46R3.kt'
+      - 'stage46/FarolStage46VisualEpochNoResultTest.kt'
+      - 'stage46/FarolStage46TargetSurfaceR2Test.kt'
+      - 'stage46/FarolStage46AcquisitionSurfaceR3Test.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate-stage46-acquisition-surface-r3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.head.sha || github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore exact Stage32 materialized runtime
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap evidence
+          gh run download 31703841694 --repo kelaplicativos-rgb/rota-certa-android --name rota-certa-stage34-bootstrap-materialized-stage32-source --dir bootstrap
+          TGZ=$(find bootstrap -name stage32-materialized-source.tgz -print -quit)
+          test -f "$TGZ"
+          test "$(sha256sum "$TGZ" | awk '{print $1}')" = aa251a173e425b075f5f0508d6f042b4881949ed76e3f638f10ccab63417c5e3
+          rm -rf source/app/src/main/java source/app/src/test/java
+          tar -xzf "$TGZ" -C source
+
+      - name: Materialize Stage34 Stage36 Stage38
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage34_semantic.py source
+          python patches/scripts/apply_stage34_precollect.py source
+          python patches/scripts/apply_stage34_binding.py source
+          python patches/scripts/apply_stage34_test_semantic_contract.py source
+          python patches/scripts/apply_stage34_test_candidate_contract.py source
+          python patches/scripts/apply_stage34_test_frame_contract.py source
+          cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
+          python patches/scripts/apply_stage36_prepare.py source
+          python patches/scripts/apply_stage36_farol_core.py source
+          python patches/scripts/apply_stage36_report_compile_fix.py source
+          cp patches/stage36/FarolStage36Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36Test.kt
+          cp patches/stage36/FarolStage36FreshnessTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36FreshnessTest.kt
+          cp patches/stage36/FarolStage36RuntimeTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36RuntimeTest.kt
+          python patches/scripts/apply_stage36_test_runtime_fix.py source
+          python patches/scripts/apply_stage38_parser.py source
+          python patches/scripts/apply_stage38_evaluation.py source
+          python patches/scripts/apply_stage38_acquisition.py source
+          python patches/scripts/apply_stage38_ocr_request.py source
+          python patches/scripts/apply_stage38_ocr_result.py source
+          python patches/scripts/apply_stage38_downstream.py source
+          python patches/scripts/apply_stage38_report.py source
+          cp patches/stage38/FarolStage38Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage38Test.kt
+
+      - name: Materialize Stage40 Stage41 Stage42 Stage43
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage40_presence.py source
+          python patches/scripts/apply_stage40_visual.py source
+          cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
+          python patches/scripts/apply_stage40_version.py source
+          python patches/scripts/apply_stage40_precollect_bounded.py source
+          cp patches/stage40/FarolStage40PreCollectBootstrapTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40PreCollectBootstrapTest.kt
+          python patches/scripts/apply_stage40_precollect_physical_version.py source
+          python patches/scripts/apply_stage41_subsecond_final_paint.py source
+          cp patches/stage41/FarolStage41SubsecondFinalPaintTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage41SubsecondFinalPaintTest.kt
+          python patches/scripts/apply_stage41_version.py source
+          python patches/scripts/apply_stage42_manual_universal_reading.py source
+          cp patches/stage42/FarolStage42ManualUniversalReadingTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage42ManualUniversalReadingTest.kt
+          python patches/scripts/apply_stage42_version.py source
+          python patches/scripts/apply_stage43_manual_toggle_runtime_sync.py source
+          cp patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt
+          python patches/scripts/apply_stage43_version.py source
+
+      - name: Materialize Stage44 Stage45
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage44_semantic_final_lease.py source
+          cp patches/stage44/FarolStage44SemanticFinalLeaseTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage44SemanticFinalLeaseTest.kt
+          python patches/scripts/apply_stage44_version.py source
+          python patches/scripts/apply_stage45_ocr_multiline_address.py source
+          cp patches/stage45/FarolStage45OcrMultilineAddressTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage45OcrMultilineAddressTest.kt
+          python patches/scripts/apply_stage45_version.py source
+          grep -q 'versionCode = 5502' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.218"' source/app/build.gradle.kts
+
+      - name: Materialize Stage46 R1 R2 R3 with protected authorities
+        run: |
+          set -euo pipefail
+          P=source/app/src/main/java/br/com/mapeiaia/rotacerta
+          for f in FarolCausalCorrectionStage21.kt FarolFinalPaintFreshnessStage41.kt FarolManualOffVisualCommitStage43.kt FarolSemanticFinalLeaseStage44.kt FarolOcrMultilineAddressStage45.kt; do sha256sum "$P/$f" >> evidence/protected-before.sha256; done
+
+          python patches/scripts/apply_stage46_visual_epoch_no_result.py source | tee evidence/materialize-stage46-r1.txt
+          cp patches/stage46/FarolStage46VisualEpochNoResultTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46VisualEpochNoResultTest.kt
+          python patches/scripts/apply_stage46_version.py source | tee evidence/materialize-stage46-r1-version.txt
+
+          python patches/scripts/apply_stage46_target_surface_r2.py source | tee evidence/materialize-stage46-r2.txt
+          python patches/scripts/apply_stage46_target_surface_r2_order_fix.py source | tee evidence/materialize-stage46-r2-order.txt
+          cp patches/stage46/FarolStage46TargetSurfaceR2Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46TargetSurfaceR2Test.kt
+          python patches/scripts/apply_stage46_r2_version.py source | tee evidence/materialize-stage46-r2-version.txt
+          python patches/scripts/apply_stage46_r2_test_compat.py source | tee evidence/materialize-stage46-r2-test-compat.txt
+
+          python patches/scripts/apply_stage46_acquisition_surface_r3.py source | tee evidence/materialize-stage46-r3.txt
+          python patches/scripts/apply_stage46_r3_semantic_promotion_fix.py source | tee evidence/materialize-stage46-r3-semantic.txt
+          cp patches/stage46/FarolStage46AcquisitionSurfaceR3Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46AcquisitionSurfaceR3Test.kt
+          python patches/scripts/apply_stage46_r3_version.py source | tee evidence/materialize-stage46-r3-version.txt
+          python patches/scripts/apply_stage46_r3_test_compat.py source | tee evidence/materialize-stage46-r3-test-compat.txt
+
+          for f in FarolCausalCorrectionStage21.kt FarolFinalPaintFreshnessStage41.kt FarolManualOffVisualCommitStage43.kt FarolSemanticFinalLeaseStage44.kt FarolOcrMultilineAddressStage45.kt; do sha256sum "$P/$f" >> evidence/protected-after.sha256; done
+          sed 's#  .*#  FILE#' evidence/protected-before.sha256 > /tmp/a
+          sed 's#  .*#  FILE#' evidence/protected-after.sha256 > /tmp/b
+          cmp /tmp/a /tmp/b
+
+          grep -q 'versionCode = 5505' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.221"' source/app/build.gradle.kts
+          test "$(grep -c '@Test' patches/stage46/FarolStage46VisualEpochNoResultTest.kt)" -eq 28
+          test "$(grep -c '@Test' patches/stage46/FarolStage46TargetSurfaceR2Test.kt)" -eq 24
+          test "$(grep -c '@Test' patches/stage46/FarolStage46AcquisitionSurfaceR3Test.kt)" -eq 26
+
+      - name: Static Stage46 R3 causal audit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/static-stage46-r3.txt
+          from pathlib import Path
+          p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          s=(p/'LiveRideAccessibilityService.kt').read_text()
+          r1=(p/'FarolVisualEpochNoResultStage46.kt').read_text()
+          r2=(p/'FarolTargetSurfaceStage46R2.kt').read_text()
+          r3=(p/'FarolAcquisitionSurfaceStage46R3.kt').read_text()
+          for m in ('FAROL_VISUAL_SURFACE_EPOCH_STAGE46','OCR_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46','ROUTE_CANNOT_CROSS_VISIBLE_SURFACE_STAGE46'):
+              assert m in r1,m
+          for m in ('FAROL_TARGET_SURFACE_AUTHORITY_STAGE46_R2','FOREIGN_OVERLAY_CANNOT_REVOKE_TARGET_STAGE46_R2','TARGET_EMPTY_CONTENT_REVOKES_FINAL_STAGE46_R2'):
+              assert m in r2,m
+          for m in (
+              'FAROL_ACQUISITION_SURFACE_STAGE46_R3','ACQUISITION_SURFACE_DIFFERS_FROM_CONFIRMED_TARGET_STAGE46_R3',
+              'CONFIRMED_TARGET_RELEASED_WHEN_FINAL_REVOKED_STAGE46_R3','FOREGROUND_SURFACE_CAN_ACQUIRE_AFTER_OLD_TARGET_STAGE46_R3',
+              'OCR_ACQUISITION_NOT_PINNED_TO_STALE_CONFIRMED_TARGET_STAGE46_R3',
+              'OCR_ACQUISITION_REQUIRES_CURRENT_OR_INTERACTIVE_SURFACE_STAGE46_R3',
+              'TARGET_PROMOTED_ONLY_AFTER_SEMANTIC_VALIDATION_STAGE46_R3','FOREIGN_OVERLAY_CANNOT_STEAL_INTERACTIVE_TARGET_STAGE46_R3',
+              'PROVEN_FOREGROUND_HANDOFF_CLEARS_OLD_FINAL_STAGE46_R3','MANUAL_OFF_RELEASES_CONFIRMED_TARGET_STAGE46_R3',
+              'EVENT_DRIVEN_NO_POLLING_STAGE46_R3'):
+              assert m in r3,m
+          ocr_a=s.index('private fun requestUniversalScreenshotStage19(')
+          ocr_b=s.index('private suspend fun processUniversalVisualStage19(',ocr_a)
+          ocr=s[ocr_a:ocr_b]
+          assert 'FarolAcquisitionSurfaceStage46R3.chooseAcquisitionPackage(' in ocr
+          assert 'FarolTargetSurfaceStage46R2.chooseTargetPackage(' not in ocr
+          assert 'S46_R3_ACQUISITION_SURFACE_CAPTURED' in ocr
+          assert 'windowId = visualWindowIdStage19,' not in ocr
+          assert 'windowId = surfaceTokenStage46.windowId,' in ocr
+          assert 'FarolAcquisitionSurfaceStage46R3.acquisitionSurfaceFresh(' in s
+          assert 'S46_R3_TARGET_RELEASED' in s
+          assert 'S46_R3_FOREGROUND_HANDOFF_FINAL_REVOKED' in s
+          assert 'releaseConfirmedTargetStage46R3("target_empty"' in s
+          assert 'releaseConfirmedTargetStage46R3("hard_visual_boundary"' in s
+          assert 'releaseConfirmedTargetStage46R3("reading_off"' in s
+          process_a=s.index('private suspend fun processUniversalVisualStage19(')
+          process_b=s.index('private fun stage20BindingSnapshot(',process_a)
+          process=s[process_a:process_b]
+          reject=process.index('if (!semanticStage21.accepted)')
+          promote=process.index('S46_R3_TARGET_PROMOTED_AFTER_STAGE21')
+          assert reject < promote
+          assert 'bindCandidateTargetSurfaceStage46(' not in process[:reject]
+          assert 'Thread.sleep' not in r3 and 'delay(' not in r3 and 'Timer(' not in r3
+          assert 'scheduleAtFixedRate' not in r3 and 'scheduleWithFixedDelay' not in r3
+          print('stage46_r3_static_causal_audit=PASS acquisition_separate=true semantic_promotion=true target_release=true handoff_cleanup=true')
+          PY
+
+      - name: Verify exact 1126 tests
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n)); assert n==1126,n
+          PY
+
+      - name: Stage46 R1 R2 R3 regressions 78
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage46VisualEpochNoResultTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage46TargetSurfaceR2Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage46AcquisitionSurfaceR3Test | tee ../evidence/stage46-r3-tests.log
+          python - <<'PY' | tee ../evidence/stage46-r3-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-br.com.mapeiaia.rotacerta.FarolStage46*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s); assert (t,f,e,s)==(78,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Stage45 Stage44 Stage43 Stage42 Stage41 regressions
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage45OcrMultilineAddressTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage43ManualToggleRuntimeSyncTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage42ManualUniversalReadingTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage41SubsecondFinalPaintTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage40PreCollectBootstrapTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage40AuthorityRedContractTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage38Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest | tee ../evidence/regressions.log
+
+      - name: Complete suite exact 1126
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s); assert (t,f,e,s)==(1126,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Lint and assemble Stage46 R3 physical APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
+          ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
+
+      - name: Validate Stage46 R3 physical APK
+        run: |
+          set -euo pipefail
+          A=source/app/build/outputs/apk/debug/app-debug.apk
+          O=evidence/Rota-Certa-Stage46-Acquisition-Surface-R3-0.1.221.apk
+          cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5505' versionName='0.1.221'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$O" | tee evidence/zip.txt
+          mkdir -p evidence/dex
+          unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for m in FAROL_ACQUISITION_SURFACE_STAGE46_R3 ACQUISITION_SURFACE_DIFFERS_FROM_CONFIRMED_TARGET_STAGE46_R3 CONFIRMED_TARGET_RELEASED_WHEN_FINAL_REVOKED_STAGE46_R3 OCR_ACQUISITION_NOT_PINNED_TO_STALE_CONFIRMED_TARGET_STAGE46_R3 TARGET_PROMOTED_ONLY_AFTER_SEMANTIC_VALIDATION_STAGE46_R3 PROVEN_FOREGROUND_HANDOFF_CLEARS_OLD_FINAL_STAGE46_R3 FAROL_TARGET_SURFACE_AUTHORITY_STAGE46_R2 FAROL_VISUAL_SURFACE_EPOCH_STAGE46 FAROL_OCR_MULTILINE_ADDRESS_STAGE45 FAROL_SEMANTIC_FINAL_LEASE_STAGE44 MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41; do grep -a -q "$m" evidence/all-classes.dex; done
+          sha256sum "$O" | tee evidence/apk-sha256.txt
+          sha512sum "$O" | tee evidence/apk-sha512.txt
+          stat -c '%s' "$O" | tee evidence/apk-size.txt
+          printf 'stage46_r3_apk_validation=PASS\n' | tee evidence/apk-validation.txt
+
+      - name: Upload Stage46 R3 physical artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.221-stage46-acquisition-surface-r3
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,15 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 52ad036..53ae052 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -37,8 +37,8 @@ android {
+         applicationId = "br.com.mapeiaia.rotacerta"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 5472
+-        versionName = "0.1.188"
++        versionCode = 5473
++        versionName = "0.1.189"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")

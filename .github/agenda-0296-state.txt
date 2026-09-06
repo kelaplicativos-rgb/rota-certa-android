@@ -1,0 +1,6 @@
+branch=agent/agenda-public-booking-0.1.296
+base=813c725e12bdb7a9d4730655a60ba440a0da1268
+baseline=0.1.295/5588
+target=0.1.296/5589
+farol=protected
+productionDeploy=false

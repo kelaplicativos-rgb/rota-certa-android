@@ -1,0 +1,276 @@
+name: Agenda durability 0.1.275 PR materialize once
+
+on:
+  pull_request:
+    branches:
+      - agent/passenger-timeline-geo-ux
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/agenda-durability-0275-pr-materialize-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.head_ref == 'agent/public-search-agenda-module'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Agenda branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/public-search-agenda-module
+
+      - name: Materialize causal Agenda fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if new in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one old block, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          dynamic = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt'
+          old_date = r'''              const dateEvidence = (root) => {
+                const structured = Array.from(root.querySelectorAll('time[datetime]'))
+                  .map((node) => clean(node.getAttribute('datetime')))
+                  .filter(Boolean);
+                const visible = Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
+                  .map((node) => clean(node.innerText))
+                  .filter(Boolean);
+                return clean(structured.concat(visible).join(' | ')).slice(0, 1200);
+              };'''
+          new_date = r'''              const looksLikeCalendarDate = (value) => {
+                const text = clean(value);
+                if (!text) return false;
+                return /\b20\d{2}-\d{1,2}-\d{1,2}\b/.test(text) ||
+                  /\b\d{1,2}[\/.-]\d{1,2}(?:[\/.-]\d{2,4})?\b/.test(text) ||
+                  /\b(?:hoje|amanh[ãa])\b/i.test(text) ||
+                  /\b\d{1,2}\s*(?:de\s+)?(?:jan(?:eiro)?|fev(?:ereiro)?|mar(?:ço|co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b/i.test(text);
+              };
+              const nearestPrecedingDateEvidence = (root) => {
+                const markers = Array.from(document.querySelectorAll('[data-testid*="date"], time[datetime], h1, h2, h3'));
+                for (let index = markers.length - 1; index >= 0; index--) {
+                  const node = markers[index];
+                  if (!node || node === root || (root.contains && root.contains(node))) continue;
+                  if (!(node.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+                  const structured = clean(node.getAttribute && node.getAttribute('datetime'));
+                  const visible = clean(node.innerText || node.textContent);
+                  if (looksLikeCalendarDate(structured)) return structured;
+                  if (looksLikeCalendarDate(visible)) return visible;
+                }
+                return '';
+              };
+              const dateEvidence = (root) => {
+                const structured = Array.from(root.querySelectorAll('time[datetime]'))
+                  .map((node) => clean(node.getAttribute('datetime')))
+                  .filter(Boolean);
+                const visible = Array.from(root.querySelectorAll('[data-testid*="date"], time, h1, h2, h3'))
+                  .map((node) => clean(node.innerText))
+                  .filter(Boolean);
+                const localEvidence = structured.concat(visible);
+                if (localEvidence.some(looksLikeCalendarDate)) {
+                  return clean(localEvidence.join(' | ')).slice(0, 1200);
+                }
+                const preceding = nearestPrecedingDateEvidence(root);
+                return clean(localEvidence.concat(preceding ? [preceding] : []).join(' | ')).slice(0, 1200);
+              };'''
+          replace_once(dynamic, old_date, new_date)
+
+          direction = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt'
+          replace_once(
+              direction,
+              '''internal fun timelineDirectionDisplayLabel(state: TimelineDirectionState): String? = when (state) {
+    TimelineDirectionState.OUTBOUND -> "↑ INDO"
+    TimelineDirectionState.INBOUND -> "↓ VOLTANDO"
+    TimelineDirectionState.NEUTRAL -> "↔ NEUTRA"
+    TimelineDirectionState.UNKNOWN -> null
+}''',
+              '''internal fun timelineDirectionDisplayLabel(state: TimelineDirectionState): String? = when (state) {
+    TimelineDirectionState.OUTBOUND -> "↑ IDA"
+    TimelineDirectionState.INBOUND -> "↓ VOLTA"
+    TimelineDirectionState.NEUTRAL -> "↔ NEUTRA"
+    TimelineDirectionState.UNKNOWN -> null
+}''',
+          )
+
+          ui = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          replace_once(ui, 'import androidx.compose.foundation.isSystemInDarkTheme\n', 'import androidx.compose.foundation.background\nimport androidx.compose.foundation.isSystemInDarkTheme\n')
+          replace_once(ui, 'import androidx.compose.foundation.layout.padding\n', 'import androidx.compose.foundation.layout.padding\nimport androidx.compose.foundation.shape.RoundedCornerShape\n')
+          replace_once(
+              ui,
+              '''            ResponsiveTripAction("Limpar Timeline") {
+                val clearedResponse = collectorStore.saveResponse(''',
+              '''            ResponsiveTripAction("Limpar Timeline") {
+                archiveStore.clearExternal(physical)
+                val clearedResponse = collectorStore.saveResponse(''',
+          )
+          replace_once(
+              ui,
+              '''                    "externalTripsRemoved=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",''',
+              '''                    "externalTripsRemoved=true externalArchiveStateReset=true localTripsPreserved=${trips.size} localBookingsPreserved=${bookings.size}",''',
+          )
+          replace_once(
+              ui,
+              '''                onChanged("Timeline sincronizada limpa. Viagens locais, reservas e login foram preservados.")''',
+              '''                onChanged("Timeline sincronizada limpa. Arquivamento externo zerado; viagens locais, reservas e login foram preservados.")''',
+          )
+          replace_once(
+              ui,
+              '''            timelineDirectionDisplayLabel(direction)?.let { Text(it, style = MaterialTheme.typography.labelLarge) }''',
+              '''            timelineDirectionDisplayLabel(direction)?.let { label ->
+                val chipColor = when (direction) {
+                    TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF285A34) else Color(0xFFB8E6C4)
+                    TimelineDirectionState.INBOUND -> if (dark) Color(0xFF6A3A23) else Color(0xFFFFD1B8)
+                    TimelineDirectionState.NEUTRAL,
+                    TimelineDirectionState.UNKNOWN,
+                    -> MaterialTheme.colorScheme.surfaceVariant
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier
+                        .background(chipColor, RoundedCornerShape(999.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }''',
+          )
+          replace_once(
+              ui,
+              '''    fun setArchived(entry: TripTimelineEntry, archived: Boolean) {
+        val edit = prefs.edit()
+        aliases(entry).forEach { edit.putBoolean(it, archived) }
+        edit.apply()
+    }
+
+    private fun aliases(entry: TripTimelineEntry): Set<String> = setOfNotNull(''',
+              '''    fun setArchived(entry: TripTimelineEntry, archived: Boolean) {
+        val edit = prefs.edit()
+        aliases(entry).forEach { edit.putBoolean(it, archived) }
+        edit.apply()
+    }
+
+    fun clearExternal(entries: List<TripTimelineEntry>) {
+        val edit = prefs.edit()
+        entries
+            .filter(::hasExternalPublication)
+            .flatMap(::aliases)
+            .distinct()
+            .forEach { key -> edit.remove(key) }
+        edit.apply()
+    }
+
+    private fun aliases(entry: TripTimelineEntry): Set<String> = setOfNotNull(''',
+          )
+
+          gradle = 'app/build.gradle.kts'
+          replace_once(gradle, 'versionCode = 5567\n        versionName = "0.1.274"', 'versionCode = 5568\n        versionName = "0.1.275"')
+
+          Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDurability0275Test.kt').write_text('''package br.com.mapeiaia.rotacerta.trips
+
+import java.io.File
+import java.time.LocalDate
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class AgendaDurability0275Test {
+    private val today = LocalDate.of(2026, 8, 24)
+
+    @Test
+    fun groupedDateHeaderResolvesTomorrowEvenWhenCardStartsWithTimeOnlyEvidence() {
+        assertEquals(LocalDate.of(2026, 8, 25), BlaBlaDomNormalizer.parseDate("10:30 | 14:30 | Ter., 25 de agosto", today))
+    }
+
+    @Test
+    fun rideListCollectorUsesNearestPrecedingCalendarHeaderAsFallback() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        assertTrue(source.contains("looksLikeCalendarDate"))
+        assertTrue(source.contains("nearestPrecedingDateEvidence"))
+        assertTrue(source.contains("node.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING"))
+        assertTrue(source.contains("localEvidence.some(looksLikeCalendarDate)"))
+    }
+
+    @Test
+    fun clearingSyncedTimelineAlsoResetsOnlyExternalArchiveAliases() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(source.contains("archiveStore.clearExternal(physical)"))
+        assertTrue(source.contains("fun clearExternal(entries: List<TripTimelineEntry>)"))
+        assertTrue(source.contains(".filter(::hasExternalPublication)"))
+        assertTrue(source.contains("externalArchiveStateReset=true"))
+    }
+
+    @Test
+    fun directionLabelsAreExplicitAndKeepUnknownFailClosed() {
+        assertEquals("↑ IDA", timelineDirectionDisplayLabel(TimelineDirectionState.OUTBOUND))
+        assertEquals("↓ VOLTA", timelineDirectionDisplayLabel(TimelineDirectionState.INBOUND))
+        assertEquals("↔ NEUTRA", timelineDirectionDisplayLabel(TimelineDirectionState.NEUTRAL))
+        assertEquals(null, timelineDirectionDisplayLabel(TimelineDirectionState.UNKNOWN))
+    }
+
+    @Test
+    fun publicSearchRemainsAttachedToAgendaToolbar() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt").readText()
+        assertTrue(source.contains("Consulta pública"))
+        assertTrue(source.contains("BlaBlaPublicSearchStore"))
+        assertTrue(source.contains("BlaBlaPublicSearchPanel"))
+    }
+}
+''')
+
+          workflow = '.github/workflows/public-search-pr-validation.yml'
+          replace_once(
+              workflow,
+              '''          ./gradlew \\
+            :app:testDebugUnitTest \\
+            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest \\
+            :app:assembleDebug \\
+            --no-daemon --stacktrace''',
+              '''          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace''',
+          )
+          replace_once(
+              workflow,
+              '''          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt''',
+              '''          grep -Fq 'nearestPrecedingDateEvidence' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'archiveStore.clearExternal(physical)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '↑ IDA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt
+          grep -Fq '↓ VOLTA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt
+          grep -Fq 'Consulta pública' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          grep -Fq 'versionCode = 5568' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.275"' app/build.gradle.kts
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt''',
+          )
+          PY
+
+          git diff --check
+          git status --short
+
+      - name: Commit materialized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDurability0275Test.kt \
+                  app/build.gradle.kts \
+                  .github/workflows/public-search-pr-validation.yml
+          if git diff --cached --quiet; then
+            echo 'Already materialized.'
+            exit 0
+          fi
+          git commit -m 'fix(agenda): durable dates and direction-first cards 0.1.275'
+          git push origin HEAD:agent/public-search-agenda-module

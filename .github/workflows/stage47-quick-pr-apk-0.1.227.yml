@@ -1,0 +1,115 @@
+name: Stage47 quick PR APK 0.1.227
+
+on:
+  pull_request:
+    branches:
+      - agent/stage47-trip-calendar-booking-0.1.227-r1-materializer-root
+
+concurrency:
+  group: stage47-quick-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-stage47-quick-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - name: Checkout Stage47 patches
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage18 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage32 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Materialize R8 and Stage47
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/r8-bootstrap
+          SOURCE="$(cd source && pwd)"
+          PATCHES="$(cd patches && pwd)"
+          HIST19="$(cd historical19 && pwd)"
+          HIST34="$(cd historical34 && pwd)"
+          EVIDENCE="$(cd evidence && pwd)"
+          R8_MATERIALIZER="$EVIDENCE/run-stage46-r8-materialize-only.sh"
+          python3 - "$PATCHES/scripts/run_stage46_r8_reproducible_ci.sh" "$R8_MATERIALIZER" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]).read_text(encoding='utf-8')
+          out = Path(sys.argv[2])
+          anchor = '''python3 - "$SOURCE" "$PATCHES" <<'PY' | tee "$EVIDENCE/static-r8.txt"'''
+          if source.count(anchor) != 1:
+              raise SystemExit(f'R8 materialize-only anchor expected once, got {source.count(anchor)}')
+          early = '''if [[ "${STAGE46_R8_MATERIALIZE_ONLY:-0}" == "1" ]]; then
+            printf 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510\n' | tee "$EVIDENCE/final-status.txt"
+            exit 0
+          fi
+
+          '''
+          out.write_text(source.replace(anchor, early + anchor, 1), encoding='utf-8')
+          PY
+          STAGE46_R8_MATERIALIZE_ONLY=1 bash "$R8_MATERIALIZER" "$SOURCE" "$PATCHES" "$HIST19" "$HIST34" "$EVIDENCE/r8-bootstrap"
+          grep -Fq 'stage46_r8_materialized_for_stage47=PASS version=0.1.226/5510' "$EVIDENCE/r8-bootstrap/final-status.txt"
+          sha256sum "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt" > "$EVIDENCE/farol-before.sha256"
+          python3 "$PATCHES/scripts/apply_stage47_trip_calendar_booking.py" "$SOURCE" "$PATCHES" | tee "$EVIDENCE/materialize-stage47.txt"
+          python3 "$PATCHES/scripts/apply_stage47_route_planner_ui.py" "$SOURCE" | tee "$EVIDENCE/materialize-route-planner-ui.txt"
+          python3 "$PATCHES/scripts/apply_stage47_internal_trip_shortcut.py" "$SOURCE" | tee "$EVIDENCE/materialize-internal-trip-shortcut.txt"
+          sha256sum "$SOURCE/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt" > "$EVIDENCE/farol-after.sha256"
+          cmp "$EVIDENCE/farol-before.sha256" "$EVIDENCE/farol-after.sha256"
+          grep -Fq 'versionCode = 5520' "$SOURCE/app/build.gradle.kts"
+          grep -Fq 'versionName = "0.1.227"' "$SOURCE/app/build.gradle.kts"
+          printf 'stage47_quick_materialization=PASS farol_untouched=true\n' | tee "$EVIDENCE/materialization-status.txt"
+      - name: Trip tests and installable APK
+        run: |
+          set -euo pipefail
+          cd source
+          ./gradlew --no-daemon testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.*' assembleDebug | tee ../evidence/gradle-quick.log
+          cp app/build/outputs/apk/debug/app-debug.apk ../evidence/Rota-Certa-Agenda-Viagens-Stage47-R1-0.1.227.apk
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)"
+          SIGN="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          "$AAPT" dump badging ../evidence/Rota-Certa-Agenda-Viagens-Stage47-R1-0.1.227.apk | tee ../evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5520' versionName='0.1.227'" ../evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs ../evidence/Rota-Certa-Agenda-Viagens-Stage47-R1-0.1.227.apk | tee ../evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' ../evidence/signature.txt
+          unzip -t ../evidence/Rota-Certa-Agenda-Viagens-Stage47-R1-0.1.227.apk | tee ../evidence/zip.txt
+          sha256sum ../evidence/Rota-Certa-Agenda-Viagens-Stage47-R1-0.1.227.apk | tee ../evidence/apk-sha256.txt
+          printf 'stage47_quick_apk=PASS version=0.1.227/5520 trip_tests=PASS assemble=PASS signature_v2=PASS\n' | tee ../evidence/final-status.txt
+      - name: Upload Stage47 quick APK and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.227-stage47-quick-pr-apk-r1
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

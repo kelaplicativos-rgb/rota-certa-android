@@ -1,0 +1,170 @@
+,
+    '''    fun hideAll() {
+        hideShortcuts()
+        hideProximityAlert()
+        hideSilentStatus159()
+    }
+
+    fun showShortcutConfirmation0171(
+        title: String,
+        detail: String,
+        onConfirm: () -> Unit,
+    ) {
+        hideAll()
+        val scale = appearanceStore.scale()
+        val container = alertContainer(scale)
+        container.addView(TextView(context).apply {
+            text = "⚠️  $title"
+            textSize = scaledSp(18f, scale)
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+        })
+        container.addView(TextView(context).apply {
+            text = detail
+            textSize = scaledSp(14f, scale)
+            setTextColor(Color.LTGRAY)
+            setPadding(0, scaledDp(6, scale), 0, scaledDp(10, scale))
+        })
+        container.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(popupButton("Cancelar", scale) { hideProximityAlert() })
+            addView(popupButton("Confirmar", scale) { hideProximityAlert(); onConfirm() })
+        })
+        val metrics = context.resources.displayMetrics
+        val params = WindowManager.LayoutParams(
+            scaledDp(320, scale).coerceAtMost(metrics.widthPixels - dp(24)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = scaledDp(72, scale)
+        }
+        if (runCatching { windowManager.addView(container, params) }.isSuccess) {
+            alertPopupView = container
+            trace("bubble.shortcut.long_press_confirmation_shown")
+        }
+    }
+
+''',
+    'confirmação genérica do toque longo',
+)
+OVERLAY.write_text(overlay, encoding='utf-8')
+
+service = SERVICE.read_text(encoding='utf-8')
+service = replace_once(
+    service,
+    '''    private lateinit var shortcutOverlayController: BubbleShortcutOverlayController
+''',
+    '''    private lateinit var shortcutOverlayController: BubbleShortcutOverlayController
+    private lateinit var shortcutLongPressStore0171: ShortcutLongPressPreferenceStore0171
+''',
+    'store do toque longo',
+)
+service = replace_once(
+    service,
+    '''        bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+''',
+    '''        bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+        shortcutLongPressStore0171 = ShortcutLongPressPreferenceStore0171(applicationContext)
+''',
+    'inicialização do store',
+)
+service = replace_once(
+    service,
+    '''            onShortcut = ::executeShortcutModule,
+            onShortcutDoubleTap = ::executeShortcutDoubleTap,
+''',
+    '''            onShortcut = ::executeShortcutModule,
+            onShortcutLongPress = ::executeShortcutLongPress0171,
+''',
+    'callback de toque longo',
+)
+service = replace_once(
+    service,
+    '''    private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
+''',
+    '''    private fun executeShortcutLongPress0171(spec: BubbleShortcutSpec) {
+        val choice0171 = shortcutLongPressStore0171.read(spec.id)
+        val resolved0171 = ShortcutLongPressPolicy0171.resolve(spec, choice0171)
+        UnifiedDebugEventStore.record(
+            "SHORTCUT_LONG_PRESS_0171",
+            universalResolvedForegroundPackage(),
+            "id=${spec.id}; choice=${choice0171.name}; resolved=${resolved0171.name}",
+        )
+        if (resolved0171 == ShortcutLongPressResolved0171.None) {
+            shortcutOverlayController.showSilentStatus159("Toque longo sem ação para ${spec.displayLabel}", true)
+            return
+        }
+        if (ShortcutLongPressPolicy0171.requiresConfirmation(spec, choice0171, resolved0171)) {
+            shortcutOverlayController.showShortcutConfirmation0171(
+                title = spec.displayLabel,
+                detail = "Confirmar: ${ShortcutLongPressPolicy0171.resolvedLabel(spec, resolved0171)}?",
+                onConfirm = { executeResolvedLongPress0171(spec, resolved0171) },
+            )
+            return
+        }
+        executeResolvedLongPress0171(spec, resolved0171)
+    }
+
+    private fun executeResolvedLongPress0171(
+        spec: BubbleShortcutSpec,
+        resolved0171: ShortcutLongPressResolved0171,
+    ) {
+        when (resolved0171) {
+            ShortcutLongPressResolved0171.None -> Unit
+            ShortcutLongPressResolved0171.OpenModule -> openShortcutModule0171(spec)
+            ShortcutLongPressResolved0171.Primary -> executeShortcutModule(spec)
+            ShortcutLongPressResolved0171.Secondary -> executeShortcutDoubleTap(spec)
+        }
+    }
+
+    private fun openShortcutModule0171(spec: BubbleShortcutSpec) {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        runCatching {
+            val intent0171 = Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(EXTRA_OPEN_TAB, spec.targetTab ?: TAB_CONFIG)
+                .putExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171, spec.id)
+            spec.targetGroup?.let { intent0171.putExtra(EXTRA_OPEN_BUBBLE_GROUP, it) }
+            startActivity(intent0171)
+        }.onFailure {
+            toast("Não foi possível abrir o módulo ${spec.displayLabel}.")
+        }
+    }
+
+    private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
+''',
+    'resolução do toque longo',
+)
+service = service.replace('// capture_teaches_app_and_triggers_farol_checklist_13', f'// {MARKER}\n// capture_teaches_app_and_triggers_farol_checklist_13', 1)
+SERVICE.write_text(service, encoding='utf-8')
+
+main = MAIN_ACTIVITY.read_text(encoding='utf-8')
+main = replace_once(
+    main,
+    '''    var debugLogEnabled by remember { mutableStateOf(DebugLogPreferenceStore.isEnabled(context)) }
+
+
+''',
+    '''    var debugLogEnabled by remember { mutableStateOf(DebugLogPreferenceStore.isEnabled(context)) }
+    var highlightedShortcutModule0171 by remember { mutableStateOf<String?>(null) }
+
+
+''',
+    'estado do módulo destacado',
+)
+main = replace_once(
+    main,
+    '''    fun createSavedPlaceFromHome(type: SavedPlaceType, requestNameDialog: Boolean = false) {
+''',
+    '''    fun openShortcutModuleFromHome0171(spec: BubbleShortcutSpec) {
+        highlightedShortcutModule0171 = spec.id
+        when (spec.action) {
+            BubbleShortcutAction.OpenFinance -> context.startActivity(Intent(context, FinancialActivity::class.java))
+            BubbleShortcutAction.OpenQuickReplies -> context.startActivity(Intent(context, QuickRepliesActivity::class.java))
+            BubbleShortcutAction.ExportDiagnostic -> tab = TAB_HISTORY
+            BubbleShortcutAction.OpenScreenWhatsApp,
+            BubbleShortcutAction.ClearClipboa

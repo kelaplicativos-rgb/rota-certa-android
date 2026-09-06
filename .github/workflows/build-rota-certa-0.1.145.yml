@@ -1,0 +1,95 @@
+name: Build Rota Certa 0.1.146
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-rota-certa-0.1.145.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply complete 0.1.146 correction
+        run: |
+          python scripts/apply_authorized_apps_cards_0146.py
+          python scripts/finalize_authorized_apps_cards_0146.py
+
+      - name: Verify corrected source contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.146"' app/build.gradle.kts
+          grep -q 'versionCode = 5070' app/build.gradle.kts
+          ! grep -q 'Text(if (saving) "Localizando..." else "Salvar Casa")' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
+          grep -q 'Text("Aplicativos e cards autorizados"' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Cards são apenas complementos para OCR e reconhecimento.' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Excluir somente este card' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'Excluir aplicativo e cards' app/src/main/java/br/com/mapeiaia/rotacerta/InstalledRideAppPickerActivity.kt
+          grep -q 'cards_supplemental_not_contract_0_1_146' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'postDelayed(longPressAction, 1_500L)' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          ! grep -q 'onDoubleTap(event' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK version and signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.146-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5070'"
+          echo "$BADGING" | grep -q "versionName='0.1.146'"
+          cp "$APK" rota-certa-0.1.146-corrigido-validado.apk
+          sha256sum rota-certa-0.1.146-corrigido-validado.apk | tee rota-certa-0.1.146-sha256.txt
+
+      - name: Upload corrected validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.146-corrected-validated
+          path: |
+            rota-certa-0.1.146-corrigido-validado.apk
+            rota-certa-0.1.146-sha256.txt
+            rota-certa-0.1.146-assinatura.txt
+          retention-days: 90
+          if-no-files-found: error

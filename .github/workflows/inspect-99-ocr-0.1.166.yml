@@ -1,0 +1,100 @@
+name: Inspect 99 OCR 0.1.166
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-99-ocr-0.1.166.yml
+      - scripts/fix_99_ocr_capture_0166.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout 0.1.166 branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-99-ocr-0.1.166
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Materialize 0.1.165 source
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+          python scripts/fix_bounded_empty_read_preservation_0155.py
+          python scripts/fix_passive_churn_and_launcher_race_0156.py
+          python scripts/fix_subsecond_farol_0157.py
+          python scripts/remove_collector_completely_0158.py
+          python scripts/run_value_finance_0159.py
+          python scripts/fix_value_finance_0160.py
+          python scripts/fix_value_finance_0160_compile.py
+          python ../patches/scripts/fix_failed_card_autocapture_0161.py .
+          python ../patches/scripts/fix_failed_card_autocapture_0161_rerun.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162.py .
+          python ../patches/scripts/fix_gigu_work_mode_session_0162_rerun.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163.py .
+          python ../patches/scripts/fix_farol_flight_recorder_0163_rerun.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164.py .
+          python ../patches/scripts/fix_diagnostic_session_summary_0164_rerun.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165.py .
+          python ../patches/scripts/fix_diagnostic_attempt_timeline_0165_rerun.py .
+
+      - name: Print OCR and screenshot control flow
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt')
+          text = p.read_text(encoding='utf-8')
+          markers = [
+              'private fun requestScreenshotAnalysis',
+              'private fun scheduleScreenshotFallback127',
+              'lastAccessibilityAcceptedAtMillis127',
+              'screenshotInProgress',
+              'OCR_REQUEST_EVALUATE',
+          ]
+          lines = text.splitlines()
+          for marker in markers:
+              print(f'===== MARKER: {marker} =====')
+              hits = [i for i, line in enumerate(lines) if marker in line]
+              if not hits:
+                  print('NOT FOUND')
+                  continue
+              for hit in hits:
+                  start = max(0, hit - 12)
+                  end = min(len(lines), hit + 140)
+                  for i in range(start, end):
+                      print(f'{i+1:05d}: {lines[i]}')
+                  print('===== END HIT =====')
+          PY
+
+      - name: Upload materialized service
+        uses: actions/upload-artifact@v4
+        with:
+          name: materialized-live-service-0.1.165
+          path: source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          retention-days: 7
+          if-no-files-found: error

@@ -1,0 +1,20 @@
+name: Verify registered farol phase 2
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify project records
+        run: |
+          set -euo pipefail
+          grep -Fq '<!-- FAROL_PHASE2_VALIDATED_STATUS_START -->' docs/PROJECT_STATUS.md
+          grep -Fq '<!-- FAROL_PHASE2_VALIDATED_DECISION_START -->' docs/DECISIONS.md
+          grep -Fq '8873d82eaf914919c4b41491bb5f51209c9ec142774ff63b81f3c3d8216e90e5' docs/PROJECT_STATUS.md

@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else '.').resolve()
+APP = ROOT / 'app'
+MAIN_DIR = APP / 'src/main/java/br/com/mapeiaia/rotacerta'
+TEST_DIR = APP / 'src/test/java/br/com/mapeiaia/rotacerta'
+GRADLE = APP / 'build.gradle.kts'
+CATALOG = MAIN_DIR / 'BubbleShortcutModule.kt'
+OVERLAY = MAIN_DIR / 'BubbleShortcutOverlayController.kt'
+SERVICE = MAIN_DIR / 'LiveRideAccessibilityService.kt'
+MAIN_ACTIVITY = MAIN_DIR / 'MainActivity.kt'
+POLICY = MAIN_DIR / 'ShortcutLongPressPolicy0171.kt'
+POLICY_TEST = TEST_DIR / 'ShortcutLongPressPolicy0171Test.kt'
+CONTRACT_TEST = TEST_DIR / 'ShortcutLongPressContract0171Test.kt'
+MARKER = 'shortcut_long_press_customization_0_1_171'
+
+
+def fail(message: str) -> None:
+    raise SystemExit(message)
+
+
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        fail(f'{label}: esperado 1 ocorrência, encontrado {count}')
+    return text.replace(old, new, 1)
+
+
+POLICY_KOTLIN = r'''package br.com.mapeiaia.rotacerta
+
+import android.content.Context
+
+/** Preferência local e leve para o gesto longo de cada atalho. */
+enum class ShortcutLongPressChoice0171 {
+    PreserveExisting,
+    None,
+    OpenModule,
+    RunPrimary,
+    RunSecondary,
+}
+
+enum class ShortcutLongPressResolved0171 {
+    None,
+    OpenModule,
+    Primary,
+    Secondary,
+}
+
+object ShortcutLongPressPolicy0171 {
+    private val sensitivePrimaryIds = setOf(
+        "whatsapp",
+        "clear_clipboard",
+        "diagnostic",
+        "manual_capture",
+        "stop_app",
+        "copy_trip_confirmation",
+        "passenger_value",
+    )
+
+    fun availableChoices(spec: BubbleShortcutSpec): List<ShortcutLongPressChoice0171> = buildList {
+        add(ShortcutLongPressChoice0171.PreserveExisting)
+        add(ShortcutLongPressChoice0171.None)
+        add(ShortcutLongPressChoice0171.OpenModule)
+        add(ShortcutLongPressChoice0171.RunPrimary)
+        if (spec.doubleTapAction != null) add(ShortcutLongPressChoice0171.RunSecondary)
+    }
+
+    fun resolve(
+        spec: BubbleShortcutSpec,
+        choice: ShortcutLongPressChoice0171,
+    ): ShortcutLongPressResolved0171 = when (choice) {
+        ShortcutLongPressChoice0171.PreserveExisting -> {
+            if (spec.doubleTapAction != null) ShortcutLongPressResolved0171.Secondary
+            else ShortcutLongPressResolved0171.Primary
+        }
+        ShortcutLongPressChoice0171.None -> ShortcutLongPressResolved0171.None
+        ShortcutLongPressChoice0171.OpenModule -> ShortcutLongPressResolved0171.OpenModule
+        ShortcutLongPressChoice0171.RunPrimary -> ShortcutLongPressResolved0171.Primary
+        ShortcutLongPressChoice0171.RunSecondary -> {
+            if (spec.doubleTapAction != null) ShortcutLongPressResolved0171.Secondary
+            else ShortcutLongPressResolved0171.None
+        }
+    }
+
+    fun requiresConfirmation(
+        spec: BubbleShortcutSpec,
+        choice: ShortcutLongPressChoice0171,
+        resolved: ShortcutLongPressResolved0171,
+    ): Boolean {
+        if (choice == ShortcutLongPressChoice0171.PreserveExisting) return false
+        return when (resolved) {
+            ShortcutLongPressResolved0171.Secondary -> true
+            ShortcutLongPressResolved0171.Primary -> spec.id in sensitivePrimaryIds
+            ShortcutLongPressResolved0171.None,
+            ShortcutLongPressResolved0171.OpenModule,
+            -> false
+        }
+    }
+
+    fun choiceLabel(choice: ShortcutLongPressChoice0171): String = when (choice) {
+        ShortcutLongPressChoice0171.PreserveExisting -> "Manter comportamento atual"
+        ShortcutLongPressChoice0171.None -> "Não fazer nada"
+        ShortcutLongPressChoice0171.OpenModule -> "Abrir o módulo"
+        ShortcutLongPressChoice0171.RunPrimary -> "Executar ação principal"
+        ShortcutLongPressChoice0171.RunSecondary -> "Executar ação secundária"
+    }
+
+    fun resolvedLabel(
+        spec: BubbleShortcutSpec,
+        resolved: ShortcutLongPressResolved0171,
+    ): String = when (resolved) {
+        ShortcutLongPressResolved0171.None -> "nenhuma ação"
+        ShortcutLongPressResolved0171.OpenModule -> "abrir ${spec.displayLabel}"
+        ShortcutLongPressResolved0171.Primary -> "executar ${spec.displayLabel}"
+        ShortcutLongPressResolved0171.Secondary -> "executar a ação rápida de ${spec.displayLabel}"
+    }
+
+    fun description(spec: BubbleShortcutSpec): String = when (spec.id) {
+        "route" -> "Liga, pausa e acompanha o funcionamento geral do Rota Certa."
+        "destination" -> "Define Casa ou ponto principal e o raio usado na decisão."
+        "alerts" -> "Cria e gerencia alertas de proximidade."
+        "saved_places" -> "Cria e gerencia locais salvos sem alerta automático."
+        "radars" -> "Importa, consulta e remove radares armazenados."
+        "appearance" -> "Ajusta tamanho, transparência, contraste e pop-up da bolinha."
+        "backup" -> "Cria e restaura cópia local das configurações e dados."
+        "whatsapp" -> "Na grade, captura o telefone visível e abre o WhatsApp."
+        "copy_trip_confirmation" -> "Na tela da viagem, copia a confirmação formatada."
+        "passenger_value" -> "Na tela do passageiro, captura e registra o valor."
+        "finance" -> "Abre o controle financeiro de receitas e despesas."
+        "clear_clipboard" -> "Permite apagar manualmente a área de transferência."
+        "diagnostic" -> "Abre relatórios e gera o arquivo de depuração manual."
+        "quick_replies" -> "Abre e gerencia respostas rápidas."
+        "manual_capture" -> "Gerencia aplicativos autorizados, cards e captura manual."
+        "stop_app" -> "Abre o controle para desligar o Modo Trabalho com segurança."
+        else -> "Módulo do Rota Certa."
+    }
+}
+
+class ShortcutLongPressPreferenceStore0171(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(
+        "rota_certa_shortcut_long_press_0171",
+        Context.MODE_PRIVATE,
+    )
+
+    fun read(shortcutId: String): ShortcutLongPressChoice0171 {
+        val raw = prefs.getString(key(shortcutId), null) ?: return ShortcutLongPressChoice0171.PreserveExisting
+        return runCatching { ShortcutLongPressChoice0171.valueOf(raw) }
+            .getOrDefault(ShortcutLongPressChoice0171.PreserveExisting)
+    }
+
+    fun write(shortcutId: String, choice: ShortcutLongPressChoice0171) {
+        prefs.edit().putString(key(shortcutId), choice.name).apply()
+    }
+
+    private fun key(shortcutId: String): String = "long_press_${shortcutId.trim().lowercase()}"
+}
+
+// shortcut_long_press_customization_0_1_171
+'''
+
+POLICY_TEST_KOTLIN = r'''package br.com.mapeiaia.rotacerta
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ShortcutLongPressPolicy0171Test {
+    private fun spec(secondary: BubbleShortcutQuickAction? = null, id: String = "route") = BubbleS

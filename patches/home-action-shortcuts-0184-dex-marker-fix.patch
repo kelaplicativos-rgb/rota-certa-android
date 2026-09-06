@@ -1,0 +1,10 @@
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/ShortcutGridCustomization0179.kt
+@@ -41,6 +41,7 @@ object ShortcutGesturePolicy0179 {
+ }
+ 
+ object ShortcutGridCustomizationPolicy0179 {
++    const val CONTRACT_MARKER_0184: String = "HOME_ACTION_SHORTCUTS_0184"
+     val iconChoices: List<String>
+         get() = (ShortcutActionCatalog0184.allSpecs().map { it.emoji } + listOf(
+             "⭐", "🚗", "🧭", "🏠", "✅", "🔔", "📌", "📝", "⚙️", "➕",

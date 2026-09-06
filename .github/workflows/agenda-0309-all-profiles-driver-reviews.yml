@@ -1,0 +1,207 @@
+name: Agenda 0.1.309 all profiles and driver reviews
+
+on:
+  push:
+    branches:
+      - agent/timeline-multi-profile-public-driver-reviews-0.1.309
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/timeline-multi-profile-public-driver-reviews-0.1.309
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate backend, all-account timeline and public driver profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/functions/public-agenda-link-policy.js
+          node --check trip-platform/functions/public-profile-policy.js
+          node --check trip-platform/calendar-functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+          grep -Fq 'TIMELINE_REBUILT_FROM_ALL_CONNECTED_ACCOUNTS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
+          grep -Fq 'PUBLIC_AGENDA_ALL_CONNECTED_ACCOUNTS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'selectionFilter=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'Criar meu perfil personalizado' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          grep -Fq 'BlaBlaDynamicSessionIntents.profile(context, profile)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaSettingsUi.kt
+          grep -Fq 'captureProfileReviewsPage' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'driverPublicReviews' trip-platform/functions/public-profile-policy.js
+          grep -Fq 'driverReviews' trip-platform/public/app.js
+
+      - name: Verify FAROL was not changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=e3353bec6eb650f1bf5d75bb89f3761b489db097
+          test -z "$(git diff --name-only "$BASE"..HEAD -- 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' 'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt')"
+
+      - name: Configure Firebase service account
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests lint and Android build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep -Fq "versionCode='5602'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.309'" /tmp/aapt.txt
+          sha256sum "$APK" > /tmp/apk.sha256
+          mkdir -p /tmp/0309
+          cp "$APK" /tmp/0309/rota-certa-0.1.309-universal.apk
+          cp /tmp/apk.sha256 /tmp/0309/apk.sha256
+          cp /tmp/aapt.txt /tmp/0309/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0309/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0309/gradle.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.309-all-profiles-driver-reviews
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0309
+
+  deploy:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/timeline-multi-profile-public-driver-reviews-0.1.309
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase service account
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Install Firebase function dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          npm --prefix trip-platform/calendar-functions install --no-audit --no-fund
+
+      - name: Deploy API calendar and public hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,functions:trip-calendar,hosting --non-interactive --force
+
+      - name: Confirm live API, hosting and existing agenda
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          HEALTH="$(curl --retry 8 --retry-delay 3 --silent --show-error -o /tmp/health.json -w '%{http_code}' "$BASE/v1/health")"
+          test "$HEALTH" = "200"
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/" > /tmp/index.html
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js" > /tmp/app.js
+          grep -Fq 'id="driverReviews"' /tmp/index.html
+          grep -Fq 'function renderDriverReviews()' /tmp/app.js
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          HTTP="$(curl --retry 8 --retry-delay 3 --silent --show-error -o /tmp/agenda.json -w '%{http_code}' "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda")"
+          echo "EXISTING_LINK_HTTP=$HTTP"
+          test "$HTTP" = "200"
+          node -e 'const x=require("/tmp/agenda.json"); if (String(x.driver?.username||"") !== "viagem-certa") process.exit(2); console.log("EXISTING_LINK_TRIPS="+String(Array.isArray(x.trips)?x.trips.length:0));'
+          echo "BACKEND_HOSTING_0309_DEPLOYED=PASS"
+
+  publish-test-apk:
+    needs: [validate, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: rota-certa-0.1.309-all-profiles-driver-reviews
+          path: /tmp/0309
+
+      - name: Publish direct test APK candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=ci-0.1.309-all-profiles-driver-reviews
+          APK=/tmp/0309/rota-certa-0.1.309-universal.apk
+          test -s "$APK"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$APK" --prerelease --title "Rota Certa 0.1.309 — todas as contas + perfil público" --notes "APK 0.1.309/5602: todas as contas conectadas alimentam Timeline/Agenda Pública; identidade pública do motorista é escolhida separadamente; avaliações BlaBlaCar verificadas por UUID." --repo "$GITHUB_REPOSITORY"
+          fi
+          URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/rota-certa-0.1.309-universal.apk"
+          curl --fail --location --retry 6 --retry-all-errors -o /tmp/downloaded.apk "$URL"
+          test "$(sha256sum /tmp/downloaded.apk | awk '{print $1}')" = "$(sha256sum "$APK" | awk '{print $1}')"
+          echo "DIRECT_APK_URL=$URL"

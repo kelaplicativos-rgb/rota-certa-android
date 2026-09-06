@@ -1,0 +1,188 @@
+name: Stage40 bounded PreCollect bootstrap
+on:
+  pull_request:
+    branches: [agent/stage40-visual-authority-red-contract]
+    paths:
+      - '.github/workflows/stage40-precollect-bootstrap-bounded.yml'
+      - 'scripts/apply_stage40_precollect_bounded.py'
+      - 'stage40/FarolStage40PreCollectBootstrapTest.kt'
+      - 'scripts/apply_stage40_presence.py'
+      - 'scripts/apply_stage40_visual.py'
+      - 'stage40/FarolStage40AuthorityRedContractTest.kt'
+permissions:
+  contents: read
+  actions: read
+jobs:
+  bounded-precollect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 1
+      - uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.head.sha }}'
+          path: patches
+          fetch-depth: 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore exact Stage32 materialized runtime
+        env:
+          GH_TOKEN: '${{ github.token }}'
+        run: |
+          set -euo pipefail
+          mkdir -p bootstrap evidence
+          gh run download 31703841694 --repo kelaplicativos-rgb/rota-certa-android --name rota-certa-stage34-bootstrap-materialized-stage32-source --dir bootstrap
+          TGZ=$(find bootstrap -name stage32-materialized-source.tgz -print -quit)
+          test -f "$TGZ"
+          test "$(sha256sum "$TGZ" | awk '{print $1}')" = aa251a173e425b075f5f0508d6f042b4881949ed76e3f638f10ccab63417c5e3
+          rm -rf source/app/src/main/java source/app/src/test/java
+          tar -xzf "$TGZ" -C source
+          grep -q 'versionCode = 5491' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.207"' source/app/build.gradle.kts
+
+      - name: Materialize exact Stage34 Stage36 Stage38 base
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage34_semantic.py source
+          python patches/scripts/apply_stage34_precollect.py source
+          python patches/scripts/apply_stage34_binding.py source
+          python patches/scripts/apply_stage34_test_semantic_contract.py source
+          python patches/scripts/apply_stage34_test_candidate_contract.py source
+          python patches/scripts/apply_stage34_test_frame_contract.py source
+          cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
+          python patches/scripts/apply_stage36_prepare.py source
+          python patches/scripts/apply_stage36_farol_core.py source
+          python patches/scripts/apply_stage36_report_compile_fix.py source
+          cp patches/stage36/FarolStage36Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36Test.kt
+          cp patches/stage36/FarolStage36FreshnessTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36FreshnessTest.kt
+          cp patches/stage36/FarolStage36RuntimeTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36RuntimeTest.kt
+          python patches/scripts/apply_stage36_test_runtime_fix.py source
+          python patches/scripts/apply_stage38_parser.py source
+          python patches/scripts/apply_stage38_evaluation.py source
+          python patches/scripts/apply_stage38_acquisition.py source
+          python patches/scripts/apply_stage38_ocr_request.py source
+          python patches/scripts/apply_stage38_ocr_result.py source
+          python patches/scripts/apply_stage38_downstream.py source
+          python patches/scripts/apply_stage38_report.py source
+          cp patches/stage38/FarolStage38Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage38Test.kt
+          grep -q 'versionCode = 5494' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.210"' source/app/build.gradle.kts
+
+      - name: Materialize validated Stage40 authority
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage40_presence.py source
+          python patches/scripts/apply_stage40_visual.py source
+          cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
+          test "$(grep -c '@Test' patches/stage40/FarolStage40AuthorityRedContractTest.kt)" -eq 18
+
+      - name: Materialize bounded PreCollect bootstrap
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage40_precollect_bounded.py source | tee evidence/materialize-precollect.txt
+          cp patches/stage40/FarolStage40PreCollectBootstrapTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40PreCollectBootstrapTest.kt
+          test "$(grep -c '@Test' patches/stage40/FarolStage40PreCollectBootstrapTest.kt)" -eq 22
+
+      - name: Static bounded-bootstrap audit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/static-precollect-audit.txt
+          from pathlib import Path
+          p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          activation=(p/'FarolReadingActivationStage26.kt').read_text()
+          service=(p/'LiveRideAccessibilityService.kt').read_text()
+          assert 'val bootstrapEligible: Boolean = false' in activation
+          assert 'stage40_bootstrap_not_eligible' in activation
+          assert 'bootstrapValueByStructure.size > 32' in activation
+          assert 'stableHash64(structuralValue)' in activation
+          assert 'stableHash64("$window|' not in activation
+          assert 'eventStage26.text }.getOrDefault(emptyList()).take(16)' in service
+          assert 'TYPE_WINDOW_CONTENT_CHANGED -> sourceLargeStage40 || parentLargeStage40' in service
+          assert 'screenWidthStage40 * 55' in service and 'screenHeightStage40 * 25' in service
+          assert 'stage23ScheduleGate.satisfyDirect(' in service
+          assert 'bootstrapEligible=${cheapSignalStage26.bootstrapEligible}' in service
+          assert 'showOverlay(RadarColor.Orange' not in service
+          gate=activation[activation.index('class PreCollectGate'):activation.index('data class PaintState')]
+          forbidden=('Thread.sleep(', 'SystemClock.sleep(', 'Timer(', 'scheduleAtFixedRate(', 'delay(')
+          assert not any(x in gate for x in forbidden)
+          print('stage40_bounded_precollect_static_audit=PASS')
+          PY
+
+      - name: Verify exact 976 tests
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n))
+          assert n==976,n
+          PY
+
+      - name: Stage40 bounded PreCollect 22
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage40PreCollectBootstrapTest | tee ../evidence/precollect-tests.log
+
+      - name: Stage40 authority regression 18
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage40AuthorityRedContractTest | tee ../evidence/authority-tests.log
+
+      - name: Historical causal regression
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage38Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage36Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage36RuntimeTest \
+            --tests br.com.mapeiaia.rotacerta.FarolStage34Test \
+            --tests br.com.mapeiaia.rotacerta.FarolStage32Test \
+            --tests br.com.mapeiaia.rotacerta.FarolPresenceAuthorityStage30Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalLatencyStage28Test \
+            --tests br.com.mapeiaia.rotacerta.FarolReadingActivationStage26Test \
+            --tests br.com.mapeiaia.rotacerta.FarolVisualIdentityStage23Test \
+            --tests br.com.mapeiaia.rotacerta.FarolCausalCorrectionStage21Test \
+            --tests br.com.mapeiaia.rotacerta.FarolForensicTraceStage20Test \
+            --tests br.com.mapeiaia.rotacerta.FarolUniversalVisualPipelineStage19Test | tee ../evidence/regression.log
+
+      - name: Complete suite exact 976
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s)
+          assert (t,f,e,s)==(976,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Android lint debug
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
+
+      - name: Prove no APK or bundle built
+        run: |
+          set -euo pipefail
+          test ! -d source/app/build/outputs/apk || test -z "$(find source/app/build/outputs/apk -type f -name '*.apk' -print -quit)"
+          test ! -d source/app/build/outputs/bundle || test -z "$(find source/app/build/outputs/bundle -type f -print -quit)"
+          echo 'stage40_precollect_no_apk_no_bundle=PASS' | tee evidence/no-apk.txt

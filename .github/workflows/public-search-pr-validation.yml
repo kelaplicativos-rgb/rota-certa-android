@@ -1,0 +1,98 @@
+name: Consulta Publica PR validation
+
+on:
+  pull_request:
+    branches:
+      - agent/passenger-timeline-geo-ux
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.head_ref == 'agent/public-search-agenda-module'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout Agenda branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/public-search-agenda-module
+
+      - name: Materialize Agenda 0.1.275 once
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_durability_0275.py
+          git diff --check
+          if git status --porcelain | grep -q .; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt \
+              app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+              app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDurability0275Test.kt \
+              app/build.gradle.kts
+            if ! git diff --cached --quiet; then
+              git commit -m 'fix(agenda): durable dates and direction-first cards 0.1.275'
+              git push origin HEAD:agent/public-search-agenda-module
+            fi
+          fi
+
+      - name: Record source and FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | tee source_head.txt
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-before.sha256
+          test "$(cut -d' ' -f1 farol-before.sha256)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+          grep -Fq 'versionCode = 5568' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.275"' app/build.gradle.kts
+          grep -Fq 'nearestPrecedingDateEvidence' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'archiveStore.clearExternal(physical)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '↑ IDA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt
+          grep -Fq '↓ VOLTA' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineBaseDirection.kt
+          grep -Fq 'Consulta pública' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Test Agenda and assemble direct source
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify protected FAROL and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | tee farol-after.sha256
+          cmp -s farol-before.sha256 farol-after.sha256
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk.sha256
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee app-version.txt
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-agenda-0.1.275-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            source_head.txt
+            app-version.txt
+            farol-before.sha256
+            farol-after.sha256
+            apk.sha256

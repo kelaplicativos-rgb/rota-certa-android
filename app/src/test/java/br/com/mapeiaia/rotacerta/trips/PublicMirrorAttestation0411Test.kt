@@ -1,0 +1,550 @@
+package br.com.mapeiaia.rotacerta.trips
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+
+class PublicMirrorAttestation0411Test {
+    private val now = 1_800_000_000_000L
+    private val profile = "11111111-1111-4111-8111-111111111111"
+    private val providerTripId = "trip-0411-a"
+
+    @Test
+    fun exactCommittedReadbackIsTheOnlyValidatedState() {
+        val trip = canonicalTrip()
+        val payload = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val hash = canonicalPublicProjectionHash0411(payload)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected = payload,
+            readback = DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = payload,
+                publicProjectionHash = hash,
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
+        assertTrue(decision.identityValid)
+        assertTrue(decision.revisionValid)
+        assertTrue(decision.linkValid)
+        assertTrue(decision.mismatchFields.isEmpty())
+        assertEquals(hash, decision.expectedHash)
+        assertEquals(hash, decision.readbackHash)
+    }
+
+
+    @Test
+    fun matchingReadbackIsNotPubliclyValidatedUntilServerCommitsSameRevisions() {
+        val committed = DriverPublicAttestationResponse0417(
+            state = "VERIFIED",
+            verified = true,
+            publicationRevision = 18,
+            canonicalRevision = 12,
+        )
+        assertTrue(serverPublicAttestationConfirmed0433(12, 18, committed))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(verified = false)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(state = "PENDING")))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(publicationRevision = 19)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, committed.copy(canonicalRevision = 13)))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, null))
+    }
+
+    @Test
+    fun serverCanonicalAckAcceptsGreenWithoutUrlButNeverCallsItBlue0469() {
+        val green = DriverPublicAttestationResponse0417(
+            state = "PUBLISHED",
+            verified = false,
+            publicationRevision = 18,
+            canonicalRevision = 12,
+        )
+        assertTrue(serverPublicProjectionConfirmed0469(12, 18, expectBlue = false, response = green))
+        assertFalse(serverPublicAttestationConfirmed0433(12, 18, green))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 18, expectBlue = true, response = green))
+
+        val blue = green.copy(state = "VERIFIED", verified = true)
+        assertTrue(serverPublicProjectionConfirmed0469(12, 18, expectBlue = true, response = blue))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 18, expectBlue = false, response = blue))
+        assertFalse(serverPublicProjectionConfirmed0469(12, 19, expectBlue = true, response = blue))
+    }
+
+    @Test
+    fun staleLogicalCanonicalRevisionPreventsBlue() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val stale = expected.copy(canonicalRevision = expected.canonicalRevision - 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = stale,
+                publicProjectionHash = canonicalPublicProjectionHash0411(stale),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
+        assertTrue("canonicalRevision" in decision.mismatchFields)
+    }
+
+    @Test
+    fun canonicalByteDiffIgnoresTransportRevisionButLocatesRealPayloadChange() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(trip, emptyList(), trip.publicationRevision, now)
+        val transportOnly = expected.copy(publicationRevision = expected.publicationRevision + 100)
+        val transportDiff = compareCanonicalPublicBytes0421(expected, transportOnly)
+        assertEquals(-1, transportDiff.firstDifferentByteOffset)
+        assertTrue(transportDiff.differentByteRanges.isEmpty())
+        assertEquals(transportDiff.expectedSha256, transportDiff.actualSha256)
+
+        val changed = expected.copy(title = expected.title + " alterado")
+        val changedDiff = compareCanonicalPublicBytes0421(expected, changed)
+        assertTrue(changedDiff.firstDifferentByteOffset >= 0)
+        assertTrue(changedDiff.differentByteRanges.isNotEmpty())
+        assertNotEquals(changedDiff.expectedSha256, changedDiff.actualSha256)
+        val titleDiff = changedDiff.fieldDiffs.single { it.fieldPath == "$.title" }
+        assertEquals("string", titleDiff.expectedType)
+        assertEquals("string", titleDiff.actualType)
+        assertTrue(titleDiff.expectedByteStart >= 0)
+        assertTrue(titleDiff.actualByteStart >= 0)
+        assertTrue(titleDiff.expectedBytesHex.isNotBlank())
+        assertTrue(titleDiff.actualBytesHex.isNotBlank())
+    }
+
+    @Test
+    fun onePublicFieldDifferencePreventsBlue() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val changed = expected.copy(operationalAvailableSeats = expected.operationalAvailableSeats + 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = changed,
+                publicProjectionHash = canonicalPublicProjectionHash0411(changed),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertTrue("availability" in decision.mismatchFields)
+        assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun staleTransportRevisionPreventsBlueWithoutReplacingLogicalRevision() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val stale = expected.copy(publicationRevision = expected.publicationRevision - 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = stale,
+                publicProjectionHash = canonicalPublicProjectionHash0411(stale),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
+        assertFalse("canonicalRevision" in decision.mismatchFields)
+        assertTrue("publicationRevision" in decision.mismatchFields)
+    }
+
+    @Test
+    fun newerTransportRevisionAlsoPreventsBlueUntilExactSnapshotIsReadBack() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val newer = expected.copy(publicationRevision = expected.publicationRevision + 1)
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = newer,
+                publicProjectionHash = canonicalPublicProjectionHash0411(newer),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.revisionValid)
+        assertTrue("publicationRevision" in decision.mismatchFields)
+    }
+
+    @Test
+    fun BlaBlaLinkForAnotherTripPreventsBlueAndChangesPublicHash() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val wrong = expected.copy(
+            blablaPublicUrl = "https://www.blablacar.com.br/trip?id=another-trip",
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = wrong,
+                publicProjectionHash = canonicalPublicProjectionHash0411(wrong),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.linkValid)
+        assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun exactTripReadbackOutsideVisibleAgendaCannotBeGreenOrBlue0466() {
+        val trip = canonicalTrip().copy(blablaPublicUrl = null)
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+                agendaVisible = false,
+                agendaVisibilityReason = "PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertEquals("PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED", decision.reason)
+        assertTrue("agendaVisibility" in decision.mismatchFields)
+        assertFalse(decision.mismatchFields.all { it == "blablaPublicUrl" })
+    }
+
+    @Test
+    fun missingRealBlaBlaLinkIsUnresolvedAndCannotBeAttested() {
+        val trip = canonicalTrip().copy(blablaPublicUrl = null)
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.UNPROVEN, decision.state)
+        assertFalse(decision.linkValid)
+        assertEquals("BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466", decision.reason)
+        assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertFalse(decision.mismatchFields.any { it != "blablaPublicUrl" })
+    }
+
+    @Test
+    fun authoritativePublicTokenDifferentFromAdministrativeTripIdCanBeAttested() {
+        val publicToken = "AaA1PublicTokenDifferentFromAdmin0411"
+        val trip = canonicalTrip().copy(
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary&requested_seats=2",
+        )
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+
+        assertEquals(
+            "https://www.blablacar.fr/trip?id=$publicToken&requested_seats=2",
+            expected.blablaPublicUrl,
+        )
+
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = canonicalPublicProjectionHash0411(expected),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.VALIDATED, decision.state)
+        assertTrue(decision.linkValid)
+        assertEquals("PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466", decision.reason)
+        assertTrue(decision.mismatchFields.isEmpty())
+    }
+
+    @Test
+    fun differentCanonicalPublicPermalinkStillFailsExactReadbackComparison() {
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = canonicalTrip().copy(
+                blablaPublicUrl = "https://www.blablacar.co.uk/trip?id=PublicTokenExpected0411",
+            ),
+            bookings = emptyList(),
+            publicationRevision = canonicalTrip().publicationRevision,
+            nowMillis = now,
+        )
+        val actual = expected.copy(
+            blablaPublicUrl = "https://www.blablacar.co.uk/trip?id=PublicTokenOther0411",
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = actual,
+                publicProjectionHash = canonicalPublicProjectionHash0411(actual),
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertFalse(decision.linkValid)
+        assertTrue("blablaPublicUrl" in decision.mismatchFields)
+        assertTrue("publicHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun serverHashMustDescribeTheActualPersistedReadback() {
+        val trip = canonicalTrip()
+        val expected = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val decision = evaluatePublicMirrorReadback0411(
+            expected,
+            DriverPublicTripReadback0411(
+                remoteTripId = "remote-0411",
+                payload = expected,
+                publicProjectionHash = "public-v2:not-the-readback-hash",
+                persistedAtMillis = now,
+                agendaVisible = true,
+                agendaVisibilityReason = "PUBLIC_AGENDA_VISIBLE",
+            ),
+        )
+
+        assertEquals(PublicMirrorAttestationState0411.DIVERGENT, decision.state)
+        assertTrue("serverHash" in decision.mismatchFields)
+    }
+
+    @Test
+    fun attestationIsRevokedByNewLogicalRevisionButNotTransportSequenceOnly() {
+        val trip = canonicalTrip()
+        val payload = canonicalPublicProjectionPayload0411(
+            trip = trip,
+            bookings = emptyList(),
+            publicationRevision = trip.publicationRevision,
+            nowMillis = now,
+        )
+        val hash = canonicalPublicProjectionHash0411(payload)
+        val validated = trip.copy(
+            publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.VALIDATED,
+            publicMirrorAttestationReason0411 = "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0466",
+            publicMirrorAttestedCanonicalRevision0411 = trip.canonicalRevision,
+            publicMirrorAttestedPublicationRevision0411 = trip.publicationRevision,
+            publicMirrorExpectedHash0411 = hash,
+            publicMirrorReadbackHash0411 = hash,
+            publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
+            publicMirrorAttemptedPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorReadbackPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorPublicIdentity0421 = "remote-0411",
+            publicMirrorLastReadbackAtMillis0421 = now,
+        )
+
+        assertFalse(
+            validated.copy(
+                publicMirrorLastReadbackAtMillis0421 = 0L,
+                publicMirrorPublicIdentity0421 = "",
+            ).publicMirrorAttestationCurrent0411(),
+        )
+        assertTrue(validated.publicMirrorAttestationCurrent0411())
+        assertTrue(validated.publicMirrorProjectionCurrent0411())
+        val linkOnlyUnproven = validated.copy(
+            publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+            publicMirrorAttestedCanonicalRevision0411 = 0L,
+            publicMirrorAttestedPublicationRevision0411 = 0L,
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466",
+            publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
+        )
+        assertFalse(linkOnlyUnproven.publicMirrorAttestationCurrent0411())
+        assertTrue(linkOnlyUnproven.publicMirrorProjectionCurrent0411())
+        assertFalse(linkOnlyUnproven.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorProjectionCurrent0411())
+        assertFalse(validated.copy(canonicalRevision = trip.canonicalRevision + 1).publicMirrorAttestationCurrent0411())
+        assertFalse(validated.copy(publicationRevision = trip.publicationRevision + 1).publicMirrorAttestationCurrent0411())
+        assertFalse(validated.invalidatePublicMirror0411("TEST_MUTATION").publicMirrorAttestationCurrent0411())
+    }
+
+    @Test
+    fun deterministicHashChangesForFunctionalPublicStateButNotInputListOrder() {
+        val trip = canonicalTrip()
+        val a = Booking(
+            id = "booking-a",
+            tripId = trip.id,
+            passengerName = "Passenger A",
+            boardingStopId = "a",
+            dropoffStopId = "b",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.ROTA_CERTA,
+            occupancyGroupId = "person-a",
+        )
+        val b = Booking(
+            id = "booking-b",
+            tripId = trip.id,
+            passengerName = "Passenger B",
+            boardingStopId = "b",
+            dropoffStopId = "c",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.ROTA_CERTA,
+            occupancyGroupId = "person-b",
+        )
+        val first = canonicalPublicProjectionPayload0411(trip, listOf(a, b), trip.publicationRevision, now)
+        val reordered = canonicalPublicProjectionPayload0411(trip, listOf(b, a), trip.publicationRevision, now)
+        val changed = canonicalPublicProjectionPayload0411(
+            trip.copy(rotaCertaSeatAllocation = 2, capacity = 5),
+            listOf(a, b),
+            trip.publicationRevision,
+            now,
+        )
+
+        assertEquals(canonicalPublicProjectionHash0411(first), canonicalPublicProjectionHash0411(reordered))
+        assertNotEquals(canonicalPublicProjectionHash0411(first), canonicalPublicProjectionHash0411(changed))
+    }
+
+    @Test
+    fun globalProjectionVerificationRequiresEveryExpectedCardAttested() {
+        val complete = ProjectionIntegrity0406(
+            canonicalActive = 3,
+            agendaProjections = 3,
+            attestationValidated0411 = 3,
+        )
+        assertTrue(complete.verified)
+        assertFalse(complete.copy(attestationValidated0411 = 2, attestationPending0411 = 1).verified)
+        assertFalse(complete.copy(attestationDivergent0411 = 1).verified)
+        assertFalse(complete.copy(attestationInvalidLink0411 = 1).verified)
+        assertFalse(complete.copy(attestationReadbackFailures0411 = 1, failures = 1).verified)
+    }
+
+    private fun canonicalTrip(): Trip {
+        val base = Trip(
+            id = "canonical-0411",
+            title = "A → C",
+            departureAtMillis = now + 86_400_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(id = "a", order = 0, name = "A", address = "A street"),
+                TripStop(id = "b", order = 1, name = "B", address = "B street"),
+                TripStop(id = "c", order = 2, name = "C", address = "C street"),
+            ),
+            remoteId = "remote-0411",
+            publicToken = "public-token-0411",
+            publicUrl = "https://rota.example/trip/public-token-0411",
+            blablaProfileUuid = profile,
+            blablaTripId = providerTripId,
+            blablaPublicUrl = "https://www.blablacar.com.br/trip?id=$providerTripId",
+            publicBookingEnabled = true,
+            itineraryAuthoritative = true,
+            publishedSeats = 3,
+            rotaCertaSeatAllocation = 1,
+            capacityReliable = true,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            canonicalRevision = 12,
+            publicationRevision = 18,
+            tripKey = "tenant|blablacar|$profile|$providerTripId",
+            publicTimezoneId0411 = "America/Sao_Paulo",
+        )
+        return base.copy(canonicalStateHash = canonicalTripStateHash0406(base, emptyList()))
+    }
+
+    @Test
+    fun publishedWithoutUrlIsGreenOnlyForExactVisiblePublicAgendaProjection0466() {
+        val trip = canonicalTrip()
+        val hash = canonicalPublicProjectionHash0411(
+            canonicalPublicProjectionPayload0411(trip, emptyList(), trip.publicationRevision, now),
+        )
+        val green = trip.copy(
+            publicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
+            publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0466",
+            publicMirrorMismatchFields0411 = listOf("blablaPublicUrl"),
+            publicMirrorReadbackCanonicalRevision0421 = trip.canonicalRevision,
+            publicMirrorAttemptedPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorReadbackPublicationRevision0421 = trip.publicationRevision,
+            publicMirrorPublicIdentity0421 = "remote-green-0465",
+            publicMirrorLastReadbackAtMillis0421 = now,
+            publicMirrorExpectedHash0411 = hash,
+            publicMirrorReadbackHash0411 = hash,
+            blablaPublicUrl = null,
+        )
+        assertTrue(green.publicMirrorPublishedWithoutBlaBlaUrl0465())
+        assertFalse(green.publicMirrorAttestationCurrent0411())
+        assertFalse(
+            green.copy(publicMirrorAttestationReason0411 = "BLABLACAR_PUBLIC_URL_PENDING")
+                .publicMirrorPublishedWithoutBlaBlaUrl0465(),
+        )
+        assertFalse(green.copy(publicMirrorReadbackHash0411 = "public-v2:wrong").publicMirrorPublishedWithoutBlaBlaUrl0465())
+        assertFalse(green.copy(canonicalRevision = green.canonicalRevision + 1L).publicMirrorPublishedWithoutBlaBlaUrl0465())
+    }
+
+}

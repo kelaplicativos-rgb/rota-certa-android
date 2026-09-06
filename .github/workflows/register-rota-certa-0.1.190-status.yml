@@ -1,0 +1,46 @@
+name: Register Rota Certa 0.1.190 validated status
+
+on:
+  push:
+    branches: [agent/alert-popup-lifecycle-0.1.190]
+    paths:
+      - .github/workflows/register-rota-certa-0.1.190-status.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  register:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout documentation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/alert-popup-lifecycle-0.1.190
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Register validated 0.1.190 evidence
+        run: python3 scripts/register_alert_popup_0190_status.py
+
+      - name: Verify documentation markers
+        run: |
+          grep -Fq '<!-- ALERT_POPUP_0190_CI_PENDING_DEVICE_START -->' docs/PROJECT_STATUS.md
+          grep -Fq '<!-- DECISION_ALERT_POPUP_0190_START -->' docs/DECISIONS.md
+          grep -Fq '8c32f2bcf07cc1109e4ac996db406bbbe520c5cd155fab9e703d37ef1b8e9d34' docs/PROJECT_STATUS.md
+          grep -Fq '31191545985' docs/PROJECT_STATUS.md
+
+      - name: Commit documentation only
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          if git diff --cached --quiet; then
+            echo 'documentation_already_registered=true'
+            exit 0
+          fi
+          git commit -m 'Record 0.1.190 alert popup CI evidence [skip ci]'
+          git push origin HEAD:agent/alert-popup-lifecycle-0.1.190

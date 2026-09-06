@@ -1,0 +1,91 @@
+name: Build Rota Certa 0.1.154
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-rota-certa-0.1.154.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout correction branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply complete stability correction chain
+        run: |
+          python scripts/fix_99_overlay_state_0151.py
+          python scripts/fix_selected_package_state_0152.py
+          python scripts/fix_transient_launcher_clear_0154.py
+
+      - name: Verify transient launcher preservation contract
+        run: |
+          set -euo pipefail
+          grep -q 'versionName = "0.1.154"' app/build.gradle.kts
+          grep -q 'versionCode = 5150' app/build.gradle.kts
+          grep -q 'BUBBLE_PASSIVE_TRANSITION_DEFERRED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'now154 - recentSelectedRidePackageAtMillisChecklist11 in 0L..2_000L' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -q 'resolvedPackage.contains("launcher", ignoreCase = true)' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test -n "${GOOGLE_MAPS_API_KEY:-}"
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Android lint
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+
+      - name: Build APK
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Validate APK version and signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          APKSIGNER=$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee rota-certa-0.1.154-assinatura.txt
+          BADGING=$($AAPT dump badging "$APK" | head -1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -q "name='br.com.mapeiaia.rotacerta'"
+          echo "$BADGING" | grep -q "versionCode='5150'"
+          echo "$BADGING" | grep -q "versionName='0.1.154'"
+          cp "$APK" rota-certa-0.1.154-corrigido-validado.apk
+          sha256sum rota-certa-0.1.154-corrigido-validado.apk | tee rota-certa-0.1.154-sha256.txt
+
+      - name: Upload corrected validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.154-transient-launcher-preservation-validated
+          path: |
+            rota-certa-0.1.154-corrigido-validado.apk
+            rota-certa-0.1.154-sha256.txt
+            rota-certa-0.1.154-assinatura.txt
+          retention-days: 90
+          if-no-files-found: error

@@ -1,0 +1,195 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
+index 1bb91fd..1e20823 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt
+@@ -14,6 +14,11 @@ data class FarolCardBlock0188(
+     val depth: Int = 0,
+     val text: String,
+     val source: FarolEvidenceSource0188,
++    val left: Int = 0,
++    val top: Int = Int.MAX_VALUE,
++    val right: Int = 0,
++    val bottom: Int = Int.MAX_VALUE,
++    val syntheticRoot: Boolean = false,
+ )
+ 
+ data class FarolRouteAuthorization0188(
+@@ -39,12 +44,15 @@ data class FarolRouteGateDecision0188(
+ /**
+  * Porta universal fail-closed criada a partir da reprovação real da 0.1.187.
+  *
+- * O pacote selecionado apenas autoriza observação. A rota só é liberada quando
+- * dois ou mais endereços pertencem ao mesmo bloco coerente da mesma janela e
+- * não existem sinais fortes de tela passiva/segurança naquele bloco.
++ * 0.1.189 mantém o pacote como mera autorização de observação e acrescenta
++ * autoridade visual monotônica: a janela mais alta vence e, dentro dela, o
++ * bloco visual superior atual vence. Dois ou mais endereços dentro desse mesmo
++ * bloco autorizam o último como destino final; blocos distintos nunca são
++ * combinados para atingir o mínimo de endereços.
+  */
+ object FarolRealDeviceGate0188 {
+     const val CONTRACT_MARKER = "FAROL_REAL_DEVICE_GATE_0188"
++    const val VISUAL_PRIORITY_MARKER = "FAROL_TOP_BLOCK_AUTHORITY_0189"
+ 
+     private val passivePhrases = listOf(
+         "reconhecimento facial",
+@@ -88,69 +96,92 @@ object FarolRealDeviceGate0188 {
+         val normalizedBlocks = blocks.asSequence()
+             .filter { normalizePackage(it.packageName) == selected }
+             .filter { it.text.isNotBlank() }
+-            .take(160)
++            .take(180)
+             .toList()
+         if (normalizedBlocks.isEmpty()) return rejected("Nenhum bloco pertence ao pacote selecionado.")
+ 
+         data class Parsed(
+             val block: FarolCardBlock0188,
+             val addresses: List<String>,
++            val passive: Boolean,
+         )
+ 
++        fun hasPassiveEvidence(text: String): Boolean {
++            val value = canonical(text)
++            return passivePhrases.any(value::contains)
++        }
++
+         val parsed = normalizedBlocks.map { block ->
+             val addresses = UniversalScreenAddressParser.findAddresses(
+                 WrappedAddressTextNormalizer.normalize(block.text),
+             ).map(DestinationAddressIdentityPolicy::cleanDisplayAddress)
+                 .filter(String::isNotBlank)
+                 .distinctBy { canonical(it) }
+-            Parsed(block, addresses)
++            Parsed(block, addresses, hasPassiveEvidence(block.text))
+         }
+-        val parsedById = parsed.associateBy { it.block.id }
+ 
+-        fun hasPassiveEvidence(text: String): Boolean {
+-            val value = canonical(text)
+-            return passivePhrases.any(value::contains)
++        val addressBearing = parsed.filter {
++            !it.passive && !it.block.syntheticRoot && it.addresses.isNotEmpty()
++        }
++        if (addressBearing.isEmpty()) {
++            val passive = parsed.any { it.addresses.isNotEmpty() && it.passive }
++            return rejected(
++                if (passive) "Tela passiva, segurança ou status não pode autorizar rota."
++                else "Nenhum endereço atual pertence a um card/modal coerente.",
++            )
+         }
+ 
+-        fun splitsAcrossChildBranches(candidate: Parsed): Boolean {
+-            val directChildren = parsed.filter { it.block.parentId == candidate.block.id }
+-            if (directChildren.size < 2) return false
+-            val addressBranches = directChildren.count { child ->
+-                child.addresses.isNotEmpty() || parsed.any { descendant ->
+-                    descendant.block.id.startsWith(child.block.id + "/") && descendant.addresses.isNotEmpty()
+-                }
++        // Janela visualmente superior tem autoridade. Uma janela inferior nunca
++        // pode continuar decidindo depois que uma superior do mesmo pacote surge.
++        val bestLayer = addressBearing.maxOf { it.block.windowLayer }
++        val layerAddressBlocks = addressBearing.filter { it.block.windowLayer == bestLayer }
++
++        fun visualTop(block: FarolCardBlock0188): Int =
++            block.top.takeUnless { it == Int.MAX_VALUE } ?: Int.MAX_VALUE
++
++        val anchor = if (layerAddressBlocks.any { visualTop(it.block) != Int.MAX_VALUE }) {
++            layerAddressBlocks.minWithOrNull(
++                compareBy<Parsed> { visualTop(it.block) }
++                    .thenByDescending { it.block.depth }
++                    .thenBy { it.block.text.length },
++            )
++        } else {
++            // Sem geometria confiável, mantemos fail-closed e usamos a estrutura
++            // hierárquica para selecionar o bloco mais específico.
++            val deepest = layerAddressBlocks.maxOf { it.block.depth }
++            val specific = layerAddressBlocks.filter { it.block.depth == deepest }
++            if (specific.map { canonical(it.addresses.last()) }.distinct().size > 1) {
++                return rejected("Mais de um card coerente está visível sem geometria suficiente para priorizar.")
+             }
+-            return addressBranches >= 2 && directChildren.none { it.addresses.size >= 2 }
+-        }
++            specific.minByOrNull { it.block.text.length }
++        } ?: return rejected("Bloco visual atual ausente.")
+ 
+         val candidates = parsed.asSequence()
++            .filter { !it.passive && !it.block.syntheticRoot }
++            .filter { it.block.windowLayer == bestLayer }
+             .filter { it.addresses.size >= UniversalAddressTrigger.MINIMUM_VISIBLE_ADDRESSES }
+-            .filterNot { hasPassiveEvidence(it.block.text) }
+-            .filterNot(::splitsAcrossChildBranches)
++            .filter { candidate ->
++                // O candidato precisa ser o próprio bloco superior ou um contêiner
++                // hierárquico que o contenha. Assim um card inferior completo não
++                // pode vencer um card superior ainda parcial.
++                candidate.block.id == anchor.block.id ||
++                    anchor.block.id.startsWith(candidate.block.id + "/") ||
++                    contains(candidate.block, anchor.block)
++            }
+             .toList()
+ 
+         if (candidates.isEmpty()) {
+-            val passive = parsed.any { it.addresses.size >= 2 && hasPassiveEvidence(it.block.text) }
+-            val split = parsed.any { it.addresses.size >= 2 && splitsAcrossChildBranches(it) }
+-            return rejected(
+-                when {
+-                    passive -> "Tela passiva, segurança ou status não pode autorizar rota."
+-                    split -> "Endereços pertencem a blocos/cards diferentes."
+-                    else -> "Nenhum card/modal atual contém dois endereços coerentes."
+-                },
+-            )
++            return rejected("Bloco visual superior ainda não contém dois endereços confirmados.")
+         }
+ 
+-        val bestLayer = candidates.maxOf { it.block.windowLayer }
+-        val layerCandidates = candidates.filter { it.block.windowLayer == bestLayer }
+-        val bestDepth = layerCandidates.maxOf { it.block.depth }
+-        val specific = layerCandidates.filter { it.block.depth == bestDepth }
+-        val destinations = specific.map { canonical(it.addresses.last()) }.distinct()
+-        if (destinations.size != 1) {
+-            return rejected("Mais de um card coerente está visível; destino final ficou ambíguo.")
+-        }
++        // Entre contêineres que representam o mesmo bloco superior, o mais
++        // específico ganha. Isso evita usar o texto agregado de uma tela inteira.
++        val bestDepth = candidates.maxOf { it.block.depth }
++        val deepestCandidates = candidates.filter { it.block.depth == bestDepth }
++        val winner = deepestCandidates.minWithOrNull(
++            compareBy<Parsed> { visualTop(it.block) }.thenBy { it.block.text.length },
++        ) ?: return rejected("Card coerente ausente.")
+ 
+-        val winner = specific.minByOrNull { it.block.text.length } ?: return rejected("Card coerente ausente.")
+         val pickup = winner.addresses.first()
+         val destination = winner.addresses.last()
+         if (canonical(pickup) == canonical(destination)) {
+@@ -159,6 +190,9 @@ object FarolRealDeviceGate0188 {
+         val signature = DestinationAddressIdentityPolicy.signature(selected, destination)
+         if (signature.isBlank()) return rejected("Assinatura do destino final ficou vazia.")
+ 
++        // O hash inclui a autoridade visual. Mesmo destino em outro bloco/janela
++        // representa uma nova geração e invalida OCR/rota anteriores.
++        val authorityIdentity = "$selected|${winner.block.windowId}|${winner.block.id}|$signature"
+         return FarolRouteGateDecision0188(
+             authorization = FarolRouteAuthorization0188(
+                 packageName = selected,
+@@ -170,12 +204,19 @@ object FarolRealDeviceGate0188 {
+                 pickup = pickup,
+                 destination = destination,
+                 addressSignature = signature,
+-                screenHash = FarolDisplayStabilityPolicy.stableScreenHash(selected, signature),
++                screenHash = authorityIdentity.hashCode(),
+             ),
+-            reason = "Card/modal atual confirmado no mesmo bloco e janela.",
++            reason = "Bloco visual superior confirmado; último endereço autorizado como destino final.",
+         )
+     }
+ 
++    private fun contains(container: FarolCardBlock0188, child: FarolCardBlock0188): Boolean {
++        if (container.top == Int.MAX_VALUE || child.top == Int.MAX_VALUE) return false
++        if (container.right <= container.left || child.right <= child.left) return false
++        return child.left >= container.left && child.right <= container.right &&
++            child.top >= container.top && child.bottom <= container.bottom
++    }
++
+     private fun rejected(reason: String) = FarolRouteGateDecision0188(reason = reason)
+ 
+     private fun normalizePackage(value: String?): String? = value

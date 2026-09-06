@@ -1,0 +1,36 @@
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/AuthorizedAppsCards146ContractTest.kt
+@@ -16,12 +16,12 @@ class AuthorizedAppsCards146ContractTest {
+         assertTrue(store.contains("Nunca participa da decisão do farol"))
+     }
+ 
+-    @Test fun captureUsesShortTapForManagerAndLongPressForCapture() {
++    @Test fun captureUsesShortTapForManagerAndLongPressForModule() {
+         val module = source("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt")
+         val overlay = source("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt")
+         assertTrue(module.contains("OpenAuthorizedAppsAndCards"))
+         assertTrue(module.contains("CaptureCurrentAppAndScreen"))
+-        assertTrue(overlay.contains("postDelayed(longPressAction, 1_500L)"))
++        assertTrue(overlay.contains("postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)"))
+         assertFalse(overlay.contains("onDoubleTap(event"))
+     }
+ 
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/ShortcutActivityLaunchContract0176Test.kt
+@@ -41,11 +41,11 @@ class ShortcutActivityLaunchContract0176Test {
+         }
+     }
+ 
+     @Test
+-    fun menuStillDispatchesThePrimaryActionExactlyOnce() {
++    fun menuStillDispatchesTheResolvedPrimaryActionExactlyOnce() {
+         val overlay = File("src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt").readText()
+-        assertTrue(overlay.contains("bubble.shortcut.clicked id="))
+-        assertTrue(overlay.contains("onShortcut(module.spec)"))
++        assertTrue(overlay.contains("bubble.shortcut.clicked entry="))
++        assertTrue(overlay.contains("onShortcut(entry0179.spec)"))
+         assertFalse(overlay.contains("(doubleAction ?: singleAction).invoke()"))
+     }
+ }

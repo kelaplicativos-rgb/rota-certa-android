@@ -1,0 +1,84 @@
+name: Agenda 0.1.300 public autosync
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-autosync-0.1.300
+    paths:
+      - '.github/workflows/agenda-0300-public-autosync.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-autosync-0.1.300
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate autosync contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5593' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.300"' app/build.gradle.kts
+          grep -Fq 'PublicAgendaAutoSync0300.sync' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'lastResponseRecoveringDynamicSessions' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'publicBookingEnabled = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Test lint and build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5593'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.300'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0300
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0300/rota-certa-0.1.300-public-autosync.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0300/apk.sha256
+          cp /tmp/aapt.txt /tmp/agenda-0300/aapt.txt
+          cp /tmp/apksigner.txt /tmp/agenda-0300/apksigner.txt
+          cp /tmp/gradle.txt /tmp/agenda-0300/gradle.txt
+          git rev-parse HEAD > /tmp/agenda-0300/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.300-public-autosync
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/agenda-0300

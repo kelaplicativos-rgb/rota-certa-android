@@ -1,0 +1,81 @@
+name: Agenda 0.1.299 installable public link
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-link-self-heal-0.1.299-installable
+    paths:
+      - '.github/workflows/agenda-0299-installable.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-link-self-heal-0.1.299-installable
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Validate corrected version and public-link repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5592' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.299"' app/build.gradle.kts
+          grep -Fq 'ensurePublicAgenda' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'Validando seu link público' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Test lint and build
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify installable APK metadata and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5592'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.299'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package corrected APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0299
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0299/rota-certa-0.1.299-public-link.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0299/apk.sha256
+          cp /tmp/apksigner.txt /tmp/agenda-0299/apksigner.txt
+          cp /tmp/aapt.txt /tmp/agenda-0299/aapt.txt
+          git rev-parse HEAD > /tmp/agenda-0299/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.299-public-link
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/agenda-0299

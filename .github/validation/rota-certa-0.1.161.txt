@@ -1,0 +1,10 @@
+Rota Certa 0.1.161
+
+Correção isolada sobre a versão 0.1.160:
+- captura automática única quando um provável card permanece amarelo sem dois endereços reconhecidos;
+- recuperação por fusão de acessibilidade + OCR e por marcadores confirmados;
+- modelo candidato local e limitado para o mesmo formato de card;
+- proteção contra Android Auto, System UI, teclado e sobreposições transitórias;
+- sem alterações no Financeiro, Valor, Manifest, permissões, serviços, alertas ou cálculo de rota.
+
+A main permanece intacta até a validação prática do APK.

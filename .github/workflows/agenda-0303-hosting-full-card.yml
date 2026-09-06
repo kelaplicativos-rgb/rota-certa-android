@@ -1,0 +1,89 @@
+name: Agenda 0.1.303 hosting full-card state
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-capacity-fidelity-0.1.303
+    paths:
+      - '.github/workflows/agenda-0303-hosting-full-card.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-capacity-fidelity-0.1.303
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate disabled full-trip UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          grep -Fq 'document.createElement(isFull ? "article" : "a")' trip-platform/public/app.js
+          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
+          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
+          grep -Fq 'pointer-events:none' trip-platform/public/index.html
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
+            echo "Firebase service account: $CLIENT_EMAIL"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
+            echo "Firebase service account: $CLIENT_EMAIL"
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Deploy Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
+          fi
+
+      - name: Smoke published files
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/app.js > /tmp/live-app.js
+          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' /tmp/live-app.js
+          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' /tmp/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/ > /tmp/live-index.html
+          grep -Fq 'pointer-events:none' /tmp/live-index.html
+          echo "HOSTING_FULL_CARD_STATE=PASS"

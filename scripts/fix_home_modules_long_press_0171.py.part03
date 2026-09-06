@@ -1,0 +1,136 @@
+rd,
+            -> tab = TAB_TOOLS
+            BubbleShortcutAction.OpenAuthorizedAppsAndCards,
+            BubbleShortcutAction.CaptureCurrentAppAndScreen,
+            -> {
+                tab = TAB_CONFIG
+                selectedBubbleGroup = BUBBLE_GROUP_CARDS
+            }
+            BubbleShortcutAction.StopApplication -> {
+                tab = TAB_CONFIG
+                selectedBubbleGroup = BUBBLE_GROUP_GENERAL
+            }
+            BubbleShortcutAction.CopyTripConfirmation,
+            BubbleShortcutAction.CopyPassengerValue,
+            -> Toast.makeText(
+                context,
+                "Este recurso é executado pela grade enquanto a tela correspondente está visível.",
+                Toast.LENGTH_LONG,
+            ).show()
+            else -> {
+                tab = spec.targetTab ?: TAB_CONFIG
+                spec.targetGroup?.let { selectedBubbleGroup = it }
+            }
+        }
+    }
+
+    fun createSavedPlaceFromHome(type: SavedPlaceType, requestNameDialog: Boolean = false) {
+''',
+    'abertura de módulo pela Home',
+)
+main = replace_once(
+    main,
+    '''        highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+''',
+    '''        highlightedSavedPlaceId = launchIntent?.getStringExtra(EXTRA_SAVED_PLACE_ID)
+        highlightedShortcutModule0171 = launchIntent?.getStringExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171)
+''',
+    'leitura do módulo solicitado',
+)
+old_config = '''                TAB_CONFIG -> SettingsScreen(
+                    selectedGroup = selectedBubbleGroup,
+                    settings = settings,
+                    liveEnabled = liveEnabled,
+                    onOpenAccessibilitySettings = {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    },
+                    onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
+                    diagnostic = null,
+                    savedPlaces = savedPlaces,
+                    backupStatus = backupStatus,
+                    highlightedSavedPlaceId = highlightedSavedPlaceId,
+                    radarImportSummary = radarImportSummary,
+                    radarImportStatus = radarImportStatus,
+                    onSave = { updated -> scope.launch { repository.saveSettings(updated) } },
+                    onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },
+                    onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },
+                    onRenameSavedPlace = ::renameSavedPlace,
+                    onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
+                    onRegionDetected = { detectedRegion -> region = detectedRegion },
+                    onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
+                    onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                    onImportRadarFile = { radarFilePicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "application/octet-stream", "*/*")) },
+                    onOpenMapaRadar = { openMapaRadarSite(context) },
+                    onClearImportedRadars = {
+                        scope.launch {
+                            repository.clearImportedRadars()
+                            radarImportStatus = "Radares importados removidos."
+                        }
+                    },
+                )
+'''
+new_config = '''                TAB_CONFIG -> {
+                    ShortcutModulesHome0171(
+                        highlightedModuleId = highlightedShortcutModule0171,
+                        onOpenModule = ::openShortcutModuleFromHome0171,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    SettingsScreen(
+                        selectedGroup = selectedBubbleGroup,
+                        settings = settings,
+                        liveEnabled = liveEnabled,
+                        onOpenAccessibilitySettings = {
+                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        },
+                        onRefreshLiveState = { liveEnabled = isLiveAccessibilityEnabled(context) },
+                        diagnostic = null,
+                        savedPlaces = savedPlaces,
+                        backupStatus = backupStatus,
+                        highlightedSavedPlaceId = highlightedSavedPlaceId,
+                        radarImportSummary = radarImportSummary,
+                        radarImportStatus = radarImportStatus,
+                        onSave = { updated -> scope.launch { repository.saveSettings(updated) } },
+                        onCreateSavedPlace = { createSavedPlaceFromHome(SavedPlaceType.Place) },
+                        onCreateProximityAlert = { createSavedPlaceFromHome(SavedPlaceType.ProximityAlert) },
+                        onRenameSavedPlace = ::renameSavedPlace,
+                        onDeleteSavedPlace = { place -> scope.launch { repository.removeSavedPlace(place.id) } },
+                        onRegionDetected = { detectedRegion -> region = detectedRegion },
+                        onCreateBackup = { backupFileCreator.launch("rota-certa-backup.json") },
+                        onRestoreBackup = { backupFilePicker.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                        onImportRadarFile = { radarFilePicker.launch(arrayOf("text/*", "text/csv", "text/comma-separated-values", "application/vnd.ms-excel", "application/octet-stream", "*/*")) },
+                        onOpenMapaRadar = { openMapaRadarSite(context) },
+                        onClearImportedRadars = {
+                            scope.launch {
+                                repository.clearImportedRadars()
+                                radarImportStatus = "Radares importados removidos."
+                            }
+                        },
+                    )
+                }
+'''
+main = replace_once(main, old_config, new_config, 'Home com todos os módulos')
+main = replace_once(
+    main,
+    '''const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+
+''',
+    '''const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+const val EXTRA_OPEN_SHORTCUT_MODULE_0171 = "open_shortcut_module_0171"
+
+''',
+    'extra do módulo',
+)
+main = replace_once(
+    main,
+    '''@Composable
+private fun ProfessionalBubbleDashboard(
+''',
+    r'''@Composable
+private fun ShortcutModulesHome0171(
+    highlightedModuleId: String?,
+    onOpenModule: (BubbleShortcutSpec) -> Unit,
+) {
+    val context = LocalContext.current
+    val store0171 = remember { ShortcutLongPressPreferenceStore0171(context) }
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("Módulos", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)

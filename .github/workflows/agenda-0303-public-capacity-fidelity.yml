@@ -1,0 +1,165 @@
+name: Agenda 0.1.303 public capacity fidelity
+
+on:
+  push:
+    branches:
+      - agent/agenda-public-capacity-fidelity-0.1.303
+    paths:
+      - '.github/workflows/agenda-0303-public-capacity-fidelity.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/public-capacity-fidelity-0303.test.js'
+      - 'trip-platform/public/app.js'
+      - 'trip-platform/public/index.html'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-capacity-fidelity-0.1.303
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public capacity contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+          grep -Fq 'versionCode = 5596' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.303"' app/build.gradle.kts
+          grep -Fq 'PUBLIC_AGENDA_LOCAL_CAPACITY_SYNCED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'filterNot { it.source == BookingSource.ROTA_CERTA }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'trip.status === "FULL"' trip-platform/functions/index.js
+          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
+          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
+          grep -Fq 'pointer-events:none' trip-platform/public/index.html
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test lint and build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "versionCode='5596'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.303'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0303
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0303/rota-certa-0.1.303-public-capacity-fidelity.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0303/apk.sha256
+          cp /tmp/aapt.txt /tmp/agenda-0303/aapt.txt
+          cp /tmp/apksigner.txt /tmp/agenda-0303/apksigner.txt
+          cp /tmp/gradle.txt /tmp/agenda-0303/gradle.txt
+          git rev-parse HEAD > /tmp/agenda-0303/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.303-public-capacity-fidelity
+          if-no-files-found: error
+          retention-days: 30
+          path: /tmp/agenda-0303
+
+  deploy-backend:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/agenda-public-capacity-fidelity-0.1.303
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+          else
+            echo "Firebase service account secret is missing."
+            exit 3
+          fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+
+      - name: Install Functions dependencies
+        shell: bash
+        run: |
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy trip API
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+
+      - name: Smoke backend
+        shell: bash
+        run: |
+          curl --retry 8 --retry-delay 5 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | grep -F '"ok":true'
+
+      - name: Attempt Hosting update
+        id: hosting
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
+
+      - name: Report Hosting outcome
+        if: always()
+        shell: bash
+        run: |
+          echo "backendDeploy=success"
+          echo "hostingDeployOutcome=${{ steps.hosting.outcome }}"

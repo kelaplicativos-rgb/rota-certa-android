@@ -1,0 +1,117 @@
+         maxLines = 2
+-        contentDescription = "${spec.label}. Um toque executa imediatamente. " +
+-            "Use a bolinha mais para editar a grade."
++        contentDescription = "${spec.label}. Um toque executa imediatamente."
+         background = GradientDrawable().apply {
+             shape = GradientDrawable.OVAL
+             setColor(Color.rgb(72, 64, 82))
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+index f80ad67..806e9ee 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertPolicy.kt
+@@ -58,17 +58,19 @@ object DirectionalAlertPolicy {
+ 
+     fun isApproaching(previousDistanceMeters: Double?, currentDistanceMeters: Double, accuracyMeters: Double): Boolean {
+         val previous = previousDistanceMeters ?: return false
+-        val toleratedJitter = max(MIN_DISTANCE_JITTER_METERS, accuracyMeters * 0.35)
+-        return currentDistanceMeters <= previous + toleratedJitter
++        val requiredProgress = max(MIN_DISTANCE_PROGRESS_METERS, accuracyMeters * 0.12)
++        return currentDistanceMeters <= previous - requiredProgress
+     }
+ 
+     const val MAX_FIX_AGE_MILLIS = 3_500L
+     const val MIN_MOVING_SPEED_MPS = 1.2
+-    const val TARGET_AHEAD_TOLERANCE_DEGREES = 55.0
+-    const val RADAR_DIRECTION_TOLERANCE_DEGREES = 42.0
++    const val TARGET_AHEAD_TOLERANCE_DEGREES = 40.0
++    const val RADAR_DIRECTION_TOLERANCE_DEGREES = 30.0
+     const val TARGET_BEHIND_DEGREES = 105.0
+     const val PASS_DISTANCE_INCREASE_METERS = 24.0
+     const val REQUIRED_INCREASING_SAMPLES = 2
+     const val DOUBLE_DIRECTION_TYPE = 2
+     const val MIN_DISTANCE_JITTER_METERS = 3.0
++    const val MIN_DISTANCE_PROGRESS_METERS = 1.5
++    const val CONTRACT_MARKER_0184 = "STRICT_DIRECTIONAL_APPROACH_0184"
+ }
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+index 23a0339..55a9728 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalProximityAlertEngine.kt
+@@ -393,7 +393,7 @@ class DirectionalProximityAlertEngine(
+ 
+     private companion object {
+         const val RESET_BUFFER_METERS = 140.0
+-        const val REQUIRED_APPROACHING_SAMPLES = 1
++        const val REQUIRED_APPROACHING_SAMPLES = 2
+         const val SPEECH_REPEAT_GAP_MILLIS = 20_000L
+         const val MAX_SAVED_ALERT_SPEECH_COUNT = 2
+         const val MAX_RADAR_SPEECH_COUNT = 1
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+index 6b279b3..bddb047 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+@@ -182,6 +182,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     private lateinit var proximityAlertEngine: ProximityAlertEngine
+     private lateinit var preciseNavigationTrackerChecklist5: PreciseNavigationTracker
+     private lateinit var directionalAlertEngineChecklist5: DirectionalProximityAlertEngine
++    @Volatile private var lastDirectionalFix0184: PreciseNavigationFix? = null
+     private lateinit var directionalAlertOverlayChecklist5: DirectionalAlertOverlayController
+     private val directionalRadarSpatialIndexChecklist5 = ImportedRadarSpatialIndex()
+     private var missingPreciseFixSinceChecklist5: Long = 0L
+@@ -1199,6 +1200,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+             return
+         }
+         missingPreciseFixSinceChecklist5 = 0L
++        lastDirectionalFix0184 = fix
+ 
+         val searchRadiusMeters = currentSettings.proximityAlertDistanceMeters
+             .coerceIn(200, 1000)
+@@ -2992,9 +2994,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
+ 
+     private fun toggleResourceShortcuts() {
+         val params = overlayParams ?: return
++        val shortcuts0184 = shortcutGridStore0179.readResolved()
++        if (shortcuts0184.isEmpty()) {
++            launchShortcutActivity0176(
++                shortcutId = "empty_action_grid_0184",
++                intent = Intent(this, MainActivity::class.java)
++                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
++                    .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG),
++                failureMessage = "Não consegui abrir a Home para escolher atalhos.",
++            )
++            toast("Escolha na Home as ações que deseja adicionar à grade.")
++            return
++        }
+         shortcutOverlayController.toggleShortcuts(
+             anchor = params,
+-            shortcuts = shortcutGridStore0179.readResolved(),
++            shortcuts = shortcuts0184,
+             onShortcut = ::executeShortcutQuickTap0180,
+             onShortcutLongPress = ::executeShortcutHold0180,
+             onShortcutCustomize = ::openShortcutEntryCustomization0180,
+@@ -3006,7 +3020,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     }
+ 
+     private fun executeShortcutQuickTap0180(entry0180: ResolvedShortcutGridEntry0179) {
+-        showShortcutActionMenu0183(entry0180.spec)
++        executeShortcutModule(entry0180.spec)
+     }
+ 
+     private fun executeShortcutHold0180(entry0180: ResolvedShortcutGridEntry0179) {
+@@ -3287,9 +3301,73 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         return false
+     }
+ 
++    private fun openBackupFileAction0184(create: Boolean) {
++        val intent0184 = Intent(this, MainActivity::class.java)
++            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
++            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
++            .putExtra(EXTRA_OPEN_SHORTCUT_MODULE_0171, "backup")
++            .putExtra(if (create) EXTRA_CREATE_BACKUP_0184 else EXTRA_RESTORE_BACKUP_0184, true)
++        launchShortcutActivity0176(
++            shortcutId = if (create) "action_create_backup" else "action_restore_backup",
++            intent = intent0184,
++            failureMessage = if (create) "Não consegui iniciar o backup." else "Não consegui abrir a restauração.",
++        )
++    }
++

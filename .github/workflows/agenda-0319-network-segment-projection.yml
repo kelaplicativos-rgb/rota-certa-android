@@ -1,0 +1,357 @@
+name: Rota Certa 0.1.344 Acesso negado para nao convidados
+
+on:
+  push:
+    branches:
+      - agent/public-whatsapp-view-private-auth-0.1.342
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-0344-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/public-whatsapp-view-private-auth-0.1.342
+          fetch-depth: 0
+
+      - name: Validate 0.1.344 explicit denied access messages
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          grep -Fq 'versionCode = 5637' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
+          grep -Fq 'ResponsiveTripAction("👥 Passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("+ Adicionar passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("👥 Ver / gerenciar passageiros")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'passengerAddRequestToken++' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'onOpenPassengers()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'LaunchedEffect(openRequestToken)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          ! grep -Fq 'Text("+ Passageiro")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripGlobalPassengerFlow0256.kt
+          grep -Fq 'passengerToolbarGroupsAddAndManageBehindSingleEntry' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'versionName = "0.1.344"' app/build.gradle.kts
+          grep -Fq 'async function requirePassengerAgendaView' trip-platform/functions/index.js
+          grep -Fq '/v1/public/passenger-access' trip-platform/functions/index.js
+          grep -Fq 'async function activatePassengerAccount' trip-platform/functions/index.js
+          grep -Fq 'passengerAgendaViewSessions' trip-platform/functions/index.js
+          grep -Fq 'passengerId,' trip-platform/functions/index.js
+          grep -Fq 'syncDriverPassengerDirectory' trip-platform/functions/index.js
+          grep -Fq 'status: "AUTHORIZED"' trip-platform/functions/index.js
+          grep -Fq '"SUSPENDED"' trip-platform/functions/index.js
+          grep -Fq 'id="accessContact"' trip-platform/public/index.html
+          ! grep -Fq 'id="accessPassword"' trip-platform/public/index.html
+          grep -Fq 'id="privateAuthPassword"' trip-platform/public/index.html
+          grep -Fq 'requestPublicAgendaAccess' trip-platform/public/app.js
+          grep -Fq 'showPrivateAuthGate("booking")' trip-platform/public/app.js
+          grep -Fq 'sessionStorage.setItem("rotacerta-passenger-session"' trip-platform/public/app.js
+          ! grep -Fq 'localStorage.setItem("rotacerta-passenger-session"' trip-platform/public/app.js
+          grep -Fq 'api.syncPassengerDirectory(canonicalPassengerProfiles)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'setPassengerAccessStatus' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'val agendaAccessWhatsapp: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'updatePassengerAccessWhatsapp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'WhatsApp de acesso' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt
+          grep -Fq 'async function updateDriverPassengerWhatsapp' trip-platform/functions/index.js
+          grep -Fq 'passenger_whatsapp_conflict' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_not_available' trip-platform/functions/index.js
+          grep -Fq 'Acesso negado. Este WhatsApp não está na lista de passageiros autorizados desta Agenda.' trip-platform/functions/index.js
+          grep -Fq 'passenger_access_pending' trip-platform/functions/index.js
+          grep -Fq 'accessMessage").className = "error"' trip-platform/public/app.js
+          grep -Fq 'class PassengerPublicAccess0342Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerPublicAccess0342Test.kt
+          grep -Fq 'AGENDA_SYNC_PANEL_OPENED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'autoSyncStarted=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'AGENDA_SYNC_TOOLBAR_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'timelineToolbarOnlyOpensManualSyncPanel' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'PullToRefreshBox' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AGENDA_PULL_REFRESH_ALL_REQUESTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'PublicBookingRemoteSync0296.pullAndReconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'AGENDA_PULL_REFRESH_BLABLACAR_ALL_ARMED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'timelinePullRefreshSynchronizesAllAccountsBookingsAndPublicAgenda' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq '__rotaCertaNetworkTripSource' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
+          grep -Fq 'blablaItineraryStops: List<String> = emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'AgendaSyncCrashGuard.install' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'AgendaSyncCrashTraceStore.export(context)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaNetworkDiagnosticRecorder.kt
+          grep -Fq 'class AgendaSyncCrashTrace0322Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace0322Test.kt
+          grep -Fq 'Thread.setDefaultUncaughtExceptionHandler(handler)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'CHECKPOINT_FILE_NAME' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'persistCheckpoint(context, lastCheckpoint)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          ! grep -Fq 'traceFile(context).delete()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'AgendaTimelineCrashGuard.install(this)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'timeline_pull_requested' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'timeline_pull_before_public_booking_reconcile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'timeline_pull_after_blabla_token' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'timeline_public_agenda_effect_begin' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'BREADCRUMB_FILE_NAME' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq -- '--- AGENDA SYNC BREADCRUMBS ---' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncCrashTrace.kt
+          grep -Fq 'Regex("\\{\\{[A-Z0-9_]+\\}\\}")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
+          ! grep -Fq 'Regex("\\{\\{[A-Z0-9_]+}}")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserScriptRegistry.kt
+          grep -Fq 'Text("+ Adicionar conta")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Contas BlaBlaCar")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Sincronizar todas as contas' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'BlaBlaCollectorPanel(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'returnPartial=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'completeSync(collected.size)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'unreadableRideListReturnsPartialInsteadOfHangingInIdle' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
+          grep -Fq 'var syncSessionInFlight by remember { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'if (!syncing || archiving || syncSessionInFlight) return@LaunchedEffect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'AGENDA_SYNC_SESSION_LAUNCH' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
+          grep -Fq 'allAccountSyncKeepsOnlyOneSessionActivityInFlight' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserOrchestrator0318Test.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_PUBLISH_RETRY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_SYNC_FAILED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'failureStage = "update_after_publish_failure"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'failureStage = "capacity_claims"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'externalPublicationFailuresExposeStageWithoutPassengerPii' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_SHAPE_PRESERVED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_AGENDA_EXTERNAL_SYNC_CANCELLED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'preserveExternalBindingShape' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'remapExternalClaimsToBindingStructure' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'bookedExternalTripPreservesExistingBindingShapeAndRemapsClaims' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'cancellationIsNeverCountedAsExternalPublicationFailure' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'RoundedCornerShape(12.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
+          grep -Fq 'BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
+          ! grep -Fq 'HorizontalDivider' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines.kt
+          grep -Fq 'Consulta pública • $publicDateLabel' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'agendaCalendarDaysForPeriod<TripTimelineEntry>' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchPeriodDoesNotInjectEmptyDaysIntoOperationalTimeline' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'publicSearchWithoutOperationalTripsAddsOnlyDatesThatHaveRealCards' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'timelineDayVisualIsBorderedCardWithoutLooseHorizontalDivider' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'publicSearchDoesNotRenderStandaloneDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'emptyPublicSearchMonthDoesNotPolluteTimelineWithDayHeaders' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          ! grep -Fq 'emptyPublicSearchMonthStillProducesVisibleDayLines' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'archiveStore.archiveLocalVisualEntries(physical)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchStore.clearResponse()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchResponse = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchClearToken++' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'manualVisualHidden=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicSearchCleared=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'LaunchedEffect(publicSearchClearToken)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          grep -Fq 'showPublicSearch = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ResponsiveTripActions.kt
+          grep -Fq 'shouldRenderTimelineEmptyDayCard(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'operationalCardCount = day.items.size' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'publicCardCount = dayPublicCards.size' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'dateCardAppearsOnlyWhenThatCalendarDayHasNoTravelCard' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCalendarDayLines0294Test.kt
+          grep -Fq 'clearAllRemovesEveryTimelineVisualLayerButPreservesPermanentData' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'clearAllArchivesHybridLocalIdentityBeforeExternalHalfDisappears' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerCanonical0317Test.kt
+          grep -Fq 'val startDay = maxOf(firstDay, today)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'if (startDay.isAfter(lastDay)) return emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'currentMonthWithoutDayStartsAtTodayAndNeverScansPastDays' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'pastMonthHasNoAutomaticTasksButExplicitPastDayRemainsAllowed' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'if (normalizedTargets.isEmpty()) return true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'emptyDriverFilterAcceptsEveryIdentifiedPublicDriver' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'explicitDriverFilterStillKeepsOnlyRequestedProfiles' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'Nomes são opcionais' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'Vazio = todos' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'Informe pelo menos um nome de motorista/perfil.' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'class RotaCertaDatePickerTest' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
+          grep -Fq 'RotaCertaDateSelectionMode.MULTIPLE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionMode.RANGE' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionMode.MONTH' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'RotaCertaDateSelectionField(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'label = "Datas da consulta"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'label = { Text("Data ou mês") }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          ! grep -Fq 'AAAA-MM-DD para um dia' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'Capturar demanda do trecho' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'selectedDates: List<String> = emptyList()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'captureDemand: Boolean = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'data class BlaBlaPublicSearchDemand' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'indicadorDemandaEncontrado: Boolean' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'percentualReservado: Int?' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt
+          grep -Fq 'publicSearchDemandFor(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt
+          grep -Fq 'bodyText = evidence.bodyText' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt
+          grep -Fq 'document.body?.innerText' app/src/main/assets/blablacar/scripts/public_search_results.js
+          grep -Fq 'noSelectedDateStartsTodayAndContinuesOnlyThroughCurrentMonth' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'threeExplicitDatesWithReverseCreateExactlySixIndependentTasks' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandToggleOffSkipsAdditionalDemandProcessing' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandCaptureExtractsBusyFlagPercentageMessageAndTimestamp' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'missingDemandIndicatorStaysUnknownInsteadOfInventingLowDemand' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'demandStaysAssociatedWithExactDateAndDirection' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchTest.kt
+          grep -Fq 'Card(' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'onClick = onClick' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'shape = RoundedCornerShape(12.dp)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'BorderStroke(1.dp, MaterialTheme.colorScheme.outline)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'color = MaterialTheme.colorScheme.onSurface' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq '.verticalScroll(rememberScrollState())' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'usePlatformDefaultWidth = false' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'modifier = Modifier.fillMaxSize()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'FilterChip(' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'compactModeLabel(mode)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'rotaCertaDateConfirmLabel(draft, emptyLabel = emptyConfirmLabel)' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          python3 -c 'from pathlib import Path; p=Path("app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt").read_text(); button=p.index("rotaCertaDateConfirmLabel(draft, emptyLabel = emptyConfirmLabel)"); calendar=p.index("CalendarMonthGrid(", button); assert button < calendar'
+          grep -Fq '.navigationBarsPadding()' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'confirmationLabelStaysShortAndCountsSelectedDates' app/src/test/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePickerTest.kt
+          ! grep -Fq 'Text("Cancelar")' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'package br.com.mapeiaia.rotacerta.date' app/src/main/java/br/com/mapeiaia/rotacerta/date/RotaCertaDateContract.kt
+          grep -Fq 'enum class RotaCertaDateSelectionMode' app/src/main/java/br/com/mapeiaia/rotacerta/date/RotaCertaDateContract.kt
+          grep -Fq 'val isoDateKeys: List<String>' app/src/main/java/br/com/mapeiaia/rotacerta/date/RotaCertaDateContract.kt
+          grep -Fq 'import br.com.mapeiaia.rotacerta.date.RotaCertaDateSelection' app/src/main/java/br/com/mapeiaia/rotacerta/ui/RotaCertaDatePicker.kt
+          grep -Fq 'dateSelection.isoDateKeys' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt
+          grep -Fq 'label = "Data da saída"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'allowedModes = setOf(RotaCertaDateSelectionMode.SINGLE)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'Saída — dd/MM/aaaa HH:mm' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'class TripsActivityGlobalDate0340Test' app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripsActivityGlobalDate0340Test.kt
+          grep -Fq 'RotaCertaDateContract' trip-platform/public/date-selection.js
+          grep -Fq 'const DateContract = window.RotaCertaDateContract' trip-platform/public/app.js
+          grep -Fq '<script src="/date-selection.js" defer></script>' trip-platform/public/index.html
+          grep -Fq 'date-selection-contract-0340' <(find trip-platform/functions/test -maxdepth 1 -type f -printf '%f\n')
+          grep -Fq 'Rota Certa — contrato global de datas — 0.1.340' docs/ROTA_CERTA_GLOBAL_DATE_CONTRACT_0.1.340.md
+          python3 scripts/check_global_date_contract.py
+
+      - name: Verify FAROL unchanged from 0.1.320
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=a5f81588194fb2451c7ed531e4d93db390b78534
+          test -z "$(git diff --name-only "$BASE"..HEAD --             'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'             'app/src/main/java/br/com/mapeiaia/rotacerta/Farol*.kt')"
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing."
+            exit 3
+          fi
+
+      - name: Generate Firebase Android config
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+          else
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+          fi
+          APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+          test -n "$APP_ID"
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Test web backend and authentication contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/date-selection.js
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/*.test.js
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests and build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace | tee /tmp/gradle.txt
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'certificate SHA-256 digest: d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          grep -Fq "package: name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5637'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.344'" /tmp/aapt.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+          mkdir -p /tmp/0344 trip-platform/public/downloads
+          cp "$APK" /tmp/0344/rota-certa-0.1.344-access-denied.apk
+          cp "$APK" trip-platform/public/downloads/rota-certa-0.1.344-access-denied.apk
+          cp /tmp/apk.sha256 /tmp/0344/apk.sha256
+          cp /tmp/aapt.txt /tmp/0344/aapt.txt
+          cp /tmp/apksigner.txt /tmp/0344/apksigner.txt
+          cp /tmp/gradle.txt /tmp/0344/gradle.txt
+          git rev-parse HEAD > /tmp/0344/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.344-access-denied
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0344
+
+      - name: Install Firebase Functions dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy Agenda backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke deployed WhatsApp consultation and hosted APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          DRIVER=viagem-certa
+          AGENDA=JA5o3L0KjPSbdM1m01jXhsNpoZZsXOiE
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/v1/health" | grep -F '"ok":true'
+
+          BUST="$(date +%s%N)"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index.html
+          grep -Fq 'id="accessContact"' /tmp/live-index.html
+          ! grep -Fq 'id="accessPassword"' /tmp/live-index.html
+          grep -Fq 'id="privateAuthPassword"' /tmp/live-index.html
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
+          grep -Fq 'requestPublicAgendaAccess' /tmp/live-app.js
+          grep -Fq 'showPrivateAuthGate("booking")' /tmp/live-app.js
+
+          CODE="$(curl --silent --show-error -o /tmp/no-view.json -w '%{http_code}' "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda")"
+          test "$CODE" = "401"
+          grep -Fq 'agenda_view_required' /tmp/no-view.json
+
+          ACCESS_CODE="$(curl --silent --show-error -o /tmp/unknown-access.json -w '%{http_code}' -X POST "$BASE/v1/public/passenger-access" -H 'Content-Type: application/json' --data "{\"driverUsername\":\"$DRIVER\",\"agendaToken\":\"$AGENDA\",\"passengerContact\":\"+5511900000000\"}")"
+          test "$ACCESS_CODE" = "403"
+
+          EXPECTED="$(sha256sum /tmp/0344/rota-certa-0.1.344-access-denied.apk | awk '{print $1}')"
+          curl --retry 8 --retry-delay 4 --fail --silent --show-error "$BASE/downloads/rota-certa-0.1.344-access-denied.apk?v=$BUST" -o /tmp/hosted-0342.apk
+          ACTUAL="$(sha256sum /tmp/hosted-0342.apk | awk '{print $1}')"
+          test "$ACTUAL" = "$EXPECTED"
+          echo "HOSTED_APK_URL=$BASE/downloads/rota-certa-0.1.344-access-denied.apk"

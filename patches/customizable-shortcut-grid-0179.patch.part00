@@ -1,0 +1,278 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 674dc7a..2775249 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -37,8 +37,8 @@ android {
+         applicationId = "br.com.mapeiaia.rotacerta"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 5390
+-        versionName = "0.1.178"
++        versionCode = 5400
++        versionName = "0.1.179"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+index 69f4e38..5fb99e5 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+@@ -43,10 +43,16 @@ class BubbleShortcutOverlayController(
+ 
+     fun toggleShortcuts(
+         anchor: WindowManager.LayoutParams,
++        shortcuts: List<ResolvedShortcutGridEntry0179>,
+         onShortcut: (BubbleShortcutSpec) -> Unit,
+         onShortcutLongPress: (BubbleShortcutSpec) -> Unit,
++        onCustomize: () -> Unit,
+     ) {
+-        if (shortcutView != null) hideShortcuts() else showShortcuts(anchor, onShortcut, onShortcutLongPress)
++        if (shortcutView != null) {
++            hideShortcuts()
++        } else {
++            showShortcuts(anchor, shortcuts, onShortcut, onShortcutLongPress, onCustomize)
++        }
+     }
+ 
+     fun hideShortcuts() {
+@@ -262,15 +268,19 @@ class BubbleShortcutOverlayController(
+ 
+     private fun showShortcuts(
+         anchor: WindowManager.LayoutParams,
++        shortcuts: List<ResolvedShortcutGridEntry0179>,
+         onShortcut: (BubbleShortcutSpec) -> Unit,
+         onShortcutLongPress: (BubbleShortcutSpec) -> Unit,
++        onCustomize: () -> Unit,
+     ) {
+         hideProximityAlert()
+         BubbleShortcutCatalog.requireValid()
+ 
++        val visibleShortcuts0179 = shortcuts.take(ShortcutGesturePolicy0179.MAX_GRID_ITEMS)
++        val totalItems0179 = visibleShortcuts0179.size + 1
+         val scale = appearanceStore.scale()
+         val columns = if (scale >= LARGE_SCALE_TWO_COLUMNS) 2 else 3
+-        val rows = (BubbleShortcutCatalog.modules.size + columns - 1) / columns
++        val rows = (totalItems0179 + columns - 1) / columns
+         val bubbleSize = scaledDp(62, scale)
+         val itemMargin = scaledDp(2, scale)
+         val panelPadding = scaledDp(6, scale)
+@@ -291,26 +301,51 @@ class BubbleShortcutOverlayController(
+                 setStroke(scaledDp(1, scale).coerceAtLeast(1), Color.argb(220, 255, 255, 255))
+             }
+             setPadding(panelPadding, panelPadding, panelPadding, panelPadding)
+-            BubbleShortcutCatalog.modules.forEach { module ->
++            visibleShortcuts0179.forEach { entry0179 ->
+                 addView(
+                     shortcutBubble(
+-                        spec = module.spec,
++                        spec = entry0179.spec,
+                         bubbleSize = bubbleSize,
+                         itemMargin = itemMargin,
+                         scale = scale,
+                         singleAction = {
+                             hideShortcuts()
+-                            trace("bubble.shortcut.clicked id=${module.spec.id}")
+-                            onShortcut(module.spec)
++                            trace("bubble.shortcut.clicked entry=${entry0179.entryId} id=${entry0179.spec.id}")
++                            onShortcut(entry0179.spec)
+                         },
+                         longAction = {
+                             hideShortcuts()
+-                            trace("bubble.shortcut.long_press id=${module.spec.id}")
+-                            onShortcutLongPress(module.spec)
++                            trace("bubble.shortcut.long_press entry=${entry0179.entryId} id=${entry0179.spec.id}")
++                            onShortcutLongPress(entry0179.spec)
+                         },
+                     ),
+                 )
+             }
++            val addSpec0179 = BubbleShortcutSpec(
++                id = "shortcut_add_0179",
++                emoji = "+",
++                label = "Adicionar atalho",
++                displayLabel = "Novo",
++                action = BubbleShortcutAction.OpenSettings,
++            )
++            addView(
++                shortcutBubble(
++                    spec = addSpec0179,
++                    bubbleSize = bubbleSize,
++                    itemMargin = itemMargin,
++                    scale = scale,
++                    singleAction = {
++                        hideShortcuts()
++                        trace("bubble.shortcut.customize.clicked")
++                        onCustomize()
++                    },
++                    longAction = {
++                        hideShortcuts()
++                        trace("bubble.shortcut.customize.long_press")
++                        onCustomize()
++                    },
++                ),
++            )
+         }
+ 
+         val menu: View = if (needsVerticalScroll) {
+@@ -367,7 +402,7 @@ class BubbleShortcutOverlayController(
+         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
+             shortcutView = menu
+             trace(
+-                "bubble.shortcuts.opened count=${BubbleShortcutCatalog.modules.size} " +
++                "bubble.shortcuts.opened count=${visibleShortcuts0179.size} plus=1 " +
+                     "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
+                     "menu=${position.x},${position.y},$menuWidth,$visibleMenuHeight " +
+                     "estimatedHeight=$estimatedMenuHeight scroll=$needsVerticalScroll scale=$scale columns=$columns",
+@@ -390,7 +425,7 @@ class BubbleShortcutOverlayController(
+         gravity = Gravity.CENTER
+         includeFontPadding = false
+         maxLines = 2
+-        contentDescription = "${spec.label}. Toque para a ação principal; mantenha pressionado para a ação personalizada."
++        contentDescription = "${spec.label}. Toque para executar; mantenha pressionado por dois segundos para abrir o módulo."
+         background = GradientDrawable().apply {
+             shape = GradientDrawable.OVAL
+             setColor(Color.rgb(72, 64, 82))
+@@ -418,7 +453,7 @@ class BubbleShortcutOverlayController(
+                     downY = event.y
+                     longPressTriggered = false
+                     view.isPressed = true
+-                    handler.postDelayed(longPressAction, 1_500L)
++                    handler.postDelayed(longPressAction, ShortcutGesturePolicy0179.SHORTCUT_LONG_PRESS_MILLIS)
+                     true
+                 }
+                 MotionEvent.ACTION_MOVE -> {
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+index ddff9d7..7503bba 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+@@ -182,6 +182,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     private var missingPreciseFixSinceChecklist5: Long = 0L
+     // directional_alert_fields_checklist_5
+     private lateinit var shortcutOverlayController: BubbleShortcutOverlayController
++    private lateinit var shortcutGridStore0179: ShortcutGridPreferenceStore0179
+     private lateinit var radarDetectionCue: RadarDetectionCue
+     private val universalRouteCache = LiveRideRouteCache()
+     private var universalRouteJob: Job? = null
+@@ -256,6 +257,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+         bubblePrefs = getSharedPreferences(BUBBLE_PREFS, Context.MODE_PRIVATE)
+         ShortcutGridPolicy0173.clearLegacyPreferences(applicationContext)
++        shortcutGridStore0179 = ShortcutGridPreferenceStore0179(applicationContext)
+         val restoredExactRoutes = universalRouteCache.importSnapshot(
+             bubblePrefs.getString("persistent_exact_route_cache_v1", "").orEmpty(),
+         )
+@@ -2827,10 +2829,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
+ 
+     private fun persistResourceShortcutState() {
+         val visible = shortcutOverlayController.shortcutsVisible
+-        val labels = BubbleShortcutCatalog.modules.joinToString("|") { it.spec.label }
++        val resolved0179 = shortcutGridStore0179.readResolved()
++        val labels = resolved0179.joinToString("|") { it.spec.label }
+         bubblePrefs.edit()
+             .putBoolean(KEY_RUNTIME_SHORTCUTS_OPEN, visible)
+-            .putInt(KEY_RUNTIME_SHORTCUT_COUNT, if (visible) BubbleShortcutCatalog.modules.size else 0)
++            .putInt(KEY_RUNTIME_SHORTCUT_COUNT, if (visible) resolved0179.size else 0)
+             .putString(KEY_RUNTIME_SHORTCUT_LABELS, if (visible) labels else "")
+             .apply()
+     }
+@@ -2844,40 +2847,23 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         val params = overlayParams ?: return
+         shortcutOverlayController.toggleShortcuts(
+             anchor = params,
++            shortcuts = shortcutGridStore0179.readResolved(),
+             onShortcut = ::executeShortcutModule,
+-            onShortcutLongPress = ::executeShortcutLongPress0173,
++            onShortcutLongPress = ::executeShortcutLongPress0179,
++            onCustomize = ::openShortcutCustomization0179,
+         )
+         persistResourceShortcutState()
+         Unit /* diagnostics_off_checklist_4 */
+         Unit /* diagnostics_off_checklist_4 */
+     }
+ 
+-    private fun executeShortcutLongPress0173(spec: BubbleShortcutSpec) {
+-        val resolved0173 = ShortcutGridPolicy0173.resolve(spec)
++    private fun executeShortcutLongPress0179(spec: BubbleShortcutSpec) {
+         UnifiedDebugEventStore.record(
+-            "SHORTCUT_LONG_PRESS_FIXED_0173",
++            "SHORTCUT_LONG_PRESS_OPEN_MODULE_0179",
+             universalResolvedForegroundPackage(),
+-            "id=${spec.id}; resolved=${resolved0173.name}",
++            "id=${spec.id}",
+         )
+-        if (ShortcutGridPolicy0173.requiresConfirmation(spec, resolved0173)) {
+-            shortcutOverlayController.showShortcutConfirmation0171(
+-                title = spec.displayLabel,
+-                detail = "Confirmar: ${ShortcutGridPolicy0173.resolvedLabel(spec, resolved0173)}?",
+-                onConfirm = { executeRestoredLongPress0173(spec, resolved0173) },
+-            )
+-            return
+-        }
+-        executeRestoredLongPress0173(spec, resolved0173)
+-    }
+-
+-    private fun executeRestoredLongPress0173(
+-        spec: BubbleShortcutSpec,
+-        resolved0173: ShortcutLongPressResolved0173,
+-    ) {
+-        when (resolved0173) {
+-            ShortcutLongPressResolved0173.Primary -> executeShortcutModule(spec)
+-            ShortcutLongPressResolved0173.Secondary -> executeShortcutDoubleTap(spec)
+-        }
++        openShortcutModule0171(spec)
+     }
+ 
+     private fun openShortcutModule0171(spec: BubbleShortcutSpec) {
+@@ -2893,6 +2879,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         )
+     }
+ 
++    private fun openShortcutCustomization0179() {
++        val intent0179 = Intent(this, MainActivity::class.java)
++            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
++            .putExtra(EXTRA_OPEN_TAB, TAB_CONFIG)
++            .putExtra(EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179, true)
++        launchShortcutActivity0176(
++            shortcutId = "shortcut_customization_0179",
++            intent = intent0179,
++            failureMessage = "Não foi possível abrir a Central de atalhos.",
++        )
++    }
++
+     private fun executeShortcutDoubleTap(spec: BubbleShortcutSpec) {
+         when (spec.doubleTapAction) {
+             BubbleShortcutQuickAction.CopyAllVisibleText -> copyAllVisibleTextFromBubble138()
+@@ -3894,6 +3892,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         private var moved = false
+         private var lastTapUpMillis = 0L
+         private var pendingSingleTapJob: kotlinx.coroutines.Job? = null
++        private val mainHoldHandler0179 = android.os.Handler(android.os.Looper.getMainLooper())
++        private var mainHoldView0179: View? = null
++        private var mainHoldTriggered0179 = false
++        private val mainHoldAction0179 = Runnable {
++            if (!moved) {
++                mainHoldTriggered0179 = true
++                mainHoldView0179?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
++                shortcutOverlayController.hideShortcuts()
++                persistResourceShortcutState()
++                openShortcutCustomization0179()
++            }
++        }
+         private val touchSlop: Int by lazy {
+             android.view.ViewConfiguration.get(this@LiveRideAccessibilityService).scaledTouchSlop.coerceAtLeast(1)
+         }
+@@ -3911,6 +3921,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                     startX = params.x
+                     startY = params.y
+                     moved = false
++                    mainHoldTriggered0179 = false
++                    mainHoldView0179 = view
++                    mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
++                    mainHoldHandler0179.postDelayed(
++                        mainHoldAction0179,
++                        ShortcutGesturePolicy0179.MAIN_CUSTOMIZATION_HOLD_MILLIS,
++                    )
+                     view.animate().cancel()
+                     Unit /* diagnostics_off_checklist_4 */
+                     return true
+@@ -3921,6 +3938,7 @@ class LiveRideAccessibilityService : AccessibilityService() {

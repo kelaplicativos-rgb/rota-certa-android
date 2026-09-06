@@ -1,0 +1,160 @@
+name: Agenda 0.1.305 production E2E
+
+on:
+  push:
+    branches:
+      - agent/public-booking-video-flow-0.1.305
+    paths:
+      - '.github/workflows/agenda-0305-production-e2e.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE: https://rota-certa-7ccc8.web.app
+      DRIVER: viagem-certa
+      AGENDA: WlaYvVil5AlaNHbEthN-oBbb5JSIIQgJ
+    steps:
+      - name: Validate live video flow and run controlled booking
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            if [ -s /tmp/cancel.json ] && [ -s /tmp/selected.json ]; then
+              TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
+              BOOKING_ID="$(node -p "require('/tmp/cancel.json').bookingId")"
+              CANCEL_TOKEN="$(node -p "require('/tmp/cancel.json').cancellationToken")"
+              node -e 'require("fs").writeFileSync("/tmp/cleanup.json",JSON.stringify({cancellationToken:process.argv[1]}))' "$CANCEL_TOKEN"
+              curl --silent --show-error                 -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings/$BOOKING_ID/cancel"                 -H 'Content-Type: application/json'                 --data-binary @/tmp/cleanup.json >/tmp/cleanup-response.json || true
+            fi
+          }
+          trap cleanup EXIT
+
+          curl --retry 6 --retry-delay 2 --fail --silent --show-error "$BASE/" > /tmp/live-index.html
+          curl --retry 6 --retry-delay 2 --fail --silent --show-error "$BASE/app.js" > /tmp/live-app.js
+
+          grep -Fq 'Confira os detalhes do seu pedido de reserva' /tmp/live-index.html
+          grep -Fq 'Resumo do preço' /tmp/live-index.html
+          grep -Fq 'Mande uma mensagem para o motorista' /tmp/live-index.html
+          grep -Fq 'Fazer pedido de reserva' /tmp/live-index.html
+          grep -Fq 'https://wa.me/' /tmp/live-app.js
+          echo "LIVE_VIDEO_FLOW=PASS"
+
+          curl --retry 6 --retry-delay 2 --fail --silent --show-error             "$BASE/v1/public/drivers/$DRIVER/$AGENDA/agenda"             -H 'Accept: application/json' > /tmp/agenda.json
+
+          node <<'NODE'
+          const fs=require('fs');
+          const agenda=JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const trips=Array.isArray(agenda.trips)?agenda.trips:[];
+          if(!trips.length){
+            console.error('NO_PUBLIC_TRIPS');
+            process.exit(4);
+          }
+          const full=trips.find(t => t && (t.isFull===true || t.status==="FULL" || Number(t.availableSeatsMaximum)===0));
+          if(full){
+            console.log('FULL_TRIP='+String(full.title||''));
+            console.log('FULL_CAN_RESERVE='+String(full.canReserve));
+            console.log('FULL_AVAILABLE_MAX='+String(full.availableSeatsMaximum));
+            if(full.canReserve !== false || Number(full.availableSeatsMaximum)!==0){
+              console.error('FULL_TRIP_NOT_BLOCKED');
+              process.exit(5);
+            }
+            console.log('FULL_TRIP_BLOCKED=PASS');
+          } else {
+            console.log('FULL_TRIP_BLOCKED=SKIP_NO_FULL_TRIP');
+          }
+
+          const candidates=trips
+            .filter(t => t && t.isFull!==true && t.status!=="FULL" && t.canReserve!==false)
+            .filter(t => Number(t.availableSeatsMinimum ?? -1) >= 1)
+            .sort((a,b)=>Number(a.departureAtMillis||0)-Number(b.departureAtMillis||0));
+
+          if(!candidates.length){
+            console.error('NO_BOOKABLE_TRIP');
+            process.exit(6);
+          }
+          const t=candidates[0];
+          const stops=Array.isArray(t.stops)?[...t.stops].sort((a,b)=>Number(a.order)-Number(b.order)):[];
+          if(stops.length<2) process.exit(7);
+          const selected={
+            tripId:t.tripId||t.publicToken,
+            title:t.title||'',
+            beforeMin:Number(t.availableSeatsMinimum),
+            beforeMax:Number(t.availableSeatsMaximum),
+            capacity:Number(t.capacity||0),
+            boardingStopId:stops[0].id,
+            dropoffStopId:stops[stops.length-1].id
+          };
+          fs.writeFileSync('/tmp/selected.json',JSON.stringify(selected));
+          console.log('SELECTED_TRIP='+selected.title);
+          console.log('BEFORE_AVAILABLE_MIN='+selected.beforeMin);
+          console.log('BEFORE_AVAILABLE_MAX='+selected.beforeMax);
+          NODE
+
+          TRIP_ID="$(node -p "require('/tmp/selected.json').tripId")"
+          BOARD="$(node -p "require('/tmp/selected.json').boardingStopId")"
+          DROP="$(node -p "require('/tmp/selected.json').dropoffStopId")"
+          IDEM="chatgpt_0305_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_$(date +%s)"
+
+          node -e 'const fs=require("fs");fs.writeFileSync("/tmp/request.json",JSON.stringify({passengerName:"Teste automático Rota Certa",passengerContact:"1100000000",boardingStopId:process.argv[1],dropoffStopId:process.argv[2],seats:1,idempotencyKey:process.argv[3]}))' "$BOARD" "$DROP" "$IDEM"
+
+          HTTP="$(curl --silent --show-error -o /tmp/booking.json -w '%{http_code}'             -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings"             -H 'Content-Type: application/json'             -H 'Accept: application/json'             -H "Idempotency-Key: $IDEM"             --data-binary @/tmp/request.json)"
+
+          echo "BOOKING_HTTP=$HTTP"
+          test "$HTTP" = "201" -o "$HTTP" = "200"
+
+          node <<'NODE'
+          const fs=require('fs');
+          const x=JSON.parse(fs.readFileSync('/tmp/booking.json','utf8'));
+          if(!x.bookingId || !x.cancellationToken){
+            console.error('BOOKING_CREDENTIALS_MISSING');
+            process.exit(8);
+          }
+          fs.writeFileSync('/tmp/cancel.json',JSON.stringify({bookingId:x.bookingId,cancellationToken:x.cancellationToken}));
+          console.log('BOOKING_CREATED=PASS');
+          console.log('BOOKING_REPLAYED='+String(x.replayed===true));
+          NODE
+
+          curl --retry 4 --retry-delay 1 --fail --silent --show-error             "$BASE/v1/public/trips/$TRIP_ID" -H 'Accept: application/json' > /tmp/after-booking.json
+
+          node <<'NODE'
+          const before=require('/tmp/selected.json');
+          const after=require('/tmp/after-booking.json');
+          const afterMin=Number(after.availableSeatsMinimum);
+          console.log('AFTER_BOOKING_AVAILABLE_MIN='+afterMin);
+          if(afterMin !== before.beforeMin-1){
+            console.error('SEAT_DECREMENT_FAILED');
+            process.exit(9);
+          }
+          console.log('SEAT_DECREMENT=PASS');
+          NODE
+
+          BOOKING_ID="$(node -p "require('/tmp/cancel.json').bookingId")"
+          CANCEL_TOKEN="$(node -p "require('/tmp/cancel.json').cancellationToken")"
+          node -e 'require("fs").writeFileSync("/tmp/cancel-request.json",JSON.stringify({cancellationToken:process.argv[1]}))' "$CANCEL_TOKEN"
+
+          CANCEL_HTTP="$(curl --silent --show-error -o /tmp/cancel-response.json -w '%{http_code}'             -X POST "$BASE/v1/public/trips/$TRIP_ID/bookings/$BOOKING_ID/cancel"             -H 'Content-Type: application/json'             --data-binary @/tmp/cancel-request.json)"
+          echo "CANCEL_HTTP=$CANCEL_HTTP"
+          test "$CANCEL_HTTP" = "200"
+          rm -f /tmp/cancel.json
+
+          curl --retry 4 --retry-delay 1 --fail --silent --show-error             "$BASE/v1/public/trips/$TRIP_ID" -H 'Accept: application/json' > /tmp/after-cancel.json
+
+          node <<'NODE'
+          const before=require('/tmp/selected.json');
+          const after=require('/tmp/after-cancel.json');
+          const restored=Number(after.availableSeatsMinimum);
+          console.log('AFTER_CANCEL_AVAILABLE_MIN='+restored);
+          if(restored !== before.beforeMin){
+            console.error('SEAT_RESTORE_FAILED');
+            process.exit(10);
+          }
+          console.log('SEAT_RESTORE=PASS');
+          console.log('PRODUCTION_E2E_0305=PASS');
+          NODE

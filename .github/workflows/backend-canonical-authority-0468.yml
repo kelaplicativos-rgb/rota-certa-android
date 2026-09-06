@@ -209,5 +209,3 @@ jobs:
             farol.sha256
             node-focused-tests.log
             android-focused-tests.log
-            live-index.html
-            live-app.js

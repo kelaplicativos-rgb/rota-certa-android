@@ -1,0 +1,46 @@
+name: Register validated farol phase 4
+
+on:
+  push:
+    branches: [agent/fix-farol-runtime-0.1.187]
+    paths:
+      - .github/workflows/register-farol-phase4.yml
+      - scripts/register_farol_phase4_validated.py
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: register-farol-phase4-records
+  cancel-in-progress: false
+
+jobs:
+  register:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Register exact validated phase 4 records without marketplace actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_BRANCH: agent/fix-farol-runtime-0.1.187
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "$EXPECTED_BRANCH"
+          mkdir record
+          git -C record init .
+          git -C record remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C record fetch --depth=1 origin "$GITHUB_SHA"
+          git -C record checkout --detach FETCH_HEAD
+          test "$(git -C record rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 record/scripts/register_farol_phase4_validated.py
+          if git -C record diff --quiet; then
+            echo "farol_phase4_records=already_registered"
+            exit 0
+          fi
+          git -C record config user.name "github-actions[bot]"
+          git -C record config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C record add docs/PROJECT_STATUS.md docs/DECISIONS.md
+          git -C record commit -m "Document validated farol phase 4 [skip ci]"
+          gh auth setup-git
+          git -C record push origin "HEAD:${EXPECTED_BRANCH}"

@@ -1,0 +1,12 @@
+{
+  "name": "rota-certa-trip-calendar-feed",
+  "private": true,
+  "version": "0.1.0",
+  "main": "index.js",
+  "engines": {"node": "20"},
+  "scripts": {"check": "node --check index.js"},
+  "dependencies": {
+    "firebase-admin": "^13.4.0",
+    "firebase-functions": "^6.4.0"
+  }
+}
