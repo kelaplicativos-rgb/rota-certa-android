@@ -10,6 +10,7 @@ const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const remoteApi = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripRemoteApi.kt"), "utf8");
 const quickUi = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripQuickPassengerUi.kt"), "utf8");
 const timeline = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PassengerTimelineUi.kt"), "utf8");
+const tripTimelineUi = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "TripTimelineUi.kt"), "utf8");
 const autoSync = fs.readFileSync(path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"), "utf8");
 const publicHtml = fs.readFileSync(path.join(root, "trip-platform", "public", "index.html"), "utf8");
 const publicApp = fs.readFileSync(path.join(root, "trip-platform", "public", "app.js"), "utf8");
@@ -185,7 +186,7 @@ test("0491 public online-offline is a distinct driver-controlled publication sta
 
   assert.match(remoteApi, /updateDriverTripPublicVisibility0491/);
   assert.match(remoteApi, /\/v1\/driver\/trips\/\$\{remoteTripId\.trim\(\)\}\/public-visibility/);
-  assert.match(timeline, /Agenda pública: online\/offline/);
-  assert.match(timeline, /updateDriverTripPublicVisibility0491/);
-  assert.doesNotMatch(timeline, /\/v1\/admin\//);
+  assert.match(tripTimelineUi, /Agenda pública: online\/offline/);
+  assert.match(tripTimelineUi, /updateDriverTripPublicVisibility0491/);
+  assert.doesNotMatch(tripTimelineUi, /\/v1\/admin\//);
 });
