@@ -269,8 +269,7 @@ test("0479 preserved booking still blocks authoritative rebase when its directio
 });
 
 test("0479 authoritative rebase is gated to complete BlaBla replacement and only excludes managed claims from migration", () => {
-  const fn = between(api, "const bookingsSnap = await tx.get(tripRef.collection(\"bookings\"))", "const now = Date.now()");
-  assert.match(fn, /authoritativeManagedReplacement0479/);
+  const fn = between(api, "const authoritativeManagedReplacement0479", "const stopShapeMigration0439 =");
   assert.match(fn, /bookedStopShapeMigrationAuthorized0439/);
   assert.match(fn, /claimNamespace === "BLABLACAR_SYNC:"/);
   assert.match(fn, /sourceComplete/);
