@@ -840,7 +840,10 @@ function createAgendaAdmin0417({
       const blablaTripId = clean0417(data.blablaTripId, 160);
       const requested = validatedBlaBlaPublicUrl0417(data.manualBlaBlaPublicUrl0465, blablaTripId);
       const applied = validatedBlaBlaPublicUrl0417(data.blablaPublicUrl, blablaTripId);
-      if (!requested || requested === applied) return null;
+      // 0.1.490: a manual URL is only a recovery hint while canonical collector
+      // evidence is absent. Once blablaPublicUrl exists, it is authoritative and
+      // must never be overwritten by an independent admin candidate.
+      if (!requested || applied) return null;
       return {
         remoteTripId: doc.id,
         canonicalTripId: clean0417(data.canonicalTripId || data.localTripId, 180),
