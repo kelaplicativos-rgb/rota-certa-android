@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.496 canonical timezone day-label validation
+name: Rota Certa 0.1.497 canonical passenger dots sync validation
 
 on:
   push:
     branches:
-      - agent/canonical-trip-timezone-day-label-0.1.496
+      - agent/agenda-canonical-passenger-dots-sync-0.1.497
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: canonical-trip-timezone-day-label-0496-${{ github.ref }}
+  group: agenda-canonical-passenger-dots-sync-0497-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,14 +18,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
-      GOOGLE_MAPS_API_KEY: canonical_trip_timezone_0496_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: agenda_passenger_dots_0497_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      BASE_AUTHORITY_SHA: e0f2145e17e883798d87b56bca58cd1bcf0252a8
-      EXPECTED_VERSION_CODE: '5788'
-      EXPECTED_VERSION_NAME: '0.1.496'
+      BASE_AUTHORITY_SHA: a376f7286a126e03b248d02d1f8bebdee66425d2
+      EXPECTED_VERSION_CODE: '5789'
+      EXPECTED_VERSION_NAME: '0.1.497'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -216,39 +216,40 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
           fi
 
-      - name: Smoke live canonical timezone Agenda
+      - name: Smoke live canonical passenger dots Agenda
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0496.json
-          grep -Fq '"ok":true' /tmp/live-health-0496.json
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0497.json
+          grep -Fq '"ok":true' /tmp/live-health-0497.json
           BUST="$GITHUB_SHA-$(date +%s%N)"
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app-0496.js
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index-0496.html
-          grep -Fq 'function agendaTimezone0496' /tmp/live-app-0496.js
-          grep -Fq 'function agendaDateParts0496' /tmp/live-app-0496.js
-          grep -Fq 'function agendaTripTime0496' /tmp/live-app-0496.js
-          grep -Fq 'agendaDateLabel0473(item.departureAtMillis, item.timezoneId)' /tmp/live-app-0496.js
-          grep -Fq 'agendaLongDateLabel0480(item.departureAtMillis, item.timezoneId)' /tmp/live-app-0496.js
-          grep -Fq 'app.js?v=0.1.496' /tmp/live-index-0496.html
-          ! grep -Eiq '/v1/admin/|Administrar esta viagem|public-visibility' /tmp/live-app-0496.js
-          printf 'LIVE_CANONICAL_TIMEZONE_AGENDA_0496=PASS sha=%s\n' "$GITHUB_SHA" | tee /tmp/live-smoke-0496.txt
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app-0497.js
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index-0497.html
+          grep -Fq 'function agendaTimezone0496' /tmp/live-app-0497.js
+          grep -Fq 'function agendaDateParts0496' /tmp/live-app-0497.js
+          grep -Fq 'function agendaTripTime0496' /tmp/live-app-0497.js
+          grep -Fq 'agendaDateLabel0473(item.departureAtMillis, item.timezoneId)' /tmp/live-app-0497.js
+          grep -Fq 'agendaLongDateLabel0480(item.departureAtMillis, item.timezoneId)' /tmp/live-app-0497.js
+          grep -Fq 'appendSegmentPassengerDots0489(passengers0489, segment.passengerSeats)' /tmp/live-app-0497.js
+          grep -Fq 'app.js?v=0.1.497' /tmp/live-index-0497.html
+          ! grep -Eiq '/v1/admin/|Administrar esta viagem|public-visibility' /tmp/live-app-0497.js
+          printf 'LIVE_CANONICAL_PASSENGER_DOTS_AGENDA_0497=PASS sha=%s\n' "$GITHUB_SHA" | tee /tmp/live-smoke-0497.txt
 
       - name: Materialize APK and evidence after deployment
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0496
+          mkdir -p /tmp/0497
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          cp "$APK" "/tmp/0496/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk"
-          sha256sum "/tmp/0496/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk" | tee /tmp/0496/apk.sha256
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0496/
-          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0496/
-          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0496/
-          cp /tmp/live-health-0496.json /tmp/live-app-0496.js /tmp/live-index-0496.html /tmp/live-smoke-0496.txt /tmp/0496/
+          cp "$APK" "/tmp/0497/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk"
+          sha256sum "/tmp/0497/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk" | tee /tmp/0497/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0497/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0497/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0497/
+          cp /tmp/live-health-0497.json /tmp/live-app-0497.js /tmp/live-index-0497.html /tmp/live-smoke-0497.txt /tmp/0497/
 
-          cat > /tmp/0496/final-status.txt <<EOF
+          cat > /tmp/0497/final-status.txt <<EOF
           canonical_trip_single_authority=PASS
           collector_direct_timeline_datasource=ABSENT
           canonical_identity_selector=ENFORCED
@@ -256,6 +257,9 @@ jobs:
           canonical_departure_authority=ENFORCED
           canonical_revision_regression=REJECTED
           canonical_bookings=TIMELINE_SOURCE
+          public_passenger_segments=LIVE_CANONICAL_BOOKINGS
+          timeline_mutations_rematerialize_occupancy=PASS
+          passenger_area_mutations_rematerialize_occupancy=PASS
           event_driven_timeline_refresh=PASS
           polling_role=RECOVERY_ONLY
           passenger_area_invalidation=TESTED
@@ -275,11 +279,11 @@ jobs:
           latest=false
           physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
-          cat /tmp/0496/final-status.txt
+          cat /tmp/0497/final-status.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.496-canonical-timezone-day-label-${{ github.sha }}
+          name: rota-certa-0.1.497-canonical-passenger-dots-sync-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0496
+          path: /tmp/0497
