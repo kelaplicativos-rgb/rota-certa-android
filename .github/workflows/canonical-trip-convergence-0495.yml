@@ -1,0 +1,226 @@
+name: Rota Certa 0.1.495 canonical trip convergence validation
+
+on:
+  push:
+    branches:
+      - agent/canonical-trip-identity-time-convergence-0.1.495
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canonical-trip-convergence-0495-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      GOOGLE_MAPS_API_KEY: canonical_trip_convergence_0495_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      BASE_AUTHORITY_SHA: 1e560ce2fa23aed646feab7ee7ea566e8f8c8b3b
+      EXPECTED_VERSION_CODE: '5787'
+      EXPECTED_VERSION_NAME: '0.1.495'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source lineage and protected surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_HEAD="$(git rev-parse HEAD)"
+          test "$SOURCE_HEAD" = "$GITHUB_SHA"
+          printf '%s\n' "$SOURCE_HEAD" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_HEAD" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- "$FAROL"
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- trip-platform/firebase.json trip-platform/firestore.rules
+          git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee /tmp/changed-files.txt
+          ! grep -Fxq "$FAROL" /tmp/changed-files.txt
+          ! grep -Fxq 'trip-platform/firebase.json' /tmp/changed-files.txt
+          ! grep -Fxq 'trip-platform/firestore.rules' /tmp/changed-files.txt
+
+          grep -Fq 'loadCanonicalTimelineState0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'BookingRealtimeEvents0356.changes.collect' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'POLL_RECOVERY' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'BlaBlaTimelineAdapter.merge(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'TripPhysicalRideConsolidator.consolidate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'externalSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'source = "CANONICAL_BACKEND"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'selectCanonicalTripDocuments0495' trip-platform/functions/index.js
+          grep -Fq 'canonicalDepartureStops0495' trip-platform/functions/index.js
+          grep -Fq 'LEGACY_TRIP_SUPERSEDED' trip-platform/functions/index.js
+          grep -Fq 'TIMELINE_CANONICAL_PASSENGER_MUTATION_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'TIMELINE_CANONICAL_PASSENGER_ADD_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          sha256sum "$FAROL" | tee /tmp/farol.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate canonical backend and web contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/app.js
+          node --check trip-platform/public/minha-area.js
+          node --test \
+            trip-platform/functions/test/timeline-canonical-backend-0494.test.js \
+            trip-platform/functions/test/canonical-invalidation-0495.test.js \
+            trip-platform/functions/test/backend-canonical-authority-0468.test.js \
+            trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js \
+            trip-platform/functions/test/agenda-card-visual-parity-0473.test.js \
+            trip-platform/functions/test/agenda-date-year-contract-0482.test.js \
+            trip-platform/functions/test/agenda-public-segment-availability-0484.test.js \
+            | tee /tmp/node-tests.log
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run canonical Android regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTripActions0351Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPublicAccess0342Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+
+          ./gradlew :app:compileDebugUnitTestKotlin \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-compile.log
+
+      - name: Assemble exact-head installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+      - name: Materialize APK and evidence without deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/0495
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          cp "$APK" "/tmp/0495/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk"
+          sha256sum "/tmp/0495/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk" | tee /tmp/0495/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0495/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0495/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0495/
+
+          cat > /tmp/0495/final-status.txt <<EOF
+          canonical_trip_single_authority=PASS
+          collector_direct_timeline_datasource=ABSENT
+          canonical_identity_selector=ENFORCED
+          legacy_projection_convergence=TESTED
+          canonical_departure_authority=ENFORCED
+          canonical_revision_regression=REJECTED
+          canonical_bookings=TIMELINE_SOURCE
+          event_driven_timeline_refresh=PASS
+          polling_role=RECOVERY_ONLY
+          passenger_area_invalidation=TESTED
+          public_agenda_invalidation=TESTED
+          timeline_export_schema=3.0
+          physical_continuity_authority=CANONICAL_BACKEND_TIME_AWARE
+          backend_offline_collector_fallback=false
+          agenda_public_projection_tests=PASS
+          farol_untouched=PASS
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          deployment=NOT_RUN
+          merge=false
+          release=false
+          latest=false
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+          cat /tmp/0495/final-status.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.495-canonical-trip-convergence-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0495
