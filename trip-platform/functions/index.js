@@ -8217,6 +8217,9 @@ async function listDriverTripSyncState0402(req, res) {
       segmentLoads: segmentLoads0494,
       segmentPassengerLoads: segmentPassengerLoads0494,
       segmentBlockedLoads: segmentBlockedLoads0494,
+      segmentAvailableSeats: segmentLoads0494.map((load) =>
+        Math.max(0, Math.max(0, Number(canonicalProjection0494.capacity || data.capacity || 0)) - Math.max(0, Number(load || 0)))
+      ),
       sourceSeatCounts: sourceSeatCounts0494,
       canonicalIssues: canonicalIssues0494,
       bookings: bookings0494,
