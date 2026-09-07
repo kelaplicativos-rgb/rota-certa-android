@@ -280,7 +280,7 @@ jobs:
           mkdir -p /tmp/0500
           APK='app/build/outputs/apk/debug/app-debug.apk'
           cp "$APK" "/tmp/0500/rota-certa-$EXPECTED_VERSION_NAME-agenda-privacy-timeline-firewall.apk"
-          sha256sum "/tmp/0500/rota-certa-$EXPECTED_VERSION_NAME-timeline-canonical-pull.apk" | tee /tmp/0500/apk.sha256
+          sha256sum "/tmp/0500/rota-certa-$EXPECTED_VERSION_NAME-agenda-privacy-timeline-firewall.apk" | tee /tmp/0500/apk.sha256
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0500/
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0500/
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0500/
