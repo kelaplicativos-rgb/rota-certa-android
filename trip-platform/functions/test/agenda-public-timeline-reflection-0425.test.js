@@ -32,7 +32,13 @@ test("0497 public Agenda cannot hide current passenger segment occupancy behind 
     source.indexOf("function canonicalSegmentVector0497"),
     source.indexOf("function canonicalPublicTripPayload0411"),
   );
-  assert.match(normalization, /canonicalSegmentVector0497\(data && data\.segmentLoads, payload\.segmentLoads, expectedSegments\)/);
+  assert.match(
+    normalization,
+    /collectorSegmentLoads0501 = canonicalSegmentVector0497\([\s\S]*payload\.segmentLoads,[\s\S]*data && data\.segmentLoads,[\s\S]*expectedSegments/,
+  );
+  assert.match(normalization, /storedPassengerLoads0501/);
+  assert.match(normalization, /currentSegmentLoads0501/);
+  assert.match(normalization, /const capacityReliable = payload\.capacityReliable === true/);
   assert.match(
     normalization,
     /canonicalSegmentVector0497\([\s\S]*data && data\.segmentPassengerLoads,[\s\S]*payload\.segmentPassengerLoads,[\s\S]*expectedSegments/,
