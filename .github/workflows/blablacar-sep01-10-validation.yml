@@ -1,0 +1,49 @@
+name: BlaBlaCar Sep 01-10 public validation
+
+on:
+  push:
+    paths:
+      - '.github/workflows/blablacar-sep01-10-validation.yml'
+      - 'tools/blablacar-public-search/run-single-sep01-10.mjs'
+  workflow_dispatch:
+
+jobs:
+  collect:
+    if: github.ref == 'refs/heads/agent/blablacar-public-search-collector'
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        include:
+          - { date: '2026-09-04', direction: 'outbound' }
+          - { date: '2026-09-04', direction: 'return' }
+          - { date: '2026-09-06', direction: 'outbound' }
+          - { date: '2026-09-06', direction: 'return' }
+          - { date: '2026-09-07', direction: 'outbound' }
+          - { date: '2026-09-07', direction: 'return' }
+          - { date: '2026-09-05', direction: 'outbound' }
+          - { date: '2026-09-08', direction: 'return' }
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install collector package
+        working-directory: tools/blablacar-public-search
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install chromium
+      - name: Run exact public search
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: node tools/blablacar-public-search/run-single-sep01-10.mjs "${{ matrix.date }}" "${{ matrix.direction }}"
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blablacar-${{ matrix.date }}-${{ matrix.direction }}-${{ github.run_id }}
+          path: collector/matrix-sep01-10/${{ matrix.date }}/${{ matrix.direction }}
+          if-no-files-found: warn
+          retention-days: 30
