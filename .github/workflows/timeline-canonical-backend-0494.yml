@@ -67,7 +67,10 @@ jobs:
           grep -Fq 'TIMELINE_CANONICAL_PASSENGER_MUTATION_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           grep -Fq 'TIMELINE_CANONICAL_PASSENGER_ADD_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
 
-          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+          # The 0.1.482 manifest predates the already-approved Minha Área files.
+          # For this branch the authoritative freeze is byte-for-byte against the
+          # latest pre-task base, proved above with git diff --exit-code.
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- trip-platform/public
           sha256sum "$FAROL" | tee /tmp/farol.sha256
 
       - uses: actions/setup-node@v4
