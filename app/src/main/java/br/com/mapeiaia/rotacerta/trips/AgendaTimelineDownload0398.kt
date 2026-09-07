@@ -15,24 +15,20 @@ import kotlinx.serialization.json.put
 
 internal fun agendaTimelineDownloadJson0398(
     entries: List<TripTimelineEntry>,
-    status: AgendaBackgroundSyncStatus0397,
     generatedAtMillis: Long = System.currentTimeMillis(),
 ): String = buildJsonObject {
-    put("schemaVersion", "1.0")
+    put("schemaVersion", "2.0")
     put("kind", "rota_certa_timeline")
+    put("source", "CANONICAL_BACKEND")
     put("generatedAtMillis", generatedAtMillis)
-    put("automaticSyncEnabled", status.enabled)
-    put("automaticSyncIntervalMinutes", status.intervalMinutes)
-    put("automaticSyncLastFinishedAtMillis", status.lastFinishedAtMillis)
-    put("automaticSyncLastTrigger", status.lastTrigger)
-    put("automaticSyncLastResult", status.lastResult)
-    put("automaticSyncRetryPending", status.retryPending)
-    put("automaticSyncLastFailures", status.lastFailures)
+    put("collectorFallback", false)
     put("trips", buildJsonArray {
         entries.sortedBy(TripTimelineEntry::departureAtMillis).forEach { entry ->
             add(buildJsonObject {
-                put("internalTripId", entry.localTripId ?: entry.tripId)
-                put("timelineTripId", entry.tripId)
+                put("canonicalTripId", entry.tripId)
+                put("canonicalRevision", entry.canonicalRevision0494)
+                put("canonicalStateHash", entry.canonicalStateHash0494)
+                put("remoteTripId", entry.remoteTripId0494)
                 put("profileUuid", entry.blablaProfileUuid.orEmpty())
                 put("blablaTripId", entry.blablaTripId.orEmpty())
                 put("profileLabel", entry.profileLabel)
@@ -46,7 +42,12 @@ internal fun agendaTimelineDownloadJson0398(
                 put("rotaCertaSeatAllocation", entry.rotaCertaSeatAllocation ?: -1)
                 put("minimumOccupiedSeats", entry.minimumOccupiedSeats)
                 put("maximumOccupiedSeats", entry.maximumOccupiedSeats)
+                put("availableSeatsMinimum", entry.canonicalAvailableSeatsMinimum0494 ?: -1)
+                put("availableSeatsMaximum", entry.canonicalAvailableSeatsMaximum0494 ?: -1)
                 put("blockedSeats", entry.operationalBlockedSeats)
+                put("overbookingSeats", entry.canonicalOverbookingSeats0494)
+                put("canonicalBackendAuthoritative", entry.canonicalBackendAuthoritative0494)
+                put("canonicalUpdatedAtMillis", entry.canonicalUpdatedAtMillis0494)
                 put("issues", entry.issues.joinToString(",") { it.name })
                 put("sourceSeatCounts", entry.sourcePassengerSeats.entries.joinToString(",") { (source, seats) -> "${source.name}:$seats" })
             })
@@ -67,8 +68,7 @@ internal fun AgendaTimelineDownloadAction0399(
     onChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val status = AgendaBackgroundSyncConfig0392.status(context)
-    val payload = remember(entries, status) { agendaTimelineDownloadJson0398(entries, status) }
+    val payload = remember(entries) { agendaTimelineDownloadJson0398(entries) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
