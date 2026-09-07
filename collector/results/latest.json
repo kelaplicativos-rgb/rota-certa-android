@@ -1,18 +1,18 @@
 {
   "schema_version": 5,
-  "request_id": "validate-2026-09-08-tres-coracoes-santo-andre-both-uuids",
-  "collected_at": "2026-09-07T03:33:06.269Z",
+  "request_id": "continuity-2026-09-07-extrema-santo-andre-both-uuids",
+  "collected_at": "2026-09-07T03:34:09.070Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
   "request": {
-    "from": "Três Corações, MG, Brasil",
+    "from": "Extrema, MG, Brasil",
     "to": "Santo André, SP, Brasil",
-    "date": "2026-09-08",
+    "date": "2026-09-07",
     "seats": 1
   },
   "resolved_place_ids": {
-    "from_place_id": "eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "from_place_id": "eyJpIjoiQ2hJSkc5Q1pfWG1yenBRUkg5N0xSejRQVkV3IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
     "to_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
   },
   "validation": {
@@ -22,7 +22,7 @@
     "exact_destination_match": true,
     "route_visible_in_page": true,
     "content_confirmed": true,
-    "final_url": "https://www.blablacar.com.br/search?fn=Tr%C3%AAs+Cora%C3%A7%C3%B5es%2C+MG%2C+Brasil&tn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&db=2026-09-08&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSm00VnEtLURjeXBRUnBVYXZXTU5QeGtjIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "final_url": "https://www.blablacar.com.br/search?fn=Extrema%2C+MG%2C+Brasil&tn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&db=2026-09-07&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSkc5Q1pfWG1yenBRUkg5N0xSejRQVkV3IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
     "page_title": "Caronas e viagens para Santo André, SP, Brasil"
   },
   "zero_results_confirmed": false,
@@ -38,108 +38,10 @@
   "trips": [
     {
       "card_index": 0,
-      "driver_name": "Vinício",
-      "departure_time": "01:30",
-      "arrival_time": "05:30",
-      "actual_departure": "Três Corações",
-      "actual_arrival": "Guarulhos",
-      "price": "R$ 68,00",
-      "flags": [
-        "Esgotará em breve"
-      ],
-      "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wtTieIgWdR3y8q6Y2To_e_g&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 1,
-      "driver_name": "Renato",
-      "departure_time": "01:40",
-      "arrival_time": "05:20",
-      "actual_departure": "Minas Gerais",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 113,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wX26cOiOxTsuwEZ2DyARNGQ&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 2,
-      "driver_name": "Jose",
-      "departure_time": "02:00",
-      "arrival_time": "06:10",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 92,00",
-      "flags": [
-        "Esgotará em breve"
-      ],
-      "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wtx8NFlVpSy2Sbrf0BV9-LA&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 3,
-      "driver_name": "Silas",
-      "departure_time": "02:00",
-      "arrival_time": "05:40",
-      "actual_departure": "Minas Gerais",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 109,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wIUYLVa5-TIyfteL9STchHQ&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 4,
-      "driver_name": "Mateus",
-      "departure_time": "04:00",
-      "arrival_time": "07:30",
-      "actual_departure": "São Gonçalo do Sapucaí",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 75,00",
-      "flags": [
-        "Super Driver"
-      ],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wiIww3R7LQ5i76D1CAlLmRQ&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 5,
-      "driver_name": "Jorge",
-      "departure_time": "04:00",
-      "arrival_time": "08:10",
-      "actual_departure": "Varginha",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 92,00",
-      "flags": [
-        "Esgotará em breve"
-      ],
-      "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wlZDPPiIIQCGuyMsiW1XFgg&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
-      "card_index": 6,
-      "driver_name": "Italo Airan",
-      "departure_time": "05:00",
-      "arrival_time": "09:10",
-      "actual_departure": "Três Corações",
+      "driver_name": "Celso",
+      "departure_time": "03:20",
+      "arrival_time": "04:40",
+      "actual_departure": "Vargem",
       "actual_arrival": "São Paulo",
       "price": null,
       "flags": [
@@ -152,48 +54,156 @@
       "profile_uuid_evidence": null
     },
     {
-      "card_index": 7,
-      "driver_name": "Diego",
-      "departure_time": "05:00",
-      "arrival_time": "09:00",
-      "actual_departure": "Varginha",
+      "card_index": 1,
+      "driver_name": "Jeferson",
+      "departure_time": "08:20",
+      "arrival_time": "09:50",
+      "actual_departure": "Extrema",
       "actual_arrival": "São Paulo",
-      "price": "R$ 85,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_wvg-tU9ToTtajKZkfAL6a3Q&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
+      "price": "R$ 42,00",
+      "flags": [
+        "Esgotará em breve",
+        "Super Driver"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=Py9rO7pyQKqtIfZ9UwR3Kwn_sEQUh3SlGo49uWlYzX4g&requested_seats=1&search_origin=SEARCH&search_uuid=3f2f6b3b-ba72-40aa-ad21-f67d5304772b",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 2,
+      "driver_name": "Luiz Carlos",
+      "departure_time": "11:00",
+      "arrival_time": "12:50",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Bernardo do Campo",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 3,
+      "driver_name": "Juninho",
+      "departure_time": "13:10",
+      "arrival_time": "14:50",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Paulo",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 4,
+      "driver_name": "Carlos",
+      "departure_time": "14:10",
+      "arrival_time": "15:40",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Paulo",
+      "price": "R$ 37,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=Py9rO7pyQKqtIfZ9UwR3KwRGrM0p12SviTElRMvfd2Qg&requested_seats=1&search_origin=SEARCH&search_uuid=3f2f6b3b-ba72-40aa-ad21-f67d5304772b",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 5,
+      "driver_name": "Carla Alexandra",
+      "departure_time": "15:20",
+      "arrival_time": "17:40",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Paulo",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 6,
+      "driver_name": "Tom",
+      "departure_time": "15:20",
+      "arrival_time": "17:20",
+      "actual_departure": "Extrema",
+      "actual_arrival": "Mauá",
+      "price": null,
+      "flags": [
+        "Cheio",
+        "Super Driver"
+      ],
+      "availability": "full",
+      "trip_href": null,
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 7,
+      "driver_name": "Paulo",
+      "departure_time": "19:50",
+      "arrival_time": "21:40",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Paulo",
+      "price": null,
+      "flags": [
+        "Cheio",
+        "Super Driver"
+      ],
+      "availability": "full",
+      "trip_href": null,
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
     },
     {
       "card_index": 8,
-      "driver_name": "Ivan Lucas",
-      "departure_time": "05:40",
-      "arrival_time": "09:20",
-      "actual_departure": "São Gonçalo do Sapucaí",
-      "actual_arrival": "São Paulo",
-      "price": "R$ 75,00",
+      "driver_name": "Eduardo",
+      "departure_time": "20:00",
+      "arrival_time": "22:00",
+      "actual_departure": "Extrema",
+      "actual_arrival": "São Bernardo do Campo",
+      "price": null,
       "flags": [
-        "Esgotará em breve",
+        "Cheio",
         "Super Driver"
       ],
-      "availability": "scarce",
-      "trip_href": "/trip?source=CARPOOLING&id=qfDJ__FiQbi2t5svKtXq_whb4JaPuxSe2HA_U-unX4QQ&requested_seats=1&search_origin=SEARCH&search_uuid=a9f0c9ff-f162-41b8-b6b7-9b2f2ad5eaff",
+      "availability": "full",
+      "trip_href": null,
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
     },
     {
       "card_index": 9,
-      "driver_name": "Francisco",
-      "departure_time": "05:50",
-      "arrival_time": "09:50",
-      "actual_departure": "Três Corações",
+      "driver_name": "Bruno",
+      "departure_time": "20:00",
+      "arrival_time": "21:40",
+      "actual_departure": "Extrema",
       "actual_arrival": "São Paulo",
       "price": null,
       "flags": [
-        "Cheio"
+        "Cheio",
+        "Super Driver"
       ],
       "availability": "full",
       "trip_href": null,
