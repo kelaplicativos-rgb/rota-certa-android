@@ -9,49 +9,74 @@ import androidx.compose.ui.platform.LocalContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 
+private val timelineExportJson0495 = Json {
+    encodeDefaults = true
+    explicitNulls = true
+}
+
 internal fun agendaTimelineDownloadJson0398(
-    entries: List<TripTimelineEntry>,
+    response: DriverTripSyncStateResponse0402?,
+    projectedBookings: List<Booking> = emptyList(),
+    selectedCanonicalTripIds: Set<String> = emptySet(),
     generatedAtMillis: Long = System.currentTimeMillis(),
 ): String = buildJsonObject {
-    put("schemaVersion", "2.0")
+    put("schemaVersion", "3.0")
     put("kind", "rota_certa_timeline")
     put("source", "CANONICAL_BACKEND")
     put("generatedAtMillis", generatedAtMillis)
+    put("canonicalSnapshotAtMillis", response?.snapshotAtMillis ?: 0L)
     put("collectorFallback", false)
     put("trips", buildJsonArray {
-        entries.sortedBy(TripTimelineEntry::departureAtMillis).forEach { entry ->
-            add(buildJsonObject {
-                put("canonicalTripId", entry.tripId)
-                put("canonicalRevision", entry.canonicalRevision0494)
-                put("canonicalStateHash", entry.canonicalStateHash0494)
-                put("remoteTripId", entry.remoteTripId0494)
-                put("profileUuid", entry.blablaProfileUuid.orEmpty())
-                put("blablaTripId", entry.blablaTripId.orEmpty())
-                put("profileLabel", entry.profileLabel)
-                put("departureAtMillis", entry.departureAtMillis)
-                put("arrivalAtMillis", entry.arrivalAtMillis ?: 0L)
-                put("origin", entry.origin)
-                put("destination", entry.destination)
-                put("status", entry.status.name)
-                put("operationalInventory", entry.capacity)
-                put("blablaPublishedSeats", entry.blablaPublishedSeats ?: -1)
-                put("rotaCertaSeatAllocation", entry.rotaCertaSeatAllocation ?: -1)
-                put("minimumOccupiedSeats", entry.minimumOccupiedSeats)
-                put("maximumOccupiedSeats", entry.maximumOccupiedSeats)
-                put("availableSeatsMinimum", entry.canonicalAvailableSeatsMinimum0494 ?: -1)
-                put("availableSeatsMaximum", entry.canonicalAvailableSeatsMaximum0494 ?: -1)
-                put("blockedSeats", entry.operationalBlockedSeats)
-                put("overbookingSeats", entry.canonicalOverbookingSeats0494)
-                put("canonicalBackendAuthoritative", entry.canonicalBackendAuthoritative0494)
-                put("canonicalUpdatedAtMillis", entry.canonicalUpdatedAtMillis0494)
-                put("issues", entry.issues.joinToString(",") { it.name })
-                put("sourceSeatCounts", entry.sourcePassengerSeats.entries.joinToString(",") { (source, seats) -> "${source.name}:$seats" })
-            })
-        }
+        response?.trips
+            .orEmpty()
+            .asSequence()
+            .filter { state ->
+                val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }
+                selectedCanonicalTripIds.isEmpty() || canonicalId in selectedCanonicalTripIds
+            }
+            .sortedBy(DriverTripSyncState0402::departureAtMillis)
+            .forEach { state ->
+                val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }
+                val canonical = timelineExportJson0495
+                    .encodeToJsonElement(DriverTripSyncState0402.serializer(), state)
+                    .jsonObject
+                add(buildJsonObject {
+                    canonical.forEach { (key, value) -> put(key, value) }
+                    put("localMetadata", buildJsonObject {
+                        put("authority", "LOCAL_METADATA")
+                        put("bookings", buildJsonArray {
+                            projectedBookings
+                                .asSequence()
+                                .filter { it.tripId == canonicalId }
+                                .filter { booking ->
+                                    booking.fareMinorUnits != null ||
+                                        booking.fareCurrencyCode.isNotBlank() ||
+                                        booking.boardingAddress.isNotBlank() ||
+                                        booking.dropoffAddress.isNotBlank() ||
+                                        booking.localMetadataTouched
+                                }
+                                .sortedBy(Booking::id)
+                                .forEach { booking ->
+                                    add(buildJsonObject {
+                                        put("bookingId", booking.id)
+                                        booking.fareMinorUnits?.let { put("fareMinorUnits", it) }
+                                        put("fareCurrencyCode", booking.fareCurrencyCode)
+                                        put("boardingAddress", booking.boardingAddress)
+                                        put("dropoffAddress", booking.dropoffAddress)
+                                        put("localMetadataTouched", booking.localMetadataTouched)
+                                        put("hasCancellationToken", booking.cancellationToken != null)
+                                    })
+                                }
+                        })
+                    })
+                })
+            }
     })
 }.toString()
 
@@ -64,11 +89,20 @@ internal fun agendaTimelineDownloadFileName0398(nowMillis: Long = System.current
 @Composable
 internal fun AgendaTimelineDownloadAction0399(
     entries: List<TripTimelineEntry>,
+    canonicalResponse0494: DriverTripSyncStateResponse0402?,
+    canonicalBookings0494: List<Booking>,
     triggerToken: Int,
     onChanged: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val payload = remember(entries) { agendaTimelineDownloadJson0398(entries) }
+    val selectedCanonicalTripIds = remember(entries) { entries.map(TripTimelineEntry::tripId).toSet() }
+    val payload = remember(canonicalResponse0494, canonicalBookings0494, selectedCanonicalTripIds) {
+        agendaTimelineDownloadJson0398(
+            response = canonicalResponse0494,
+            projectedBookings = canonicalBookings0494,
+            selectedCanonicalTripIds = selectedCanonicalTripIds,
+        )
+    }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
