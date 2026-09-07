@@ -237,7 +237,7 @@ jobs:
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel?verify=$GITHUB_SHA" | tee /tmp/live-public-agenda-0500.json
           grep -Fq '"segmentAvailability"' /tmp/live-public-agenda-0500.json
           grep -Fq '"passengerSeats"' /tmp/live-public-agenda-0500.json
-          ! grep -Eiq '"(passengerName|passengerContact|passengerId|sourceReference|fareMinorUnits|paymentStatus|boardingAddress|dropoffAddress|bookings|blablaTripId)"[[:space:]]*:' /tmp/live-public-agenda-0500.json
+          ! grep -Eiq '"(passengerName|passengerContact|passengerId|sourceReference|fareMinorUnits|paymentStatus|boardingAddress|dropoffAddress|bookings|blablaTripId|whatsapp)"[[:space:]]*:' /tmp/live-public-agenda-0500.json
 
           propagated=false
           for attempt in $(seq 1 18); do
@@ -295,6 +295,7 @@ jobs:
           public_segment_vacancies=SERVER_CANONICAL
           public_payload_allowlist=PASS
           public_passenger_pii=ABSENT
+          public_driver_whatsapp=ABSENT
           incomplete_collector_snapshot=DOES_NOT_ZERO_VALID_OCCUPANCY
           timeline_provenance_policy=BLABLACAR_BLOCK_ALL_0500
           timeline_source=CANONICAL_NATIVE_FIREWALL

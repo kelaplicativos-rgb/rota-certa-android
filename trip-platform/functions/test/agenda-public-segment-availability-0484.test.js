@@ -258,3 +258,10 @@ test("0500 public Agenda projection allowlist removes passenger/private/admin da
     "sourceReference", "passengerId", "passengerName", "paymentStatus", "fareMinorUnits",
   ]) assert.equal(serialized.includes(forbidden), false, forbidden);
 });
+
+
+test("0500 anonymous public driver projection never serializes WhatsApp or driver phone", () => {
+  const profile = between(api, "function safePublicDriverProfile", "function publicProjectionAttestedCurrent0429");
+  assert.doesNotMatch(profile, /profile\.whatsapp/);
+  assert.doesNotMatch(profile, /driverWhatsapp/);
+});

@@ -3706,7 +3706,6 @@ function safePublicDriverProfile(data, username = "") {
     username: normalizeUsername(username || driver.username || ""),
   };
   if (visibility.name) profile.displayName = cleanText(driver.displayName, 120);
-  if (visibility.whatsapp) profile.whatsapp = cleanText(driver.driverWhatsapp, 24);
   if (visibility.photo) {
     const photo = cleanText(driver.driverPhotoUrl, 500);
     profile.photoUrl = photo.startsWith("https://") ? photo : "";
