@@ -1526,7 +1526,24 @@ function canonicalSegmentVector0497(primaryRaw, fallbackRaw, expectedSegments) {
 function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data) {
   const payload = canonicalPublicTripPayloadFromStored0434(data && data.canonicalPublicProjection0434);
   const expectedSegments = Math.max(0, (Array.isArray(payload.stops) ? payload.stops.length : 0) - 1);
-  const segmentLoads = canonicalSegmentVector0497(data && data.segmentLoads, payload.segmentLoads, expectedSegments);
+  // 0501: restore the collector-backed vacancy baseline from the public projection.
+  // 0497 still owns the live anonymous passenger dots; root segmentLoads may contain
+  // operational claims that are not BlaBlaCar public vacancy consumption.
+  const collectorSegmentLoads0501 = canonicalSegmentVector0497(
+    payload.segmentLoads,
+    data && data.segmentLoads,
+    expectedSegments,
+  );
+  const storedPassengerLoads0501 = canonicalSegmentVector0497(
+    payload.segmentPassengerLoads,
+    data && data.segmentPassengerLoads,
+    expectedSegments,
+  );
+  const currentSegmentLoads0501 = canonicalSegmentVector0497(
+    data && data.segmentLoads,
+    payload.segmentLoads,
+    expectedSegments,
+  );
   const segmentBlockedLoads = canonicalSegmentVector0497(
     data && data.segmentBlockedLoads,
     payload.segmentBlockedLoads,
@@ -1538,8 +1555,8 @@ function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data
     expectedSegments,
   );
 
-  if (segmentPassengerLoads.length !== expectedSegments && segmentLoads.length === expectedSegments) {
-    segmentPassengerLoads = segmentLoads.map((load, index) =>
+  if (segmentPassengerLoads.length !== expectedSegments && currentSegmentLoads0501.length === expectedSegments) {
+    segmentPassengerLoads = currentSegmentLoads0501.map((load, index) =>
       Math.max(0, Number(load || 0) - Math.max(0, Number(segmentBlockedLoads[index] || 0)))
     );
   }
@@ -1551,9 +1568,9 @@ function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data
   if (
     expectedSegments > 0 &&
     confirmedPassengerSeats > passengerMaximum &&
-    segmentLoads.length === expectedSegments
+    currentSegmentLoads0501.length === expectedSegments
   ) {
-    const derivedPassengerLoads = segmentLoads.map((load, index) =>
+    const derivedPassengerLoads = currentSegmentLoads0501.map((load, index) =>
       Math.max(0, Number(load || 0) - Math.max(0, Number(segmentBlockedLoads[index] || 0)))
     );
     if (
@@ -1564,9 +1581,20 @@ function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data
     }
   }
 
-  const capacityReliable = typeof (data && data.capacityReliable) === "boolean"
-    ? data.capacityReliable === true
-    : payload.capacityReliable === true;
+  const segmentLoads = collectorSegmentLoads0501.length === expectedSegments &&
+    storedPassengerLoads0501.length === expectedSegments &&
+    segmentPassengerLoads.length === expectedSegments
+    ? collectorSegmentLoads0501.map((load, index) => Math.max(
+        0,
+        Number(load || 0) +
+          Number(segmentPassengerLoads[index] || 0) -
+          Number(storedPassengerLoads0501[index] || 0),
+      ))
+    : collectorSegmentLoads0501;
+
+  // The collector-backed public projection remains the authority for whether
+  // per-segment vacancies are proven. Root occupancy reliability is private state.
+  const capacityReliable = payload.capacityReliable === true;
   const capacityState = canonicalPublicCapacityState0485({
     capacity: payload.capacity,
     status: payload.status,

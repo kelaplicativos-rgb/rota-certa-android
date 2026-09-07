@@ -199,6 +199,58 @@ test("0484 public labels are exact and privacy-safe", () => {
 });
 
 
+test("0501 collector vacancies stay explicit while live canonical dots update", () => {
+  const source = between(api, "function canonicalSegmentVector0497", "function canonicalPublicTripPayload0411");
+  const compiled = Function(
+    `function canonicalPublicTripPayloadFromStored0434(raw) { return raw; }
+function canonicalPublicCapacityState0485(input) {
+  const available = (input.segmentLoads || []).map((load) => Math.max(0, Number(input.capacity || 0) - Number(load || 0)));
+  return {
+    availableSeatsMinimum: available.length ? Math.min(...available) : 0,
+    availableSeatsMaximum: available.length ? Math.max(...available) : 0,
+    reliable: input.capacityReliable === true,
+  };
+}
+` + source + "\nreturn { canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497 };"
+  )();
+
+  const payload = {
+    capacity: 4,
+    status: "PUBLISHED",
+    stops: [{ name: "A" }, { name: "B" }, { name: "C" }],
+    segmentLoads: [0, 3],
+    segmentPassengerLoads: [0, 3],
+    segmentBlockedLoads: [0, 0],
+    capacityReliable: true,
+  };
+  const projected = compiled.canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497("trip", {
+    canonicalPublicProjection0434: payload,
+    segmentLoads: [4, 4],
+    segmentPassengerLoads: [1, 3],
+    segmentBlockedLoads: [3, 1],
+    confirmedPassengerSeats: 3,
+    capacityReliable: false,
+  });
+
+  assert.deepEqual(projected.segmentPassengerLoads, [1, 3]);
+  assert.deepEqual(projected.segmentLoads, [1, 3]);
+  assert.equal(projected.capacityReliable, true);
+
+  const { publicSegmentAvailability0484 } = compilePublicSegments();
+  assert.deepEqual(
+    publicSegmentAvailability0484(
+      { capacity: projected.capacity, stops: projected.stops },
+      projected.segmentLoads,
+      projected.capacityReliable,
+      projected.segmentPassengerLoads,
+    ),
+    [
+      { from: "A", to: "B", availableSeats: 3, passengerSeats: 1 },
+      { from: "B", to: "C", availableSeats: 1, passengerSeats: 3 },
+    ],
+  );
+});
+
 test("0500 capacity 4 preserves exact anonymous occupancy 0..4 and vacancies 4..0", () => {
   const { publicSegmentAvailability0484 } = compilePublicSegments();
   for (let occupied = 0; occupied <= 4; occupied += 1) {
