@@ -1,0 +1,249 @@
+name: Rota Certa 0.1.494 Timeline canonical backend authority
+
+on:
+  push:
+    branches:
+      - agent/timeline-canonical-backend-authority-0.1.494
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: timeline-canonical-backend-0494-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      GOOGLE_MAPS_API_KEY: timeline_canonical_backend_0494_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      BASE_AUTHORITY_SHA: db7c311be3cb1bc6b004e61106f8cf9d235ab286
+      EXPECTED_VERSION_CODE: '5786'
+      EXPECTED_VERSION_NAME: '0.1.494'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source lineage and protected surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_HEAD="$(git rev-parse HEAD)"
+          test "$SOURCE_HEAD" = "$GITHUB_SHA"
+          printf '%s\n' "$SOURCE_HEAD" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_HEAD" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- "$FAROL"
+          git diff --exit-code "$BASE_AUTHORITY_SHA" -- trip-platform/public trip-platform/firebase.json trip-platform/firestore.rules
+
+          git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee /tmp/changed-files.txt
+          ! grep -Fxq "$FAROL" /tmp/changed-files.txt
+          ! grep -E '^trip-platform/public/' /tmp/changed-files.txt
+          ! grep -Fxq 'trip-platform/firebase.json' /tmp/changed-files.txt
+          ! grep -Fxq 'trip-platform/firestore.rules' /tmp/changed-files.txt
+
+          grep -Fq 'loadCanonicalTimelineState0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'BlaBlaTimelineAdapter.merge(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'TripPhysicalRideConsolidator.consolidate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'timeline-ext-' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'externalSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'source = "CANONICAL_BACKEND"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'applyCanonicalTimelinePhysicalIssues0494' trip-platform/functions/index.js
+          grep -Fq 'TIMELINE_CANONICAL_PASSENGER_MUTATION_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'TIMELINE_CANONICAL_PASSENGER_ADD_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+
+          bash .github/scripts/verify-agenda-public-freeze-0482.sh
+          sha256sum "$FAROL" | tee /tmp/farol.sha256
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate canonical backend and architecture tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --test             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js             | tee /tmp/node-tests.log
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Timeline canonical Android regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+
+          ./gradlew :app:compileDebugUnitTestKotlin             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-compile.log
+
+      - name: Assemble exact-head installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+
+      - name: Configure exact-SHA Firebase deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy exact SHA canonical trip-api only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+          fi
+          printf '%s\n' "$GITHUB_SHA" > /tmp/deployed-source-head.txt
+
+      - name: Smoke canonical backend availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.json
+          grep -Fq '"ok":true' /tmp/live-health.json
+
+          CODE="$(curl --silent --show-error -o /tmp/driver-auth-boundary.json -w "%{http_code}" "$BASE/v1/driver/trips/sync-state?timelineProjection=1")"
+          test "$CODE" = "401"
+
+      - name: Materialize final APK and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/0494
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          cp "$APK" "/tmp/0494/rota-certa-$EXPECTED_VERSION_NAME-timeline-canonical-backend.apk"
+          sha256sum "/tmp/0494/rota-certa-$EXPECTED_VERSION_NAME-timeline-canonical-backend.apk" | tee /tmp/0494/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0494/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0494/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0494/
+          cp /tmp/deployed-source-head.txt /tmp/live-health.json /tmp/driver-auth-boundary.json /tmp/0494/
+
+          cat > /tmp/0494/final-status.txt <<EOF
+          canonical_timeline_backend_authority=PASS
+          collector_direct_timeline_datasource=ABSENT
+          timeline_ext_projection=ABSENT_FROM_ACTIVE_TIMELINE
+          canonical_trip_identity=ENFORCED
+          canonical_revision_regression=REJECTED
+          passenger_actions=CANONICAL_BACKEND_FIRST
+          manual_trip_requires_blablacar=false
+          physical_continuity_authority=CANONICAL_BACKEND
+          backend_offline_collector_fallback=false
+          agenda_public_frozen=PASS
+          farol_untouched=PASS
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          deployed_trip_api_sha=$GITHUB_SHA
+          merge=false
+          release=false
+          latest=false
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+          cat /tmp/0494/final-status.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.494-timeline-canonical-backend-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0494
