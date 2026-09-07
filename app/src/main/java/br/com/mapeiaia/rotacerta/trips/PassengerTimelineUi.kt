@@ -827,8 +827,8 @@ internal fun EnhancedPassengerTimelineSection(
         val currentTrip = trip
         val booking = currentTrip?.let { selectedTrip ->
             row.localBookingId?.let { bookingId ->
-                store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
-                    candidate.id == bookingId &&
+                renderSnapshot.bookingsById[bookingId]?.takeIf { candidate ->
+                    candidate.tripId == selectedTrip.id &&
                         candidate.source in setOf(BookingSource.ROTA_CERTA, BookingSource.PRIVATE, BookingSource.OTHER) &&
                         candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
                         candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD)
@@ -839,54 +839,27 @@ internal fun EnhancedPassengerTimelineSection(
             ManualPassengerOccupancyEditorDialog(
                 trip = currentTrip,
                 booking = booking,
-                existingBookings = store.bookingsFor(currentTrip.id),
+                existingBookings = renderSnapshot.bookingsById.values.filter { it.tripId == currentTrip.id },
                 onDismiss = { editManualRow = null },
                 onSave = { updated ->
                     scope.launch {
                         runCatching {
-                            val settings0491 = store.onlineSettings()
-                            val remoteId0491 = currentTrip.remoteId?.takeIf(String::isNotBlank)
-                            val syncOnline0491 = settings0491.configured && remoteId0491 != null
-                            val remoteAck0491 = if (syncOnline0491) {
-                                if (updated.source == BookingSource.ROTA_CERTA) {
-                                    TripRemoteApi(settings0491).updateProtectedDriverBooking(remoteId0491!!, updated)
-                                } else {
-                                    TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, updated)
-                                }
+                            val settings0494 = store.onlineSettings()
+                            val remoteId0494 = currentTrip.remoteId?.takeIf(String::isNotBlank)
+                                ?: error("Viagem sem identidade remota canônica.")
+                            check(settings0494.configured) { "Backend canônico indisponível." }
+                            val ack0494 = if (updated.source == BookingSource.ROTA_CERTA) {
+                                TripRemoteApi(settings0494).updateProtectedDriverBooking(remoteId0494, updated)
                             } else {
-                                null
+                                TripRemoteApi(settings0494).upsertDriverBooking(remoteId0494, updated)
                             }
-                            store.saveBooking(updated)
-                            val queued0491 = if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
-                                mutationCoordinator.recordRemoteAppliedLocal(
-                                    canonicalTripId = currentTrip.id,
-                                    revision = remoteAck0491.entityRevision,
-                                    mutationType = "BOOKING_CHANGED_BY_DRIVER",
-                                    source = "TIMELINE_BOOKING_EDIT",
-                                )
-                                null
-                            } else if (!syncOnline0491) {
-                                when (resolvedTripRecordOrigin(currentTrip)) {
-                                    TripRecordOrigin.EXTERNAL_BACKING -> currentTrip.externalSnapshot?.let { sourceTrip ->
-                                        mutationCoordinator.recordExternalManualMutation(
-                                            sourceTrip = sourceTrip,
-                                            configuredRotaCertaSeatAllocation = currentTrip.rotaCertaSeatAllocation ?: 0,
-                                            mutationType = "BOOKING_CHANGED_BY_DRIVER",
-                                        )
-                                    }
-                                    TripRecordOrigin.LOCAL -> mutationCoordinator.recordLocalMutation(
-                                        canonicalTripId = currentTrip.id,
-                                        mutationType = "BOOKING_CHANGED_BY_DRIVER",
-                                        source = "TIMELINE_BOOKING_EDIT",
-                                    )
-                                }
-                            } else {
-                                null
-                            }
-                            if (queued0491 != null) {
-                                AgendaBackgroundSync0392.enqueueImmediate(context, "booking_changed_by_driver")
-                            }
+                            UnifiedDebugEventStore.record(
+                                "TIMELINE_CANONICAL_BOOKING_EDIT_0494",
+                                context.packageName,
+                                "canonicalTripId=${seatSyncDiagnosticKey(currentTrip.id)} entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                            )
                             BookingRealtimeEvents0356.notifyChanged()
+
                         }.onSuccess {
                             editManualRow = null
                             onChanged("Passageiro atualizado. Vagas por trecho recalculadas no estado canônico.")
@@ -1304,7 +1277,7 @@ private fun PassengerAddressEditorDialog(
 private fun ManualPassengerOccupancyEditorDialog(
     trip: Trip,
     booking: Booking,
-    existingBookings: List<Booking>,
+    @Suppress("UNUSED_PARAMETER") existingBookings: List<Booking>,
     onDismiss: () -> Unit,
     onSave: (Booking) -> Unit,
     onError: (String) -> Unit,
@@ -1318,15 +1291,6 @@ private fun ManualPassengerOccupancyEditorDialog(
     val fromIndex = stops.indexOfFirst { it.id == fromId }
     val toIndex = stops.indexOfFirst { it.id == toId }
     val valid = fromIndex >= 0 && toIndex > fromIndex
-    val availability = if (valid) runCatching {
-        SeatAvailabilityEngine.availability(
-            trip,
-            existingBookings.filterNot { it.id == booking.id },
-            fromId,
-            toId,
-            seats,
-        )
-    }.getOrNull() else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1367,10 +1331,10 @@ private fun ManualPassengerOccupancyEditorDialog(
                     OutlinedButton(onClick = { if (seats < trip.capacity) seats++ }) { Text("+") }
                 }
                 Text(
-                    when {
-                        !valid -> "Selecione embarque e destino."
-                        availability?.canBook == true -> "${availability.availableSeats} vaga(s) disponíveis neste trecho antes da alteração."
-                        else -> "Sem capacidade física para essa alteração."
+                    if (valid) {
+                        "A capacidade deste trecho será validada pelo backend canônico ao salvar."
+                    } else {
+                        "Selecione embarque e destino."
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -1378,18 +1342,16 @@ private fun ManualPassengerOccupancyEditorDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = valid && availability?.canBook == true,
+                enabled = valid && seats in 1..999,
                 onClick = {
                     runCatching {
-                        QuickPassengerEngine.updateManualBooking(
-                            trip = trip,
-                            existingBookings = existingBookings,
-                            booking = booking,
+                        booking.copy(
                             boardingStopId = fromId,
                             dropoffStopId = toId,
                             seats = seats,
+                            updatedAtMillis = System.currentTimeMillis(),
                         )
-                    }.onSuccess(onSave).onFailure { onError(it.message ?: "Não foi possível atualizar o passageiro.") }
+                    }.onSuccess(onSave).onFailure { onError(it.message ?: "Não foi possível preparar a alteração.") }
                 },
             ) { Text("Salvar") }
         },
