@@ -3727,6 +3727,150 @@ function selectCanonicalTripDocuments0495(docs) {
 }
 
 
+function canonicalBookingIdentityKeys0495(record) {
+  const raw = record || {};
+  const keys = [];
+  const id = cleanText(raw.id, 120);
+  const occupancyGroupId = cleanText(raw.occupancyGroupId, 120);
+  const sourceReference = cleanText(raw.sourceReference, 240);
+  const passengerId = cleanText(raw.passengerId, 120);
+  const boardingStopId = cleanText(raw.boardingStopId, 80);
+  const dropoffStopId = cleanText(raw.dropoffStopId, 80);
+  if (id) keys.push("booking:" + id);
+  if (occupancyGroupId) keys.push("occupancy:" + occupancyGroupId);
+  if (sourceReference) keys.push("source:" + sourceReference);
+  if (passengerId && boardingStopId && dropoffStopId) {
+    keys.push("passenger-segment:" + passengerId + ":" + boardingStopId + ":" + dropoffStopId);
+  }
+  return [...new Set(keys)];
+}
+
+function canonicalBookingCompatible0495(left, right) {
+  const a = left || {};
+  const b = right || {};
+  for (const field of ["occupancyGroupId", "sourceReference", "passengerId"]) {
+    const av = cleanText(a[field], field === "sourceReference" ? 240 : 120);
+    const bv = cleanText(b[field], field === "sourceReference" ? 240 : 120);
+    if (av && bv && av !== bv) return false;
+  }
+  return true;
+}
+
+async function migrateLegacyCanonicalTrip0495(legacyRef, winnerRef) {
+  return await db.runTransaction(async (tx) => {
+    const [legacySnap, winnerSnap, legacyBookingsSnap, winnerBookingsSnap] = await Promise.all([
+      tx.get(legacyRef),
+      tx.get(winnerRef),
+      tx.get(legacyRef.collection("bookings").limit(250)),
+      tx.get(winnerRef.collection("bookings").limit(250)),
+    ]);
+    if (!legacySnap.exists || !winnerSnap.exists) {
+      return { changed: false, migratedBookings: 0, conflict: false };
+    }
+    const legacy = legacySnap.data();
+    const winner = winnerSnap.data();
+    const winnerCanonicalTripId = cleanText(
+      winner.canonicalTripId || winner.localTripId || winnerRef.id,
+      180,
+    );
+    if (
+      legacy.publicationTombstone === true &&
+      cleanText(legacy.supersededByCanonicalTripId0495, 180) === winnerCanonicalTripId
+    ) {
+      return { changed: false, migratedBookings: 0, conflict: false };
+    }
+
+    const winnerRecords = winnerBookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const winnerByKey = new Map();
+    winnerRecords.forEach((record) => {
+      canonicalBookingIdentityKeys0495(record).forEach((key) => {
+        if (!winnerByKey.has(key)) winnerByKey.set(key, record);
+      });
+    });
+
+    const migratedRecords = [...winnerRecords];
+    const remaps = [];
+    for (const legacyDoc of legacyBookingsSnap.docs) {
+      const legacyRecord = { id: legacyDoc.id, ...legacyDoc.data() };
+      const matches = canonicalBookingIdentityKeys0495(legacyRecord)
+        .map((key) => winnerByKey.get(key))
+        .filter(Boolean);
+      const winnerRecord = matches[0] || null;
+      if (winnerRecord && !canonicalBookingCompatible0495(legacyRecord, winnerRecord)) {
+        return { changed: false, migratedBookings: 0, conflict: true };
+      }
+      const targetBookingId = winnerRecord ? winnerRecord.id : legacyRecord.id;
+      if (!winnerRecord) {
+        const persisted = { ...legacyRecord, tripId: winnerRef.id };
+        delete persisted.id;
+        tx.set(winnerRef.collection("bookings").doc(targetBookingId), persisted, { merge: false });
+        const appended = { id: targetBookingId, ...persisted };
+        migratedRecords.push(appended);
+        canonicalBookingIdentityKeys0495(appended).forEach((key) => {
+          if (!winnerByKey.has(key)) winnerByKey.set(key, appended);
+        });
+      }
+      remaps.push({
+        legacyBookingId: legacyRecord.id,
+        targetBookingId,
+        passengerContact: cleanText(legacyRecord.passengerContact, 40),
+        passengerId: cleanText(legacyRecord.passengerId, 120),
+      });
+    }
+
+    const now = Date.now();
+    remaps.forEach((remap) => {
+      if (remap.passengerContact) {
+        tx.delete(passengerBookingIndexRef(remap.passengerContact, legacyRef.id, remap.legacyBookingId));
+        writePassengerBookingIndex(tx, remap.passengerContact, winnerRef.id, remap.targetBookingId, now);
+      }
+      if (remap.passengerId) {
+        tx.delete(passengerBookingIdentityIndexRef0491(remap.passengerId, legacyRef.id, remap.legacyBookingId));
+        writePassengerBookingIdentityIndex0491(tx, remap.passengerId, winnerRef.id, remap.targetBookingId, now);
+      }
+    });
+
+    const capacityState = reconciledSegmentCapacity(winner, migratedRecords, now);
+    const loads = capacityState.loads;
+    const publicationRevision = Math.max(
+      1,
+      Math.max(0, Number(winner.publicationRevision || 0)),
+      Math.max(0, Number(legacy.publicationRevision || 0)),
+    ) + 1;
+    const preservedStatus = ["COMPLETED", "CANCELLED"].includes(cleanText(winner.status, 24));
+    const nextStatus = preservedStatus
+      ? cleanText(winner.status, 24)
+      : statusForReconciledLoads(winner, loads);
+    const winnerPatch = canonicalServerProjectionPatch0468(
+      winnerRef.id,
+      winner,
+      {
+        ...canonicalCapacityPersistence(winner, migratedRecords, capacityState, now),
+        status: nextStatus,
+        bookingsCount: migratedRecords.length,
+        publicationRevision,
+        publicationTombstone: false,
+      },
+      publicationRevision,
+      now,
+    );
+    tx.set(winnerRef, winnerPatch, { merge: true });
+    tx.set(legacyRef, {
+      publicationTombstone: true,
+      status: "CANCELLED",
+      legacyProjectionState0495: "SUPERSEDED",
+      supersededByCanonicalTripId0495: winnerCanonicalTripId,
+      supersededAtMillis0495: now,
+      updatedAtMillis: now,
+    }, { merge: true });
+    return {
+      changed: true,
+      migratedBookings: Math.max(0, migratedRecords.length - winnerRecords.length),
+      conflict: false,
+    };
+  });
+}
+
 async function convergeLegacyCanonicalTripDocuments0495(docs) {
   const all = Array.isArray(docs) ? docs : [];
   const canonicalDocs = all.filter((doc) => !canonicalTripLegacyProjection0495(doc));
@@ -3740,58 +3884,37 @@ async function convergeLegacyCanonicalTripDocuments0495(docs) {
       });
     });
 
-  const plans = [];
+  let migrated = 0;
+  let migratedBookings = 0;
   let unresolvedLegacy = 0;
-  let protectedLegacy = 0;
-  all.filter(canonicalTripLegacyProjection0495).forEach((legacy) => {
-    const data = legacy.data();
+  let bookingConflicts = 0;
+  for (const legacy of all.filter(canonicalTripLegacyProjection0495)) {
     const winner = canonicalTripIdentityKeys0495(legacy)
       .map((key) => canonicalKeyOwners.get(key))
       .find(Boolean);
     if (!winner) {
       unresolvedLegacy++;
-      return;
+      continue;
     }
-    if (Math.max(0, Number(data.bookingsCount || 0)) > 0) {
-      protectedLegacy++;
-      return;
+    const result = await migrateLegacyCanonicalTrip0495(legacy.ref, winner.ref);
+    if (result.conflict) {
+      bookingConflicts++;
+      continue;
     }
-    const winnerData = winner.data();
-    const winnerCanonicalTripId = cleanText(
-      winnerData.canonicalTripId || winnerData.localTripId || winner.id,
-      180,
-    );
-    if (
-      data.publicationTombstone === true &&
-      cleanText(data.supersededByCanonicalTripId0495, 180) === winnerCanonicalTripId
-    ) return;
-    plans.push({ legacy, winnerCanonicalTripId });
-  });
-
-  if (plans.length) {
-    const now = Date.now();
-    const batch = db.batch();
-    plans.forEach(({ legacy, winnerCanonicalTripId }) => {
-      batch.set(legacy.ref, {
-        publicationTombstone: true,
-        status: "CANCELLED",
-        legacyProjectionState0495: "SUPERSEDED",
-        supersededByCanonicalTripId0495: winnerCanonicalTripId,
-        supersededAtMillis0495: now,
-        updatedAtMillis: now,
-      }, { merge: true });
-    });
-    await batch.commit();
+    if (result.changed) migrated++;
+    migratedBookings += Math.max(0, Number(result.migratedBookings || 0));
   }
-  if (plans.length || unresolvedLegacy || protectedLegacy) {
-    console.log("CANONICAL_TRIP_SUPERSEDED", {
-      migrated: plans.length,
+
+  if (migrated || migratedBookings || unresolvedLegacy || bookingConflicts) {
+    console.log("LEGACY_TRIP_SUPERSEDED", {
+      migrated,
+      migratedBookings,
       unresolvedLegacy,
-      protectedLegacy,
+      bookingConflicts,
       source: "STRONG_IDENTITY_ONLY_0495",
     });
   }
-  return { migrated: plans.length, unresolvedLegacy, protectedLegacy };
+  return { migrated, migratedBookings, unresolvedLegacy, bookingConflicts };
 }
 
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
