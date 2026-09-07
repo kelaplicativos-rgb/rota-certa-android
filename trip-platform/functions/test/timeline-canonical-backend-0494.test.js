@@ -45,6 +45,7 @@ test("0494 physical overlap is diagnosed by canonical backend, not Timeline", ()
   const trips = validate([
     {
       canonicalTripId: "a",
+      blablaProfileUuid: "profile-same",
       departureAtMillis: 1000,
       arrivalAtMillis: 5000,
       stops: [stop("A"), stop("B")],
@@ -52,6 +53,7 @@ test("0494 physical overlap is diagnosed by canonical backend, not Timeline", ()
     },
     {
       canonicalTripId: "b",
+      blablaProfileUuid: "profile-same",
       departureAtMillis: 4000,
       arrivalAtMillis: 7000,
       stops: [stop("B"), stop("C")],
@@ -67,6 +69,7 @@ test("0494 trusted coordinate discontinuity is diagnosed without text geocoding"
   const trips = validate([
     {
       canonicalTripId: "a",
+      blablaProfileUuid: "profile-same",
       departureAtMillis: 1000,
       arrivalAtMillis: 2000,
       stops: [stop("A", -23.5, -46.6), stop("B", -22.1, -45.0)],
@@ -74,6 +77,7 @@ test("0494 trusted coordinate discontinuity is diagnosed without text geocoding"
     },
     {
       canonicalTripId: "b",
+      blablaProfileUuid: "profile-same",
       departureAtMillis: 3000,
       arrivalAtMillis: 4000,
       stops: [stop("C", -23.7, -46.5), stop("D", -24.0, -47.0)],
