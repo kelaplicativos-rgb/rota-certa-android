@@ -467,6 +467,8 @@ fun TripTimelineScreen(
 
     AgendaTimelineDownloadAction0399(
         entries = visibleEntries,
+        canonicalResponse0494 = canonicalResponse0494,
+        canonicalBookings0494 = canonicalBookings0494,
         triggerToken = downloadRequestToken0399,
         onChanged = onCanonicalChanged0495,
     )
