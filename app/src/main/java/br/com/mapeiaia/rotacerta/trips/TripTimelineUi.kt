@@ -409,6 +409,8 @@ fun TripTimelineScreen(
         resumeRequestToken = addPassengerResumeToken,
         resumePassengerId = addPassengerResumePassengerId,
         resumeTripId = addPassengerResumeTripId,
+        canonicalTrips0494 = canonicalTrips0494,
+        canonicalBookings0494 = canonicalBookings0494,
     )
 
     if (canonicalBackendStale0494) {
@@ -1678,11 +1680,14 @@ private fun TimelineEntryCard(
                 focusedBookingId = focusedBookingId,
                 canonicalBookings0494 = bookingsSnapshot0432,
                 onAddManualPassenger = {
-                    runCatching { prepareTimelineTripForPassenger(entry, store) }
-                        .onSuccess { preparation -> directPassengerTrip = preparation.trip }
-                        .onFailure { error ->
-                            onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
-                        }
+                    when {
+                        entry.canonicalBackendAuthoritative0494 && trip != null -> directPassengerTrip = trip
+                        else -> runCatching { prepareTimelineTripForPassenger(entry, store) }
+                            .onSuccess { preparation -> directPassengerTrip = preparation.trip }
+                            .onFailure { error ->
+                                onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
+                            }
+                    }
                 },
             )
 
@@ -1766,18 +1771,14 @@ private fun TimelineEntryCard(
             store = store,
             onChanged = onChanged,
             onTargetSync = {
-                runCatching {
-                    mutationCoordinator.recordLocalMutation(
-                        canonicalTripId = selectedTrip.id,
-                        mutationType = "PASSENGER_MUTATION",
-                        source = "TIMELINE_QUICK_PASSENGER",
-                    )
-                    AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
-                }.onFailure { error ->
-                    onChanged("Alteração salva; atualização automática pendente: ${error.message ?: "erro de persistência"}")
-                }
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_CANONICAL_EXTERNAL_SYNC_SKIPPED_0494",
+                    context.packageName,
+                    "canonicalTripId=${seatSyncDiagnosticKey(selectedTrip.id)} reason=canonical_backend_authority",
+                )
             },
             onDismiss = { directPassengerTrip = null },
+            canonicalBookings0494 = bookingsSnapshot0432,
         )
     }
 }
