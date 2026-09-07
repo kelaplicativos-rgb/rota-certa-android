@@ -8063,62 +8063,177 @@ async function updateDriverTripPublicVisibility0491(req, res, token) {
 async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
+  const includePastForVerification = cleanText(req.query && req.query.includePastForVerification, 8) === "1";
+  const timelineProjection0494 = cleanText(req.query && req.query.timelineProjection, 8) === "1";
+  let query = db.collection("trips").where("driverUsername", "==", driver.username).limit(300);
+  const snapshot = await query.get();
   const now = Date.now();
-  const includePastForVerification = String(
-    req.query && req.query.includePastForVerification || "",
-  ).trim().toLowerCase() === "1";
-  try {
-    const snapshot = await db.collection("trips")
-      .where("driverUsername", "==", driver.username)
-      .limit(300)
-      .get();
-    const trips = snapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        const segmentLoads = Array.isArray(data.segmentLoads) ? data.segmentLoads : [];
-        const availability = capacityAvailabilityRange(data, segmentLoads);
-        const operationalAvailableSeats = Number.isInteger(Number(data.operationalAvailableSeats))
-          ? Math.max(0, Number(data.operationalAvailableSeats))
-          : Math.max(0, Number(availability.minimum || 0));
-        return {
-          remoteTripId: doc.id,
-          status: cleanText(data.status, 24),
-          departureAtMillis: Math.max(0, Number(data.departureAtMillis || 0)),
-          stops: Array.isArray(data.stops) ? data.stops : [],
-          capacityReliable: data.capacityReliable === true,
-          capacitySnapshotRevision: cleanText(data.capacitySnapshotRevision, 128),
-          publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
-          canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
-          canonicalTripId: cleanText(data.canonicalTripId, 180),
-          canonicalStateHash: cleanText(data.canonicalStateHash, 160),
-          publicProjectionHash: canonicalPublicTripHash0411(
-            canonicalPublicTripPayload0411(doc.id, data),
-          ),
-          bookingsCount: Math.max(0, Number(data.bookingsCount || 0)),
-          tripKey: cleanText(data.tripKey, 180),
-          blablaProfileUuid: cleanText(data.blablaProfileUuid, 160),
-          blablaTripId: cleanText(data.blablaTripId, 160),
-          title: cleanText(data.title, 220),
-          capacity: Math.max(0, Number(data.capacity || 0)),
-          publishedSeats: data.publishedSeats == null ? null : Math.max(0, Number(data.publishedSeats || 0)),
-          rotaCertaSeatAllocation: Math.max(0, Number(data.rotaCertaSeatAllocation || 0)),
-          operationalAvailableSeats,
-          availableSeatsMinimum: Math.max(0, Number(availability.minimum || 0)),
-          availableSeatsMaximum: Math.max(0, Number(availability.maximum || 0)),
-          occupancyRevision: Math.max(0, Number(data.occupancyRevision || 0)),
-          publicAgendaOnline0471: tripPublicOnline0471(data),
-          publicAgendaVisibilityRevision0471: Math.max(0, Number(data.publicAgendaVisibilityRevision0471 || 0)),
-        };
-      })
-      .filter((trip) =>
-        PUBLIC_STATUSES.has(trip.status) &&
-        (includePastForVerification || trip.departureAtMillis > now)
-      )
-      .sort((a, b) => a.departureAtMillis - b.departureAtMillis);
-    return json(res, 200, { trips });
-  } catch (error) {
-    return fail(res, error.httpStatus || 500, error.code || "driver_trip_sync_state_failed", error.message || "Falha ao ler estado canônico das viagens.");
-  }
+
+  const trips = (await Promise.all(snapshot.docs.map(async (doc) => {
+    const data = doc.data();
+    const status = cleanText(data.status, 32).toUpperCase();
+    if (data.deleted === true) return null;
+    if (timelineProjection0494) {
+      if (!DRIVER_MUTABLE_STATUSES.has(status)) return null;
+    } else {
+      if (!PUBLIC_STATUSES.has(status)) return null;
+      if (!includePastForVerification && Number(data.departureAtMillis || 0) < now - 6 * 60 * 60 * 1000) return null;
+    }
+
+    const canonicalProjection0494 =
+      data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object"
+        ? data.canonicalPublicProjection0434
+        : canonicalPublicTripPayload0411(doc.id, data);
+    const stops0494 = Array.isArray(canonicalProjection0494.stops)
+      ? canonicalProjection0494.stops
+      : (Array.isArray(data.stops) ? data.stops : []);
+    const segmentLoads0494 = Array.isArray(canonicalProjection0494.segmentLoads)
+      ? canonicalProjection0494.segmentLoads.map((value) => Math.max(0, Number(value || 0)))
+      : (Array.isArray(data.segmentLoads) ? data.segmentLoads.map((value) => Math.max(0, Number(value || 0))) : []);
+    const segmentPassengerLoads0494 = Array.isArray(canonicalProjection0494.segmentPassengerLoads)
+      ? canonicalProjection0494.segmentPassengerLoads.map((value) => Math.max(0, Number(value || 0)))
+      : (Array.isArray(data.segmentPassengerLoads) ? data.segmentPassengerLoads.map((value) => Math.max(0, Number(value || 0))) : []);
+    const segmentBlockedLoads0494 = Array.isArray(canonicalProjection0494.segmentBlockedLoads)
+      ? canonicalProjection0494.segmentBlockedLoads.map((value) => Math.max(0, Number(value || 0)))
+      : (Array.isArray(data.segmentBlockedLoads) ? data.segmentBlockedLoads.map((value) => Math.max(0, Number(value || 0))) : []);
+
+    let bookings0494 = [];
+    if (timelineProjection0494) {
+      const bookingSnapshot0494 = await doc.ref.collection("bookings")
+        .orderBy("createdAtMillis", "desc")
+        .limit(200)
+        .get();
+      bookings0494 = bookingSnapshot0494.docs.map((bookingDoc) => {
+        const raw = bookingDoc.data();
+        return { id: bookingDoc.id, ...raw, cancellationHash: undefined };
+      });
+    }
+
+    const activeSeatBookings0494 = bookings0494.filter((booking) => {
+      const bookingStatus = cleanText(booking.status, 24).toUpperCase();
+      const claimType = cleanText(booking.capacityClaimType, 40).toUpperCase() || "PASSENGER";
+      return !["REJECTED", "CANCELLED", "EXPIRED"].includes(bookingStatus) && claimType === "PASSENGER";
+    });
+    const sourceSeatCounts0494 = {};
+    activeSeatBookings0494.forEach((booking) => {
+      const source = cleanText(booking.source, 32).toUpperCase() || "OTHER";
+      sourceSeatCounts0494[source] = Math.max(0, Number(sourceSeatCounts0494[source] || 0)) +
+        Math.max(0, Number(booking.seats || 0));
+    });
+
+    const maximumOccupiedSeats0494 = segmentLoads0494.length
+      ? Math.max(...segmentLoads0494)
+      : Math.max(0, Number(data.maximumOccupiedSeats || 0));
+    const blockedSeats0494 = segmentBlockedLoads0494.length
+      ? Math.max(...segmentBlockedLoads0494)
+      : Math.max(0, Number(data.operationalBlockedSeats || 0));
+    const operationalOverbookingSeats0494 = Math.max(
+      0,
+      Number(
+        canonicalProjection0494.operationalOverbookingSeats != null
+          ? canonicalProjection0494.operationalOverbookingSeats
+          : data.operationalOverbookingSeats || 0,
+      ),
+    );
+    const canonicalIssues0494 = Array.isArray(data.canonicalIssues)
+      ? data.canonicalIssues.map((item) => cleanText(item, 48).toUpperCase()).filter(Boolean)
+      : [];
+    if (operationalOverbookingSeats0494 > 0 && !canonicalIssues0494.includes("OVERBOOKING")) {
+      canonicalIssues0494.push("OVERBOOKING");
+    }
+
+    return {
+      remoteTripId: doc.id,
+      status,
+      departureAtMillis: Math.max(0, Number(canonicalProjection0494.departureAtMillis || data.departureAtMillis || 0)),
+      arrivalAtMillis: Math.max(
+        0,
+        Number(
+          data.arrivalAtMillis ||
+          (stops0494.length ? (stops0494[stops0494.length - 1].plannedArrivalMillis || 0) : 0),
+        ),
+      ),
+      stops: stops0494,
+      capacityReliable: canonicalProjection0494.capacityReliable !== false && data.capacityReliable !== false,
+      capacitySnapshotRevision: cleanText(data.capacitySnapshotRevision, 160),
+      publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
+      canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
+      canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180) || doc.id,
+      canonicalStateHash: cleanText(data.canonicalStateHash, 160),
+      publicProjectionHash: cleanText(data.publicProjectionHash0434, 160),
+      bookingsCount: Math.max(0, Number(data.bookingsCount || bookings0494.length || 0)),
+      tripKey: cleanText(data.tripKey, 180),
+      blablaProfileUuid: cleanText(data.blablaProfileUuid, 180),
+      blablaTripId: cleanText(data.blablaTripId, 180),
+      blablaPublicUrl: cleanText(canonicalProjection0494.blablaPublicUrl || data.blablaPublicUrl, 1200),
+      driverDisplayName: cleanText(data.driverDisplayName, 160),
+      title: cleanText(canonicalProjection0494.title || data.title, 220),
+      publicUrl: cleanText(canonicalProjection0494.publicUrl || data.publicUrl, 1200),
+      publicBookingEnabled: canonicalProjection0494.publicBookingEnabled === true,
+      itineraryAuthoritative: canonicalProjection0494.itineraryAuthoritative !== false,
+      capacity: Math.max(0, Number(canonicalProjection0494.capacity || data.capacity || 0)),
+      publishedSeats:
+        canonicalProjection0494.publishedSeats == null && data.publishedSeats == null
+          ? null
+          : Math.max(0, Number(
+              canonicalProjection0494.publishedSeats == null ? data.publishedSeats : canonicalProjection0494.publishedSeats,
+            )),
+      rotaCertaSeatAllocation:
+        canonicalProjection0494.rotaCertaSeatAllocation == null && data.rotaCertaSeatAllocation == null
+          ? null
+          : Math.max(0, Number(
+              canonicalProjection0494.rotaCertaSeatAllocation == null
+                ? data.rotaCertaSeatAllocation
+                : canonicalProjection0494.rotaCertaSeatAllocation,
+            )),
+      operationalAvailableSeats:
+        canonicalProjection0494.availableSeatsMinimum == null && data.operationalAvailableSeats == null
+          ? null
+          : Math.max(0, Number(
+              canonicalProjection0494.availableSeatsMinimum == null
+                ? data.operationalAvailableSeats
+                : canonicalProjection0494.availableSeatsMinimum,
+            )),
+      availableSeatsMinimum:
+        canonicalProjection0494.availableSeatsMinimum == null && data.availableSeatsMinimum == null
+          ? null
+          : Math.max(0, Number(
+              canonicalProjection0494.availableSeatsMinimum == null
+                ? data.availableSeatsMinimum
+                : canonicalProjection0494.availableSeatsMinimum,
+            )),
+      availableSeatsMaximum:
+        canonicalProjection0494.availableSeatsMaximum == null && data.availableSeatsMaximum == null
+          ? null
+          : Math.max(0, Number(
+              canonicalProjection0494.availableSeatsMaximum == null
+                ? data.availableSeatsMaximum
+                : canonicalProjection0494.availableSeatsMaximum,
+            )),
+      minimumOccupiedSeats: maximumOccupiedSeats0494,
+      maximumOccupiedSeats: maximumOccupiedSeats0494,
+      operationalBlockedSeats: blockedSeats0494,
+      operationalOverbookingSeats: operationalOverbookingSeats0494,
+      segmentLoads: segmentLoads0494,
+      segmentPassengerLoads: segmentPassengerLoads0494,
+      segmentBlockedLoads: segmentBlockedLoads0494,
+      sourceSeatCounts: sourceSeatCounts0494,
+      canonicalIssues: canonicalIssues0494,
+      bookings: bookings0494,
+      occupancyRevision: data.occupancyRevision == null ? null : Math.max(0, Number(data.occupancyRevision || 0)),
+      updatedAtMillis: Math.max(0, Number(data.updatedAtMillis || 0)),
+      publicAgendaOnline0471: data.publicAgendaOnline0471 !== false,
+      publicAgendaVisibilityRevision0471: Math.max(0, Number(data.publicAgendaVisibilityRevision0471 || 0)),
+    };
+  }))).filter(Boolean).sort((left, right) =>
+    Number(left.departureAtMillis || 0) - Number(right.departureAtMillis || 0)
+  );
+
+  return json(res, 200, {
+    source: "CANONICAL_BACKEND",
+    snapshotAtMillis: now,
+    trips,
+  });
 }
 
 async function reconcileDriverAgendaSeatAllocation(req, res) {
