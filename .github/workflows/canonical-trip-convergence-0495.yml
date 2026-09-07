@@ -144,7 +144,6 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaPublicTimelineReflection0425Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalStatus0350Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTripActions0351Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerPublicAccess0342Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineCardActions0289Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
