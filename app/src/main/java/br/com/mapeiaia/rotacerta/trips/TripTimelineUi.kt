@@ -893,7 +893,11 @@ internal fun applyPublicExternalBookingsToTimeline(
     val publicOperational = operationalSeatSummary(publicTrip, active, nowMillis)
     val publicPassengers = publicOperational.confirmedPassengerSeats
     val publicBlocked = publicOperational.blockedSeats
-    val externalRosterSeats = enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
+    val externalRosterSeats = if (enriched.canonicalBackendAuthoritative0494) {
+        enriched.sourcePassengerSeats[BookingSource.BLABLACAR] ?: 0
+    } else {
+        enriched.blablaPassengers.sumOf { it.seats.coerceAtLeast(1) }
+    }
     val combinedPhysical = externalRosterSeats + publicConsumed
     val sources = enriched.sourcePassengerSeats.toMutableMap().apply {
         this[BookingSource.ROTA_CERTA] = publicPassengers
