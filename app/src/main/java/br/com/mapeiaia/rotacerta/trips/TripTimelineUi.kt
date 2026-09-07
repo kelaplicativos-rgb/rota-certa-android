@@ -1357,7 +1357,11 @@ private fun TimelineEntryCard(
     val dark = isSystemInDarkTheme()
     val profileColors = timelineProfileCardColors(profileColorSlot, dark)
     val seatPlan = remember(entry, trip, bookingsSnapshot0432) {
-        timelineDesiredSeatSyncPlan(entry, trip, bookingsSnapshot0432)
+        if (entry.canonicalBackendAuthoritative0494) null
+        else timelineDesiredSeatSyncPlan(entry, trip, bookingsSnapshot0432)
+    }
+    val canonicalSegmentLoads0494 = remember(entry, trip) {
+        canonicalTimelineSegmentLoads0494(entry, trip)
     }
     var directPassengerTrip by remember(entry.tripId) { mutableStateOf<Trip?>(null) }
     var showSeatDetails by remember(entry.tripId) { mutableStateOf(false) }
@@ -1511,8 +1515,12 @@ private fun TimelineEntryCard(
             }
 
             val publicCapacity = timelinePublicCapacityResolution(entry)
-            val publicLoads = seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }
-            val segmentFree = publicLoads?.minOfOrNull(SegmentLoad::availableSeats)
+            val publicLoads = if (entry.canonicalBackendAuthoritative0494) {
+                canonicalSegmentLoads0494
+            } else {
+                seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }.orEmpty()
+            }
+            val segmentFree = publicLoads.minOfOrNull(SegmentLoad::availableSeats)
                 ?: publicCapacity.availableSeats
             val free = segmentFree
             val operationalInventory = publicCapacity.operationalInventory
@@ -1668,6 +1676,7 @@ private fun TimelineEntryCard(
                 currentCoordinate = currentCoordinate,
                 onChanged = onChanged,
                 focusedBookingId = focusedBookingId,
+                canonicalBookings0494 = bookingsSnapshot0432,
                 onAddManualPassenger = {
                     runCatching { prepareTimelineTripForPassenger(entry, store) }
                         .onSuccess { preparation -> directPassengerTrip = preparation.trip }
@@ -1694,28 +1703,23 @@ private fun TimelineEntryCard(
                                     !settings.configured -> onChanged("Integração online necessária para concluir a viagem.")
                                     else -> scope.launch {
                                         runCatching {
-                                            val completed = target.copy(status = TripStatus.COMPLETED)
-                                            if (store.getTrip(target.id) != null) {
-                                                store.saveTrip(completed)
-                                            }
-                                            val queued = mutationCoordinator.recordLocalMutation(
-                                                canonicalTripId = target.id,
-                                                mutationType = "TRIP_COMPLETED",
-                                                source = "TIMELINE_CARD",
-                                                reconcileBookingInventory = false,
+                                            val remoteId0494 = target.remoteId?.takeIf(String::isNotBlank)
+                                                ?: error("Viagem sem identidade remota canônica.")
+                                            TripRemoteApi(settings).update(
+                                                target.copy(
+                                                    remoteId = remoteId0494,
+                                                    status = TripStatus.COMPLETED,
+                                                ),
                                             )
-                                            AgendaBackgroundSync0392.enqueueImmediate(context, "trip_mutation")
-                                            queued != null
-                                        }.onSuccess { queued ->
-                                            onChanged(
-                                                if (queued) {
-                                                    "Viagem concluída no Rota Certa. A atualização desta viagem foi registrada e será entregue à Agenda; créditos elegíveis são processados quando o servidor confirmar."
-                                                } else {
-                                                    "Viagem concluída no Rota Certa."
-                                                },
+                                        }.onSuccess { response0494 ->
+                                            UnifiedDebugEventStore.record(
+                                                "TIMELINE_CANONICAL_TRIP_COMPLETED_0494",
+                                                context.packageName,
+                                                "canonicalTripId=${seatSyncDiagnosticKey(target.id)} entityRevision=${response0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
                                             )
+                                            onChanged("Viagem concluída no backend canônico. Timeline e Agenda receberão a nova revisão.")
                                         }.onFailure { error ->
-                                            onChanged("Viagem concluída localmente; publicação pendente: ${error.message ?: "erro de persistência"}")
+                                            onChanged("Nada foi alterado: ${error.message ?: "falha no backend canônico"}")
                                         }
                                     }
                                 }
@@ -1733,17 +1737,21 @@ private fun TimelineEntryCard(
             title = { Text("VAGAS POR TRECHO") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (seatPlan == null) {
-                        Text("Leitura por trecho pendente. O Rota Certa não vai inventar disponibilidade enquanto os passageiros externos não estiverem completos.")
+                    val publicLoads0494 = if (entry.canonicalBackendAuthoritative0494) {
+                        canonicalSegmentLoads0494
                     } else {
-                        val publicLoads = timelinePublicSegmentLoads(entry, seatPlan.loads)
-                        publicLoads.forEach { load ->
+                        seatPlan?.let { timelinePublicSegmentLoads(entry, it.loads) }.orEmpty()
+                    }
+                    if (publicLoads0494.isEmpty()) {
+                        Text("Disponibilidade por trecho ainda não está presente no snapshot canônico. A Timeline não fará cálculo independente nem consultará o coletor.")
+                    } else {
+                        publicLoads0494.forEach { load ->
                             Text("${load.from.name} → ${load.to.name}    👥 ${load.passengerSeats} • 🚫 ${load.blockedSeats} • 🪑 ${load.availableSeats}")
                         }
                         entry.blablaPublishedSeats?.takeIf { it >= 0 }?.let { published ->
-                            Text("Observado no editor BlaBlaCar: $published vaga(s) publicadas", style = MaterialTheme.typography.bodySmall)
+                            Text("Cota BlaBlaCar no estado canônico: $published vaga(s)", style = MaterialTheme.typography.bodySmall)
                         }
-                        Text("🪑 ${publicLoads.minOf(SegmentLoad::availableSeats)} = disponibilidade física mínima entre os trechos", style = MaterialTheme.typography.bodySmall)
+                        Text("🪑 ${publicLoads0494.minOf(SegmentLoad::availableSeats)} = disponibilidade canônica mínima entre os trechos", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },
