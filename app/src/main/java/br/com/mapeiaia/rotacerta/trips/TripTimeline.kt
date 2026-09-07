@@ -290,6 +290,8 @@ internal fun canonicalTimelineProjection0494(
             blablaPublicUrl = state.blablaPublicUrl.takeIf(String::isNotBlank),
             publicBookingEnabled = state.publicBookingEnabled,
             itineraryAuthoritative = state.itineraryAuthoritative,
+            notes = state.notes0499,
+            publicTimezoneId0411 = state.timezoneId0499,
             publishedSeats = state.publishedSeats,
             capacityReliable = state.capacityReliable,
             rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,

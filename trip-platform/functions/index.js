@@ -8728,7 +8728,18 @@ async function listDriverTripSyncState0402(req, res) {
   const includePastForVerification = cleanText(req.query && req.query.includePastForVerification, 8) === "1";
   const timelineProjection0494 = cleanText(req.query && req.query.timelineProjection, 8) === "1";
   let query = db.collection("trips").where("driverUsername", "==", driver.username).limit(300);
-  const snapshot = await query.get();
+  const privateMirrorsPromise0499 = timelineProjection0494
+    ? db.collection("tripPrivateMirrors0434").where("driverUsername", "==", driver.username).limit(300).get()
+    : Promise.resolve(null);
+  const [snapshot, privateMirrorSnapshot0499] = await Promise.all([query.get(), privateMirrorsPromise0499]);
+  const privateMirrorByCanonicalId0499 = new Map();
+  if (timelineProjection0494 && privateMirrorSnapshot0499) {
+    privateMirrorSnapshot0499.docs.forEach((mirrorDoc) => {
+      const mirror = mirrorDoc.data() || {};
+      const canonicalId = cleanText(mirror.canonicalTripId, 180);
+      if (canonicalId) privateMirrorByCanonicalId0499.set(canonicalId, mirror);
+    });
+  }
   const now = Date.now();
 
   if (timelineProjection0494) {
@@ -8743,6 +8754,22 @@ async function listDriverTripSyncState0402(req, res) {
   let trips = (await Promise.all(canonicalDocs0495.map(async (doc) => {
     const data = doc.data();
     const status = cleanText(data.status, 32).toUpperCase();
+    const canonicalTripId0499 = cleanText(data.canonicalTripId || data.localTripId, 180) || doc.id;
+    const privateMirror0499 = timelineProjection0494 ? privateMirrorByCanonicalId0499.get(canonicalTripId0499) : null;
+    const privatePayload0499 =
+      privateMirror0499 &&
+      privateMirror0499.payload &&
+      typeof privateMirror0499.payload === "object" &&
+      privateMirror0499.payload.schemaVersion === "private-agenda-mirror-v1"
+        ? privateMirror0499.payload
+        : null;
+    const privateMirrorRevision0499 = Math.max(0, Number(privateMirror0499 && privateMirror0499.canonicalRevision || 0));
+    const canonicalRevision0499 = Math.max(0, Number(data.canonicalRevision || 0));
+    const privateMirrorCurrent0499 = Boolean(
+      privatePayload0499 &&
+      cleanText(privatePayload0499.canonicalTripId, 180) === canonicalTripId0499 &&
+      privateMirrorRevision0499 === canonicalRevision0499
+    );
     if (data.deleted === true) return null;
     if (timelineProjection0494) {
       if (!DRIVER_MUTABLE_STATUSES.has(status)) return null;
@@ -8771,13 +8798,33 @@ async function listDriverTripSyncState0402(req, res) {
 
     let bookings0494 = [];
     if (timelineProjection0494) {
+      const privateBookingsById0499 = new Map(
+        privateMirrorCurrent0499 && Array.isArray(privatePayload0499.bookings)
+          ? privatePayload0499.bookings
+              .filter((booking) => booking && typeof booking === "object" && cleanText(booking.id, 180))
+              .map((booking) => [cleanText(booking.id, 180), booking])
+          : []
+      );
       const bookingSnapshot0494 = await doc.ref.collection("bookings")
         .orderBy("createdAtMillis", "desc")
         .limit(200)
         .get();
       bookings0494 = bookingSnapshot0494.docs.map((bookingDoc) => {
-        const raw = bookingDoc.data();
-        return { id: bookingDoc.id, ...raw, cancellationHash: undefined };
+        const raw = bookingDoc.data() || {};
+        const privateBooking0499 = privateBookingsById0499.get(bookingDoc.id) || {};
+        const fareRaw0499 = raw.fareMinorUnits != null ? raw.fareMinorUnits : privateBooking0499.fareMinorUnits;
+        return {
+          id: bookingDoc.id,
+          ...raw,
+          passengerId: cleanText(raw.passengerId, 120) || cleanText(privateBooking0499.passengerId, 120),
+          passengerName: cleanText(raw.passengerName, 160) || cleanText(privateBooking0499.passengerName, 160),
+          passengerContact: cleanText(raw.passengerContact, 180) || cleanText(privateBooking0499.passengerContact, 180),
+          fareMinorUnits: fareRaw0499 == null ? null : Math.max(0, Math.floor(Number(fareRaw0499 || 0))),
+          fareCurrencyCode: cleanText(raw.fareCurrencyCode, 12) || cleanText(privateBooking0499.fareCurrencyCode, 12),
+          boardingAddress: cleanText(raw.boardingAddress, 240) || cleanText(privateBooking0499.boardingAddress, 240),
+          dropoffAddress: cleanText(raw.dropoffAddress, 240) || cleanText(privateBooking0499.dropoffAddress, 240),
+          cancellationHash: undefined,
+        };
       });
     }
 
@@ -8897,6 +8944,16 @@ async function listDriverTripSyncState0402(req, res) {
       ),
       sourceSeatCounts: sourceSeatCounts0494,
       canonicalIssues: canonicalIssues0494,
+      notes0499: privateMirrorCurrent0499
+        ? cleanText(privatePayload0499.notes, 4000)
+        : cleanText(data.notes, 4000),
+      timezoneId0499: privateMirrorCurrent0499
+        ? cleanText(privatePayload0499.timezoneId, 80)
+        : cleanText(data.timezoneId || data.publicTimezoneId0411, 80),
+      privateMirrorAvailable0499: Boolean(privatePayload0499),
+      privateMirrorCurrent0499,
+      privateMirrorRevision0499: Math.max(0, Number(privateMirror0499 && privateMirror0499.mirrorRevision || 0)),
+      privateStateHash0499: cleanText(privateMirror0499 && privateMirror0499.privateStateHash, 160),
       bookings: bookings0494,
       occupancyRevision: data.occupancyRevision == null ? null : Math.max(0, Number(data.occupancyRevision || 0)),
       updatedAtMillis: Math.max(0, Number(data.updatedAtMillis || 0)),

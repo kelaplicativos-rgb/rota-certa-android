@@ -346,4 +346,32 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(passengerUi.contains("canonicalBookings0494"))
     }
 
+
+    @Test
+    fun testO_pullToRefreshIsCanonicalNetworkRefreshNotLocalVisualReload() {
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+
+        assertTrue(activity.contains("AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499"))
+        assertTrue(activity.contains("networkSync=true source=CANONICAL_BACKEND publicPrivate=true collectorRead=false"))
+        assertTrue(activity.contains("manualRefreshToken0499 = timelinePullRefreshToken0499"))
+        assertFalse(activity.contains("requestTimelineVisualReload"))
+        assertTrue(timelineUi.contains("USER_PULL_REFRESH"))
+        assertTrue(timelineUi.contains("loadCanonicalTimelineState0494"))
+        assertFalse(timelineUi.contains("BlaBlaTimelineAdapter.merge("))
+    }
+
+    @Test
+    fun testP_driverPrivateAgendaMirrorHydratesTimelineWithoutCollectorAuthority() {
+        val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
+
+        assertTrue(remote.contains("privateMirrorCurrent0499"))
+        assertTrue(remote.contains("fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits"))
+        assertTrue(remote.contains("boardingAddress = boardingAddress.ifBlank"))
+        assertTrue(remote.contains("dropoffAddress = dropoffAddress.ifBlank"))
+        assertTrue(timeline.contains("notes = state.notes0499"))
+        assertTrue(timeline.contains("publicTimezoneId0411 = state.timezoneId0499"))
+    }
+
 }

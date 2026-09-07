@@ -151,6 +151,11 @@ data class RemoteBooking(
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    /** Driver-authenticated private Agenda metadata; never exposed by the public Agenda projection. */
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
     val holdExpiresAtMillis: Long? = null,
 )
 
@@ -602,6 +607,13 @@ data class DriverTripSyncState0402(
     val segmentAvailableSeats: List<Int> = emptyList(),
     val sourceSeatCounts: Map<String, Int> = emptyMap(),
     val canonicalIssues: List<String> = emptyList(),
+    /** Driver-only canonical fields hydrated from the private Agenda mirror when its revision is current. */
+    val notes0499: String = "",
+    val timezoneId0499: String = "",
+    val privateMirrorAvailable0499: Boolean = false,
+    val privateMirrorCurrent0499: Boolean = false,
+    val privateMirrorRevision0499: Long = 0L,
+    val privateStateHash0499: String = "",
     /** Exact canonical bookings for the Timeline projection. No collector snapshot is embedded. */
     val bookings: List<RemoteBooking> = emptyList(),
     val occupancyRevision: Long? = null,
@@ -1749,10 +1761,10 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
     passengerId = existingLocal?.passengerId?.takeIf(String::isNotBlank) ?: passengerId,
-    fareMinorUnits = existingLocal?.fareMinorUnits,
-    fareCurrencyCode = existingLocal?.fareCurrencyCode.orEmpty(),
-    boardingAddress = existingLocal?.boardingAddress.orEmpty(),
-    dropoffAddress = existingLocal?.dropoffAddress.orEmpty(),
+    fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits,
+    fareCurrencyCode = fareCurrencyCode.ifBlank { existingLocal?.fareCurrencyCode.orEmpty() },
+    boardingAddress = boardingAddress.ifBlank { existingLocal?.boardingAddress.orEmpty() },
+    dropoffAddress = dropoffAddress.ifBlank { existingLocal?.dropoffAddress.orEmpty() },
     cancellationToken = existingLocal?.cancellationToken,
     localMetadataTouched = existingLocal?.localMetadataTouched == true,
 )

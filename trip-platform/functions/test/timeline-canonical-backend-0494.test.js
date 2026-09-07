@@ -319,3 +319,19 @@ test("0495 legacy convergence migrates bookings and passenger indexes without ro
   assert.match(migration, /LEGACY_TRIP_SUPERSEDED/);
   assert.doesNotMatch(migration, /origin.*destination|departureAtMillis.*winner|date.*route/i);
 });
+
+
+test("0499 authenticated Timeline projection joins current private Agenda mirror without collector", () => {
+  const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+
+  assert.match(fn, /tripPrivateMirrors0434/);
+  assert.match(fn, /privateMirrorByCanonicalId0499/);
+  assert.match(fn, /privateMirrorCurrent0499/);
+  assert.match(fn, /fareMinorUnits/);
+  assert.match(fn, /boardingAddress/);
+  assert.match(fn, /dropoffAddress/);
+  assert.match(fn, /notes0499/);
+  assert.match(fn, /timezoneId0499/);
+  assert.match(fn, /source: "CANONICAL_BACKEND"/);
+  assert.doesNotMatch(fn, /BlaBlaCollector/);
+});
