@@ -43,12 +43,29 @@ data class TripTimelineEntry(
     val rotaCertaSeatAllocation: Int? = null,
     /** Whole-trip operational blocks/holds that are not confirmed passengers. */
     val operationalBlockedSeats: Int = 0,
+    /** 0.1.494: true only for a projection read from the authenticated canonical backend. */
+    val canonicalBackendAuthoritative0494: Boolean = false,
+    val canonicalRevision0494: Long = 0L,
+    val canonicalStateHash0494: String = "",
+    val canonicalAvailableSeatsMinimum0494: Int? = null,
+    val canonicalAvailableSeatsMaximum0494: Int? = null,
+    val canonicalOverbookingSeats0494: Int = 0,
+    val canonicalCapacityReliable0494: Boolean? = null,
+    val canonicalUpdatedAtMillis0494: Long = 0L,
+    val canonicalSegmentLoads0494: List<Int> = emptyList(),
+    val canonicalSegmentPassengerLoads0494: List<Int> = emptyList(),
+    val canonicalSegmentBlockedLoads0494: List<Int> = emptyList(),
+    val canonicalSegmentAvailableSeats0494: List<Int> = emptyList(),
+    val remoteTripId0494: String = "",
+    val publicUrl0494: String = "",
 ) {
     val minimumAvailableSeats: Int
-        get() = (capacity - maximumOccupiedSeats).coerceAtLeast(0)
+        get() = canonicalAvailableSeatsMinimum0494
+            ?: (capacity - maximumOccupiedSeats).coerceAtLeast(0)
 
     val maximumAvailableSeats: Int
-        get() = (capacity - minimumOccupiedSeats).coerceAtLeast(0)
+        get() = canonicalAvailableSeatsMaximum0494
+            ?: (capacity - minimumOccupiedSeats).coerceAtLeast(0)
 }
 
 /**
@@ -104,6 +121,19 @@ internal fun timelinePublicCapacityResolution(
     entry: TripTimelineEntry,
     occupiedSeats: Int = entry.maximumOccupiedSeats,
 ): TimelinePublicCapacityResolution {
+    if (entry.canonicalBackendAuthoritative0494) {
+        val available = entry.canonicalAvailableSeatsMinimum0494
+        return TimelinePublicCapacityResolution(
+            operationalInventory = entry.capacity.takeIf { it >= 0 },
+            blablaQuota = entry.blablaPublishedSeats,
+            passengerSeats = entry.minimumOccupiedSeats.coerceAtLeast(0),
+            blockedSeats = entry.operationalBlockedSeats.coerceAtLeast(0),
+            effectiveCapacity = entry.capacity.takeIf { it >= 0 },
+            availableSeats = available,
+            overbookingSeats = entry.canonicalOverbookingSeats0494.coerceAtLeast(0),
+            capacitySource = "CANONICAL_BACKEND",
+        )
+    }
     val confirmedWholeTrip = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
     val passengers = minOf(occupiedSeats.coerceAtLeast(0), confirmedWholeTrip)
     val blocked = (occupiedSeats.coerceAtLeast(0) - passengers).coerceAtLeast(0)
@@ -116,9 +146,19 @@ internal fun timelinePublicCapacityResolution(
 }
 
 internal fun timelinePublicSegmentLoads(
-    @Suppress("UNUSED_PARAMETER") entry: TripTimelineEntry,
+    entry: TripTimelineEntry,
     physicalLoads: List<SegmentLoad>,
-): List<SegmentLoad> = physicalLoads
+): List<SegmentLoad> {
+    if (!entry.canonicalBackendAuthoritative0494 || entry.canonicalSegmentLoads0494.isEmpty()) return physicalLoads
+    return physicalLoads.mapIndexed { index, load ->
+        load.copy(
+            occupiedSeats = entry.canonicalSegmentLoads0494.getOrNull(index) ?: load.occupiedSeats,
+            passengerSeats = entry.canonicalSegmentPassengerLoads0494.getOrNull(index) ?: load.passengerSeats,
+            blockedSeats = entry.canonicalSegmentBlockedLoads0494.getOrNull(index) ?: load.blockedSeats,
+            availableSeats = entry.canonicalSegmentAvailableSeats0494.getOrNull(index) ?: load.availableSeats,
+        )
+    }
+}
 
 internal data class TripChannelAllocationBreakdown(
     val operationalInventory: Int?,
@@ -157,6 +197,156 @@ enum class TripTimelineIssue {
     OVERBOOKING,
     VALIDATION_PENDING,
     EXTERNAL_IDENTITY_CONFLICT,
+}
+
+internal data class CanonicalTimelineProjection0494(
+    val trips: List<Trip>,
+    val bookings: List<Booking>,
+    val entries: List<TripTimelineEntry>,
+    val snapshotAtMillis: Long,
+)
+
+internal fun canonicalTimelineProjection0494(
+    response: DriverTripSyncStateResponse0402?,
+    fallbackProfileLabel: String = "Rota Certa",
+): CanonicalTimelineProjection0494 {
+    if (response == null) return CanonicalTimelineProjection0494(emptyList(), emptyList(), emptyList(), 0L)
+    require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
+        "Timeline recusou datasource não canônico: ${response.source}"
+    }
+
+    val winners = response.trips
+        .filter { state -> state.canonicalTripId.isNotBlank() || state.remoteTripId.isNotBlank() }
+        .groupBy { state -> state.canonicalTripId.ifBlank { state.remoteTripId } }
+        .mapValues { (_, candidates) ->
+            candidates.maxWithOrNull(
+                compareBy<DriverTripSyncState0402> { it.canonicalRevision }
+                    .thenBy { it.publicationRevision }
+                    .thenBy { it.updatedAtMillis },
+            ) ?: candidates.first()
+        }
+        .values
+        .sortedBy(DriverTripSyncState0402::departureAtMillis)
+
+    val projectedTrips = mutableListOf<Trip>()
+    val projectedBookings = mutableListOf<Booking>()
+    val projectedEntries = mutableListOf<TripTimelineEntry>()
+
+    winners.forEach { state ->
+        val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }
+        val stops = state.stops.sortedBy(TripStop::order)
+        if (canonicalId.isBlank() || stops.size < 2) return@forEach
+        val tripStatus = runCatching { TripStatus.valueOf(state.status.trim().uppercase()) }
+            .getOrDefault(TripStatus.DRAFT)
+        val sourceCounts = state.sourceSeatCounts.mapNotNull { (source, seats) ->
+            runCatching { BookingSource.valueOf(source.trim().uppercase()) }
+                .getOrNull()
+                ?.let { it to seats.coerceAtLeast(0) }
+        }.toMap()
+        val canonicalIssues = state.canonicalIssues.mapNotNull { issue ->
+            runCatching { TripTimelineIssue.valueOf(issue.trim().uppercase()) }.getOrNull()
+        }.toSet()
+        val origin = stops.first()
+        val destination = stops.last()
+        val strongExternal = state.blablaProfileUuid.isNotBlank() && state.blablaTripId.isNotBlank()
+        val trip = Trip(
+            id = canonicalId,
+            title = state.title.ifBlank { "${origin.name} → ${destination.name}" },
+            departureAtMillis = state.departureAtMillis,
+            capacity = state.capacity.coerceAtLeast(0),
+            status = tripStatus,
+            stops = stops,
+            publicToken = state.remoteTripId.ifBlank { canonicalId },
+            remoteId = state.remoteTripId.takeIf(String::isNotBlank),
+            publicUrl = state.publicUrl.takeIf(String::isNotBlank),
+            blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaPublicUrl = state.blablaPublicUrl.takeIf(String::isNotBlank),
+            publicBookingEnabled = state.publicBookingEnabled,
+            itineraryAuthoritative = state.itineraryAuthoritative,
+            publishedSeats = state.publishedSeats,
+            capacityReliable = state.capacityReliable,
+            rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,
+            recordOrigin = if (strongExternal) TripRecordOrigin.EXTERNAL_BACKING else TripRecordOrigin.LOCAL,
+            canonicalRevision = state.canonicalRevision,
+            publicationRevision = state.publicationRevision,
+            tripKey = state.tripKey,
+            canonicalStateHash = state.canonicalStateHash,
+            updatedAtMillis = state.updatedAtMillis.takeIf { it > 0L } ?: response.snapshotAtMillis,
+        )
+        val bookings = state.bookings.map { remote ->
+            Booking(
+                id = remote.id,
+                tripId = canonicalId,
+                passengerId = remote.passengerId,
+                passengerName = remote.passengerName,
+                passengerContact = remote.passengerContact,
+                boardingStopId = remote.boardingStopId,
+                dropoffStopId = remote.dropoffStopId,
+                seats = remote.seats.coerceAtLeast(1),
+                status = runCatching { BookingStatus.valueOf(remote.status.trim().uppercase()) }
+                    .getOrDefault(BookingStatus.CONFIRMED),
+                operationalStatus = remote.operationalStatus,
+                paymentStatus = remote.paymentStatus,
+                lastDriverSelection = remote.lastDriverSelection,
+                holdExpiresAtMillis = remote.holdExpiresAtMillis,
+                createdAtMillis = remote.createdAtMillis,
+                updatedAtMillis = remote.updatedAtMillis,
+                source = remote.source,
+                capacityClaimType = remote.capacityClaimType,
+                sourceReference = remote.sourceReference,
+                occupancyGroupId = remote.occupancyGroupId,
+            )
+        }
+        projectedTrips += trip
+        projectedBookings += bookings
+        projectedEntries += TripTimelineEntry(
+            tripId = canonicalId,
+            localTripId = canonicalId,
+            profileId = state.blablaProfileUuid.ifBlank { canonicalId },
+            profileLabel = state.driverDisplayName.ifBlank { fallbackProfileLabel },
+            departureAtMillis = state.departureAtMillis,
+            arrivalAtMillis = state.arrivalAtMillis.takeIf { it > 0L } ?: destination.plannedArrivalMillis,
+            origin = origin.name,
+            destination = destination.name,
+            status = tripStatus,
+            capacity = state.capacity.coerceAtLeast(0),
+            minimumOccupiedSeats = state.minimumOccupiedSeats.coerceAtLeast(0),
+            maximumOccupiedSeats = state.maximumOccupiedSeats.coerceAtLeast(0),
+            sourcePassengerSeats = sourceCounts,
+            blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaPublicHref = state.blablaPublicUrl.takeIf(String::isNotBlank),
+            blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaItineraryStops = stops.map(TripStop::name),
+            blablaPublishedSeats = state.publishedSeats,
+            blablaPassengers = emptyList(),
+            blablaPassengerRosterComplete = true,
+            issues = canonicalIssues,
+            rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,
+            operationalBlockedSeats = state.operationalBlockedSeats.coerceAtLeast(0),
+            canonicalBackendAuthoritative0494 = true,
+            canonicalRevision0494 = state.canonicalRevision,
+            canonicalStateHash0494 = state.canonicalStateHash,
+            canonicalAvailableSeatsMinimum0494 = state.availableSeatsMinimum ?: state.operationalAvailableSeats,
+            canonicalAvailableSeatsMaximum0494 = state.availableSeatsMaximum ?: state.operationalAvailableSeats,
+            canonicalOverbookingSeats0494 = state.operationalOverbookingSeats.coerceAtLeast(0),
+            canonicalCapacityReliable0494 = state.capacityReliable,
+            canonicalUpdatedAtMillis0494 = state.updatedAtMillis,
+            canonicalSegmentLoads0494 = state.segmentLoads,
+            canonicalSegmentPassengerLoads0494 = state.segmentPassengerLoads,
+            canonicalSegmentBlockedLoads0494 = state.segmentBlockedLoads,
+            canonicalSegmentAvailableSeats0494 = state.segmentAvailableSeats,
+            remoteTripId0494 = state.remoteTripId,
+            publicUrl0494 = state.publicUrl,
+        )
+    }
+
+    return CanonicalTimelineProjection0494(
+        trips = projectedTrips,
+        bookings = projectedBookings.distinctBy(Booking::id),
+        entries = projectedEntries,
+        snapshotAtMillis = response.snapshotAtMillis,
+    )
 }
 
 object TripTimelineEngine {
