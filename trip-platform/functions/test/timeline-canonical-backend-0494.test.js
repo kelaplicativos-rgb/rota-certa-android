@@ -326,11 +326,18 @@ test("0495 legacy convergence migrates bookings and passenger indexes without ro
 test("0500 Timeline projection cannot read private Agenda mirror or return BlaBlaCar fields", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
   const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
+  const emittedTrip = between(
+    firewall,
+    "    return {\\n      remoteTripId: doc.id,",
+    "  }))).filter(Boolean)",
+  );
   assert.doesNotMatch(fn, /tripPrivateMirrors0434/);
-  assert.doesNotMatch(firewall, /blablaTripId:/);
-  assert.doesNotMatch(firewall, /blablaProfileUuid:/);
-  assert.doesNotMatch(firewall, /blablaPublicUrl:/);
-  assert.doesNotMatch(firewall, /publishedSeats:/);
+  assert.doesNotMatch(emittedTrip, /blablaTripId:/);
+  assert.doesNotMatch(emittedTrip, /blablaProfileUuid:/);
+  assert.doesNotMatch(emittedTrip, /blablaPublicUrl:/);
+  assert.doesNotMatch(emittedTrip, /publishedSeats:/);
+  assert.match(firewall, /timelineTripHasCollectorProvenance0500/);
+  assert.match(firewall, /timelineBookingHasCollectorProvenance0500/);
   assert.match(firewall, /BLABLACAR_BLOCK_ALL_0500/);
   assert.match(firewall, /timeline-native-v1:/);
 });

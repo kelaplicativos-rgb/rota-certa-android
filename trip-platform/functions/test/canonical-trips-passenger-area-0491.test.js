@@ -85,10 +85,30 @@ test("0491 public Agenda stays anonymous, read-only and free of internal trip id
   assert.match(publicApp, /setInterval\([\s\S]*15000/);
 
   const sanitizer = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
-  for (const field of ["tripId", "publicToken", "canonicalTripId", "blablaTripId", "driverUsername", "notes"]) {
-    assert.match(sanitizer, new RegExp("delete out\\." + field));
+  const { publicTripProjection0491 } = Function(
+    sanitizer + "\\nreturn { publicTripProjection0491 };",
+  )();
+  const projected = publicTripProjection0491({
+    title: "A → B",
+    tripId: "private-trip",
+    publicToken: "private-token",
+    canonicalTripId: "private-canonical",
+    blablaTripId: "private-provider-id",
+    driverUsername: "private-driver",
+    notes: "private-notes",
+    passengerName: "private-passenger",
+    passengerContact: "+5511999999999",
+    sourceReference: "BLABLACAR_SYNC:private",
+    stops: [{ id: "private-stop-id", order: 0, name: "A" }, { id: "private-stop-id-2", order: 1, name: "B" }],
+  });
+  assert.equal(projected.title, "A → B");
+  for (const field of [
+    "tripId", "publicToken", "canonicalTripId", "blablaTripId", "driverUsername",
+    "notes", "passengerName", "passengerContact", "sourceReference",
+  ]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(projected, field), false, field);
   }
-  assert.match(sanitizer, /delete safe\.id/);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.stops[0], "id"), false);
 
   const agenda = between(api, "async function getPublicDriverAgenda", "function buildAdminHomeTrip0471");
   assert.match(agenda, /publicTripProjection0491/);
