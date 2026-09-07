@@ -86,7 +86,7 @@ test("0491 public Agenda stays anonymous, read-only and free of internal trip id
 
   const sanitizer = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
   const { publicTripProjection0491 } = Function(
-    sanitizer + "\\nreturn { publicTripProjection0491 };",
+    sanitizer + "\nreturn { publicTripProjection0491 };",
   )();
   const projected = publicTripProjection0491({
     title: "A → B",

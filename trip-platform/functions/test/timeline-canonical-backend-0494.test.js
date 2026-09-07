@@ -328,7 +328,7 @@ test("0500 Timeline projection cannot read private Agenda mirror or return BlaBl
   const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
   const emittedTrip = between(
     firewall,
-    "    return {\\n      remoteTripId: doc.id,",
+    "    return {\n      remoteTripId: doc.id,",
     "  }))).filter(Boolean)",
   );
   assert.doesNotMatch(fn, /tripPrivateMirrors0434/);
