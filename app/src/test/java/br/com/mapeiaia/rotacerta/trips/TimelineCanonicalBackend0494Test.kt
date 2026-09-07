@@ -178,7 +178,10 @@ class TimelineCanonicalBackend0494Test {
         val canonicalLoader = remoteApi.substring(canonicalLoaderStart, canonicalLoaderEnd)
         assertTrue(canonicalLoader.contains("timelineProjection0494 = true"))
         assertTrue(canonicalLoader.contains("CANONICAL_NATIVE_FIREWALL"))
-        assertFalse(canonicalLoader.contains("collector", ignoreCase = true))
+        assertTrue(canonicalLoader.contains("BLABLACAR_BLOCK_ALL_0500"))
+        assertTrue(canonicalLoader.contains("!response.collectorRead"))
+        assertTrue(canonicalLoader.contains("!response.collectorFallback"))
+        assertTrue(canonicalLoader.contains("!response.collectorDerivedData"))
         assertFalse(canonicalLoader.contains("BlaBlaCollector"))
 
         assertTrue(passenger.contains("TIMELINE_CANONICAL_PASSENGER_MUTATION_0494"))
@@ -188,7 +191,8 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(quick.contains("collectorWrite=false"))
 
         assertTrue(backend.contains("timelineProjection0494"))
-        assertTrue(backend.contains("source: \"CANONICAL_BACKEND\""))
+        assertTrue(backend.contains("source: \"CANONICAL_NATIVE_FIREWALL\""))
+        assertTrue(backend.contains("provenancePolicy0500: \"BLABLACAR_BLOCK_ALL_0500\""))
         assertTrue(backend.contains("applyCanonicalTimelinePhysicalIssues0494"))
     }
 
@@ -199,7 +203,13 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(store.contains("last backend-canonical Timeline snapshot"))
         assertTrue(store.contains("TIMELINE_CANONICAL_STALE_REJECTED_0494"))
         assertTrue(store.contains("old.canonicalRevision > state.canonicalRevision"))
-        assertFalse(store.substringAfter("fun saveTimelineCanonicalCache0494").substringBefore("fun getTrip").contains("collector", ignoreCase = true))
+        val cacheWriter = store.substringAfter("fun saveTimelineCanonicalCache0494").substringBefore("fun getTrip")
+        assertTrue(cacheWriter.contains("CANONICAL_NATIVE_FIREWALL"))
+        assertTrue(cacheWriter.contains("BLABLACAR_BLOCK_ALL_0500"))
+        assertTrue(cacheWriter.contains("!incoming.collectorRead"))
+        assertTrue(cacheWriter.contains("!incoming.collectorFallback"))
+        assertTrue(cacheWriter.contains("!incoming.collectorDerivedData"))
+        assertFalse(cacheWriter.contains("BlaBlaCollector"))
     }
 
     @Test
@@ -207,8 +217,10 @@ class TimelineCanonicalBackend0494Test {
         val download = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt").readText()
 
         assertTrue(download.contains("put(\"schemaVersion\", \"3.0\")"))
-        assertTrue(download.contains("put(\"source\", \"CANONICAL_BACKEND\")"))
+        assertTrue(download.contains("put(\"source\", \"CANONICAL_NATIVE_FIREWALL\")"))
+        assertTrue(download.contains("put(\"collectorRead\", false)"))
         assertTrue(download.contains("put(\"collectorFallback\", false)"))
+        assertTrue(download.contains("put(\"collectorDerivedData\", false)"))
         assertTrue(download.contains("DriverTripSyncState0402.serializer()"))
         assertTrue(download.contains("put(\"localMetadata\""))
         assertFalse(download.contains("automaticSyncLastTrigger"))
@@ -371,7 +383,7 @@ class TimelineCanonicalBackend0494Test {
         val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
         assertTrue(activity.contains("AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499"))
-        assertTrue(activity.contains("networkSync=true source=CANONICAL_BACKEND publicPrivate=true collectorRead=false"))
+        assertTrue(activity.contains("networkSync=true source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorFallback=false collectorDerivedData=false"))
         assertTrue(activity.contains("manualRefreshToken0499 = timelinePullRefreshToken0499"))
         assertFalse(activity.contains("requestTimelineVisualReload"))
         assertTrue(timelineUi.contains("USER_PULL_REFRESH"))

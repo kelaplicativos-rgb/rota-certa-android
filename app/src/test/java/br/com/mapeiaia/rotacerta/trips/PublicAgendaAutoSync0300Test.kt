@@ -415,7 +415,7 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(source.contains("catch (error: CancellationException)"))
         assertTrue(source.contains("AgendaTrace.operationCancelled"))
         assertTrue(source.contains("throw error"))
-        assertTrue(source.contains("shapePreserved = true"))
+        assertTrue(source.contains("if (error is CancellationException) throw error"))
     }
 
     @Test
