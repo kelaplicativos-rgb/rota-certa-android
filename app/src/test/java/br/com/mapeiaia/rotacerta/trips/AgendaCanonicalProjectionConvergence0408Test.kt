@@ -210,7 +210,7 @@ class AgendaCanonicalProjectionConvergence0408Test {
         val attestation = source("PublicMirrorAttestationCoordinator0411.kt")
 
         assertTrue(backend.contains("includePastForVerification"))
-        assertTrue(backend.contains("(includePastForVerification || trip.departureAtMillis > now)"))
+        assertTrue(backend.contains("if (!includePastForVerification && Number(data.departureAtMillis || 0) < now - 6 * 60 * 60 * 1000) return null"))
         assertTrue(remoteApi.contains("includePastForVerification0429: Boolean = false"))
         assertTrue(remoteApi.contains("append(\"/v1/driver/trips/sync-state\")"))
         assertTrue(remoteApi.contains("if (includePastForVerification0429) add(\"includePastForVerification=1\")"))
