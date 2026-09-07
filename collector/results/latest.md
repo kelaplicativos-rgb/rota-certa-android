@@ -1,9 +1,9 @@
 # BlaBlaCar — busca pública renderizada
 
 - Status de validação: **validated**
-- Data: **2026-09-07**
-- Rota: **São Thomé das Letras, MG, Brasil → Pouso Alegre, MG, Brasil**
-- Motoristas visíveis: **8**
+- Data: **2026-09-08**
+- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
 - Indicador de demanda: **NÃO ENCONTRADO**
@@ -12,13 +12,15 @@
 
 ## Motoristas
 
-1. **Alessandra** — 09:30 — Minas Gerais → Minas Gerais — sem preço — Cheio
-2. **Jose** — 10:00 — Conceição do Rio Verde → Pouso Alegre — R$ 41,00
-3. **Lucas** — 13:00 — São Thomé das Letras → Minas Gerais — R$ 58,00
-4. **Enilda** — 14:00 — São Thomé das Letras → Pouso Alegre — sem preço — Cheio
-5. **Luis** — 15:00 — São Thomé das Letras → Minas Gerais — sem preço — Cheio
-6. **Janiel** — 16:00 — Cruzília → Pouso Alegre — sem preço — Cheio
-7. **Anita** — 16:00 — Cruzília → Pouso Alegre — sem preço — Cheio
-8. **Jose** — 16:30 — Conceição do Rio Verde → Pouso Alegre — R$ 40,00
+1. **Samuel** — 04:20 — São Paulo → Campanha — R$ 85,00 — Esgotará em breve
+2. **Val** — 05:00 — São Paulo → Carmo da Cachoeira — sem preço — Cheio
+3. **Weslley** — 06:00 — São Paulo → Três Corações — sem preço — Cheio
+4. **Anderson** — 07:30 — São Paulo → Três Corações — sem preço — Cheio
+5. **Eugenio Teixeira** — 08:00 — São Paulo → Três Corações — sem preço — Cheio
+6. **Maria** — 08:00 — Guarulhos → Minas Gerais — R$ 99,00
+7. **Kennedy** — 10:00 — São Paulo → Três Corações — sem preço — Cheio
+8. **Anderson** — 10:00 — São Paulo → Três Corações — R$ 87,00 — Esgotará em breve
+9. **Paulo Henrique** — 11:00 — São Paulo → Três Corações — R$ 78,00 — Esgotará em breve
+10. **Alessandra** — 16:30 — São Paulo → São Tomé das Letras — R$ 110,00
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.

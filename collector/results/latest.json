@@ -1,19 +1,19 @@
 {
   "schema_version": 5,
-  "request_id": "validate-uuid-2026-09-07-stl-pouso-alegre-both-uuids",
-  "collected_at": "2026-09-07T03:30:16.295Z",
+  "request_id": "validate-2026-09-08-santo-andre-sao-thome-both-uuids",
+  "collected_at": "2026-09-07T03:32:15.148Z",
   "status": "validated",
   "strategy": "headed_chromium_rendered_public_page",
   "place_resolution": "static_corridor",
   "request": {
-    "from": "São Thomé das Letras, MG, Brasil",
-    "to": "Pouso Alegre, MG, Brasil",
-    "date": "2026-09-07",
+    "from": "Santo André, SP, Brasil",
+    "to": "São Thomé das Letras, MG, Brasil",
+    "date": "2026-09-08",
     "seats": 1
   },
   "resolved_place_ids": {
-    "from_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
-    "to_place_id": "eyJpIjoiQ2hJSlYyNFBheDdIeTVRUlV0ZU5EWDhWN0wwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
+    "from_place_id": "eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ==",
+    "to_place_id": "eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ=="
   },
   "validation": {
     "http_status": 200,
@@ -22,11 +22,11 @@
     "exact_destination_match": true,
     "route_visible_in_page": true,
     "content_confirmed": true,
-    "final_url": "https://www.blablacar.com.br/search?fn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&tn=Pouso+Alegre%2C+MG%2C+Brasil&db=2026-09-07&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSlYyNFBheDdIeTVRUlV0ZU5EWDhWN0wwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
-    "page_title": "Caronas e viagens para Pouso Alegre, MG, Brasil"
+    "final_url": "https://www.blablacar.com.br/search?fn=Santo+Andr%C3%A9%2C+SP%2C+Brasil&tn=S%C3%A3o+Thom%C3%A9+das+Letras%2C+MG%2C+Brasil&db=2026-09-08&seats=1&search_origin=SEARCH&from_place_id=eyJpIjoiQ2hJSjczNGRoM2hDenBRUjNrN2JLb2JLcXA0IiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&to_place_id=eyJpIjoiQ2hJSkEteldrMEhWbndBUkM0TGhEX2dUNzcwIiwicCI6MSwidiI6MSwidCI6WzRdfQ%3D%3D&p0%5Bac%5D=adult",
+    "page_title": "Caronas e viagens para São Thomé das Letras, MG, Brasil"
   },
   "zero_results_confirmed": false,
-  "driver_cards_count": 8,
+  "driver_cards_count": 10,
   "ezequiel_s_visible": false,
   "barbosa_visible": false,
   "demand": {
@@ -38,11 +38,28 @@
   "trips": [
     {
       "card_index": 0,
-      "driver_name": "Alessandra",
-      "departure_time": "09:30",
-      "arrival_time": "11:20",
-      "actual_departure": "Minas Gerais",
-      "actual_arrival": "Minas Gerais",
+      "driver_name": "Samuel",
+      "departure_time": "04:20",
+      "arrival_time": "08:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Campanha",
+      "price": "R$ 85,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=GZU1lh78TJm3FZEjGfF94QAb0_afqGSYSrCQUjaglZwg&requested_seats=1&search_origin=SEARCH&search_uuid=19953596-1efc-4c99-b715-912319f17de1",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 1,
+      "driver_name": "Val",
+      "departure_time": "05:00",
+      "arrival_time": "09:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Carmo da Cachoeira",
       "price": null,
       "flags": [
         "Cheio"
@@ -54,42 +71,29 @@
       "profile_uuid_evidence": null
     },
     {
-      "card_index": 1,
-      "driver_name": "Jose",
-      "departure_time": "10:00",
-      "arrival_time": "11:50",
-      "actual_departure": "Conceição do Rio Verde",
-      "actual_arrival": "Pouso Alegre",
-      "price": "R$ 41,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=3s3-xJ8qRU-sto52HrdPiQfFaSX2xCQMy441WB2eG9LQ&requested_seats=1&search_origin=SEARCH&search_uuid=decdfec4-9f2a-454f-acb6-8e761eb74f89",
-      "profile_hrefs": [],
-      "profile_uuid": null,
-      "profile_uuid_evidence": null
-    },
-    {
       "card_index": 2,
-      "driver_name": "Lucas",
-      "departure_time": "13:00",
-      "arrival_time": "15:20",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "Minas Gerais",
-      "price": "R$ 58,00",
-      "flags": [],
-      "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=3s3-xJ8qRU-sto52HrdPiQh4cagti-S1eSIGMU87pwXg&requested_seats=1&search_origin=SEARCH&search_uuid=decdfec4-9f2a-454f-acb6-8e761eb74f89",
+      "driver_name": "Weslley",
+      "departure_time": "06:00",
+      "arrival_time": "09:50",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": null,
+      "flags": [
+        "Cheio"
+      ],
+      "availability": "full",
+      "trip_href": null,
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
     },
     {
       "card_index": 3,
-      "driver_name": "Enilda",
-      "departure_time": "14:00",
-      "arrival_time": "16:20",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "Pouso Alegre",
+      "driver_name": "Anderson",
+      "departure_time": "07:30",
+      "arrival_time": "11:20",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
       "price": null,
       "flags": [
         "Cheio"
@@ -102,11 +106,11 @@
     },
     {
       "card_index": 4,
-      "driver_name": "Luis",
-      "departure_time": "15:00",
-      "arrival_time": "17:20",
-      "actual_departure": "São Thomé das Letras",
-      "actual_arrival": "Minas Gerais",
+      "driver_name": "Eugenio Teixeira",
+      "departure_time": "08:00",
+      "arrival_time": "12:00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
       "price": null,
       "flags": [
         "Cheio"
@@ -119,28 +123,26 @@
     },
     {
       "card_index": 5,
-      "driver_name": "Janiel",
-      "departure_time": "16:00",
-      "arrival_time": "18:30",
-      "actual_departure": "Cruzília",
-      "actual_arrival": "Pouso Alegre",
-      "price": null,
-      "flags": [
-        "Cheio"
-      ],
-      "availability": "full",
-      "trip_href": null,
+      "driver_name": "Maria",
+      "departure_time": "08:00",
+      "arrival_time": "11:50",
+      "actual_departure": "Guarulhos",
+      "actual_arrival": "Minas Gerais",
+      "price": "R$ 99,00",
+      "flags": [],
+      "availability": "available_or_unspecified",
+      "trip_href": "/trip?source=CARPOOLING&id=GZU1lh78TJm3FZEjGfF94QVZFvsDKYRfuHbefkGk1dbQ&requested_seats=1&search_origin=SEARCH&search_uuid=19953596-1efc-4c99-b715-912319f17de1",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
     },
     {
       "card_index": 6,
-      "driver_name": "Anita",
-      "departure_time": "16:00",
-      "arrival_time": "18:20",
-      "actual_departure": "Cruzília",
-      "actual_arrival": "Pouso Alegre",
+      "driver_name": "Kennedy",
+      "departure_time": "10:00",
+      "arrival_time": "14:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
       "price": null,
       "flags": [
         "Cheio"
@@ -153,15 +155,49 @@
     },
     {
       "card_index": 7,
-      "driver_name": "Jose",
+      "driver_name": "Anderson",
+      "departure_time": "10:00",
+      "arrival_time": "14:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 87,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=GZU1lh78TJm3FZEjGfF94QthtxWqQGTseP5TSyf6r0NA&requested_seats=1&search_origin=SEARCH&search_uuid=19953596-1efc-4c99-b715-912319f17de1",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 8,
+      "driver_name": "Paulo Henrique",
+      "departure_time": "11:00",
+      "arrival_time": "15:00",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "Três Corações",
+      "price": "R$ 78,00",
+      "flags": [
+        "Esgotará em breve"
+      ],
+      "availability": "scarce",
+      "trip_href": "/trip?source=CARPOOLING&id=GZU1lh78TJm3FZEjGfF94Qbc5eobN1S5aP8JGv_iz_tw&requested_seats=1&search_origin=SEARCH&search_uuid=19953596-1efc-4c99-b715-912319f17de1",
+      "profile_hrefs": [],
+      "profile_uuid": null,
+      "profile_uuid_evidence": null
+    },
+    {
+      "card_index": 9,
+      "driver_name": "Alessandra",
       "departure_time": "16:30",
-      "arrival_time": "18:20",
-      "actual_departure": "Conceição do Rio Verde",
-      "actual_arrival": "Pouso Alegre",
-      "price": "R$ 40,00",
+      "arrival_time": "22:10",
+      "actual_departure": "São Paulo",
+      "actual_arrival": "São Tomé das Letras",
+      "price": "R$ 110,00",
       "flags": [],
       "availability": "available_or_unspecified",
-      "trip_href": "/trip?source=CARPOOLING&id=3s3-xJ8qRU-sto52HrdPiQ6xJh94i9SG2TX0-W2dTEZQ&requested_seats=1&search_origin=SEARCH&search_uuid=decdfec4-9f2a-454f-acb6-8e761eb74f89",
+      "trip_href": "/trip?source=CARPOOLING&id=GZU1lh78TJm3FZEjGfF94QjoodZ5K3RcaKMy4Oi_4XBA&requested_seats=1&search_origin=SEARCH&search_uuid=19953596-1efc-4c99-b715-912319f17de1",
       "profile_hrefs": [],
       "profile_uuid": null,
       "profile_uuid_evidence": null
