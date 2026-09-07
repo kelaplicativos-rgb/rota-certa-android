@@ -64,20 +64,68 @@ function authoritativeUpdatedLabel0491(ms) {
   }).format(new Date(value));
 }
 
-function agendaDateLabel0473(ms) {
+function agendaTimezone0496(raw) {
+  const candidate = String(raw || "").trim();
+  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  if (!candidate) return fallback;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date(0));
+    return candidate;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function agendaDateParts0496(ms, timezoneId) {
   const date = new Date(Number(ms || 0));
-  if (!Number.isFinite(date.getTime())) return "";
-  const now = new Date();
-  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const targetStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const deltaDays = Math.round((targetStart - dayStart) / 86400000);
+  if (!Number.isFinite(date.getTime())) return null;
+  const timeZone = agendaTimezone0496(timezoneId);
+  const values = {};
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date).forEach((part) => {
+    if (part.type !== "literal") values[part.type] = part.value;
+  });
+  const year = Number(values.year);
+  const month = Number(values.month);
+  const day = Number(values.day);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+  const utcDay = Date.UTC(year, month - 1, day);
+  return {
+    timeZone,
+    year,
+    month: month - 1,
+    day,
+    weekday: new Date(utcDay).getUTCDay(),
+    dayNumber: Math.floor(utcDay / 86400000),
+  };
+}
+
+function agendaTripTime0496(ms, timezoneId) {
+  const value = Number(ms || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: agendaTimezone0496(timezoneId),
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function agendaDateLabel0473(ms, timezoneId, nowMillis = Date.now()) {
+  const date = agendaDateParts0496(ms, timezoneId);
+  const now = agendaDateParts0496(nowMillis, timezoneId);
+  if (!date || !now) return "";
+  const deltaDays = date.dayNumber - now.dayNumber;
   if (deltaDays === -1) return "Ontem";
   if (deltaDays === 0) return "Hoje";
   if (deltaDays === 1) return "Amanhã";
   const weekdays = ["Dom.", "Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb."];
   const months = ["Jan.", "Fev.", "Mar.", "Abr.", "Mai.", "Jun.", "Jul.", "Ago.", "Set.", "Out.", "Nov.", "Dez."];
-  const yearSuffix = date.getFullYear() !== now.getFullYear() ? " " + date.getFullYear() : "";
-  return weekdays[date.getDay()] + " " + String(date.getDate()).padStart(2, "0") + " " + months[date.getMonth()] + yearSuffix;
+  const yearSuffix = date.year !== now.year ? " " + date.year : "";
+  return weekdays[date.weekday] + " " + String(date.day).padStart(2, "0") + " " + months[date.month] + yearSuffix;
 }
 
 function orderedStops(source) {
@@ -208,12 +256,12 @@ function publicCardEligible0475(item) {
     orderedStops(item).length >= 2;
 }
 
-function agendaLongDateLabel0480(ms) {
-  const date = new Date(Number(ms || 0));
-  if (!Number.isFinite(date.getTime())) return "";
+function agendaLongDateLabel0480(ms, timezoneId) {
+  const date = agendaDateParts0496(ms, timezoneId);
+  if (!date) return "";
   const weekdays = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
   const months = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  return weekdays[date.getDay()] + ", " + date.getDate() + " de " + months[date.getMonth()] + " de " + date.getFullYear();
+  return weekdays[date.weekday] + ", " + date.day + " de " + months[date.month] + " de " + date.year;
 }
 
 function agendaStopMoment0480(item, stop, index, lastIndex) {
@@ -265,8 +313,8 @@ function renderAgendaCards(entries, container) {
 
     const date = document.createElement("div");
     date.className = "agendaDate0473";
-    date.dataset.compactLabel = agendaDateLabel0473(item.departureAtMillis);
-    date.dataset.expandedLabel = agendaLongDateLabel0480(item.departureAtMillis);
+    date.dataset.compactLabel = agendaDateLabel0473(item.departureAtMillis, item.timezoneId);
+    date.dataset.expandedLabel = agendaLongDateLabel0480(item.departureAtMillis, item.timezoneId);
     date.textContent = date.dataset.compactLabel;
 
     const journey0473 = document.createElement("div");
@@ -275,7 +323,7 @@ function renderAgendaCards(entries, container) {
     const startTime0473 = document.createElement("div");
     startTime0473.className = "agendaJourneyTime0473 agendaJourneyStart0473";
     const startClock0473 = document.createElement("strong");
-    startClock0473.textContent = formatTime(startMillis0473 || item.departureAtMillis);
+    startClock0473.textContent = agendaTripTime0496(startMillis0473 || item.departureAtMillis, item.timezoneId);
     startTime0473.appendChild(startClock0473);
     if (duration0473) {
       const durationNode0473 = document.createElement("small");
@@ -296,7 +344,7 @@ function renderAgendaCards(entries, container) {
     const endTime0473 = document.createElement("div");
     endTime0473.className = "agendaJourneyTime0473 agendaJourneyEnd0473";
     const endClock0473 = document.createElement("strong");
-    endClock0473.textContent = formatTime(endMillis0473);
+    endClock0473.textContent = agendaTripTime0496(endMillis0473, item.timezoneId);
     endTime0473.appendChild(endClock0473);
 
     const endCity0473 = document.createElement("div");
@@ -320,7 +368,7 @@ function renderAgendaCards(entries, container) {
       const moment0480 = agendaStopMoment0480(item, stop, index, toIndex);
       if (moment0480) {
         const clock0480 = document.createElement("strong");
-        clock0480.textContent = formatTime(moment0480);
+        clock0480.textContent = agendaTripTime0496(moment0480, item.timezoneId);
         time0480.appendChild(clock0480);
       }
       if (index === 0 && duration0473) {
