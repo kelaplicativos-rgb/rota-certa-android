@@ -1,7 +1,7 @@
 {
-  "request_id": "validate-current-2026-09-07-stl-santo-andre-both-uuids",
+  "request_id": "validate-uuid-2026-09-07-stl-pouso-alegre-both-uuids",
   "from": "São Thomé das Letras, MG, Brasil",
-  "to": "Santo André, SP, Brasil",
+  "to": "Pouso Alegre, MG, Brasil",
   "date": "2026-09-07",
   "seats": 1,
   "identity_targets": [
