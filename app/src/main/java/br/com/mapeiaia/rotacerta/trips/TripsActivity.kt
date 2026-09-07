@@ -390,11 +390,11 @@ private fun TripApp(
         if (!timelinePullRefreshing0499) {
             timelinePullRefreshing0499 = true
             timelinePullRefreshToken0499 += 1
-            message = "Atualizando Timeline pela Agenda canônica..."
+            message = "Atualizando Timeline pelo domínio permitido do Rota Certa..."
             UnifiedDebugEventStore.record(
                 "AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499",
                 activity.packageName,
-                "networkSync=true source=CANONICAL_BACKEND publicPrivate=true collectorRead=false",
+                "networkSync=true source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorFallback=false collectorDerivedData=false",
             )
         }
     }
@@ -745,9 +745,9 @@ private fun TripApp(
                         if (!refreshing0499) {
                             if (error0499.isNullOrBlank()) {
                                 refresh()
-                                message = "Timeline atualizada pela Agenda canônica: viagens, vagas e dados privados/públicos sincronizados."
+                                message = "Timeline atualizada pelo domínio permitido do Rota Certa. O coletor BlaBlaCar não participa deste fluxo."
                             } else {
-                                message = "Não foi possível atualizar a Timeline pela Agenda canônica: $error0499"
+                                message = "Não foi possível atualizar a Timeline pelo domínio permitido: $error0499"
                             }
                         }
                     },

@@ -66,7 +66,11 @@ class TimelineCanonicalBackend0494Test {
     fun testA_collectorOffCanonicalBackendSnapshotStillBuildsTimeline() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 snapshotAtMillis = 9_000L,
                 trips = listOf(state("canonical-a", 7L)),
             ),
@@ -81,7 +85,11 @@ class TimelineCanonicalBackend0494Test {
     fun testB_and_G_sameCanonicalRevisionOwnsIdentityAndSharedCapacity() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 snapshotAtMillis = 9_000L,
                 trips = listOf(state("canonical-g", 11L)),
             ),
@@ -102,7 +110,11 @@ class TimelineCanonicalBackend0494Test {
     fun testD_manualTripNeedsNoBlaBlaIdentity() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(state("manual-canonical", 1L, blablaTripId = "")),
             ),
         )
@@ -116,7 +128,11 @@ class TimelineCanonicalBackend0494Test {
     fun testH_duplicateTransportRowsCollapseToNewestCanonicalRevision() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(
                     state("same-canonical", 3L, remoteId = "old"),
                     state("same-canonical", 8L, remoteId = "new"),
@@ -161,7 +177,7 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(canonicalLoaderStart >= 0 && canonicalLoaderEnd > canonicalLoaderStart)
         val canonicalLoader = remoteApi.substring(canonicalLoaderStart, canonicalLoaderEnd)
         assertTrue(canonicalLoader.contains("timelineProjection0494 = true"))
-        assertTrue(canonicalLoader.contains("CANONICAL_BACKEND"))
+        assertTrue(canonicalLoader.contains("CANONICAL_NATIVE_FIREWALL"))
         assertFalse(canonicalLoader.contains("collector", ignoreCase = true))
         assertFalse(canonicalLoader.contains("BlaBlaCollector"))
 
@@ -201,35 +217,29 @@ class TimelineCanonicalBackend0494Test {
     }
 
     @Test
-    fun testJ_canonicalBookingDrivesPassengerUiEvenWhenLegacyRosterIsEmpty() {
-        val remoteBooking = RemoteBooking(
-            id = "booking-canonical",
-            tripId = "remote-1",
-            passengerId = "passenger-1",
-            passengerName = "Passageiro Fixture",
-            passengerContact = "contact-fixture",
+    fun testJ_blaBlaBookingIsRejectedEvenInsideAnOtherwiseCanonicalPayload() {
+        val forbidden = RemoteBooking(
+            id = "booking-forbidden",
+            passengerName = "Não deve entrar",
             boardingStopId = "stop-origin",
             dropoffStopId = "stop-destination",
-            seats = 1,
-            status = BookingStatus.CONFIRMED.name,
-            operationalStatus = PassengerOperationalStatus.IN_CAR,
-            paymentStatus = PassengerPaymentStatus.PAID,
             source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
             sourceReference = "BLABLACAR_SYNC:fixture",
-            occupancyGroupId = "occupancy-fixture",
         )
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
-                trips = listOf(state("canonical-booking", 4L, bookings = listOf(remoteBooking))),
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
+                trips = listOf(state("contaminated-booking", 4L, bookings = listOf(forbidden))),
             ),
         )
-
-        assertTrue(projection.entries.single().blablaPassengers.isEmpty())
-        assertEquals(1, projection.bookings.size)
-        assertEquals("booking-canonical", projection.bookings.single().id)
-        assertEquals(PassengerOperationalStatus.IN_CAR, projection.bookings.single().operationalStatus)
-        assertEquals(PassengerPaymentStatus.PAID, projection.bookings.single().paymentStatus)
+        assertTrue(projection.entries.isEmpty())
+        assertTrue(projection.bookings.isEmpty())
+        assertTrue(projection.trips.isEmpty())
     }
 
     @Test
@@ -265,7 +275,11 @@ class TimelineCanonicalBackend0494Test {
         )
         val projection = canonicalTimelineProjection0494(
             response = DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(state("canonical-local-meta", 5L, bookings = listOf(remoteBooking))),
             ),
             existingLocalBookings = listOf(local),
@@ -297,7 +311,11 @@ class TimelineCanonicalBackend0494Test {
             source = BookingSource.ROTA_CERTA,
         )
         val response = DriverTripSyncStateResponse0402(
-            source = "CANONICAL_BACKEND",
+            source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
             snapshotAtMillis = 55_000L,
             trips = listOf(state("canonical-export", 6L, bookings = listOf(remoteBooking))),
         )
@@ -334,18 +352,18 @@ class TimelineCanonicalBackend0494Test {
     }
 
     @Test
-    fun testN_canonicalPassengerConsumersDoNotUseLegacyRosterAsAuthority() {
+    fun testN_timelineProjectionActivelyStripsAllBlaBlaFunctionalFields() {
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
-        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
-        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
-
-        assertTrue(timeline.contains("if (entry.canonicalBackendAuthoritative0494)"))
-        assertTrue(timelineUi.contains("if (enriched.canonicalBackendAuthoritative0494)"))
-        assertTrue(timelineUi.contains("sourcePassengerSeats[BookingSource.BLABLACAR]"))
-        assertTrue(passengerUi.contains("if (entry.canonicalBackendAuthoritative0494) emptyList() else entry.blablaPassengers"))
-        assertTrue(passengerUi.contains("canonicalBookings0494"))
+        val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
+        assertTrue(timeline.contains("timelineCollectorContaminated0500"))
+        assertTrue(timeline.contains("blablaProfileUuid = null"))
+        assertTrue(timeline.contains("blablaTripId = null"))
+        assertTrue(timeline.contains("blablaPublicUrl = null"))
+        assertTrue(timeline.contains("publishedSeats = null"))
+        assertTrue(remote.contains("BLABLACAR_BLOCK_ALL_0500"))
+        assertFalse(remote.substringAfter("suspend fun loadCanonicalTimelineState0494")
+            .substringBefore("suspend fun updateDriverTripPublicVisibility0491").contains("listBookings("))
     }
-
 
     @Test
     fun testO_pullToRefreshIsCanonicalNetworkRefreshNotLocalVisualReload() {
@@ -362,16 +380,19 @@ class TimelineCanonicalBackend0494Test {
     }
 
     @Test
-    fun testP_driverPrivateAgendaMirrorHydratesTimelineWithoutCollectorAuthority() {
+    fun testP_timelineNeverHydratesThePrivateAgendaMirror() {
         val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
-        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
-
-        assertTrue(remote.contains("privateMirrorCurrent0499"))
-        assertTrue(remote.contains("fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits"))
-        assertTrue(remote.contains("boardingAddress = boardingAddress.ifBlank"))
-        assertTrue(remote.contains("dropoffAddress = dropoffAddress.ifBlank"))
-        assertTrue(timeline.contains("notes = state.notes0499"))
-        assertTrue(timeline.contains("publicTimezoneId0411 = state.timezoneId0499"))
+        val backend = File("../trip-platform/functions/index.js").readText()
+        val loader = remote.substringAfter("suspend fun loadCanonicalTimelineState0494")
+            .substringBefore("suspend fun updateDriverTripPublicVisibility0491")
+        val endpoint = backend.substringAfter("async function listDriverTripSyncState0402")
+            .substringBefore("async function reconcileDriverAgendaSeatAllocation")
+        assertTrue(loader.contains("CANONICAL_NATIVE_FIREWALL"))
+        assertTrue(loader.contains("collectorDerivedData"))
+        assertFalse(loader.contains("listBookings("))
+        assertFalse(loader.contains("readPrivateAgendaMirror0434"))
+        assertTrue(endpoint.contains("listDriverTimelineNativeState0500"))
+        assertFalse(endpoint.contains("tripPrivateMirrors0434"))
     }
 
 }

@@ -19,6 +19,17 @@ private val timelineExportJson0495 = Json {
     encodeDefaults = true
 }
 
+private val timelineExportForbiddenKeys0500 = setOf(
+    "blablaProfileUuid",
+    "blablaTripId",
+    "blablaPublicUrl",
+    "publishedSeats",
+    "privateMirrorAvailable0499",
+    "privateMirrorCurrent0499",
+    "privateMirrorRevision0499",
+    "privateStateHash0499",
+)
+
 internal fun agendaTimelineDownloadJson0398(
     response: DriverTripSyncStateResponse0402?,
     projectedBookings: List<Booking> = emptyList(),
@@ -27,10 +38,12 @@ internal fun agendaTimelineDownloadJson0398(
 ): String = buildJsonObject {
     put("schemaVersion", "3.0")
     put("kind", "rota_certa_timeline")
-    put("source", "CANONICAL_BACKEND")
+    put("source", "CANONICAL_NATIVE_FIREWALL")
     put("generatedAtMillis", generatedAtMillis)
     put("canonicalSnapshotAtMillis", response?.snapshotAtMillis ?: 0L)
+    put("collectorRead", false)
     put("collectorFallback", false)
+    put("collectorDerivedData", false)
     put("trips", buildJsonArray {
         response?.trips
             .orEmpty()
@@ -46,7 +59,9 @@ internal fun agendaTimelineDownloadJson0398(
                     .encodeToJsonElement(DriverTripSyncState0402.serializer(), state)
                     .jsonObject
                 add(buildJsonObject {
-                    canonical.forEach { (key, value) -> put(key, value) }
+                    canonical.forEach { (key, value) ->
+                        if (key !in timelineExportForbiddenKeys0500) put(key, value)
+                    }
                     put("localMetadata", buildJsonObject {
                         put("authority", "LOCAL_METADATA")
                         put("bookings", buildJsonArray {

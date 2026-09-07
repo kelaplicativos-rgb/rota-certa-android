@@ -45,8 +45,16 @@ class TripStore(context: Context) {
      * Offline/performance cache of the last backend-canonical Timeline snapshot.
      * This cache is never published and never feeds the collector/outbox pipeline.
      */
-    internal fun timelineCanonicalCache0494(): DriverTripSyncStateResponse0402? =
-        decode<DriverTripSyncStateResponse0402>(prefs.getString(timelineCanonicalCacheKey0494, null))
+    internal fun timelineCanonicalCache0494(): DriverTripSyncStateResponse0402? {
+        val cached = decode<DriverTripSyncStateResponse0402>(prefs.getString(timelineCanonicalCacheKey0494, null))
+        return cached?.takeIf {
+            it.source == "CANONICAL_NATIVE_FIREWALL" &&
+                it.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                !it.collectorRead &&
+                !it.collectorFallback &&
+                !it.collectorDerivedData
+        }
+    }
 
     internal fun timelineCanonicalCacheUpdatedAt0494(): Long =
         prefs.getLong(timelineCanonicalCacheUpdatedAtKey0494, 0L).coerceAtLeast(0L)
@@ -55,8 +63,14 @@ class TripStore(context: Context) {
         incoming: DriverTripSyncStateResponse0402,
         nowMillis: Long = System.currentTimeMillis(),
     ): DriverTripSyncStateResponse0402 = synchronized(CANONICAL_LOCK) {
-        require(incoming.source.isBlank() || incoming.source == "CANONICAL_BACKEND") {
-            "Timeline aceita somente snapshot do backend canônico."
+        require(
+            incoming.source == "CANONICAL_NATIVE_FIREWALL" &&
+                incoming.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                !incoming.collectorRead &&
+                !incoming.collectorFallback &&
+                !incoming.collectorDerivedData,
+        ) {
+            "Timeline aceita somente snapshot canônico filtrado por proveniência nativa."
         }
         val previous = timelineCanonicalCache0494()
         val previousById = previous?.trips.orEmpty().associateBy { state ->
@@ -80,7 +94,11 @@ class TripStore(context: Context) {
             .distinctBy { state -> state.canonicalTripId.ifBlank { state.remoteTripId } }
         val normalized = incoming.copy(
             trips = accepted,
-            source = "CANONICAL_BACKEND",
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
             snapshotAtMillis = incoming.snapshotAtMillis.takeIf { it > 0L } ?: nowMillis,
         )
         require(
@@ -92,7 +110,7 @@ class TripStore(context: Context) {
         UnifiedDebugEventStore.record(
             "TIMELINE_CANONICAL_CACHE_COMMITTED_0494",
             appContext.packageName,
-            "trips=${accepted.size} source=CANONICAL_BACKEND snapshotAt=${normalized.snapshotAtMillis}",
+            "trips=${accepted.size} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false snapshotAt=${normalized.snapshotAtMillis}",
         )
         normalized
     }

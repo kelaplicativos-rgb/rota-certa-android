@@ -197,3 +197,64 @@ test("0484 public labels are exact and privacy-safe", () => {
   assert.match(html, /agendaSegmentPassengers0489/);
   assert.match(html, /app\.js\?v=0\.1\.498/);
 });
+
+
+test("0500 capacity 4 preserves exact anonymous occupancy 0..4 and vacancies 4..0", () => {
+  const { publicSegmentAvailability0484 } = compilePublicSegments();
+  for (let occupied = 0; occupied <= 4; occupied += 1) {
+    assert.deepEqual(publicSegmentAvailability0484(
+      { capacity: 4, stops: [{ name: "A" }, { name: "B" }] },
+      [occupied], true, [occupied],
+    ), [{ from: "A", to: "B", availableSeats: 4 - occupied, passengerSeats: occupied }]);
+  }
+});
+
+test("0500 A-B-C-D passengers consume every and only traversed segment", () => {
+  const { reconciledSegmentCapacity } = compileSegmentCapacity();
+  const { publicSegmentAvailability0484 } = compilePublicSegments();
+  const trip = { capacity: 4, stops: [
+    { id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }, { id: "d", name: "D" },
+  ]};
+  const records = [
+    { id: "p1", passengerId: "p1", boardingStopId: "a", dropoffStopId: "b", seats: 1, status: "CONFIRMED", capacityClaimType: "PASSENGER" },
+    { id: "p2", passengerId: "p2", boardingStopId: "b", dropoffStopId: "d", seats: 1, status: "CONFIRMED", capacityClaimType: "PASSENGER" },
+    { id: "p3", passengerId: "p3", boardingStopId: "c", dropoffStopId: "d", seats: 1, status: "CONFIRMED", capacityClaimType: "PASSENGER" },
+  ];
+  const state = reconciledSegmentCapacity(trip, records, 0);
+  assert.deepEqual(state.passengerLoads, [1, 1, 2]);
+  assert.deepEqual(state.loads, [1, 1, 2]);
+  assert.deepEqual(
+    publicSegmentAvailability0484(trip, state.loads, true, state.passengerLoads)
+      .map((row) => [row.passengerSeats, row.availableSeats]),
+    [[1, 3], [1, 3], [2, 2]],
+  );
+});
+
+test("0500 public Agenda projection allowlist removes passenger/private/admin data before JSON", () => {
+  const production = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
+  const { publicTripProjection0491 } = Function(production + "\nreturn { publicTripProjection0491 };")();
+  const projected = publicTripProjection0491({
+    title: "A → B", departureAtMillis: 123, capacity: 4, status: "PUBLISHED",
+    stops: [{ id: "private-stop-id", order: 0, name: "A", address: "Parada pública" }, { id: "private-stop-id-2", order: 1, name: "B" }],
+    segmentPassengerLoads: [3],
+    segmentAvailability: [{ from: "A", to: "B", passengerSeats: 3, availableSeats: 1, passengerId: "segment-secret" }],
+    blablaPublicUrl: "https://www.blablacar.com.br/trip/public-safe",
+    passengerId: "secret-passenger-id", passengerName: "Secret Person", passengerContact: "+5511999999999",
+    whatsapp: "+5511888888888", email: "secret@example.test",
+    boardingAddress: "Secret Boarding Address", dropoffAddress: "Secret Dropoff Address",
+    fareMinorUnits: 9999, paymentStatus: "PAID", notes: "Secret Notes",
+    sourceReference: "BLABLACAR_SYNC:secret", bookingId: "secret-booking",
+    canonicalTripId: "private-canonical-id", blablaTripId: "private-blabla-id",
+    driverUsername: "private-admin-user", token: "secret-token", session: "secret-session",
+  });
+  const serialized = JSON.stringify(projected);
+  assert.equal(projected.segmentAvailability[0].passengerSeats, 3);
+  assert.equal(projected.segmentAvailability[0].availableSeats, 1);
+  assert.equal(projected.blablaPublicUrl, "https://www.blablacar.com.br/trip/public-safe");
+  for (const forbidden of [
+    "Secret Person", "+5511999999999", "+5511888888888", "secret@example.test",
+    "Secret Boarding Address", "Secret Dropoff Address", "Secret Notes", "secret-passenger-id",
+    "secret-booking", "private-canonical-id", "private-blabla-id", "secret-token", "secret-session",
+    "sourceReference", "passengerId", "passengerName", "paymentStatus", "fareMinorUnits",
+  ]) assert.equal(serialized.includes(forbidden), false, forbidden);
+});

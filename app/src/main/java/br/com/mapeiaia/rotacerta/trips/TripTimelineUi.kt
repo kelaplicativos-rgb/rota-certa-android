@@ -180,7 +180,7 @@ fun TripTimelineScreen(
         UnifiedDebugEventStore.record(
             if (accepted) "TIMELINE_INVALIDATED" else "TIMELINE_REFRESH_COALESCED",
             context.packageName,
-            "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+            "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
         )
     }
 
@@ -204,7 +204,7 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_REFRESH_STARTED",
                     context.packageName,
-                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                 )
                 runCatching {
                     TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
@@ -222,7 +222,7 @@ fun TripTimelineScreen(
                     UnifiedDebugEventStore.record(
                         "TIMELINE_REFRESH_APPLIED",
                         context.packageName,
-                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_BACKEND collectorRead=false",
+                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                     )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_READ_0494",

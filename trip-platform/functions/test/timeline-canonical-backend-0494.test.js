@@ -110,19 +110,21 @@ test("0494 missing trusted coordinates fails closed instead of inventing telepor
   assert.equal(trips[1].canonicalIssues.includes("PROFILE_CONTINUITY"), false);
 });
 
-test("0494 endpoint is an authenticated canonical projection and embeds canonical bookings", () => {
+test("0500 Timeline endpoint delegates to the authenticated native-only provenance firewall", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
-
+  const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
   assert.match(fn, /requireDriver\(req, res\)/);
   assert.match(fn, /timelineProjection0494/);
-  assert.match(fn, /doc\.ref\.collection\("bookings"\)/);
-  assert.match(fn, /canonicalTripId:/);
-  assert.match(fn, /canonicalRevision:/);
-  assert.match(fn, /segmentAvailableSeats:/);
-  assert.match(fn, /applyCanonicalTimelinePhysicalIssues0494/);
-  assert.match(fn, /source: "CANONICAL_BACKEND"/);
-  assert.doesNotMatch(fn, /BlaBlaCollector/);
-  assert.doesNotMatch(fn, /timeline-ext-/);
+  assert.match(fn, /listDriverTimelineNativeState0500/);
+  assert.match(firewall, /timelineTripHasCollectorProvenance0500/);
+  assert.match(firewall, /timelineBookingHasCollectorProvenance0500/);
+  assert.match(firewall, /source === "BLABLACAR"/);
+  assert.match(firewall, /claimType === "EXTERNAL_OCCUPANCY"/);
+  assert.match(firewall, /collectorRead: false/);
+  assert.match(firewall, /collectorFallback: false/);
+  assert.match(firewall, /collectorDerivedData: false/);
+  assert.match(firewall, /source: "CANONICAL_NATIVE_FIREWALL"/);
+  assert.doesNotMatch(firewall, /tripPrivateMirrors0434/);
 });
 
 test("0494 operational mutations update canonical server projection atomically", () => {
@@ -321,17 +323,14 @@ test("0495 legacy convergence migrates bookings and passenger indexes without ro
 });
 
 
-test("0499 authenticated Timeline projection joins current private Agenda mirror without collector", () => {
+test("0500 Timeline projection cannot read private Agenda mirror or return BlaBlaCar fields", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
-
-  assert.match(fn, /tripPrivateMirrors0434/);
-  assert.match(fn, /privateMirrorByCanonicalId0499/);
-  assert.match(fn, /privateMirrorCurrent0499/);
-  assert.match(fn, /fareMinorUnits/);
-  assert.match(fn, /boardingAddress/);
-  assert.match(fn, /dropoffAddress/);
-  assert.match(fn, /notes0499/);
-  assert.match(fn, /timezoneId0499/);
-  assert.match(fn, /source: "CANONICAL_BACKEND"/);
-  assert.doesNotMatch(fn, /BlaBlaCollector/);
+  const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
+  assert.doesNotMatch(fn, /tripPrivateMirrors0434/);
+  assert.doesNotMatch(firewall, /blablaTripId:/);
+  assert.doesNotMatch(firewall, /blablaProfileUuid:/);
+  assert.doesNotMatch(firewall, /blablaPublicUrl:/);
+  assert.doesNotMatch(firewall, /publishedSeats:/);
+  assert.match(firewall, /BLABLACAR_BLOCK_ALL_0500/);
+  assert.match(firewall, /timeline-native-v1:/);
 });

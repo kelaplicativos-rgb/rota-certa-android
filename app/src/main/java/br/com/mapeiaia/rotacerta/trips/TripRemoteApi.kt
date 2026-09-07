@@ -625,7 +625,11 @@ data class DriverTripSyncState0402(
 @Serializable
 data class DriverTripSyncStateResponse0402(
     val trips: List<DriverTripSyncState0402> = emptyList(),
-    val source: String = "CANONICAL_BACKEND",
+    val source: String = "",
+    val provenancePolicy0500: String = "",
+    val collectorRead: Boolean = true,
+    val collectorFallback: Boolean = true,
+    val collectorDerivedData: Boolean = true,
     val snapshotAtMillis: Long = 0L,
 )
 
@@ -860,33 +864,24 @@ class TripRemoteApi(
      */
     suspend fun loadCanonicalTimelineState0494(
         includePastForVerification0429: Boolean = true,
-    ): DriverTripSyncStateResponse0402 = coroutineScope {
+    ): DriverTripSyncStateResponse0402 {
         val response = listDriverTripSyncStates0402(
             includePastForVerification0429 = includePastForVerification0429,
             timelineProjection0494 = true,
         )
-        require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
-            "Fonte inesperada para a Timeline: ${response.source}"
-        }
-        val semaphore = Semaphore(4)
-        val enriched = response.trips.map { state ->
-            async {
-                if (state.bookings.isNotEmpty() || state.bookingsCount <= 0) {
-                    state
-                } else {
-                    semaphore.withPermit {
-                        val remote = listBookings(state.remoteTripId)
-                        state.copy(
-                            bookings = remote.bookings,
-                            publicationRevision = maxOf(state.publicationRevision, remote.entityRevision),
-                        )
-                    }
-                }
-            }
-        }.awaitAll()
-        response.copy(
-            trips = enriched,
-            source = "CANONICAL_BACKEND",
+        require(
+            response.source == "CANONICAL_NATIVE_FIREWALL" &&
+                response.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                !response.collectorRead &&
+                !response.collectorFallback &&
+                !response.collectorDerivedData,
+        ) { "Timeline recusou payload sem firewall de proveniência nativa." }
+        return response.copy(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
             snapshotAtMillis = response.snapshotAtMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
         )
     }
