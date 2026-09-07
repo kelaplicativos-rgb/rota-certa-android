@@ -29,6 +29,8 @@ const agendaToken = (params.get("agenda") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const publicSlug = publicSlugFromPath();
 const queryDriverUsername = normalizePublicSlug(params.get("motorista") || "");
 const driverUsername = queryDriverUsername || publicSlug;
+let agendaChangeCursor0495 = 0;
+let agendaChangeWatchRunning0495 = false;
 
 function show(id, visible = true) {
   const node = $(id);
@@ -485,6 +487,36 @@ function renderAgenda(trips) {
 
 let agendaLoadInFlight0491 = false;
 
+async function watchPublicAgendaChanges0495() {
+  if (agendaChangeWatchRunning0495 || navigator.onLine === false || driverUsername.length < 3) return;
+  agendaChangeWatchRunning0495 = true;
+  try {
+    while (navigator.onLine !== false) {
+      const endpoint = publicSlug
+        ? "/v1/public/agenda/" + encodeURIComponent(publicSlug) +
+          "/changes?since=" + encodeURIComponent(String(agendaChangeCursor0495))
+        : "/v1/public/drivers/" + encodeURIComponent(driverUsername) + "/" +
+          encodeURIComponent(agendaToken) + "/agenda/changes?since=" +
+          encodeURIComponent(String(agendaChangeCursor0495));
+      const response = await fetch(endpoint, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.message || "Invalidação da Agenda indisponível.");
+      agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.cursor || 0));
+      if (body?.degraded === true) break;
+      if (body?.changed === true) {
+        await loadAgenda(true);
+      }
+    }
+  } catch (_) {
+    // O polling periódico abaixo permanece apenas como recuperação.
+  } finally {
+    agendaChangeWatchRunning0495 = false;
+  }
+}
+
 function configurePassengerAreaLink0491() {
   const link = $("passengerAreaLink0491");
   if (!link || driverUsername.length < 3) return;
@@ -510,7 +542,9 @@ async function loadAgenda(silent0491 = false) {
     if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
     const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
     $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
+    agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
     renderAgenda(Array.isArray(body.trips) ? body.trips : []);
+    watchPublicAgendaChanges0495();
   } catch (error) {
     if (!silent0491) setError(error.message || "Não foi possível carregar a Agenda de Viagens.");
   } finally {
@@ -523,7 +557,10 @@ loadAgenda(false);
 window.setInterval(() => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda(true);
 }, 15000);
-window.addEventListener("online", () => loadAgenda(true));
+window.addEventListener("online", () => {
+  loadAgenda(true);
+  watchPublicAgendaChanges0495();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda(true);
 });
