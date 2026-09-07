@@ -8060,6 +8060,96 @@ async function updateDriverTripPublicVisibility0491(req, res, token) {
   }
 }
 
+function canonicalTimelinePlaceKey0494(value) {
+  return cleanText(value, 240)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function canonicalTimelineSamePlace0494(left, right) {
+  const a = canonicalTimelinePlaceKey0494(left);
+  const b = canonicalTimelinePlaceKey0494(right);
+  if (!a || !b) return false;
+  return a === b || (a.length >= 5 && b.includes(a)) || (b.length >= 5 && a.includes(b));
+}
+
+function canonicalTimelineCoordinate0494(stop) {
+  if (!stop || typeof stop !== "object") return null;
+  const latitude = Number(stop.latitude);
+  const longitude = Number(stop.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
+function canonicalTimelineDistanceKm0494(a, b) {
+  const radiusKm = 6371;
+  const toRad = (value) => value * Math.PI / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * radiusKm * Math.asin(Math.sqrt(Math.max(0, Math.min(1, h))));
+}
+
+function applyCanonicalTimelinePhysicalIssues0494(trips) {
+  const sorted = [...trips].sort((left, right) =>
+    Number(left.departureAtMillis || 0) - Number(right.departureAtMillis || 0)
+  );
+  const issuesByTrip = new Map(
+    sorted.map((trip) => [
+      cleanText(trip.canonicalTripId || trip.remoteTripId, 180),
+      new Set(Array.isArray(trip.canonicalIssues) ? trip.canonicalIssues : []),
+    ]),
+  );
+
+  for (let index = 0; index + 1 < sorted.length; index++) {
+    const previous = sorted[index];
+    const next = sorted[index + 1];
+    const previousId = cleanText(previous.canonicalTripId || previous.remoteTripId, 180);
+    const nextId = cleanText(next.canonicalTripId || next.remoteTripId, 180);
+    const previousIssues = issuesByTrip.get(previousId);
+    const nextIssues = issuesByTrip.get(nextId);
+    if (!previousIssues || !nextIssues) continue;
+
+    const previousArrival = Math.max(0, Number(previous.arrivalAtMillis || 0));
+    const nextDeparture = Math.max(0, Number(next.departureAtMillis || 0));
+    if (previousArrival > 0 && nextDeparture > 0 && nextDeparture < previousArrival) {
+      previousIssues.add("PHYSICAL_CONFLICT");
+      nextIssues.add("PHYSICAL_CONFLICT");
+      continue;
+    }
+
+    const previousStops = Array.isArray(previous.stops) ? previous.stops : [];
+    const nextStops = Array.isArray(next.stops) ? next.stops : [];
+    const previousDestination = previousStops.length ? previousStops[previousStops.length - 1] : null;
+    const nextOrigin = nextStops.length ? nextStops[0] : null;
+    if (!previousDestination || !nextOrigin) continue;
+    if (canonicalTimelineSamePlace0494(
+      previousDestination.name || previousDestination.address || "",
+      nextOrigin.name || nextOrigin.address || "",
+    )) continue;
+
+    const previousCoordinate = canonicalTimelineCoordinate0494(previousDestination);
+    const nextCoordinate = canonicalTimelineCoordinate0494(nextOrigin);
+    if (!previousCoordinate || !nextCoordinate) continue;
+    if (canonicalTimelineDistanceKm0494(previousCoordinate, nextCoordinate) > 35) {
+      nextIssues.add("PROFILE_CONTINUITY");
+    }
+  }
+
+  return trips.map((trip) => {
+    const tripId = cleanText(trip.canonicalTripId || trip.remoteTripId, 180);
+    return { ...trip, canonicalIssues: [...(issuesByTrip.get(tripId) || new Set())] };
+  });
+}
+
 async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -8069,7 +8159,7 @@ async function listDriverTripSyncState0402(req, res) {
   const snapshot = await query.get();
   const now = Date.now();
 
-  const trips = (await Promise.all(snapshot.docs.map(async (doc) => {
+  let trips = (await Promise.all(snapshot.docs.map(async (doc) => {
     const data = doc.data();
     const status = cleanText(data.status, 32).toUpperCase();
     if (data.deleted === true) return null;
@@ -8234,6 +8324,10 @@ async function listDriverTripSyncState0402(req, res) {
   }))).filter(Boolean).sort((left, right) =>
     Number(left.departureAtMillis || 0) - Number(right.departureAtMillis || 0)
   );
+
+  if (timelineProjection0494) {
+    trips = applyCanonicalTimelinePhysicalIssues0494(trips);
+  }
 
   return json(res, 200, {
     source: "CANONICAL_BACKEND",
