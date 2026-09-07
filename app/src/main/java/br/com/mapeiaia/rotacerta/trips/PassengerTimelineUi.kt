@@ -957,16 +957,48 @@ internal fun EnhancedPassengerTimelineSection(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    var profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
-                    row.externalPassengerId?.let { externalId ->
-                        passengerStore.linkExternalPassengerId(profile.id, externalId)?.let { linked -> profile = linked }
-                    }
-                    if (linkPassengerProfile(row, profile.id, store, passengerStore)) {
-                        onChanged("Cadastro do passageiro vinculado explicitamente.")
+                    val profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
+                    val canonicalBooking0494 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
+                    val canonicalTrip0494 = trip
+                    val remoteId0494 = canonicalTrip0494?.remoteId?.takeIf(String::isNotBlank)
+                    if (canonicalBooking0494 != null && canonicalTrip0494 != null && remoteId0494 != null) {
+                        scope.launch {
+                            val settings0494 = store.onlineSettings()
+                            if (!settings0494.configured) {
+                                onChanged("Backend canônico indisponível. O vínculo não foi aplicado ao booking.")
+                                return@launch
+                            }
+                            runCatching {
+                                val updated0494 = canonicalBooking0494.copy(passengerId = profile.id)
+                                if (updated0494.source == BookingSource.ROTA_CERTA) {
+                                    TripRemoteApi(settings0494).updateProtectedDriverBooking(remoteId0494, updated0494)
+                                } else {
+                                    TripRemoteApi(settings0494).upsertDriverBooking(remoteId0494, updated0494)
+                                }
+                            }.onSuccess { ack0494 ->
+                                row.externalPassengerId?.let { externalId ->
+                                    passengerStore.linkExternalPassengerId(profile.id, externalId)
+                                }
+                                BookingRealtimeEvents0356.notifyChanged()
+                                UnifiedDebugEventStore.record(
+                                    "TIMELINE_CANONICAL_PASSENGER_ID_LINK_0494",
+                                    context.packageName,
+                                    "canonicalTripId=${seatSyncDiagnosticKey(canonicalTrip0494.id)} entityRevision=${ack0494.entityRevision} passengerIdHash=${passengerDebugIdentityHash(profile.id)} authority=CANONICAL_BACKEND",
+                                )
+                                onChanged("Cadastro do passageiro vinculado ao booking canônico.")
+                            }.onFailure { error ->
+                                onChanged("Vínculo não aplicado: ${error.message ?: error.javaClass.simpleName}")
+                            }
+                        }
+                    } else if (linkPassengerProfileLegacyMetadata0494(row, profile.id, passengerStore)) {
+                        row.externalPassengerId?.let { externalId ->
+                            passengerStore.linkExternalPassengerId(profile.id, externalId)
+                        }
+                        onChanged("Cadastro vinculado à ocorrência legada.")
                     } else {
                         Toast.makeText(
                             context,
-                            "Reserva sem referência estável; não foi possível persistir o vínculo.",
+                            "Reserva sem identidade canônica estável; vínculo não aplicado.",
                             Toast.LENGTH_LONG,
                         ).show()
                     }
@@ -1098,6 +1130,9 @@ internal fun enhancedPassengerRows(
             .filter { it.seats > 0 }
 
         local.forEach { booking ->
+            val privateMetadataKey0494 = canonicalBookingPrivateMetadataKey0494(booking.id)
+            val privateMetadata0494 = externalMetadataSnapshot0394?.get(privateMetadataKey0494)
+                ?: passengerStore.externalMetadata(privateMetadataKey0494)
             val phone = booking.passengerContact.trim().takeIf(String::isNotEmpty)
             val boarding = stops[booking.boardingStopId]?.name
             val dropoff = stops[booking.dropoffStopId]?.name
@@ -1133,10 +1168,16 @@ internal fun enhancedPassengerRows(
                     operationalStatus = booking.operationalStatus,
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
-                    fareMinorUnits = booking.fareMinorUnits ?: current.fareMinorUnits,
-                    fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank) ?: current.fareCurrencyCode,
-                    boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank) ?: current.boardingAddress,
-                    dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank) ?: current.dropoffAddress,
+                    fareMinorUnits = privateMetadata0494?.fareMinorUnits ?: booking.fareMinorUnits ?: current.fareMinorUnits,
+                    fareCurrencyCode = privateMetadata0494?.fareCurrencyCode?.takeIf(String::isNotBlank)
+                        ?: booking.fareCurrencyCode.takeIf(String::isNotBlank)
+                        ?: current.fareCurrencyCode,
+                    boardingAddress = privateMetadata0494?.boardingAddress?.takeIf(String::isNotBlank)
+                        ?: booking.boardingAddress.takeIf(String::isNotBlank)
+                        ?: current.boardingAddress,
+                    dropoffAddress = privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
+                        ?: booking.dropoffAddress.takeIf(String::isNotBlank)
+                        ?: current.dropoffAddress,
                     boardingStopIndex = stopIndex ?: current.boardingStopIndex,
                     matchedByPhone = candidateIndex >= 0,
                     probableMatch = candidateIndex < 0,
@@ -1155,10 +1196,13 @@ internal fun enhancedPassengerRows(
                     operationalStatus = booking.operationalStatus,
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
-                    fareMinorUnits = booking.fareMinorUnits,
-                    fareCurrencyCode = booking.fareCurrencyCode,
-                    boardingAddress = booking.boardingAddress,
-                    dropoffAddress = booking.dropoffAddress,
+                    fareMinorUnits = privateMetadata0494?.fareMinorUnits ?: booking.fareMinorUnits,
+                    fareCurrencyCode = privateMetadata0494?.fareCurrencyCode?.takeIf(String::isNotBlank)
+                        ?: booking.fareCurrencyCode,
+                    boardingAddress = privateMetadata0494?.boardingAddress?.takeIf(String::isNotBlank)
+                        ?: booking.boardingAddress,
+                    dropoffAddress = privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
+                        ?: booking.dropoffAddress,
                     boardingStopIndex = stopIndex,
                 )
             }
@@ -1405,26 +1449,24 @@ private fun PassengerFareEditorDialog(
     )
 }
 
+private fun canonicalBookingPrivateMetadataKey0494(bookingId: String): String =
+    "canonical-booking-private:" + bookingId.trim()
+
+/**
+ * Private driver annotation only. It never changes canonical trip/booking capacity,
+ * status, identity or public projection.
+ */
 private fun savePassengerAddress(
     row: EnhancedPassengerCardRow,
     addressRaw: String,
     boarding: Boolean,
-    store: TripStore,
+    @Suppress("UNUSED_PARAMETER") store: TripStore,
     passengerStore: PassengerIdentityStore,
 ): Boolean {
     val address = addressRaw.trim().takeIf(String::isNotEmpty) ?: return false
-    row.localBookingId?.let { bookingId ->
-        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(
-            if (boarding) {
-                booking.copy(boardingAddress = address, localMetadataTouched = true)
-            } else {
-                booking.copy(dropoffAddress = address, localMetadataTouched = true)
-            },
-        )
-        return true
-    }
-    val key = row.externalReservationKey ?: return false
+    val key = row.localBookingId?.takeIf(String::isNotBlank)?.let(::canonicalBookingPrivateMetadataKey0494)
+        ?: row.externalReservationKey
+        ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(
         if (boarding) current.copy(boardingAddress = address) else current.copy(dropoffAddress = address),
@@ -1432,41 +1474,28 @@ private fun savePassengerAddress(
     return true
 }
 
+/** Private driver annotation; fare is not used as Timeline capacity/identity authority. */
 private fun savePassengerFare(
     row: EnhancedPassengerCardRow,
     amount: Long,
     currency: String,
-    store: TripStore,
+    @Suppress("UNUSED_PARAMETER") store: TripStore,
     passengerStore: PassengerIdentityStore,
 ): Boolean {
-    row.localBookingId?.let { bookingId ->
-        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(
-            booking.copy(
-                fareMinorUnits = amount,
-                fareCurrencyCode = currency,
-                localMetadataTouched = true,
-            ),
-        )
-        return true
-    }
-    val key = row.externalReservationKey ?: return false
+    val key = row.localBookingId?.takeIf(String::isNotBlank)?.let(::canonicalBookingPrivateMetadataKey0494)
+        ?: row.externalReservationKey
+        ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(current.copy(fareMinorUnits = amount, fareCurrencyCode = currency))
     return true
 }
 
-private fun linkPassengerProfile(
+/** Legacy-only metadata link for rows that genuinely have no canonical booking id. */
+private fun linkPassengerProfileLegacyMetadata0494(
     row: EnhancedPassengerCardRow,
     passengerId: String,
-    store: TripStore,
     passengerStore: PassengerIdentityStore,
 ): Boolean {
-    row.localBookingId?.let { bookingId ->
-        val booking = store.bookings().firstOrNull { it.id == bookingId } ?: return@let
-        store.saveBooking(booking.copy(passengerId = passengerId, localMetadataTouched = true))
-        return true
-    }
     val key = row.externalReservationKey ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(current.copy(passengerId = passengerId))
