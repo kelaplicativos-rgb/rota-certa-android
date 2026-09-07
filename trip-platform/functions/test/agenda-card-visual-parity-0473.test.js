@@ -30,7 +30,7 @@ test("0475 public Home keeps exactly one canonical visual card renderer", () => 
 
 test("0475 compact journey hierarchy preserves the approved 0.1.474 visual structure", () => {
   const cards = between(app, "function renderAgendaCards", "function renderAgenda(");
-  assert.match(cards, /agendaDateLabel0473\(item\.departureAtMillis\)/);
+  assert.match(cards, /agendaDateLabel0473\(item\.departureAtMillis, item\.timezoneId\)/);
   assert.match(cards, /agendaJourneyTime0473/);
   assert.match(cards, /agendaJourneyRail0473/);
   assert.match(cards, /agendaJourneyCity0473/);
@@ -53,7 +53,7 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.495/);
+  assert.match(html, /app\.js\?v=0\.1\.496/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem/i);
   assert.match(html, /Minha Área/);
 });
@@ -89,8 +89,8 @@ test("0480 expansion stays read-only and exposes no administrative or private ac
 
 test("0480 expanded card date is complete and includes the four-digit year", () => {
   const longDate = between(app, "function agendaLongDateLabel0480", "function agendaStopMoment0480");
-  assert.match(longDate, /date\.getFullYear\(\)/);
-  assert.match(longDate, /months\[date\.getMonth\(\)\] \+ " de " \+ date\.getFullYear\(\)/);
+  assert.match(longDate, /agendaDateParts0496\(ms, timezoneId\)/);
+  assert.match(longDate, /months\[date\.month\] \+ " de " \+ date\.year/);
 
   const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
   assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
@@ -99,9 +99,9 @@ test("0480 expanded card date is complete and includes the four-digit year", () 
 
 test("0481 compact card shows the year when the trip is outside the current calendar year", () => {
   const compactDateSource = between(app, "function agendaDateLabel0473", "function orderedStops");
-  assert.match(compactDateSource, /date\.getFullYear\(\) !== now\.getFullYear\(\)/);
+  assert.match(compactDateSource, /date\.year !== now\.year/);
   assert.match(compactDateSource, /yearSuffix/);
 
-  assert.match(compactDateSource, /const yearSuffix = date\.getFullYear\(\) !== now\.getFullYear\(\) \? " " \+ date\.getFullYear\(\) : "";/);
-  assert.match(compactDateSource, /months\[date\.getMonth\(\)\] \+ yearSuffix/);
+  assert.match(compactDateSource, /const yearSuffix = date\.year !== now\.year \? " " \+ date\.year : "";/);
+  assert.match(compactDateSource, /months\[date\.month\] \+ yearSuffix/);
 });
