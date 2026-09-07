@@ -6324,6 +6324,26 @@ function passengerPrivateTrip0491(tripToken, tripData) {
   return publicTripProjection0491(safePublicTrip(tripToken, tripData));
 }
 
+function passengerBookingMutationContext0498(tripToken, bookingId, booking, tripData) {
+  const stops = (Array.isArray(tripData && tripData.stops) ? tripData.stops : [])
+    .map((stop, index) => ({
+      id: cleanText(stop && stop.id, 80),
+      order: Number.isFinite(Number(stop && stop.order)) ? Number(stop.order) : index,
+      name: cleanText(stop && stop.name, 160),
+      address: cleanText(stop && stop.address, 240),
+    }))
+    .filter((stop) => stop.id && stop.name)
+    .sort((left, right) => left.order - right.order);
+  return {
+    tripToken: cleanText(tripToken, 120),
+    bookingId: cleanText(bookingId, 120),
+    passengerName: cleanText(booking && booking.passengerName, 120),
+    boardingStopId: cleanText(booking && booking.boardingStopId, 80),
+    dropoffStopId: cleanText(booking && booking.dropoffStopId, 80),
+    stops,
+  };
+}
+
 function passengerPrivateBooking0491(booking, tripData) {
   const stops = Array.isArray(tripData && tripData.stops) ? tripData.stops : [];
   const stopFor = (stopId) =>
@@ -6396,6 +6416,7 @@ async function listPassengerBookings(req, res) {
     return {
       trip: passengerPrivateTrip0491(tripToken, tripData),
       booking: passengerPrivateBooking0491(booking, tripData),
+      mutation: passengerBookingMutationContext0498(tripToken, bookingId, booking, tripData),
     };
   }));
   return json(res, 200, { bookings: entries.filter(Boolean) });
@@ -7560,6 +7581,13 @@ async function updatePassengerBooking(req, res, token, bookingIdRaw) {
       }
       if (previous.status === "CANCELLED" || previous.status === "EXPIRED") {
         throw Object.assign(new Error("Esta reserva não pode mais ser alterada."), { httpStatus: 409, code: "booking_inactive" });
+      }
+      const operationalStatus = cleanText(previous.operationalStatus, 32) || "CONFIRMED";
+      if (operationalStatus === "IN_CAR" || operationalStatus === "COMPLETED") {
+        throw Object.assign(
+          new Error("A viagem já foi iniciada. Fale com o motorista caso precise alterar a reserva."),
+          { httpStatus: 409, code: "passenger_edit_locked_after_boarding" },
+        );
       }
       const passengerName = cleanText(req.body && req.body.passengerName, 120) || previous.passengerName;
       const boardingStopId = cleanText(req.body && req.body.boardingStopId, 80) || previous.boardingStopId;
