@@ -6,6 +6,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,6 +41,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -53,6 +56,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import br.com.mapeiaia.rotacerta.AppSettings
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.Coordinate
@@ -68,6 +74,8 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -97,6 +105,20 @@ fun TripTimelineScreen(
     val context = LocalContext.current
     val incrementalPublishScope = rememberCoroutineScope()
     val incrementalPublishMutex = remember { Mutex() }
+    val canonicalRefreshMutex0495 = remember { Mutex() }
+    val canonicalRefreshSignals0495 = remember {
+        MutableSharedFlow<String>(
+            replay = 1,
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        ).also { it.tryEmit("INITIAL") }
+    }
+    val onCanonicalChanged0495 = remember(onChanged) {
+        { message: String ->
+            BookingRealtimeEvents0356.notifyChanged()
+            onChanged(message)
+        }
+    }
     val tripMutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val passengerIdentityStore = remember(context) { PassengerIdentityStore(context) }
     val seatSyncStateStore = remember(context) { BlaBlaPublicationSeatSyncStateStore(context) }
@@ -149,12 +171,28 @@ fun TripTimelineScreen(
     }
     var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
 
+    fun invalidateCanonicalTimeline0495(reason: String) {
+        val accepted = canonicalRefreshSignals0495.tryEmit(reason)
+        UnifiedDebugEventStore.record(
+            if (accepted) "TIMELINE_INVALIDATED" else "TIMELINE_REFRESH_COALESCED",
+            context.packageName,
+            "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+        )
+    }
+
     LaunchedEffect(onlineSettings0494.apiBaseUrl, onlineSettings0494.driverUsername) {
-        while (true) {
-            if (!onlineSettings0494.configured) {
-                canonicalBackendStale0494 = canonicalResponse0494 != null
-                canonicalBackendFailure0494 = "Integração online não configurada."
-            } else {
+        canonicalRefreshSignals0495.collect { reason ->
+            canonicalRefreshMutex0495.withLock {
+                if (!onlineSettings0494.configured) {
+                    canonicalBackendStale0494 = canonicalResponse0494 != null
+                    canonicalBackendFailure0494 = "Integração online não configurada."
+                    return@withLock
+                }
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_REFRESH_STARTED",
+                    context.packageName,
+                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+                )
                 runCatching {
                     TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
                         includePastForVerification0429 = true,
@@ -167,6 +205,11 @@ fun TripTimelineScreen(
                     canonicalBackendStale0494 = false
                     canonicalBackendFailure0494 = null
                     val revisions = cached.trips.map(DriverTripSyncState0402::canonicalRevision)
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_REFRESH_APPLIED",
+                        context.packageName,
+                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_BACKEND collectorRead=false",
+                    )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_READ_0494",
                         context.packageName,
@@ -183,7 +226,43 @@ fun TripTimelineScreen(
                     )
                 }
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        BookingRealtimeEvents0356.changes.collect {
+            invalidateCanonicalTimeline0495("CANONICAL_CHANGE_EVENT")
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
             delay(10_000L)
+            invalidateCanonicalTimeline0495("POLL_RECOVERY")
+        }
+    }
+
+    val lifecycleOwner0495 = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner0495) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                invalidateCanonicalTimeline0495("FOREGROUND")
+            }
+        }
+        lifecycleOwner0495.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner0495.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(context) {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                invalidateCanonicalTimeline0495("NETWORK_AVAILABLE")
+            }
+        }
+        runCatching { connectivityManager?.registerDefaultNetworkCallback(callback) }
+        onDispose {
+            runCatching { connectivityManager?.unregisterNetworkCallback(callback) }
         }
     }
 
@@ -388,7 +467,7 @@ fun TripTimelineScreen(
     AgendaTimelineDownloadAction0399(
         entries = visibleEntries,
         triggerToken = downloadRequestToken0399,
-        onChanged = onChanged,
+        onChanged = onCanonicalChanged0495,
     )
 
     GlobalPassengerFlowPanel(
@@ -396,7 +475,7 @@ fun TripTimelineScreen(
         store = store,
         openRequestToken = passengerAddRequestToken,
         formatter = formatter,
-        onChanged = onChanged,
+        onChanged = onCanonicalChanged0495,
         onNewTrip = onCreateTripForPassenger,
         onTargetSync = { entry, _ ->
             UnifiedDebugEventStore.record(
@@ -404,7 +483,7 @@ fun TripTimelineScreen(
                 context.packageName,
                 "reason=independent_channel_inventory source=automatic_global_passenger_change trip=${entry.tripId}",
             )
-            onChanged("Passageiro atualizado. As vagas do Rota Certa foram recalculadas sem alterar a cota BlaBlaCar.")
+            onCanonicalChanged0495("Passageiro atualizado. As vagas do Rota Certa foram recalculadas sem alterar a cota BlaBlaCar.")
         },
         resumeRequestToken = addPassengerResumeToken,
         resumePassengerId = addPassengerResumePassengerId,
@@ -500,7 +579,7 @@ fun TripTimelineScreen(
                         profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
                         archived = archived,
                         onManageLocal = onManageLocal,
-                        onChanged = onChanged,
+                        onChanged = onCanonicalChanged0495,
                         referenceCoordinate = directionReference.coordinate,
                         referenceRadiusKm = directionReference.radiusKm,
                         directionGeo = directionGeo,
@@ -767,7 +846,7 @@ internal fun TripDriverDefaultsCard(
     TripReferenceOriginSettingsCard0416(
         referenceOrigin = referenceOrigin,
         onReferenceChanged = onReferenceChanged,
-        onChanged = onChanged,
+        onChanged = onCanonicalChanged0495,
     )
 }
 
@@ -1676,7 +1755,7 @@ private fun TimelineEntryCard(
                 trip = trip,
                 store = store,
                 currentCoordinate = currentCoordinate,
-                onChanged = onChanged,
+                onChanged = onCanonicalChanged0495,
                 focusedBookingId = focusedBookingId,
                 canonicalBookings0494 = bookingsSnapshot0432,
                 onAddManualPassenger = {
@@ -1769,7 +1848,7 @@ private fun TimelineEntryCard(
             entry = entry,
             trip = selectedTrip,
             store = store,
-            onChanged = onChanged,
+            onChanged = onCanonicalChanged0495,
             onTargetSync = {
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CANONICAL_EXTERNAL_SYNC_SKIPPED_0494",
