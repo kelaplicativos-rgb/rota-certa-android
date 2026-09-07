@@ -846,7 +846,7 @@ internal fun TripDriverDefaultsCard(
     TripReferenceOriginSettingsCard0416(
         referenceOrigin = referenceOrigin,
         onReferenceChanged = onReferenceChanged,
-        onChanged = onCanonicalChanged0495,
+        onChanged = onChanged,
     )
 }
 
@@ -1755,7 +1755,7 @@ private fun TimelineEntryCard(
                 trip = trip,
                 store = store,
                 currentCoordinate = currentCoordinate,
-                onChanged = onCanonicalChanged0495,
+                onChanged = onChanged,
                 focusedBookingId = focusedBookingId,
                 canonicalBookings0494 = bookingsSnapshot0432,
                 onAddManualPassenger = {
@@ -1848,7 +1848,7 @@ private fun TimelineEntryCard(
             entry = entry,
             trip = selectedTrip,
             store = store,
-            onChanged = onCanonicalChanged0495,
+            onChanged = onChanged,
             onTargetSync = {
                 UnifiedDebugEventStore.record(
                     "TIMELINE_CANONICAL_EXTERNAL_SYNC_SKIPPED_0494",
