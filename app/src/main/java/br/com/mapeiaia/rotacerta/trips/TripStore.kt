@@ -25,6 +25,8 @@ class TripStore(context: Context) {
     private val bookingsKey = tenantScope.key(KEY_BOOKINGS)
     private val onlineKey = tenantScope.key(KEY_ONLINE)
     private val publicExternalBindingsKey = tenantScope.key(KEY_PUBLIC_EXTERNAL_BINDINGS)
+    private val timelineCanonicalCacheKey0494 = tenantScope.key(KEY_TIMELINE_CANONICAL_CACHE_0494)
+    private val timelineCanonicalCacheUpdatedAtKey0494 = tenantScope.key(KEY_TIMELINE_CANONICAL_CACHE_UPDATED_AT_0494)
     private val secretStore = TripSecretStore(appContext, tenantScope)
     private val publicAgendaLinkStore = PublicAgendaLinkStore(appContext, tenantScope)
     private val passengerIdentityStore = PassengerIdentityStore(appContext)
@@ -38,6 +40,62 @@ class TripStore(context: Context) {
     fun bookings(): List<Booking> = decode<List<Booking>>(prefs.getString(bookingsKey, null)).orEmpty()
 
     fun bookingsFor(tripId: String): List<Booking> = bookings().filter { it.tripId == tripId }
+
+    /**
+     * Offline/performance cache of the last backend-canonical Timeline snapshot.
+     * This cache is never published and never feeds the collector/outbox pipeline.
+     */
+    internal fun timelineCanonicalCache0494(): DriverTripSyncStateResponse0402? =
+        decode<DriverTripSyncStateResponse0402>(prefs.getString(timelineCanonicalCacheKey0494, null))
+
+    internal fun timelineCanonicalCacheUpdatedAt0494(): Long =
+        prefs.getLong(timelineCanonicalCacheUpdatedAtKey0494, 0L).coerceAtLeast(0L)
+
+    internal fun saveTimelineCanonicalCache0494(
+        incoming: DriverTripSyncStateResponse0402,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): DriverTripSyncStateResponse0402 = synchronized(CANONICAL_LOCK) {
+        require(incoming.source.isBlank() || incoming.source == "CANONICAL_BACKEND") {
+            "Timeline aceita somente snapshot do backend canônico."
+        }
+        val previous = timelineCanonicalCache0494()
+        val previousById = previous?.trips.orEmpty().associateBy { state ->
+            state.canonicalTripId.ifBlank { state.remoteTripId }
+        }
+        val accepted = incoming.trips
+            .map { state ->
+                val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }
+                val old = previousById[canonicalId]
+                if (old != null && old.canonicalRevision > state.canonicalRevision) {
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CANONICAL_STALE_REJECTED_0494",
+                        appContext.packageName,
+                        "canonicalTripId=${seatSyncDiagnosticKey(canonicalId)} incomingRevision=${state.canonicalRevision} cachedRevision=${old.canonicalRevision}",
+                    )
+                    old
+                } else {
+                    state
+                }
+            }
+            .distinctBy { state -> state.canonicalTripId.ifBlank { state.remoteTripId } }
+        val normalized = incoming.copy(
+            trips = accepted,
+            source = "CANONICAL_BACKEND",
+            snapshotAtMillis = incoming.snapshotAtMillis.coerceAtLeast(nowMillis),
+        )
+        require(
+            prefs.edit()
+                .putString(timelineCanonicalCacheKey0494, json.encodeToString(normalized))
+                .putLong(timelineCanonicalCacheUpdatedAtKey0494, nowMillis)
+                .commit(),
+        ) { "Falha ao persistir cache da Timeline canônica." }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_CANONICAL_CACHE_COMMITTED_0494",
+            appContext.packageName,
+            "trips=${accepted.size} source=CANONICAL_BACKEND snapshotAt=${normalized.snapshotAtMillis}",
+        )
+        normalized
+    }
 
     fun getTrip(id: String): Trip? = trips().firstOrNull { it.id == id }
 
@@ -1017,6 +1075,8 @@ class TripStore(context: Context) {
         private const val KEY_BOOKINGS = "bookings"
         private const val KEY_ONLINE = "online_settings"
         private const val KEY_PUBLIC_EXTERNAL_BINDINGS = "public_external_bindings_v1"
+        private const val KEY_TIMELINE_CANONICAL_CACHE_0494 = "timeline_canonical_backend_cache_v1"
+        private const val KEY_TIMELINE_CANONICAL_CACHE_UPDATED_AT_0494 = "timeline_canonical_backend_cache_updated_at_v1"
     }
 }
 
