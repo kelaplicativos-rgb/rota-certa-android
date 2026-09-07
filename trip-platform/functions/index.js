@@ -862,6 +862,15 @@ async function confirmDriverBlaBlaIdentityRecovery0472(req, res) {
   }
 }
 
+function canonicalDepartureStops0495(rawStops, departureAtMillis) {
+  const departure = Math.max(0, Number(departureAtMillis || 0));
+  const stops = Array.isArray(rawStops) ? rawStops : [];
+  if (!departure || !stops.length) return stops;
+  return stops.map((stop, index) =>
+    index === 0 ? { ...(stop || {}), plannedDepartureMillis: departure } : stop
+  );
+}
+
 function normalizeStops(rawStops) {
   if (!Array.isArray(rawStops) || rawStops.length < 2 || rawStops.length > 24) {
     throw new Error("A viagem precisa ter entre 2 e 24 paradas.");
@@ -992,7 +1001,7 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
   if (!Number.isFinite(departureAtMillis) || departureAtMillis <= 0) throw new Error("Horário de saída inválido.");
   const status = cleanText(raw.status, 24) || "DRAFT";
   if (!DRIVER_MUTABLE_STATUSES.has(status)) throw new Error("Estado de viagem inválido.");
-  const stops = normalizeStops(raw.stops);
+  const stops = canonicalDepartureStops0495(normalizeStops(raw.stops), departureAtMillis);
   if (previous && Number(previous.bookingsCount || 0) > 0) {
     const oldStopIds = (previous.stops || []).map((stop) => stop.id).join("|");
     const newStopIds = stops.map((stop) => stop.id).join("|");
@@ -1343,6 +1352,7 @@ function canonicalPublicStop0411(raw, index) {
 
 function canonicalPublicTripPayloadFromStored0434(raw) {
   const payload = raw && typeof raw === "object" ? raw : {};
+  const departureAtMillis = Math.max(0, Number(payload.departureAtMillis || 0));
   return {
     schemaVersion: "public-trip-v2",
     canonicalTripId: cleanText(payload.canonicalTripId, 180),
@@ -1350,11 +1360,14 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     blablaProfileUuid: cleanText(payload.blablaProfileUuid, 160).toLowerCase(),
     blablaTripId: cleanText(payload.blablaTripId, 160),
     title: cleanText(payload.title, 220),
-    departureAtMillis: Math.max(0, Number(payload.departureAtMillis || 0)),
+    departureAtMillis,
     timezoneId: cleanText(payload.timezoneId, 80),
     status: cleanText(payload.status, 24),
     capacity: Math.max(0, Number(payload.capacity || 0)),
-    stops: (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
+    stops: canonicalDepartureStops0495(
+      (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
+      departureAtMillis,
+    ),
     segmentLoads: (Array.isArray(payload.segmentLoads) ? payload.segmentLoads : []).map((v) => Math.max(0, Number(v || 0))),
     segmentPassengerLoads: (Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : []).map((v) => Math.max(0, Number(v || 0))),
     segmentBlockedLoads: (Array.isArray(payload.segmentBlockedLoads) ? payload.segmentBlockedLoads : []).map((v) => Math.max(0, Number(v || 0))),
@@ -1380,6 +1393,7 @@ function canonicalPublicTripPayload0411(token, data) {
   const publicTrip = safePublicTrip(token, data);
   const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
   const blablaTripId = cleanText(data.blablaTripId, 160);
+  const departureAtMillis = Math.max(0, Number(publicTrip.departureAtMillis || 0));
   return {
     schemaVersion: "public-trip-v2",
     canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180),
@@ -1387,14 +1401,17 @@ function canonicalPublicTripPayload0411(token, data) {
     blablaProfileUuid: profileUuid,
     blablaTripId,
     title: cleanText(publicTrip.title, 220),
-    departureAtMillis: Math.max(0, Number(publicTrip.departureAtMillis || 0)),
+    departureAtMillis,
     timezoneId: cleanText(data.publicTimezoneId0411, 80),
     status: cleanText(publicTrip.status, 24),
     capacity: Math.max(0, Number(publicTrip.capacity || 0)),
-    stops: (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
-      .map(canonicalPublicStop0411)
-      .sort((a, b) => a.order - b.order)
-      .map((stop, index) => ({ ...stop, order: index })),
+    stops: canonicalDepartureStops0495(
+      (Array.isArray(publicTrip.stops) ? publicTrip.stops : [])
+        .map(canonicalPublicStop0411)
+        .sort((a, b) => a.order - b.order)
+        .map((stop, index) => ({ ...stop, order: index })),
+      departureAtMillis,
+    ),
     segmentLoads: (Array.isArray(publicTrip.segmentLoads) ? publicTrip.segmentLoads : []).map((value) => Math.max(0, Number(value || 0))),
     segmentPassengerLoads: (Array.isArray(publicTrip.segmentPassengerLoads) ? publicTrip.segmentPassengerLoads : []).map((value) => Math.max(0, Number(value || 0))),
     segmentBlockedLoads: (Array.isArray(publicTrip.segmentBlockedLoads) ? publicTrip.segmentBlockedLoads : []).map((value) => Math.max(0, Number(value || 0))),
@@ -3547,6 +3564,71 @@ function tripPublicOnline0471(data) {
   return !(data && data.publicAgendaOnline0471 === false);
 }
 
+function canonicalTripLegacyProjection0495(doc) {
+  const data = doc && typeof doc.data === "function" ? doc.data() : {};
+  return [
+    cleanText(doc && doc.id, 180),
+    cleanText(data && data.canonicalTripId, 180),
+    cleanText(data && data.localTripId, 180),
+  ].some((value) =>
+    value.startsWith("timeline-ext-") || value.startsWith("projection-cleanup:")
+  );
+}
+
+function canonicalTripIdentityKeys0495(doc) {
+  const data = doc && typeof doc.data === "function" ? doc.data() : {};
+  const keys = [];
+  const canonicalTripId = cleanText(data.canonicalTripId || data.localTripId, 180);
+  const tripKey = cleanText(data.tripKey, 180);
+  const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
+  const blablaTripId = cleanText(data.blablaTripId, 160);
+  const localTripId = cleanText(data.localTripId, 180);
+
+  if (canonicalTripId) keys.push("canonical:" + canonicalTripId);
+  if (tripKey) keys.push("tripkey:" + tripKey);
+  if (profileUuid && blablaTripId) keys.push("blablacar:" + profileUuid + ":" + blablaTripId);
+  if (localTripId) keys.push("local:" + localTripId);
+  return [...new Set(keys)];
+}
+
+function canonicalTripWinnerCompare0495(left, right) {
+  const leftLegacy = canonicalTripLegacyProjection0495(left);
+  const rightLegacy = canonicalTripLegacyProjection0495(right);
+  if (leftLegacy !== rightLegacy) return leftLegacy ? 1 : -1;
+  const leftData = left.data();
+  const rightData = right.data();
+  const canonicalRevisionDelta =
+    Math.max(0, Number(rightData.canonicalRevision || 0)) -
+    Math.max(0, Number(leftData.canonicalRevision || 0));
+  if (canonicalRevisionDelta) return canonicalRevisionDelta;
+  const publicationRevisionDelta =
+    Math.max(0, Number(rightData.publicationRevision || 0)) -
+    Math.max(0, Number(leftData.publicationRevision || 0));
+  if (publicationRevisionDelta) return publicationRevisionDelta;
+  const updatedDelta =
+    Math.max(0, Number(rightData.updatedAtMillis || 0)) -
+    Math.max(0, Number(leftData.updatedAtMillis || 0));
+  if (updatedDelta) return updatedDelta;
+  return cleanText(left.id, 180).localeCompare(cleanText(right.id, 180));
+}
+
+function selectCanonicalTripDocuments0495(docs) {
+  const claimedStrongIdentity = new Set();
+  const selected = [];
+  [...(Array.isArray(docs) ? docs : [])]
+    .sort(canonicalTripWinnerCompare0495)
+    .forEach((doc) => {
+      // Explicit legacy projection rows are historical transport/projection artifacts.
+      // They never constitute a canonical trip by themselves after server authority 0468.
+      if (canonicalTripLegacyProjection0495(doc)) return;
+      const keys = canonicalTripIdentityKeys0495(doc);
+      if (keys.some((key) => claimedStrongIdentity.has(key))) return;
+      selected.push(doc);
+      keys.forEach((key) => claimedStrongIdentity.add(key));
+    });
+  return selected;
+}
+
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
   // 0491: public visibility is a publication state, distinct from operational
   // status and source. Administration remains in the authenticated Android path.
@@ -3616,7 +3698,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     if (!tester) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
-  const sourceDocs = snapshot.docs
+  const sourceDocs = selectCanonicalTripDocuments0495(snapshot.docs)
     .filter((doc) => publicAgendaTripVisibility0466(driver, doc.id, doc.data()).visible)
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
@@ -8099,50 +8181,67 @@ function canonicalTimelineDistanceKm0494(a, b) {
 }
 
 function applyCanonicalTimelinePhysicalIssues0494(trips) {
-  const sorted = [...trips].sort((left, right) =>
-    Number(left.departureAtMillis || 0) - Number(right.departureAtMillis || 0)
-  );
+  const derivedIssues0495 = new Set(["PHYSICAL_CONFLICT", "PROFILE_CONTINUITY"]);
   const issuesByTrip = new Map(
-    sorted.map((trip) => [
+    trips.map((trip) => [
       cleanText(trip.canonicalTripId || trip.remoteTripId, 180),
-      new Set(Array.isArray(trip.canonicalIssues) ? trip.canonicalIssues : []),
+      new Set(
+        (Array.isArray(trip.canonicalIssues) ? trip.canonicalIssues : [])
+          .map((issue) => cleanText(issue, 48).toUpperCase())
+          .filter((issue) => issue && !derivedIssues0495.has(issue)),
+      ),
     ]),
   );
+  const tripsByResource0495 = new Map();
+  trips.forEach((trip) => {
+    // A cross-trip physical conflict is valid only when the same physical/provider
+    // profile is proven. Missing resource identity must not fabricate a conflict.
+    const resourceKey = cleanText(trip.blablaProfileUuid, 180).toLowerCase();
+    if (!resourceKey) return;
+    const group = tripsByResource0495.get(resourceKey) || [];
+    group.push(trip);
+    tripsByResource0495.set(resourceKey, group);
+  });
 
-  for (let index = 0; index + 1 < sorted.length; index++) {
-    const previous = sorted[index];
-    const next = sorted[index + 1];
-    const previousId = cleanText(previous.canonicalTripId || previous.remoteTripId, 180);
-    const nextId = cleanText(next.canonicalTripId || next.remoteTripId, 180);
-    const previousIssues = issuesByTrip.get(previousId);
-    const nextIssues = issuesByTrip.get(nextId);
-    if (!previousIssues || !nextIssues) continue;
+  tripsByResource0495.forEach((resourceTrips) => {
+    const sorted = [...resourceTrips].sort((left, right) =>
+      Number(left.departureAtMillis || 0) - Number(right.departureAtMillis || 0)
+    );
+    for (let index = 0; index + 1 < sorted.length; index++) {
+      const previous = sorted[index];
+      const next = sorted[index + 1];
+      const previousId = cleanText(previous.canonicalTripId || previous.remoteTripId, 180);
+      const nextId = cleanText(next.canonicalTripId || next.remoteTripId, 180);
+      const previousIssues = issuesByTrip.get(previousId);
+      const nextIssues = issuesByTrip.get(nextId);
+      if (!previousIssues || !nextIssues) continue;
 
-    const previousArrival = Math.max(0, Number(previous.arrivalAtMillis || 0));
-    const nextDeparture = Math.max(0, Number(next.departureAtMillis || 0));
-    if (previousArrival > 0 && nextDeparture > 0 && nextDeparture < previousArrival) {
-      previousIssues.add("PHYSICAL_CONFLICT");
-      nextIssues.add("PHYSICAL_CONFLICT");
-      continue;
+      const previousArrival = Math.max(0, Number(previous.arrivalAtMillis || 0));
+      const nextDeparture = Math.max(0, Number(next.departureAtMillis || 0));
+      if (previousArrival > 0 && nextDeparture > 0 && nextDeparture < previousArrival) {
+        previousIssues.add("PHYSICAL_CONFLICT");
+        nextIssues.add("PHYSICAL_CONFLICT");
+        continue;
+      }
+
+      const previousStops = Array.isArray(previous.stops) ? previous.stops : [];
+      const nextStops = Array.isArray(next.stops) ? next.stops : [];
+      const previousDestination = previousStops.length ? previousStops[previousStops.length - 1] : null;
+      const nextOrigin = nextStops.length ? nextStops[0] : null;
+      if (!previousDestination || !nextOrigin) continue;
+      if (canonicalTimelineSamePlace0494(
+        previousDestination.name || previousDestination.address || "",
+        nextOrigin.name || nextOrigin.address || "",
+      )) continue;
+
+      const previousCoordinate = canonicalTimelineCoordinate0494(previousDestination);
+      const nextCoordinate = canonicalTimelineCoordinate0494(nextOrigin);
+      if (!previousCoordinate || !nextCoordinate) continue;
+      if (canonicalTimelineDistanceKm0494(previousCoordinate, nextCoordinate) > 35) {
+        nextIssues.add("PROFILE_CONTINUITY");
+      }
     }
-
-    const previousStops = Array.isArray(previous.stops) ? previous.stops : [];
-    const nextStops = Array.isArray(next.stops) ? next.stops : [];
-    const previousDestination = previousStops.length ? previousStops[previousStops.length - 1] : null;
-    const nextOrigin = nextStops.length ? nextStops[0] : null;
-    if (!previousDestination || !nextOrigin) continue;
-    if (canonicalTimelineSamePlace0494(
-      previousDestination.name || previousDestination.address || "",
-      nextOrigin.name || nextOrigin.address || "",
-    )) continue;
-
-    const previousCoordinate = canonicalTimelineCoordinate0494(previousDestination);
-    const nextCoordinate = canonicalTimelineCoordinate0494(nextOrigin);
-    if (!previousCoordinate || !nextCoordinate) continue;
-    if (canonicalTimelineDistanceKm0494(previousCoordinate, nextCoordinate) > 35) {
-      nextIssues.add("PROFILE_CONTINUITY");
-    }
-  }
+  });
 
   return trips.map((trip) => {
     const tripId = cleanText(trip.canonicalTripId || trip.remoteTripId, 180);
@@ -8159,7 +8258,8 @@ async function listDriverTripSyncState0402(req, res) {
   const snapshot = await query.get();
   const now = Date.now();
 
-  let trips = (await Promise.all(snapshot.docs.map(async (doc) => {
+  const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
+  let trips = (await Promise.all(canonicalDocs0495.map(async (doc) => {
     const data = doc.data();
     const status = cleanText(data.status, 32).toUpperCase();
     if (data.deleted === true) return null;
