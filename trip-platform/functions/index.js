@@ -8574,7 +8574,15 @@ function applyCanonicalTimelinePhysicalIssues0494(trips) {
       const previousCoordinate = canonicalTimelineCoordinate0494(previousDestination);
       const nextCoordinate = canonicalTimelineCoordinate0494(nextOrigin);
       if (!previousCoordinate || !nextCoordinate) continue;
-      if (canonicalTimelineDistanceKm0494(previousCoordinate, nextCoordinate) > 35) {
+      const distanceKm = canonicalTimelineDistanceKm0494(previousCoordinate, nextCoordinate);
+      const availableTravelHours = Math.max(0, nextDeparture - previousArrival) / (60 * 60 * 1000);
+      // 0495: continuity is a feasibility check, not a city-distance check.
+      // Use a deliberately conservative maximum road speed so only clearly
+      // impossible transitions are flagged; valid repositioning time must win.
+      const impliedSpeedKmh = availableTravelHours > 0
+        ? distanceKm / availableTravelHours
+        : Number.POSITIVE_INFINITY;
+      if (distanceKm > 35 && impliedSpeedKmh > 180) {
         nextIssues.add("PROFILE_CONTINUITY");
       }
     }
@@ -8775,6 +8783,12 @@ async function listDriverTripSyncState0402(req, res) {
 
   if (timelineProjection0494) {
     trips = applyCanonicalTimelinePhysicalIssues0494(trips);
+    console.log("PHYSICAL_CONFLICT_COMPUTED", {
+      trips: trips.length,
+      physicalConflict: trips.filter((trip) => (trip.canonicalIssues || []).includes("PHYSICAL_CONFLICT")).length,
+      profileContinuity: trips.filter((trip) => (trip.canonicalIssues || []).includes("PROFILE_CONTINUITY")).length,
+      source: "CANONICAL_BACKEND",
+    });
   }
 
   return json(res, 200, {
