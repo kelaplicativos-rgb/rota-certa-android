@@ -1,16 +1,16 @@
-name: Rota Certa 0.1.495 canonical trip convergence validation
+name: Rota Certa 0.1.496 canonical timezone day-label validation
 
 on:
   push:
     branches:
-      - agent/canonical-trip-identity-time-convergence-0.1.495
+      - agent/canonical-trip-timezone-day-label-0.1.496
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: canonical-trip-convergence-0495-${{ github.ref }}
+  group: canonical-trip-timezone-day-label-0496-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,14 +18,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     env:
-      GOOGLE_MAPS_API_KEY: canonical_trip_convergence_0495_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: canonical_trip_timezone_0496_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 1e560ce2fa23aed646feab7ee7ea566e8f8c8b3b
-      EXPECTED_VERSION_CODE: '5787'
-      EXPECTED_VERSION_NAME: '0.1.495'
+      EXPECTED_VERSION_CODE: '5788'
+      EXPECTED_VERSION_NAME: '0.1.496'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -180,15 +180,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0495
+          mkdir -p /tmp/0496
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          cp "$APK" "/tmp/0495/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk"
-          sha256sum "/tmp/0495/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk" | tee /tmp/0495/apk.sha256
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0495/
-          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0495/
-          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0495/
+          cp "$APK" "/tmp/0496/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk"
+          sha256sum "/tmp/0496/rota-certa-$EXPECTED_VERSION_NAME-canonical-trip-convergence.apk" | tee /tmp/0496/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0496/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0496/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0496/
 
-          cat > /tmp/0495/final-status.txt <<EOF
+          cat > /tmp/0496/final-status.txt <<EOF
           canonical_trip_single_authority=PASS
           collector_direct_timeline_datasource=ABSENT
           canonical_identity_selector=ENFORCED
@@ -215,11 +215,11 @@ jobs:
           latest=false
           physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
-          cat /tmp/0495/final-status.txt
+          cat /tmp/0496/final-status.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.495-canonical-trip-convergence-${{ github.sha }}
+          name: rota-certa-0.1.496-canonical-timezone-day-label-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0495
+          path: /tmp/0496
