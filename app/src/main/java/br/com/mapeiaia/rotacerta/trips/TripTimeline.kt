@@ -234,6 +234,7 @@ internal data class CanonicalTimelineProjection0494(
 internal fun canonicalTimelineProjection0494(
     response: DriverTripSyncStateResponse0402?,
     fallbackProfileLabel: String = "Rota Certa",
+    existingLocalBookings: List<Booking> = emptyList(),
 ): CanonicalTimelineProjection0494 {
     if (response == null) return CanonicalTimelineProjection0494(emptyList(), emptyList(), emptyList(), 0L)
     require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
@@ -300,27 +301,10 @@ internal fun canonicalTimelineProjection0494(
             updatedAtMillis = state.updatedAtMillis.takeIf { it > 0L } ?: response.snapshotAtMillis,
         )
         val bookings = state.bookings.map { remote ->
-            Booking(
-                id = remote.id,
-                tripId = canonicalId,
-                passengerId = remote.passengerId,
-                passengerName = remote.passengerName,
-                passengerContact = remote.passengerContact,
-                boardingStopId = remote.boardingStopId,
-                dropoffStopId = remote.dropoffStopId,
-                seats = remote.seats.coerceAtLeast(1),
-                status = runCatching { BookingStatus.valueOf(remote.status.trim().uppercase()) }
-                    .getOrDefault(BookingStatus.CONFIRMED),
-                operationalStatus = remote.operationalStatus,
-                paymentStatus = remote.paymentStatus,
-                lastDriverSelection = remote.lastDriverSelection,
-                holdExpiresAtMillis = remote.holdExpiresAtMillis,
-                createdAtMillis = remote.createdAtMillis,
-                updatedAtMillis = remote.updatedAtMillis,
-                source = remote.source,
-                capacityClaimType = remote.capacityClaimType,
-                sourceReference = remote.sourceReference,
-                occupancyGroupId = remote.occupancyGroupId,
+            val existingLocal = existingLocalBookings.firstOrNull { local -> local.id == remote.id }
+            remote.toLocalBooking(
+                localTripId = canonicalId,
+                existingLocal = existingLocal,
             )
         }
         projectedTrips += trip
