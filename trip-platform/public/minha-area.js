@@ -18,6 +18,9 @@ const contextKey0491 = "rotaCertaPassengerContext0491:" + driverUsername0491;
 let sessionToken0491 = sessionStorage.getItem(sessionKey0491) || "";
 let refreshInFlight0491 = false;
 let pollHandle0491 = 0;
+let changeCursor0495 = 0;
+let changeWatchGeneration0495 = 0;
+let changeWatchRunning0495 = false;
 
 function show0491(id, visible = true) {
   const node = $(id);
@@ -243,6 +246,37 @@ function leavePrivateMode0491() {
   renderAuthState0492("unauthenticated");
   if (pollHandle0491) window.clearInterval(pollHandle0491);
   pollHandle0491 = 0;
+  changeCursor0495 = 0;
+  changeWatchGeneration0495 += 1;
+  changeWatchRunning0495 = false;
+}
+
+async function watchPrivateCanonicalChanges0495() {
+  if (!sessionToken0491 || changeWatchRunning0495 || navigator.onLine === false) return;
+  changeWatchRunning0495 = true;
+  const generation = changeWatchGeneration0495;
+  try {
+    while (
+      sessionToken0491 &&
+      generation === changeWatchGeneration0495 &&
+      navigator.onLine !== false
+    ) {
+      const scoped =
+        "?driverUsername=" + encodeURIComponent(driverUsername0491) +
+        "&since=" + encodeURIComponent(String(changeCursor0495));
+      const result = await request0491("/v1/passenger/me/changes" + scoped);
+      if (generation !== changeWatchGeneration0495 || !sessionToken0491) break;
+      changeCursor0495 = Math.max(changeCursor0495, Number(result?.cursor || 0));
+      if (result?.degraded === true) break;
+      if (result?.changed === true) {
+        await refreshPrivateArea0491(true);
+      }
+    }
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) leavePrivateMode0491();
+  } finally {
+    if (generation === changeWatchGeneration0495) changeWatchRunning0495 = false;
+  }
 }
 
 async function refreshPrivateArea0491(silent = false) {
@@ -259,6 +293,8 @@ async function refreshPrivateArea0491(silent = false) {
     show0491("passwordPanel0491", me?.mustChangePassword === true);
     renderBookings0491(Array.isArray(bookings?.bookings) ? bookings.bookings : []);
     renderNotifications0491(notifications?.notifications || [], notifications?.unreadCount || 0);
+    changeCursor0495 = Math.max(changeCursor0495, Number(notifications?.changeCursor0495 || 0));
+    watchPrivateCanonicalChanges0495();
     $("refreshMessage0491").textContent = "Atualizado às " + new Intl.DateTimeFormat("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
@@ -378,7 +414,10 @@ function init0491() {
   $("changePassword0491").addEventListener("click", changePassword0491);
   $("markRead0491").addEventListener("click", markRead0491);
   $("logout0491").addEventListener("click", logout0491);
-  window.addEventListener("online", () => refreshPrivateArea0491(true));
+  window.addEventListener("online", () => {
+    refreshPrivateArea0491(true);
+    watchPrivateCanonicalChanges0495();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && navigator.onLine !== false) {
       refreshPrivateArea0491(true);
