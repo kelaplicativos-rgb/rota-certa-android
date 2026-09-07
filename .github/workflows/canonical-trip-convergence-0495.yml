@@ -223,9 +223,21 @@ jobs:
           BASE=https://rota-certa-7ccc8.web.app
           curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0497.json
           grep -Fq '"ok":true' /tmp/live-health-0497.json
-          BUST="$GITHUB_SHA-$(date +%s%N)"
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app-0497.js
-          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index-0497.html
+
+          propagated=false
+          for attempt in $(seq 1 18); do
+            BUST="$GITHUB_SHA-$attempt-$(date +%s%N)"
+            curl --retry 3 --retry-delay 2 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app-0497.js
+            curl --retry 3 --retry-delay 2 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index-0497.html
+            if grep -Fq 'app.js?v=0.1.497' /tmp/live-index-0497.html &&
+               grep -Fq 'appendSegmentPassengerDots0489(passengers0489, segment.passengerSeats)' /tmp/live-app-0497.js; then
+              propagated=true
+              break
+            fi
+            sleep 5
+          done
+          test "$propagated" = true
+
           grep -Fq 'function agendaTimezone0496' /tmp/live-app-0497.js
           grep -Fq 'function agendaDateParts0496' /tmp/live-app-0497.js
           grep -Fq 'function agendaTripTime0496' /tmp/live-app-0497.js
