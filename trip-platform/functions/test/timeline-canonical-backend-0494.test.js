@@ -190,7 +190,7 @@ test("0495 same-day same-driver trips with different strong provider IDs never c
     }),
   ];
 
-  assert.deepEqual(select(docs).map((doc) => doc.id).sort(), ["remote-a", "remote-b"]);
+  assert.equal(Array.from(select(docs), (doc) => doc.id).sort().join("|"), "remote-a|remote-b");
 });
 
 test("0495 canonical winner defeats timeline-ext legacy projection only by shared strong identity", () => {
@@ -212,7 +212,7 @@ test("0495 canonical winner defeats timeline-ext legacy projection only by share
     publicationRevision: 99,
   });
 
-  assert.deepEqual(select([legacy, canonical]).map((doc) => doc.id), ["canonical-remote"]);
+  assert.equal(Array.from(select([legacy, canonical]), (doc) => doc.id).join("|"), "canonical-remote");
 });
 
 test("0495 superseded higher revision cannot beat active canonical document", () => {
@@ -232,7 +232,7 @@ test("0495 superseded higher revision cannot beat active canonical document", ()
     supersededByCanonicalTripId0495: "same-canonical",
   });
 
-  assert.deepEqual(select([superseded, active]).map((doc) => doc.id), ["active"]);
+  assert.equal(Array.from(select([superseded, active]), (doc) => doc.id).join("|"), "active");
 });
 
 test("0495 real 11:30 then 19:00 fixture has no artificial physical conflict", () => {
