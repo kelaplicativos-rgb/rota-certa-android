@@ -38,6 +38,8 @@ fun QuickPassengerPanel(
     lockPassengerIdentity: Boolean = false,
     requireConfirmation: Boolean = false,
     primaryActionLabel: String = "Adicionar passageiro",
+    canonicalBookings0494: List<Booking>? = null,
+    canonicalBackendAuthority0494: Boolean = false,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -59,11 +61,13 @@ fun QuickPassengerPanel(
     var busy by remember(trip.id, initialPassenger?.id) { mutableStateOf(false) }
     var error by remember(trip.id, initialPassenger?.id) { mutableStateOf<String?>(null) }
     var reviewPending by remember(trip.id, initialPassenger?.id) { mutableStateOf(false) }
-    val bookings = store.bookingsFor(trip.id)
+    val bookings = canonicalBookings0494?.filter { it.tripId == trip.id } ?: store.bookingsFor(trip.id)
     val fromIndex = stops.indexOfFirst { it.id == fromStopId }
     val toIndex = stops.indexOfFirst { it.id == toStopId }
     val validSegment = fromIndex >= 0 && toIndex > fromIndex
-    val availability = if (validSegment) {
+    val availability = if (canonicalBackendAuthority0494) {
+        null
+    } else if (validSegment) {
         runCatching {
             SeatAvailabilityEngine.availability(
                 trip,
@@ -213,7 +217,8 @@ fun QuickPassengerPanel(
         OutlinedButton(onClick = { if (seats < trip.capacity) seats++; reviewPending = false }) { Text("+") }
     }
     when {
-        !validSegment -> Text("Selecione embarque e destino para calcular as vagas deste trecho.")
+        !validSegment -> Text("Selecione embarque e destino.")
+        canonicalBackendAuthority0494 -> Text("A disponibilidade será validada pelo backend canônico ao salvar.")
         availability?.canBook == true -> Text("${availability.availableSeats} vaga(s) livre(s) neste trecho")
         availability != null -> Text("Sem vaga física neste trecho")
         else -> Text("Não foi possível calcular as vagas deste trecho.")
@@ -226,7 +231,7 @@ fun QuickPassengerPanel(
         phoneValid &&
         validSegment &&
         parsedFare != null &&
-        availability?.canBook == true &&
+        (canonicalBackendAuthority0494 || availability?.canBook == true) &&
         !selectedPassengerBlocked
 
     fun submitPassenger() {
@@ -271,45 +276,62 @@ fun QuickPassengerPanel(
             fareCurrencyCode = moneySpec.currencyCode,
             source = BookingSource.PRIVATE,
         )
-        val plan = runCatching { QuickPassengerEngine.build(trip, bookings, request) }
-            .onFailure { error = it.message ?: "Sem vaga para incluir este passageiro." }
+        val plan = runCatching {
+            if (canonicalBackendAuthority0494) {
+                QuickPassengerEngine.buildCanonicalBackendCommand0494(trip, bookings, request)
+            } else {
+                QuickPassengerEngine.build(trip, bookings, request)
+            }
+        }.onFailure { error = it.message ?: "Não foi possível preparar este passageiro." }
             .getOrNull() ?: return
         busy = true
         scope.launch {
             val settings = store.onlineSettings()
-            val remoteTripId = trip.remoteId
-            val syncOnline = settings.configured && remoteTripId != null
+            val remoteTripId = trip.remoteId?.takeIf(String::isNotBlank)
             runCatching {
-                val remoteAck0491 = if (syncOnline) {
-                    TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
-                } else {
-                    null
-                }
-                store.saveBooking(plan.passenger)
-                if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
-                    mutationCoordinator0491.recordRemoteAppliedLocal(
-                        canonicalTripId = trip.id,
-                        revision = remoteAck0491.entityRevision,
-                        mutationType = "LOCAL_PASSENGER_ADDED",
-                        source = "TIMELINE_QUICK_PASSENGER",
+                if (canonicalBackendAuthority0494) {
+                    check(settings.configured && remoteTripId != null) {
+                        "Backend canônico indisponível. Nada foi alterado."
+                    }
+                    val ack0494 = TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CANONICAL_PASSENGER_ADD_0494",
+                        context.packageName,
+                        "canonicalTripId=${seatSyncDiagnosticKey(trip.id)} entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false collectorWrite=false",
                     )
-                } else if (!syncOnline) {
-                    val queued0491 = when (resolvedTripRecordOrigin(trip)) {
-                        TripRecordOrigin.EXTERNAL_BACKING -> trip.externalSnapshot?.let { sourceTrip ->
-                            mutationCoordinator0491.recordExternalManualMutation(
-                                sourceTrip = sourceTrip,
-                                configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
-                                mutationType = "LOCAL_PASSENGER_ADDED",
-                            )
-                        }
-                        TripRecordOrigin.LOCAL -> mutationCoordinator0491.recordLocalMutation(
+                } else {
+                    val syncOnline = settings.configured && remoteTripId != null
+                    val remoteAck0491 = if (syncOnline) {
+                        TripRemoteApi(settings).upsertDriverBooking(remoteTripId!!, plan.passenger)
+                    } else {
+                        null
+                    }
+                    store.saveBooking(plan.passenger)
+                    if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                        mutationCoordinator0491.recordRemoteAppliedLocal(
                             canonicalTripId = trip.id,
+                            revision = remoteAck0491.entityRevision,
                             mutationType = "LOCAL_PASSENGER_ADDED",
                             source = "TIMELINE_QUICK_PASSENGER",
                         )
-                    }
-                    if (queued0491 != null) {
-                        AgendaBackgroundSync0392.enqueueImmediate(context, "local_passenger_added")
+                    } else if (!syncOnline) {
+                        val queued0491 = when (resolvedTripRecordOrigin(trip)) {
+                            TripRecordOrigin.EXTERNAL_BACKING -> trip.externalSnapshot?.let { sourceTrip ->
+                                mutationCoordinator0491.recordExternalManualMutation(
+                                    sourceTrip = sourceTrip,
+                                    configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
+                                    mutationType = "LOCAL_PASSENGER_ADDED",
+                                )
+                            }
+                            TripRecordOrigin.LOCAL -> mutationCoordinator0491.recordLocalMutation(
+                                canonicalTripId = trip.id,
+                                mutationType = "LOCAL_PASSENGER_ADDED",
+                                source = "TIMELINE_QUICK_PASSENGER",
+                            )
+                        }
+                        if (queued0491 != null) {
+                            AgendaBackgroundSync0392.enqueueImmediate(context, "local_passenger_added")
+                        }
                     }
                 }
                 val existingProfile = passengerStore.profile(plan.passenger.passengerId)
@@ -328,7 +350,7 @@ fun QuickPassengerPanel(
                 AgendaTrace.event(
                     context,
                     "PASSENGER_ADDED_TO_TRIP",
-                    "passengerHash=${passengerDebugIdentityHash(plan.passenger.passengerId)} tripHash=${passengerDebugIdentityHash(trip.id)}",
+                    "passengerHash=${passengerDebugIdentityHash(plan.passenger.passengerId)} tripHash=${passengerDebugIdentityHash(trip.id)} authority=${if (canonicalBackendAuthority0494) "CANONICAL_BACKEND" else "LEGACY_LOCAL"}",
                 )
                 name = ""
                 contact = ""
@@ -338,9 +360,16 @@ fun QuickPassengerPanel(
                 fromStopId = null
                 toStopId = null
                 reviewPending = false
-                onChanged("Passageiro adicionado à viagem. Ocupação física por trecho recalculada.")
-                onBlaBlaSyncRequested?.invoke()
+                onChanged(
+                    if (canonicalBackendAuthority0494) {
+                        "Passageiro adicionado no estado canônico. Timeline e Agenda receberão a nova revisão."
+                    } else {
+                        "Passageiro adicionado à viagem. Ocupação física por trecho recalculada."
+                    },
+                )
+                if (!canonicalBackendAuthority0494) onBlaBlaSyncRequested?.invoke()
                 onSaved?.invoke()
+                BookingRealtimeEvents0356.notifyChanged()
             }.onFailure { error = "Não foi possível salvar: ${it.message}" }
             busy = false
         }
@@ -407,52 +436,54 @@ fun QuickPassengerPanel(
                     TextButton(enabled = !busy, onClick = {
                         busy = true
                         scope.launch {
-                            val cancelled0491 = booking.copy(
-                                status = BookingStatus.CANCELLED,
-                                operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                lastDriverSelection = "CANCELLED",
-                            )
-                            runCatching {
-                                val settings0491 = store.onlineSettings()
-                                val remoteId0491 = trip.remoteId?.takeIf(String::isNotBlank)
-                                val syncOnline0491 = settings0491.configured && remoteId0491 != null
-                                val remoteAck0491 = if (syncOnline0491) {
-                                    TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, cancelled0491)
-                                } else {
-                                    null
-                                }
-                                store.saveBooking(cancelled0491)
-                                if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
-                                    mutationCoordinator0491.recordRemoteAppliedLocal(
-                                        canonicalTripId = trip.id,
-                                        revision = remoteAck0491.entityRevision,
-                                        mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                        source = "TIMELINE_QUICK_PASSENGER",
+                            if (canonicalBackendAuthority0494) {
+                                runCatching {
+                                    val settings0494 = store.onlineSettings()
+                                    val remoteId0494 = trip.remoteId?.takeIf(String::isNotBlank)
+                                    check(settings0494.configured && remoteId0494 != null) {
+                                        "Backend canônico indisponível. Nada foi alterado."
+                                    }
+                                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
+                                        remoteTripId = remoteId0494!!,
+                                        bookingId = booking.id,
+                                        selection = "CANCELLED",
                                     )
-                                } else if (!syncOnline0491) {
-                                    val queued0491 = when (resolvedTripRecordOrigin(trip)) {
-                                        TripRecordOrigin.EXTERNAL_BACKING -> trip.externalSnapshot?.let { sourceTrip ->
-                                            mutationCoordinator0491.recordExternalManualMutation(
-                                                sourceTrip = sourceTrip,
-                                                configuredRotaCertaSeatAllocation = trip.rotaCertaSeatAllocation ?: 0,
-                                                mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                            )
-                                        }
-                                        TripRecordOrigin.LOCAL -> mutationCoordinator0491.recordLocalMutation(
+                                }.onSuccess { ack0494 ->
+                                    BookingRealtimeEvents0356.notifyChanged()
+                                    UnifiedDebugEventStore.record(
+                                        "TIMELINE_CANONICAL_PASSENGER_REMOVE_0494",
+                                        context.packageName,
+                                        "canonicalTripId=${seatSyncDiagnosticKey(trip.id)} entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                                    )
+                                    onChanged("Passageiro cancelado no estado canônico; as vagas serão atualizadas pela mesma revisão.")
+                                }.onFailure { error = "Não foi possível cancelar: ${it.message}" }
+                            } else {
+                                val cancelled0491 = booking.copy(
+                                    status = BookingStatus.CANCELLED,
+                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
+                                    lastDriverSelection = "CANCELLED",
+                                )
+                                runCatching {
+                                    val settings0491 = store.onlineSettings()
+                                    val remoteId0491 = trip.remoteId?.takeIf(String::isNotBlank)
+                                    val syncOnline0491 = settings0491.configured && remoteId0491 != null
+                                    val remoteAck0491 = if (syncOnline0491) {
+                                        TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, cancelled0491)
+                                    } else null
+                                    store.saveBooking(cancelled0491)
+                                    if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
+                                        mutationCoordinator0491.recordRemoteAppliedLocal(
                                             canonicalTripId = trip.id,
+                                            revision = remoteAck0491.entityRevision,
                                             mutationType = "BOOKING_CANCELLED_BY_DRIVER",
                                             source = "TIMELINE_QUICK_PASSENGER",
                                         )
                                     }
-                                    if (queued0491 != null) {
-                                        AgendaBackgroundSync0392.enqueueImmediate(context, "booking_cancelled_by_driver")
-                                    }
-                                }
-                                BookingRealtimeEvents0356.notifyChanged()
-                            }.onSuccess {
-                                onChanged("Passageiro manual cancelado. Ocupação física por trecho recalculada e publicada.")
-                                onBlaBlaSyncRequested?.invoke()
-                            }.onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
+                                }.onSuccess {
+                                    onChanged("Passageiro manual cancelado.")
+                                    onBlaBlaSyncRequested?.invoke()
+                                }.onFailure { error = "Não foi possível liberar a vaga: ${it.message}" }
+                            }
                             busy = false
                         }
                     }) { Text("Remover") }
