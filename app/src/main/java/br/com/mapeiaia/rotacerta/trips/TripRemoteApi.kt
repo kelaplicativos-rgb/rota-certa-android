@@ -5,6 +5,11 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -594,6 +599,7 @@ data class DriverTripSyncState0402(
     val segmentLoads: List<Int> = emptyList(),
     val segmentPassengerLoads: List<Int> = emptyList(),
     val segmentBlockedLoads: List<Int> = emptyList(),
+    val segmentAvailableSeats: List<Int> = emptyList(),
     val sourceSeatCounts: Map<String, Int> = emptyMap(),
     val canonicalIssues: List<String> = emptyList(),
     /** Exact canonical bookings for the Timeline projection. No collector snapshot is embedded. */
@@ -833,6 +839,45 @@ class TripRemoteApi(
         requireDriverToken = true,
         successNextStage0421 = if (timelineProjection0494) "TIMELINE_CANONICAL_PROJECTION" else "PUBLIC_IDENTITY_RESOLUTION",
     )
+
+    /**
+     * Reads the Timeline exclusively from the authenticated canonical backend.
+     * The extra booking reads keep this client compatible with a backend revision
+     * that predates the embedded-bookings optimization; they still read the same
+     * canonical trip documents and never consult the collector.
+     */
+    suspend fun loadCanonicalTimelineState0494(
+        includePastForVerification0429: Boolean = true,
+    ): DriverTripSyncStateResponse0402 = coroutineScope {
+        val response = listDriverTripSyncStates0402(
+            includePastForVerification0429 = includePastForVerification0429,
+            timelineProjection0494 = true,
+        )
+        require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
+            "Fonte inesperada para a Timeline: ${response.source}"
+        }
+        val semaphore = Semaphore(4)
+        val enriched = response.trips.map { state ->
+            async {
+                if (state.bookings.isNotEmpty() || state.bookingsCount <= 0) {
+                    state
+                } else {
+                    semaphore.withPermit {
+                        val remote = listBookings(state.remoteTripId)
+                        state.copy(
+                            bookings = remote.bookings,
+                            publicationRevision = maxOf(state.publicationRevision, remote.entityRevision),
+                        )
+                    }
+                }
+            }
+        }.awaitAll()
+        response.copy(
+            trips = enriched,
+            source = "CANONICAL_BACKEND",
+            snapshotAtMillis = response.snapshotAtMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
+        )
+    }
 
     suspend fun updateDriverTripPublicVisibility0491(
         remoteTripId: String,
