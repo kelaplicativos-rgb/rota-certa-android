@@ -1091,7 +1091,8 @@ internal fun enhancedPassengerRows(
     externalMetadataSnapshot0394: Map<String, ExternalPassengerMetadata>? = null,
     localBookingsSnapshot0394: List<Booking>? = null,
 ): List<EnhancedPassengerCardRow> {
-    val rows = entry.blablaPassengers.map { passenger ->
+    val legacyPassengers = if (entry.canonicalBackendAuthoritative0494) emptyList() else entry.blablaPassengers
+    val rows = legacyPassengers.map { passenger ->
         val metadataKey = externalPassengerReservationKey(entry.blablaProfileUuid, passenger.booking_href)
         val metadata = externalMetadataSnapshot0394?.get(metadataKey) ?: passengerStore.externalMetadata(metadataKey)
         val hrefExternalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
