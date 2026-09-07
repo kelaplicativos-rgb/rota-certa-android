@@ -421,6 +421,7 @@ internal fun TimelineCardQuickPassengerDialog(
     onChanged: (String) -> Unit,
     onTargetSync: () -> Unit,
     onDismiss: () -> Unit,
+    canonicalBookings0494: List<Booking> = emptyList(),
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("EEE, dd MMM yyyy • HH:mm", Locale.getDefault()) }
     val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
@@ -435,17 +436,19 @@ internal fun TimelineCardQuickPassengerDialog(
                 Text("${entry.profileLabel} • $date", style = MaterialTheme.typography.labelLarge)
                 Text("${entry.origin} → ${entry.destination}")
                 Text(
-                    "Passageiros adicionados aqui ocupam a Agenda imediatamente. A sincronização externa recalcula o estado desejado por trecho e ajusta somente as vagas da publicação exata.",
+                    "A inclusão é gravada primeiro no backend canônico. A Timeline não ajusta a publicação BlaBlaCar nem recalcula capacidade localmente.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 QuickPassengerPanel(
                     trip = trip,
                     store = store,
                     onChanged = onChanged,
-                    onBlaBlaSyncRequested = if (timelineStrongExternalTripKey(entry) != null) onTargetSync else null,
-                    externalSeatTarget = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry),
+                    onBlaBlaSyncRequested = null,
+                    externalSeatTarget = null,
                     onSaved = onDismiss,
                     showExistingPassengers = true,
+                    canonicalBookings0494 = canonicalBookings0494,
+                    canonicalBackendAuthority0494 = entry.canonicalBackendAuthoritative0494,
                 )
             }
         },
@@ -466,6 +469,8 @@ internal fun GlobalPassengerFlowPanel(
     resumeRequestToken: Int = 0,
     resumePassengerId: String? = null,
     resumeTripId: String? = null,
+    canonicalTrips0494: List<Trip> = emptyList(),
+    canonicalBookings0494: List<Booking> = emptyList(),
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -501,7 +506,9 @@ internal fun GlobalPassengerFlowPanel(
     LaunchedEffect(resumeRequestToken) {
         if (resumeRequestToken > 0) {
             val passenger = passengerStore.profile(resumePassengerId)
-            val trip = resumeTripId?.let(store::getTrip)
+            val trip = resumeTripId?.let { tripId ->
+                canonicalTrips0494.firstOrNull { it.id == tripId } ?: store.getTrip(tripId)
+            }
             if (passenger != null && trip != null) {
                 open = true
                 resetFresh()
@@ -723,19 +730,20 @@ internal fun GlobalPassengerFlowPanel(
                                     OutlinedButton(
                                         onClick = {
                                             error = null
-                                            runCatching { prepareTimelineTripForPassenger(entry, store) }
-                                                .onSuccess { prepared ->
-                                                    selectedEntry = entry
-                                                    selectedTrip = prepared.trip
-                                                    onChanged(
-                                                        if (prepared.created) {
-                                                            "Viagem real vinculada internamente sem duplicar a publicação."
-                                                        } else {
-                                                            "Viagem selecionada. A capacidade continuará sendo conferida por trecho."
-                                                        },
-                                                    )
-                                                }
-                                                .onFailure { error = it.message ?: "Não foi possível preparar esta viagem." }
+                                            val canonicalTrip0494 = canonicalTrips0494.firstOrNull { it.id == entry.tripId }
+                                            if (entry.canonicalBackendAuthoritative0494 && canonicalTrip0494 != null) {
+                                                selectedEntry = entry
+                                                selectedTrip = canonicalTrip0494
+                                                onChanged("Viagem canônica selecionada. A capacidade será validada pelo backend ao salvar.")
+                                            } else {
+                                                runCatching { prepareTimelineTripForPassenger(entry, store) }
+                                                    .onSuccess { prepared ->
+                                                        selectedEntry = entry
+                                                        selectedTrip = prepared.trip
+                                                        onChanged("Viagem selecionada.")
+                                                    }
+                                                    .onFailure { error = it.message ?: "Não foi possível preparar esta viagem." }
+                                            }
                                         },
                                         modifier = Modifier.fillMaxWidth(),
                                     ) {
@@ -782,16 +790,21 @@ internal fun GlobalPassengerFlowPanel(
                                 trip = trip,
                                 store = store,
                                 onChanged = onChanged,
-                                onBlaBlaSyncRequested = if (entry != null && timelineStrongExternalTripKey(entry) != null) {
-                                    { onTargetSync(entry, trip) }
-                                } else null,
-                                externalSeatTarget = entry?.let(BlaBlaReliableSeatSyncBridge::targetForTimeline),
+                                onBlaBlaSyncRequested = if (entry?.canonicalBackendAuthoritative0494 == true) null else {
+                                    if (entry != null && timelineStrongExternalTripKey(entry) != null) {
+                                        { onTargetSync(entry, trip) }
+                                    } else null
+                                },
+                                externalSeatTarget = if (entry?.canonicalBackendAuthoritative0494 == true) null
+                                    else entry?.let(BlaBlaReliableSeatSyncBridge::targetForTimeline),
                                 onSaved = { open = false },
                                 showExistingPassengers = false,
                                 initialPassenger = passenger,
                                 lockPassengerIdentity = true,
                                 requireConfirmation = true,
                                 primaryActionLabel = "Adicionar à viagem",
+                                canonicalBookings0494 = canonicalBookings0494,
+                                canonicalBackendAuthority0494 = entry?.canonicalBackendAuthoritative0494 == true,
                             )
                         }
                     }
