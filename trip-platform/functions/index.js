@@ -658,7 +658,7 @@ function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorFo
       },
     );
 
-    req.on("close", () => {
+    res.on("close", () => {
       if (settled) return;
       settled = true;
       cleanup();
