@@ -116,6 +116,36 @@ test("0491 Minha Area is a separate passenger-only surface using existing authen
   assert.match(privateApp, /sessionStorage/);
   assert.doesNotMatch(privateApp, /localStorage|sessionToken.*searchParams|\/v1\/admin\//i);
   assert.match(privateApp, /setInterval\([\s\S]*10000/);
+  assert.match(privateApp, /Alterar reserva/);
+  assert.match(privateApp, /Salvar alterações/);
+  assert.match(privateApp, /Cancelar reserva/);
+  assert.match(privateApp, /method: "PUT"/);
+  assert.match(privateApp, /method: "POST"/);
+  assert.match(privateApp, /passengerMutationPath0498/);
+  assert.match(privateHtml, /minha-area\.js\?v=0\.1\.498/);
+});
+
+test("0498 Minha Area receives only authenticated mutation context and reuses canonical passenger commands", () => {
+  const context = between(api, "function passengerBookingMutationContext0498", "function passengerPrivateBooking0491");
+  for (const field of ["tripToken", "bookingId", "passengerName", "boardingStopId", "dropoffStopId", "stops"]) {
+    assert.match(context, new RegExp(field));
+  }
+  assert.doesNotMatch(context, /passengerContact|passengerId|sourceReference|cancellationHash/);
+
+  const list = between(api, "async function listPassengerBookings", "async function createBooking");
+  assert.match(list, /mutation: passengerBookingMutationContext0498\(tripToken, bookingId, booking, tripData\)/);
+
+  const update = between(api, "async function updatePassengerBooking", "async function cancelPassengerBooking");
+  assert.match(update, /PASSENGER_MY_TRIPS_EDIT/);
+  assert.match(update, /canonicalServerProjectionPatch0468/);
+  assert.match(update, /canonicalCapacityPersistence/);
+  assert.match(update, /passenger_edit_locked_after_boarding/);
+  assert.match(update, /operationalStatus === "IN_CAR" \|\| operationalStatus === "COMPLETED"/);
+
+  const cancel = between(api, "async function cancelPassengerBooking", "function managedCapacityClaim");
+  assert.match(cancel, /PASSENGER_MY_TRIPS_CANCEL/);
+  assert.match(cancel, /canonicalServerProjectionPatch0468/);
+  assert.match(cancel, /passenger_cancel_locked_after_boarding/);
 });
 
 test("0491 passenger history is keyed by stable passengerId while contact index remains legacy-compatible", () => {
