@@ -384,11 +384,13 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
   assert.match(attestation, /independent0468\.visible === true/);
 });
 
-test("0475 public visibility is canonical list renderability without legacy admin gates", () => {
+test("0491 public visibility preserves canonical online policy and exact committed renderability", () => {
   const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
+  assert.match(visibility, /tripPublicOnline0471\(data\)/);
+  assert.match(visibility, /PUBLIC_AGENDA_OFFLINE_0491/);
+  assert.match(visibility, /publicProjectionCommittedCurrent0434/);
   assert.match(visibility, /applyPublicTripVisibility0434/);
   assert.match(visibility, /safePublicTrip\(token, data\)/);
-  assert.doesNotMatch(visibility, /tripPublicOnline0471/);
   assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
   assert.doesNotMatch(visibility, /publicBookingEnabled !== true/);
   assert.match(visibility, /rendered0469\.stops\.length < 2/);
@@ -430,16 +432,17 @@ test("0468 Android transport contract carries server canonical ACK rather than i
 });
 
 
-test("0468 Android normal navigation opens the BlaBlaCar collector and keeps legacy Timeline out of the drawer", () => {
-  assert.match(activity0468, /val initialScreen0396 = TripScreen\.AUTO_SYNC/);
-  assert.match(activity0468, /legacyTimelineDeepLink0468/);
-  assert.match(activity0468, /A Timeline local foi retirada da operação/);
+test("0494 Android opens canonical Timeline by default while collector remains a separate module", () => {
+  assert.match(activity0468, /else -> TripScreen\.TIMELINE/);
+  assert.match(activity0468, /TripScreen\.TIMELINE -> "Todas as viagens"/);
   assert.match(activity0468, /TripScreen\.AUTO_SYNC -> AgendaAutomaticSyncScreen0397/);
+  assert.match(activity0468, /TripScreen\.AUTO_SYNC -> "BlaBlaCar"/);
   assert.match(activity0468, /store = store/);
   const drawer = between(navigation0468, "listOf(", ").forEach { section");
+  assert.match(drawer, /AgendaRootSection0396\.ALL_TRIPS/);
   assert.match(drawer, /AgendaRootSection0396\.AUTOMATIC_SYNC/);
-  assert.doesNotMatch(drawer, /AgendaRootSection0396\.ALL_TRIPS/);
   assert.match(navigation0468, /AUTOMATIC_SYNC\("BlaBlaCar"\)/);
+  assert.match(navigation0468, /ALL_TRIPS\("Todas as viagens"\)/);
 });
 
 test("0475 collector panel identifies backend as authority and opens only the public Agenda", () => {
