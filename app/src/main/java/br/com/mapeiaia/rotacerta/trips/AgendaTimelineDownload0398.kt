@@ -17,7 +17,6 @@ import kotlinx.serialization.json.put
 
 private val timelineExportJson0495 = Json {
     encodeDefaults = true
-    explicitNulls = true
 }
 
 internal fun agendaTimelineDownloadJson0398(
