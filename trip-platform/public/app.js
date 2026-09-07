@@ -85,7 +85,9 @@ function orderedStops(source) {
 function agendaSegmentMoment0473(item, stop, index, fallbackMillis) {
   if (!stop) return Number(fallbackMillis || 0);
   if (index === 0) {
-    return Number(stop.plannedDepartureMillis || stop.plannedArrivalMillis || fallbackMillis || 0);
+    // 0495: the canonical trip root owns departure time. Stop timing is itinerary
+    // detail and must never override another trip's canonical departure.
+    return Number(fallbackMillis || stop.plannedDepartureMillis || stop.plannedArrivalMillis || 0);
   }
   return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || fallbackMillis || 0);
 }
@@ -215,7 +217,7 @@ function agendaLongDateLabel0480(ms) {
 function agendaStopMoment0480(item, stop, index, lastIndex) {
   if (!stop) return 0;
   if (index === 0) {
-    return Number(stop.plannedDepartureMillis || stop.plannedArrivalMillis || item.departureAtMillis || 0);
+    return Number(item.departureAtMillis || stop.plannedDepartureMillis || stop.plannedArrivalMillis || 0);
   }
   if (index === lastIndex) {
     return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || 0);
@@ -251,7 +253,8 @@ function renderAgendaCards(entries, container) {
     card.setAttribute("aria-label", "Ver detalhes da viagem de " + from + " para " + to);
     const startStop0473 = stops[fromIndex];
     const endStop0473 = stops[toIndex];
-    const startMillis0473 = agendaSegmentMoment0473(item, startStop0473, 0, item.departureAtMillis);
+    const startMillis0473 = Number(item.departureAtMillis || 0) ||
+      agendaSegmentMoment0473(item, startStop0473, 0, item.departureAtMillis);
     const endMillis0473 = agendaSegmentMoment0473(item, endStop0473, toIndex, 0);
     const duration0473 = agendaDurationBetween0473(startMillis0473, endMillis0473);
 
