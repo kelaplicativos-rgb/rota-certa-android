@@ -35,6 +35,7 @@ class TimelineCanonicalBackend0494Test {
         remoteId: String = "remote-$revision",
         departure: Long = 1_000L,
         blablaTripId: String = "",
+        bookings: List<RemoteBooking> = emptyList(),
     ) = DriverTripSyncState0402(
         remoteTripId = remoteId,
         status = TripStatus.PUBLISHED.name,
@@ -58,6 +59,7 @@ class TimelineCanonicalBackend0494Test {
         segmentAvailableSeats = listOf(2),
         blablaTripId = blablaTripId,
         sourceSeatCounts = mapOf(BookingSource.PRIVATE.name to 2),
+        bookings = bookings,
     )
 
     @Test
@@ -195,4 +197,151 @@ class TimelineCanonicalBackend0494Test {
         assertFalse(download.contains("put(\"timelineTripId\""))
         assertFalse(download.contains("timeline-ext-"))
     }
+
+    @Test
+    fun testJ_canonicalBookingDrivesPassengerUiEvenWhenLegacyRosterIsEmpty() {
+        val remoteBooking = RemoteBooking(
+            id = "booking-canonical",
+            tripId = "remote-1",
+            passengerId = "passenger-1",
+            passengerName = "Passageiro Fixture",
+            passengerContact = "contact-fixture",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            operationalStatus = PassengerOperationalStatus.IN_CAR,
+            paymentStatus = PassengerPaymentStatus.PAID,
+            source = BookingSource.BLABLACAR,
+            sourceReference = "BLABLACAR_SYNC:fixture",
+            occupancyGroupId = "occupancy-fixture",
+        )
+        val projection = canonicalTimelineProjection0494(
+            DriverTripSyncStateResponse0402(
+                source = "CANONICAL_BACKEND",
+                trips = listOf(state("canonical-booking", 4L, bookings = listOf(remoteBooking))),
+            ),
+        )
+
+        assertTrue(projection.entries.single().blablaPassengers.isEmpty())
+        assertEquals(1, projection.bookings.size)
+        assertEquals("booking-canonical", projection.bookings.single().id)
+        assertEquals(PassengerOperationalStatus.IN_CAR, projection.bookings.single().operationalStatus)
+        assertEquals(PassengerPaymentStatus.PAID, projection.bookings.single().paymentStatus)
+    }
+
+    @Test
+    fun testK_serverAuthorityPreservesOnlyExplicitLocalBookingMetadata() {
+        val remoteBooking = RemoteBooking(
+            id = "booking-local-meta",
+            passengerId = "server-passenger",
+            passengerName = "Passenger",
+            passengerContact = "server-contact",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            operationalStatus = PassengerOperationalStatus.IN_CAR,
+            paymentStatus = PassengerPaymentStatus.PAID,
+            source = BookingSource.ROTA_CERTA,
+        )
+        val local = Booking(
+            id = "booking-local-meta",
+            tripId = "old-local-trip",
+            passengerId = "local-passenger",
+            passengerName = "Old",
+            passengerContact = "old-contact",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            fareMinorUnits = 12_345L,
+            fareCurrencyCode = "BRL",
+            boardingAddress = "Endereço local de embarque",
+            dropoffAddress = "Endereço local de desembarque",
+            localMetadataTouched = true,
+            operationalStatus = PassengerOperationalStatus.CONFIRMED,
+            paymentStatus = PassengerPaymentStatus.UNPAID,
+        )
+        val projection = canonicalTimelineProjection0494(
+            response = DriverTripSyncStateResponse0402(
+                source = "CANONICAL_BACKEND",
+                trips = listOf(state("canonical-local-meta", 5L, bookings = listOf(remoteBooking))),
+            ),
+            existingLocalBookings = listOf(local),
+        )
+        val booking = projection.bookings.single()
+
+        assertEquals("canonical-local-meta", booking.tripId)
+        assertEquals(PassengerOperationalStatus.IN_CAR, booking.operationalStatus)
+        assertEquals(PassengerPaymentStatus.PAID, booking.paymentStatus)
+        assertEquals(12_345L, booking.fareMinorUnits)
+        assertEquals("BRL", booking.fareCurrencyCode)
+        assertEquals("Endereço local de embarque", booking.boardingAddress)
+        assertEquals("Endereço local de desembarque", booking.dropoffAddress)
+        assertTrue(booking.localMetadataTouched)
+    }
+
+    @Test
+    fun testL_downloadSchema3ContainsExactCanonicalOperationalStructures() {
+        val remoteBooking = RemoteBooking(
+            id = "booking-export",
+            passengerId = "passenger-export",
+            passengerName = "Passenger",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            operationalStatus = PassengerOperationalStatus.AT_LOCATION,
+            paymentStatus = PassengerPaymentStatus.UNPAID,
+            source = BookingSource.ROTA_CERTA,
+        )
+        val response = DriverTripSyncStateResponse0402(
+            source = "CANONICAL_BACKEND",
+            snapshotAtMillis = 55_000L,
+            trips = listOf(state("canonical-export", 6L, bookings = listOf(remoteBooking))),
+        )
+        val projected = canonicalTimelineProjection0494(response)
+        val json = agendaTimelineDownloadJson0398(
+            response = response,
+            projectedBookings = projected.bookings,
+            selectedCanonicalTripIds = setOf("canonical-export"),
+            generatedAtMillis = 77_000L,
+        )
+
+        assertTrue(json.contains("\"schemaVersion\":\"3.0\""))
+        assertTrue(json.contains("\"canonicalTripId\":\"canonical-export\""))
+        assertTrue(json.contains("\"segmentLoads\":[2]"))
+        assertTrue(json.contains("\"bookings\":[{"))
+        assertTrue(json.contains("\"operationalStatus\":\"AT_LOCATION\""))
+        assertTrue(json.contains("\"localMetadata\":{"))
+        assertFalse(json.contains("\"issues\":\""))
+        assertFalse(json.contains("\"sourceSeatCounts\":\""))
+    }
+
+    @Test
+    fun testM_eventDrivenRefreshIsPrimaryAndPollingIsRecoveryOnly() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+
+        assertTrue(timeline.contains("BookingRealtimeEvents0356.changes.collect"))
+        assertTrue(timeline.contains("TIMELINE_INVALIDATED"))
+        assertTrue(timeline.contains("TIMELINE_REFRESH_STARTED"))
+        assertTrue(timeline.contains("TIMELINE_REFRESH_APPLIED"))
+        assertTrue(timeline.contains("POLL_RECOVERY"))
+        assertTrue(timeline.contains("FOREGROUND"))
+        assertTrue(timeline.contains("NETWORK_AVAILABLE"))
+        assertFalse(timeline.contains("BlaBlaTimelineAdapter.merge("))
+    }
+
+    @Test
+    fun testN_canonicalPassengerConsumersDoNotUseLegacyRosterAsAuthority() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(timeline.contains("if (entry.canonicalBackendAuthoritative0494)"))
+        assertTrue(timelineUi.contains("if (enriched.canonicalBackendAuthoritative0494)"))
+        assertTrue(timelineUi.contains("sourcePassengerSeats[BookingSource.BLABLACAR]"))
+        assertTrue(passengerUi.contains("if (entry.canonicalBackendAuthoritative0494) emptyList() else entry.blablaPassengers"))
+        assertTrue(passengerUi.contains("canonicalBookings0494"))
+    }
+
 }
