@@ -368,7 +368,7 @@ internal fun canonicalTimelineProjection0494(
 
     return CanonicalTimelineProjection0494(
         trips = projectedTrips,
-        bookings = projectedBookings.distinctBy(Booking::id),
+        bookings = projectedBookings.distinctBy { booking -> "${booking.tripId}|${booking.id}" },
         entries = projectedEntries,
         snapshotAtMillis = response.snapshotAtMillis,
     )
