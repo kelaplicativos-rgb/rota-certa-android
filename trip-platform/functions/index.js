@@ -4047,6 +4047,31 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
 }
 
+async function safePublicTripWithCanonicalBookings0497(doc, nowMillis = Date.now()) {
+  const data = doc.data();
+  const bookingSnapshot = await doc.ref.collection("bookings").limit(200).get();
+  const records = bookingSnapshot.docs.map((bookingDoc) => ({ id: bookingDoc.id, ...bookingDoc.data() }));
+  const publicPayload = canonicalPublicTripPayload0411(doc.id, data);
+  const canonicalTripForOccupancy = {
+    ...data,
+    capacity: Math.max(0, Number(publicPayload.capacity || data.capacity || 0)),
+    stops: Array.isArray(publicPayload.stops) && publicPayload.stops.length >= 2
+      ? publicPayload.stops
+      : (Array.isArray(data.stops) ? data.stops : []),
+  };
+  const capacityState = reconciledSegmentCapacity(canonicalTripForOccupancy, records, nowMillis);
+  const currentCapacity = canonicalCapacityPersistence(
+    canonicalTripForOccupancy,
+    records,
+    capacityState,
+    nowMillis,
+  );
+  return safePublicTrip(doc.id, {
+    ...data,
+    ...currentCapacity,
+  });
+}
+
 async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRoute = false) {
   const resolvedDriver = await resolveDriverUsername(usernameRaw);
   const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
@@ -4083,7 +4108,7 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     .slice(0, 100);
   const rawTrips = tester
     ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
-    : sourceDocs.map((doc) => safePublicTrip(doc.id, doc.data()));
+    : await Promise.all(sourceDocs.map((doc) => safePublicTripWithCanonicalBookings0497(doc)));
   const trips = rawTrips.map((trip, index) =>
     publicTripProjection0491(applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver))
   );
