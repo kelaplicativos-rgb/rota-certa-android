@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-07**
-- Rota: **Pouso Alegre, MG, Brasil → Santo André, SP, Brasil**
+- Rota: **São Thomé das Letras, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,15 +12,15 @@
 
 ## Motoristas
 
-1. **Alencar** — 02:20 — Pouso Alegre → São Paulo — R$ 63,00 — Super Driver
-2. **Ernane** — 06:00 — Pouso Alegre → São Paulo — sem preço — Cheio
-3. **Lidan** — 06:40 — Pouso Alegre → São Paulo — sem preço — Cheio
-4. **Helena** — 07:00 — Pouso Alegre → São Paulo — sem preço — Cheio
-5. **Jeferson** — 07:00 — Pouso Alegre → São Paulo — R$ 60,00 — Esgotará em breve · Super Driver
-6. **Ronaldo** — 07:30 — Pouso Alegre → São Paulo — R$ 60,00 — Esgotará em breve
-7. **Yago** — 10:40 — Pouso Alegre → São Paulo — sem preço — Cheio
-8. **Fabiano** — 11:30 — Pouso Alegre → São Paulo — sem preço — Cheio
-9. **Juninho** — 12:00 — Pouso Alegre → São Paulo — sem preço — Cheio
-10. **Luan** — 12:30 — Pouso Alegre → São Paulo — R$ 66,00 — Esgotará em breve
+1. **Carlos** — 08:00 — Três Corações → São Paulo — sem preço — Cheio
+2. **Alessandra** — 08:30 — São Tomé das Letras → São Paulo — sem preço — Cheio
+3. **André** — 10:00 — São Thomé das Letras → São Paulo — R$ 85,00 — Super Driver
+4. **Lenilson** — 10:00 — Três Corações → São Paulo — sem preço — Cheio
+5. **Fabiano** — 10:20 — Três Corações → São Paulo — sem preço — Cheio
+6. **Raphael** — 11:00 — Minas Gerais → Cajamar — R$ 71,00
+7. **Wanderlei Toledo Junior** — 12:00 — Lambari → São Paulo — R$ 52,00
+8. **Tom** — 12:00 — Três Corações → Mauá — sem preço — Cheio · Super Driver
+9. **Sindel** — 12:30 — Três Corações → Guarulhos — sem preço — Cheio
+10. **Carla Alexandra** — 12:30 — Três Corações → São Paulo — sem preço — Cheio
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
