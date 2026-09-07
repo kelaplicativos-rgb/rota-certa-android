@@ -531,14 +531,18 @@ internal fun filterTimelineEntries(
                 )
             }
         }.orEmpty()
-        val externalPassengerParts = entry.blablaPassengers.flatMap { passenger ->
-            listOfNotNull(
-                passenger.name,
-                passenger.phone,
-                passenger.boarding,
-                passenger.dropoff,
-                "BlaBlaCar",
-            )
+        val externalPassengerParts = if (entry.canonicalBackendAuthoritative0494) {
+            emptyList()
+        } else {
+            entry.blablaPassengers.flatMap { passenger ->
+                listOfNotNull(
+                    passenger.name,
+                    passenger.phone,
+                    passenger.boarding,
+                    passenger.dropoff,
+                    "BlaBlaCar",
+                )
+            }
         }
         val dateParts = timelineDateSearchParts(entry.departureAtMillis, zoneId, locale)
         val haystack = normalizeTimelineSearchText(
