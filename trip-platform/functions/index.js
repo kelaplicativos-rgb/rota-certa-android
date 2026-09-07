@@ -8121,6 +8121,9 @@ async function listDriverTripSyncState0402(req, res) {
         Math.max(0, Number(booking.seats || 0));
     });
 
+    const minimumOccupiedSeats0494 = segmentLoads0494.length
+      ? Math.min(...segmentLoads0494)
+      : Math.max(0, Number(data.minimumOccupiedSeats || 0));
     const maximumOccupiedSeats0494 = segmentLoads0494.length
       ? Math.max(...segmentLoads0494)
       : Math.max(0, Number(data.maximumOccupiedSeats || 0));
@@ -8210,7 +8213,7 @@ async function listDriverTripSyncState0402(req, res) {
                 ? data.availableSeatsMaximum
                 : canonicalProjection0494.availableSeatsMaximum,
             )),
-      minimumOccupiedSeats: maximumOccupiedSeats0494,
+      minimumOccupiedSeats: minimumOccupiedSeats0494,
       maximumOccupiedSeats: maximumOccupiedSeats0494,
       operationalBlockedSeats: blockedSeats0494,
       operationalOverbookingSeats: operationalOverbookingSeats0494,
