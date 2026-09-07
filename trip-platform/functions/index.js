@@ -593,7 +593,104 @@ async function listPassengerNotifications(req, res) {
   return json(res, 200, {
     notifications,
     unreadCount: notifications.filter((item) => !item.read).length,
+    changeCursor0495: notifications.reduce(
+      (latest, item) => Math.max(latest, Math.max(0, Number(item.createdAtMillis || 0))),
+      0,
+    ),
   });
+}
+
+function waitForCanonicalInvalidation0495(req, res, query, sinceMillis, cursorForDocs, source) {
+  const since = Math.max(0, Number(sinceMillis || 0));
+  const timeoutMillis = 25_000;
+  return new Promise((resolve) => {
+    let settled = false;
+    let unsubscribe = null;
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (unsubscribe) {
+        try { unsubscribe(); } catch (_) {}
+      }
+      unsubscribe = null;
+    };
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (!res.headersSent) json(res, 200, payload);
+      resolve();
+    };
+
+    timer = setTimeout(() => finish({
+      changed: false,
+      cursor: since,
+      source,
+      timeout: true,
+    }), timeoutMillis);
+
+    unsubscribe = query.onSnapshot(
+      (snapshot) => {
+        const cursor = Math.max(0, Number(cursorForDocs(snapshot.docs) || 0));
+        if (cursor > since) {
+          finish({
+            changed: true,
+            cursor,
+            source,
+            timeout: false,
+          });
+        }
+      },
+      (error) => {
+        console.error("CANONICAL_INVALIDATION_WATCH_FAILED", {
+          source,
+          reason: cleanText(error && error.message, 160),
+        });
+        finish({
+          changed: false,
+          cursor: since,
+          source,
+          timeout: false,
+          degraded: true,
+        });
+      },
+    );
+
+    req.on("close", () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    });
+  });
+}
+
+async function waitPassengerCanonicalChange0495(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
+  if (!scope0491) return;
+  const effectiveScope = scope0491.driverUsername || normalizeUsername(session.driverScope0428);
+  const recipientKey = session.passengerId
+    ? "passenger-id:" + session.passengerId
+    : (session.passengerContact ? "passenger-contact:" + session.passengerContact : "");
+  if (!recipientKey) return fail(res, 409, "passenger_identity_unavailable", "Identidade do passageiro indisponível.");
+
+  const query = db.collection("tripNotifications").where("recipientKey", "==", recipientKey);
+  return await waitForCanonicalInvalidation0495(
+    req,
+    res,
+    query,
+    req.query && req.query.since,
+    (docs) => docs.reduce((latest, doc) => {
+      const data = doc.data();
+      if (effectiveScope && normalizeUsername(data.driverUsername || "") !== effectiveScope) return latest;
+      return Math.max(latest, Math.max(0, Number(data.createdAtMillis || 0)));
+    }, 0),
+    "PASSENGER_AREA",
+  );
 }
 
 async function markDriverNotificationRead(req, res, notificationIdRaw, all = false) {
@@ -3766,7 +3863,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     if (!tester) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
-  const sourceDocs = selectCanonicalTripDocuments0495(snapshot.docs)
+  const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
+  const sourceDocs = canonicalDocs0495
     .filter((doc) => publicAgendaTripVisibility0466(driver, doc.id, doc.data()).visible)
     .sort((a, b) => Number(a.data().departureAtMillis) - Number(b.data().departureAtMillis))
     .slice(0, 100);
@@ -3791,7 +3889,37 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     trips,
     authenticationRequired: false,
     readOnly: true,
+    changeCursor0495: canonicalDocs0495.reduce(
+      (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
+      0,
+    ),
   });
+}
+
+async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agendaToken, shortRoute = false) {
+  const resolvedDriver = await resolveDriverUsername(usernameRaw);
+  const username = resolvedDriver ? resolvedDriver.canonicalUsername : "";
+  if (!username || (!shortRoute && !agendaToken)) {
+    return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+  }
+  if (!shortRoute) {
+    const agendaHash = await publicAgendaLinkHash(username, resolvedDriver.driverSnap);
+    if (!tokenMatches(agendaToken, agendaHash)) {
+      return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+    }
+  }
+  const query = db.collection("trips").where("driverUsername", "==", username).limit(300);
+  return await waitForCanonicalInvalidation0495(
+    req,
+    res,
+    query,
+    req.query && req.query.since,
+    (docs) => selectCanonicalTripDocuments0495(docs).reduce(
+      (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
+      0,
+    ),
+    "PUBLIC_AGENDA",
+  );
 }
 
 
@@ -8914,6 +9042,7 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     if (req.method === "GET" && path === "/v1/passenger/me/credits") return await getPassengerCredits(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/referral") return await createPassengerReferral(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me/changes") return await waitPassengerCanonicalChange0495(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/notifications") return await listPassengerNotifications(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/notifications/read-all") return await markPassengerNotificationRead(req, res, "", true);
     if (req.method === "GET" && path === "/v1/driver/notifications") return await listDriverNotifications(req, res);
@@ -9007,6 +9136,13 @@ exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southameric
     }
     if (parts.length === 5 && parts[0] === "v1" && parts[1] === "driver" && parts[2] === "trips" && parts[4] === "bookings" && req.method === "GET") {
       return await listDriverBookings(req, res, parts[3]);
+    }
+    if (parts.length === 5 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda" && parts[4] === "changes" && req.method === "GET") {
+      if (isReservedPublicUsername(parts[3])) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+      return await waitPublicAgendaCanonicalChange0495(res, req, parts[3], "", true);
+    }
+    if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "drivers" && parts[5] === "agenda" && parts[6] === "changes" && req.method === "GET") {
+      return await waitPublicAgendaCanonicalChange0495(res, req, parts[3], parts[4]);
     }
     if (parts.length === 4 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "agenda" && req.method === "GET") {
       if (isReservedPublicUsername(parts[3])) return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
