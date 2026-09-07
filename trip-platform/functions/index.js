@@ -1461,10 +1461,7 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     timezoneId: cleanText(payload.timezoneId, 80),
     status: cleanText(payload.status, 24),
     capacity: Math.max(0, Number(payload.capacity || 0)),
-    stops: canonicalDepartureStops0495(
-      (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
-      departureAtMillis,
-    ),
+    stops: (Array.isArray(payload.stops) ? payload.stops : []).map(canonicalPublicStop0411),
     segmentLoads: (Array.isArray(payload.segmentLoads) ? payload.segmentLoads : []).map((v) => Math.max(0, Number(v || 0))),
     segmentPassengerLoads: (Array.isArray(payload.segmentPassengerLoads) ? payload.segmentPassengerLoads : []).map((v) => Math.max(0, Number(v || 0))),
     segmentBlockedLoads: (Array.isArray(payload.segmentBlockedLoads) ? payload.segmentBlockedLoads : []).map((v) => Math.max(0, Number(v || 0))),
@@ -2196,13 +2193,17 @@ function canonicalServerProjectionPatch0468(token, previous, patch, publicationR
     1,
     Math.floor(Number(publicationRevision || patch && patch.publicationRevision || previous && previous.publicationRevision || 0)),
   );
-  const merged = {
+  const mergedBase0495 = {
     ...(previous || {}),
     ...(patch || {}),
     canonicalTripId,
     canonicalRevision,
     publicationRevision: revision,
     updatedAtMillis: now,
+  };
+  const merged = {
+    ...mergedBase0495,
+    stops: canonicalDepartureStops0495(mergedBase0495.stops, mergedBase0495.departureAtMillis),
   };
   const canonicalStateHash = canonicalServerStateHash0468(merged);
   const projectionSource = { ...merged, canonicalStateHash, canonicalPublicProjection0434: null };
@@ -3688,10 +3689,20 @@ function canonicalTripIdentityKeys0495(doc) {
   return [...new Set(keys)];
 }
 
+function canonicalTripSuperseded0495(doc) {
+  const data = doc && typeof doc.data === "function" ? doc.data() : {};
+  return data.deleted === true ||
+    cleanText(data.legacyProjectionState0495, 32).toUpperCase() === "SUPERSEDED" ||
+    Boolean(cleanText(data.supersededByCanonicalTripId0495, 180));
+}
+
 function canonicalTripWinnerCompare0495(left, right) {
   const leftLegacy = canonicalTripLegacyProjection0495(left);
   const rightLegacy = canonicalTripLegacyProjection0495(right);
   if (leftLegacy !== rightLegacy) return leftLegacy ? 1 : -1;
+  const leftSuperseded = canonicalTripSuperseded0495(left);
+  const rightSuperseded = canonicalTripSuperseded0495(right);
+  if (leftSuperseded !== rightSuperseded) return leftSuperseded ? 1 : -1;
   const leftData = left.data();
   const rightData = right.data();
   const canonicalRevisionDelta =
@@ -3715,9 +3726,9 @@ function selectCanonicalTripDocuments0495(docs) {
   [...(Array.isArray(docs) ? docs : [])]
     .sort(canonicalTripWinnerCompare0495)
     .forEach((doc) => {
-      // Explicit legacy projection rows are historical transport/projection artifacts.
+      // Explicit legacy/superseded projection rows are historical transport artifacts.
       // They never constitute a canonical trip by themselves after server authority 0468.
-      if (canonicalTripLegacyProjection0495(doc)) return;
+      if (canonicalTripLegacyProjection0495(doc) || canonicalTripSuperseded0495(doc)) return;
       const keys = canonicalTripIdentityKeys0495(doc);
       if (keys.some((key) => claimedStrongIdentity.has(key))) return;
       selected.push(doc);
@@ -6252,6 +6263,13 @@ async function listPassengerBookings(req, res) {
   const scope0491 = await passengerRequestedDriverScope0491(req, res, session);
   if (!scope0491) return;
   const requestedDriverUsername0491 = scope0491.driverUsername;
+  if (requestedDriverUsername0491) {
+    const canonicalScopeSnapshot0495 = await db.collection("trips")
+      .where("driverUsername", "==", requestedDriverUsername0491)
+      .limit(300)
+      .get();
+    await convergeLegacyCanonicalTripDocuments0495(canonicalScopeSnapshot0495.docs);
+  }
   const indexedEntries0491 = await passengerBookingIndexEntries0491(session);
   const entries = await Promise.all(indexedEntries0491.map(async (ref) => {
     const tripToken = cleanText(ref.tripToken, 120);
@@ -8601,9 +8619,12 @@ async function listDriverTripSyncState0402(req, res) {
       data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object"
         ? data.canonicalPublicProjection0434
         : canonicalPublicTripPayload0411(doc.id, data);
-    const stops0494 = Array.isArray(canonicalProjection0494.stops)
-      ? canonicalProjection0494.stops
-      : (Array.isArray(data.stops) ? data.stops : []);
+    const stops0494 = canonicalDepartureStops0495(
+      Array.isArray(canonicalProjection0494.stops)
+        ? canonicalProjection0494.stops
+        : (Array.isArray(data.stops) ? data.stops : []),
+      canonicalProjection0494.departureAtMillis || data.departureAtMillis,
+    );
     const segmentLoads0494 = Array.isArray(canonicalProjection0494.segmentLoads)
       ? canonicalProjection0494.segmentLoads.map((value) => Math.max(0, Number(value || 0)))
       : (Array.isArray(data.segmentLoads) ? data.segmentLoads.map((value) => Math.max(0, Number(value || 0))) : []);
