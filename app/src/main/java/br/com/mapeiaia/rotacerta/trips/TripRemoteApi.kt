@@ -560,12 +560,13 @@ data class DriverTripSyncState0402(
     val remoteTripId: String,
     val status: String = "",
     val departureAtMillis: Long = 0L,
+    val arrivalAtMillis: Long = 0L,
     val stops: List<TripStop> = emptyList(),
     val capacityReliable: Boolean = false,
     val capacitySnapshotRevision: String = "",
     /** Transport/entity sequence. Not the logical canonical state revision. */
     val publicationRevision: Long = 0L,
-    /** Logical canonical snapshot revision persisted in the public projection. */
+    /** Logical canonical snapshot revision persisted in the backend canonical projection. */
     val canonicalRevision: Long = 0L,
     val canonicalTripId: String = "",
     val canonicalStateHash: String = "",
@@ -574,14 +575,31 @@ data class DriverTripSyncState0402(
     val tripKey: String = "",
     val blablaProfileUuid: String = "",
     val blablaTripId: String = "",
+    val blablaPublicUrl: String = "",
+    val driverDisplayName: String = "",
     val title: String = "",
+    val publicUrl: String = "",
+    val publicBookingEnabled: Boolean = false,
+    val itineraryAuthoritative: Boolean = true,
     val capacity: Int = 0,
     val publishedSeats: Int? = null,
     val rotaCertaSeatAllocation: Int? = null,
     val operationalAvailableSeats: Int? = null,
     val availableSeatsMinimum: Int? = null,
     val availableSeatsMaximum: Int? = null,
+    val minimumOccupiedSeats: Int = 0,
+    val maximumOccupiedSeats: Int = 0,
+    val operationalBlockedSeats: Int = 0,
+    val operationalOverbookingSeats: Int = 0,
+    val segmentLoads: List<Int> = emptyList(),
+    val segmentPassengerLoads: List<Int> = emptyList(),
+    val segmentBlockedLoads: List<Int> = emptyList(),
+    val sourceSeatCounts: Map<String, Int> = emptyMap(),
+    val canonicalIssues: List<String> = emptyList(),
+    /** Exact canonical bookings for the Timeline projection. No collector snapshot is embedded. */
+    val bookings: List<RemoteBooking> = emptyList(),
     val occupancyRevision: Long? = null,
+    val updatedAtMillis: Long = 0L,
     val publicAgendaOnline0471: Boolean = true,
     val publicAgendaVisibilityRevision0471: Long = 0L,
 )
@@ -589,6 +607,8 @@ data class DriverTripSyncState0402(
 @Serializable
 data class DriverTripSyncStateResponse0402(
     val trips: List<DriverTripSyncState0402> = emptyList(),
+    val source: String = "CANONICAL_BACKEND",
+    val snapshotAtMillis: Long = 0L,
 )
 
 @Serializable
@@ -799,15 +819,19 @@ class TripRemoteApi(
 
     suspend fun listDriverTripSyncStates0402(
         includePastForVerification0429: Boolean = false,
+        timelineProjection0494: Boolean = false,
     ): DriverTripSyncStateResponse0402 = request(
         method = "GET",
-        path = if (includePastForVerification0429) {
-            "/v1/driver/trips/sync-state?includePastForVerification=1"
-        } else {
-            "/v1/driver/trips/sync-state"
+        path = buildString {
+            append("/v1/driver/trips/sync-state")
+            val query = buildList {
+                if (includePastForVerification0429) add("includePastForVerification=1")
+                if (timelineProjection0494) add("timelineProjection=1")
+            }
+            if (query.isNotEmpty()) append('?').append(query.joinToString("&"))
         },
         requireDriverToken = true,
-        successNextStage0421 = "PUBLIC_IDENTITY_RESOLUTION",
+        successNextStage0421 = if (timelineProjection0494) "TIMELINE_CANONICAL_PROJECTION" else "PUBLIC_IDENTITY_RESOLUTION",
     )
 
     suspend fun updateDriverTripPublicVisibility0491(
