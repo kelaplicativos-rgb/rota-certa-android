@@ -81,7 +81,7 @@ class TripStore(context: Context) {
         val normalized = incoming.copy(
             trips = accepted,
             source = "CANONICAL_BACKEND",
-            snapshotAtMillis = incoming.snapshotAtMillis.coerceAtLeast(nowMillis),
+            snapshotAtMillis = incoming.snapshotAtMillis.takeIf { it > 0L } ?: nowMillis,
         )
         require(
             prefs.edit()
