@@ -119,6 +119,198 @@ function isHistorical0491(entry) {
     Number(entry?.trip?.departureAtMillis || 0) < Date.now() - 6 * 60 * 60 * 1000;
 }
 
+function passengerBookingLocked0498(booking) {
+  const status = String(booking?.status || "").toUpperCase();
+  const operational = String(booking?.operationalStatus || "").toUpperCase();
+  return status === "CANCELLED" ||
+    status === "EXPIRED" ||
+    operational === "CANCELLED" ||
+    operational === "IN_CAR" ||
+    operational === "COMPLETED";
+}
+
+function passengerMutationPath0498(entry, suffix = "") {
+  const mutation = entry?.mutation || {};
+  const tripToken = String(mutation.tripToken || "").trim();
+  const bookingId = String(mutation.bookingId || "").trim();
+  if (!tripToken || !bookingId) return "";
+  return "/v1/passenger/me/bookings/" + encodeURIComponent(tripToken) + "/" +
+    encodeURIComponent(bookingId) + suffix;
+}
+
+function passengerActionMessage0498(root, text, success = false) {
+  root.textContent = text || "";
+  root.classList.toggle("hidden", !text);
+  root.classList.toggle("success", Boolean(text && success));
+  root.classList.toggle("error", Boolean(text && !success));
+}
+
+async function savePassengerBooking0498(entry, controls) {
+  const mutation = entry?.mutation || {};
+  const stops = Array.isArray(mutation.stops) ? mutation.stops : [];
+  const passengerName = controls.name.value.trim();
+  const boardingStopId = controls.boarding.value;
+  const dropoffStopId = controls.dropoff.value;
+  const seats = Number(controls.seats.value);
+  const fromIndex = stops.findIndex((stop) => String(stop?.id || "") === boardingStopId);
+  const toIndex = stops.findIndex((stop) => String(stop?.id || "") === dropoffStopId);
+
+  if (!passengerName) {
+    return passengerActionMessage0498(controls.message, "Informe seu nome.");
+  }
+  if (!Number.isInteger(seats) || seats < 1) {
+    return passengerActionMessage0498(controls.message, "Informe uma quantidade válida de lugares.");
+  }
+  if (fromIndex < 0 || toIndex <= fromIndex) {
+    return passengerActionMessage0498(
+      controls.message,
+      "O desembarque precisa ficar depois do embarque no trajeto desta viagem.",
+    );
+  }
+
+  const path = passengerMutationPath0498(entry);
+  if (!path) return passengerActionMessage0498(controls.message, "Contexto seguro da reserva indisponível.");
+
+  controls.save.disabled = true;
+  controls.cancel.disabled = true;
+  passengerActionMessage0498(controls.message, "Salvando alterações...", true);
+  try {
+    const result = await request0491(path, {
+      method: "PUT",
+      body: { passengerName, boardingStopId, dropoffStopId, seats },
+    });
+    passengerActionMessage0498(
+      controls.message,
+      result?.changed === false ? "Nenhuma alteração necessária." : "Reserva atualizada.",
+      true,
+    );
+    await refreshPrivateArea0491(true);
+  } catch (error) {
+    passengerActionMessage0498(controls.message, error.message || "Não foi possível alterar a reserva.");
+  } finally {
+    controls.save.disabled = false;
+    controls.cancel.disabled = false;
+  }
+}
+
+async function cancelPassengerBooking0498(entry, controls) {
+  const path = passengerMutationPath0498(entry, "/cancel");
+  if (!path) return passengerActionMessage0498(controls.message, "Contexto seguro da reserva indisponível.");
+  if (!window.confirm("Cancelar esta reserva? As vagas serão atualizadas para o motorista e para a Agenda.")) return;
+
+  controls.save.disabled = true;
+  controls.cancel.disabled = true;
+  passengerActionMessage0498(controls.message, "Cancelando reserva...", true);
+  try {
+    await request0491(path, { method: "POST" });
+    passengerActionMessage0498(controls.message, "Reserva cancelada.", true);
+    await refreshPrivateArea0491(true);
+  } catch (error) {
+    passengerActionMessage0498(controls.message, error.message || "Não foi possível cancelar a reserva.");
+  } finally {
+    controls.save.disabled = false;
+    controls.cancel.disabled = false;
+  }
+}
+
+function passengerBookingActions0498(entry) {
+  const booking = entry?.booking || {};
+  const mutation = entry?.mutation || {};
+  const stops = Array.isArray(mutation.stops) ? mutation.stops : [];
+  const path = passengerMutationPath0498(entry);
+  if (!path || stops.length < 2 || isHistorical0491(entry)) return null;
+
+  const actions = document.createElement("div");
+  actions.className = "tripActions0498";
+
+  if (passengerBookingLocked0498(booking)) {
+    const locked = document.createElement("p");
+    locked.className = "muted actionMessage0498";
+    locked.textContent = "Alterações ficam bloqueadas após o embarque ou encerramento da viagem.";
+    actions.appendChild(locked);
+    return actions;
+  }
+
+  const editButton = document.createElement("button");
+  editButton.type = "button";
+  editButton.className = "secondary";
+  editButton.textContent = "Alterar reserva";
+
+  const panel = document.createElement("div");
+  panel.className = "tripEdit0498 hidden";
+
+  const nameLabel = document.createElement("label");
+  nameLabel.textContent = "Nome";
+  const name = document.createElement("input");
+  name.autocomplete = "name";
+  name.maxLength = 120;
+  name.value = String(mutation.passengerName || "").trim();
+  nameLabel.appendChild(name);
+
+  const boardingLabel = document.createElement("label");
+  boardingLabel.textContent = "Embarque";
+  const boarding = document.createElement("select");
+  boardingLabel.appendChild(boarding);
+
+  const dropoffLabel = document.createElement("label");
+  dropoffLabel.textContent = "Desembarque";
+  const dropoff = document.createElement("select");
+  dropoffLabel.appendChild(dropoff);
+
+  stops.forEach((stop) => {
+    const label = String(stop?.name || "").trim();
+    const id = String(stop?.id || "").trim();
+    if (!id || !label) return;
+    const boardingOption = document.createElement("option");
+    boardingOption.value = id;
+    boardingOption.textContent = label;
+    boardingOption.selected = id === String(mutation.boardingStopId || "");
+    boarding.appendChild(boardingOption);
+
+    const dropoffOption = document.createElement("option");
+    dropoffOption.value = id;
+    dropoffOption.textContent = label;
+    dropoffOption.selected = id === String(mutation.dropoffStopId || "");
+    dropoff.appendChild(dropoffOption);
+  });
+
+  const seatsLabel = document.createElement("label");
+  seatsLabel.textContent = "Lugares";
+  const seats = document.createElement("input");
+  seats.type = "number";
+  seats.inputMode = "numeric";
+  seats.min = "1";
+  seats.max = String(Math.max(1, Number(entry?.trip?.capacity || 1)));
+  seats.value = String(Math.max(1, Number(booking.seats || 1)));
+  seatsLabel.appendChild(seats);
+
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "primary";
+  save.textContent = "Salvar alterações";
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "danger0498";
+  cancel.textContent = "Cancelar reserva";
+
+  const message = document.createElement("p");
+  message.className = "actionMessage0498 hidden";
+  message.setAttribute("role", "status");
+
+  const controls = { name, boarding, dropoff, seats, save, cancel, message };
+  save.addEventListener("click", () => savePassengerBooking0498(entry, controls));
+  cancel.addEventListener("click", () => cancelPassengerBooking0498(entry, controls));
+  editButton.addEventListener("click", () => {
+    panel.classList.toggle("hidden");
+    editButton.textContent = panel.classList.contains("hidden") ? "Alterar reserva" : "Fechar edição";
+  });
+
+  panel.append(nameLabel, boardingLabel, dropoffLabel, seatsLabel, save, cancel, message);
+  actions.append(editButton, panel);
+  return actions;
+}
+
 function renderBooking0491(entry) {
   const trip = entry?.trip || {};
   const booking = entry?.booking || {};
@@ -160,6 +352,8 @@ function renderBooking0491(entry) {
   status.textContent = bookingStatusLabel0491(booking);
 
   card.append(date, route, facts, status);
+  const actions = passengerBookingActions0498(entry);
+  if (actions) card.appendChild(actions);
   return card;
 }
 
