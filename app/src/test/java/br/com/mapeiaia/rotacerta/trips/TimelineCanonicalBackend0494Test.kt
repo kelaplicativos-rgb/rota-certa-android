@@ -190,9 +190,11 @@ class TimelineCanonicalBackend0494Test {
     fun testI_downloadEvidenceUsesCanonicalIdentityNotLegacyTimelineIdentity() {
         val download = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt").readText()
 
+        assertTrue(download.contains("put(\"schemaVersion\", \"3.0\")"))
         assertTrue(download.contains("put(\"source\", \"CANONICAL_BACKEND\")"))
         assertTrue(download.contains("put(\"collectorFallback\", false)"))
-        assertTrue(download.contains("put(\"canonicalTripId\", entry.tripId)"))
+        assertTrue(download.contains("DriverTripSyncState0402.serializer()"))
+        assertTrue(download.contains("put(\"localMetadata\""))
         assertFalse(download.contains("automaticSyncLastTrigger"))
         assertFalse(download.contains("put(\"timelineTripId\""))
         assertFalse(download.contains("timeline-ext-"))
