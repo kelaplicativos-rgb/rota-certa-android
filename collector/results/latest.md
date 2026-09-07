@@ -2,7 +2,7 @@
 
 - Status de validação: **validated**
 - Data: **2026-09-08**
-- Rota: **Santo André, SP, Brasil → São Thomé das Letras, MG, Brasil**
+- Rota: **Três Corações, MG, Brasil → Santo André, SP, Brasil**
 - Motoristas visíveis: **10**
 - Ezequiel S: **NÃO VISÍVEL**
 - Barbosa: **NÃO VISÍVEL**
@@ -12,15 +12,15 @@
 
 ## Motoristas
 
-1. **Samuel** — 04:20 — São Paulo → Campanha — R$ 85,00 — Esgotará em breve
-2. **Val** — 05:00 — São Paulo → Carmo da Cachoeira — sem preço — Cheio
-3. **Weslley** — 06:00 — São Paulo → Três Corações — sem preço — Cheio
-4. **Anderson** — 07:30 — São Paulo → Três Corações — sem preço — Cheio
-5. **Eugenio Teixeira** — 08:00 — São Paulo → Três Corações — sem preço — Cheio
-6. **Maria** — 08:00 — Guarulhos → Minas Gerais — R$ 99,00
-7. **Kennedy** — 10:00 — São Paulo → Três Corações — sem preço — Cheio
-8. **Anderson** — 10:00 — São Paulo → Três Corações — R$ 87,00 — Esgotará em breve
-9. **Paulo Henrique** — 11:00 — São Paulo → Três Corações — R$ 78,00 — Esgotará em breve
-10. **Alessandra** — 16:30 — São Paulo → São Tomé das Letras — R$ 110,00
+1. **Vinício** — 01:30 — Três Corações → Guarulhos — R$ 68,00 — Esgotará em breve
+2. **Renato** — 01:40 — Minas Gerais → São Paulo — R$ 113,00
+3. **Jose** — 02:00 — Varginha → São Paulo — R$ 92,00 — Esgotará em breve
+4. **Silas** — 02:00 — Minas Gerais → São Paulo — R$ 109,00
+5. **Mateus** — 04:00 — São Gonçalo do Sapucaí → São Paulo — R$ 75,00 — Super Driver
+6. **Jorge** — 04:00 — Varginha → São Paulo — R$ 92,00 — Esgotará em breve
+7. **Italo Airan** — 05:00 — Três Corações → São Paulo — sem preço — Cheio
+8. **Diego** — 05:00 — Varginha → São Paulo — R$ 85,00
+9. **Ivan Lucas** — 05:40 — São Gonçalo do Sapucaí → São Paulo — R$ 75,00 — Esgotará em breve · Super Driver
+10. **Francisco** — 05:50 — Três Corações → São Paulo — sem preço — Cheio
 
 > A origem/destino real de cada cartão é registrada separadamente da rota pesquisada.
