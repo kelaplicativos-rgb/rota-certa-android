@@ -135,3 +135,183 @@ test("0494 operational mutations update canonical server projection atomically",
     assert.match(body, /writeDeliveredTripPublicationOutbox/);
   }
 });
+
+
+function canonicalSelector0495() {
+  const production = between(
+    api,
+    "function canonicalTripLegacyProjection0495",
+    "async function convergeLegacyCanonicalTripDocuments0495",
+  );
+  const sandbox = {};
+  vm.runInNewContext(
+    `
+      function cleanText(value, maxLength = 1000) {
+        return String(value == null ? "" : value).trim().slice(0, maxLength);
+      }
+      ${production}
+      this.select0495 = selectCanonicalTripDocuments0495;
+    `,
+    sandbox,
+  );
+  return sandbox.select0495;
+}
+
+function fakeTripDoc(id, data) {
+  return {
+    id,
+    data: () => ({ ...data }),
+  };
+}
+
+test("0495 same-day same-driver trips with different strong provider IDs never collapse", () => {
+  const select = canonicalSelector0495();
+  const profile = "profile-fixture";
+  const docs = [
+    fakeTripDoc("remote-a", {
+      canonicalTripId: "canonical-a",
+      tripKey: "key-a",
+      blablaProfileUuid: profile,
+      blablaTripId: "provider-trip-a",
+      canonicalRevision: 5,
+      departureAtMillis: Date.parse("2026-09-07T11:30:00-03:00"),
+    }),
+    fakeTripDoc("remote-b", {
+      canonicalTripId: "canonical-b",
+      tripKey: "key-b",
+      blablaProfileUuid: profile,
+      blablaTripId: "provider-trip-b",
+      canonicalRevision: 5,
+      departureAtMillis: Date.parse("2026-09-07T19:00:00-03:00"),
+    }),
+  ];
+
+  assert.deepEqual(select(docs).map((doc) => doc.id).sort(), ["remote-a", "remote-b"]);
+});
+
+test("0495 canonical winner defeats timeline-ext legacy projection only by shared strong identity", () => {
+  const select = canonicalSelector0495();
+  const canonical = fakeTripDoc("canonical-remote", {
+    canonicalTripId: "canonical-trip",
+    tripKey: "strong-key",
+    blablaProfileUuid: "profile",
+    blablaTripId: "provider-trip",
+    canonicalRevision: 7,
+    publicationRevision: 9,
+  });
+  const legacy = fakeTripDoc("timeline-ext-old", {
+    canonicalTripId: "timeline-ext-old",
+    tripKey: "legacy-key",
+    blablaProfileUuid: "profile",
+    blablaTripId: "provider-trip",
+    canonicalRevision: 99,
+    publicationRevision: 99,
+  });
+
+  assert.deepEqual(select([legacy, canonical]).map((doc) => doc.id), ["canonical-remote"]);
+});
+
+test("0495 superseded higher revision cannot beat active canonical document", () => {
+  const select = canonicalSelector0495();
+  const active = fakeTripDoc("active", {
+    canonicalTripId: "same-canonical",
+    tripKey: "same-key",
+    canonicalRevision: 8,
+    publicationRevision: 8,
+  });
+  const superseded = fakeTripDoc("superseded", {
+    canonicalTripId: "same-canonical",
+    tripKey: "same-key",
+    canonicalRevision: 100,
+    publicationRevision: 100,
+    legacyProjectionState0495: "SUPERSEDED",
+    supersededByCanonicalTripId0495: "same-canonical",
+  });
+
+  assert.deepEqual(select([superseded, active]).map((doc) => doc.id), ["active"]);
+});
+
+test("0495 real 11:30 then 19:00 fixture has no artificial physical conflict", () => {
+  const validate = physicalValidator0494();
+  const profile = "same-driver-profile";
+  const trips = validate([
+    {
+      canonicalTripId: "fixture-1130",
+      blablaProfileUuid: profile,
+      departureAtMillis: Date.parse("2026-09-07T11:30:00-03:00"),
+      arrivalAtMillis: Date.parse("2026-09-07T16:40:00-03:00"),
+      stops: [
+        stop("São Paulo", -23.5505, -46.6333),
+        stop("São Tomé das Letras", -21.7218, -44.9849),
+      ],
+      canonicalIssues: [],
+    },
+    {
+      canonicalTripId: "fixture-1900",
+      blablaProfileUuid: profile,
+      departureAtMillis: Date.parse("2026-09-07T19:00:00-03:00"),
+      arrivalAtMillis: Date.parse("2026-09-07T23:30:00-03:00"),
+      stops: [
+        stop("Três Corações", -21.696, -45.254),
+        stop("Santo André", -23.6639, -46.5383),
+      ],
+      canonicalIssues: [],
+    },
+  ]);
+
+  assert.equal(trips[0].canonicalIssues.includes("PHYSICAL_CONFLICT"), false);
+  assert.equal(trips[1].canonicalIssues.includes("PHYSICAL_CONFLICT"), false);
+  assert.equal(trips[1].canonicalIssues.includes("PROFILE_CONTINUITY"), false);
+});
+
+test("0495 physical overlap is scoped to the same proven profile resource", () => {
+  const validate = physicalValidator0494();
+  const trips = validate([
+    {
+      canonicalTripId: "profile-a-trip",
+      blablaProfileUuid: "profile-a",
+      departureAtMillis: 1_000,
+      arrivalAtMillis: 5_000,
+      stops: [stop("A"), stop("B")],
+      canonicalIssues: [],
+    },
+    {
+      canonicalTripId: "profile-b-trip",
+      blablaProfileUuid: "profile-b",
+      departureAtMillis: 4_000,
+      arrivalAtMillis: 7_000,
+      stops: [stop("C"), stop("D")],
+      canonicalIssues: [],
+    },
+  ]);
+
+  assert.equal(trips.some((trip) => trip.canonicalIssues.includes("PHYSICAL_CONFLICT")), false);
+});
+
+test("0495 shared selectors and canonical departure repair are wired into both projections", () => {
+  const publicAgenda = between(api, "async function getPublicDriverAgenda", "function buildAdminHomeTrip0471");
+  const timeline = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+  const serverProjection = between(api, "function canonicalServerProjectionPatch0468", "function assertNoOperationalOverbooking");
+
+  assert.match(publicAgenda, /selectCanonicalTripDocuments0495/);
+  assert.match(timeline, /selectCanonicalTripDocuments0495/);
+  assert.match(timeline, /canonicalDepartureStops0495/);
+  assert.match(serverProjection, /stops: canonicalDepartureStops0495/);
+  assert.doesNotMatch(publicAgenda, /groupBy.*departureAtMillis|origin.*destination.*departureAtMillis/i);
+});
+
+test("0495 legacy convergence migrates bookings and passenger indexes without route-date identity", () => {
+  const migration = between(
+    api,
+    "function canonicalBookingIdentityKeys0495",
+    "function publicAgendaTripVisibility0466",
+  );
+  assert.match(migration, /canonicalTripIdentityKeys0495/);
+  assert.match(migration, /occupancyGroupId/);
+  assert.match(migration, /sourceReference/);
+  assert.match(migration, /passengerBookingIndexRef/);
+  assert.match(migration, /passengerBookingIdentityIndexRef0491/);
+  assert.match(migration, /canonicalCapacityPersistence/);
+  assert.match(migration, /LEGACY_TRIP_SUPERSEDED/);
+  assert.doesNotMatch(migration, /origin.*destination|departureAtMillis.*winner|date.*route/i);
+});
