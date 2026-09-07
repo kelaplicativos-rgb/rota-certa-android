@@ -60,6 +60,57 @@ object QuickPassengerEngine {
         }
     }
 
+    /**
+     * Builds only the command payload for a canonical-backend Timeline mutation.
+     * Capacity/overbooking is deliberately NOT evaluated here; the backend canonical
+     * transaction is the sole authority and may reject the command.
+     */
+    fun buildCanonicalBackendCommand0494(
+        trip: Trip,
+        existingBookings: List<Booking>,
+        request: QuickPassengerRequest,
+        nowMillis: Long = System.currentTimeMillis(),
+        idFactory: () -> String = { UUID.randomUUID().toString() },
+    ): QuickPassengerPlan {
+        require(request.passengerName.isNotBlank()) { "Informe o nome do passageiro." }
+        require(request.seats in 1..999) { "Quantidade de vagas inválida." }
+        require(request.fareMinorUnits == null || request.fareMinorUnits > 0L) { "Valor da reserva inválido." }
+        require(request.fareCurrencyCode.isBlank() || request.fareCurrencyCode.matches(Regex("[A-Za-z]{3}"))) {
+            "Moeda da reserva inválida."
+        }
+        require(!hasActivePassengerBooking(existingBookings, request.passengerId, trip.id, nowMillis)) {
+            "Este passageiro já possui vínculo ativo nesta viagem."
+        }
+        val stops = trip.stops.sortedBy(TripStop::order)
+        val fromIndex = stops.indexOfFirst { it.id == request.boardingStopId }
+        val toIndex = stops.indexOfFirst { it.id == request.dropoffStopId }
+        require(fromIndex >= 0 && toIndex > fromIndex) { "Trecho inválido para esta viagem." }
+        val canonicalPassengerId = request.passengerId.trim().takeIf(String::isNotEmpty) ?: idFactory()
+        return QuickPassengerPlan(
+            passenger = Booking(
+                id = idFactory(),
+                tripId = trip.id,
+                passengerName = request.passengerName.trim(),
+                passengerContact = request.passengerContact.trim(),
+                passengerId = canonicalPassengerId,
+                boardingStopId = request.boardingStopId,
+                dropoffStopId = request.dropoffStopId,
+                seats = request.seats,
+                fareMinorUnits = request.fareMinorUnits,
+                fareCurrencyCode = request.fareCurrencyCode.trim().uppercase(),
+                boardingAddress = request.boardingAddress.trim(),
+                dropoffAddress = request.dropoffAddress.trim(),
+                localMetadataTouched = true,
+                status = BookingStatus.CONFIRMED,
+                source = request.source,
+                capacityClaimType = CapacityClaimType.PASSENGER,
+                sourceReference = request.sourceReference.trim(),
+                createdAtMillis = nowMillis,
+                updatedAtMillis = nowMillis,
+            ),
+        )
+    }
+
     fun build(
         trip: Trip,
         existingBookings: List<Booking>,
