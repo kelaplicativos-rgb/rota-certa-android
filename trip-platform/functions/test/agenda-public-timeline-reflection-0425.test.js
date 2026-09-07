@@ -9,13 +9,14 @@ const test = require("node:test");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 
-test("sync-state exposes the server-authored canonical public projection hash", () => {
+test("sync-state exposes the actual normalized canonical public projection hash", () => {
   const syncState = source.slice(
     source.indexOf("async function listDriverTripSyncState0402"),
     source.indexOf("async function reconcileDriverAgendaSeatAllocation"),
   );
-  assert.match(syncState, /publicProjectionHash:\s*cleanText\(data\.publicProjectionHash0434, 160\)/);
-  assert.match(syncState, /canonicalPublicTripPayload0411\(doc\.id, data\)/);
+  assert.match(syncState, /canonicalProjection0494 = canonicalPublicTripPayload0411\(doc\.id, data\)/);
+  assert.match(syncState, /currentPublicProjectionHash0497 = canonicalPublicTripHash0411\(canonicalProjection0494\)/);
+  assert.match(syncState, /publicProjectionHash:\s*currentPublicProjectionHash0497/);
   assert.match(syncState, /bookingsCount:/);
 
   const serverProjection = source.slice(
@@ -24,6 +25,52 @@ test("sync-state exposes the server-authored canonical public projection hash", 
   );
   assert.match(serverProjection, /canonicalPublicTripPayload0411\(token, projectionSource\)/);
   assert.match(serverProjection, /publicProjectionHash0434\s*=\s*canonicalPublicTripHash0411\(canonicalPublicProjection0434\)/);
+});
+
+test("0497 public Agenda cannot hide current passenger segment occupancy behind a stored projection cache", () => {
+  const normalization = source.slice(
+    source.indexOf("function canonicalSegmentVector0497"),
+    source.indexOf("function canonicalPublicTripPayload0411"),
+  );
+  assert.match(normalization, /canonicalSegmentVector0497\(data && data\.segmentLoads, payload\.segmentLoads, expectedSegments\)/);
+  assert.match(
+    normalization,
+    /canonicalSegmentVector0497\([\s\S]*data && data\.segmentPassengerLoads,[\s\S]*payload\.segmentPassengerLoads,[\s\S]*expectedSegments/,
+  );
+  assert.match(normalization, /confirmedPassengerSeats > passengerMaximum/);
+  assert.match(normalization, /derivedPassengerLoads/);
+
+  const canonicalPublic = source.slice(
+    source.indexOf("function safePublicTripFromCanonical0434"),
+    source.indexOf("function safePublicTrip(token"),
+  );
+  assert.match(canonicalPublic, /canonicalPublicTripPayload0411\(token, data\)/);
+
+  const liveAgenda = source.slice(
+    source.indexOf("async function safePublicTripWithCanonicalBookings0497"),
+    source.indexOf("async function getPublicDriverAgenda"),
+  );
+  assert.match(liveAgenda, /doc\.ref\.collection\("bookings"\)\.limit\(200\)\.get\(\)/);
+  assert.match(liveAgenda, /reconciledSegmentCapacity\(canonicalTripForOccupancy, records, nowMillis\)/);
+  assert.match(liveAgenda, /canonicalCapacityPersistence\(/);
+  assert.match(liveAgenda, /return safePublicTrip\(doc\.id,/);
+
+  const publicAgenda = source.slice(
+    source.indexOf("async function getPublicDriverAgenda"),
+    source.indexOf("function buildAdminHomeTrip0471"),
+  );
+  assert.match(publicAgenda, /safePublicTripWithCanonicalBookings0497\(doc\)/);
+});
+
+test("0497 every Timeline passenger status mutation rematerializes canonical segment occupancy", () => {
+  const start = source.indexOf("async function mutateDriverPassengerOperationalStatus");
+  const end = source.indexOf("\nasync function ", start + 20);
+  assert.ok(start >= 0 && end > start);
+  const operational = source.slice(start, end);
+  assert.match(operational, /const bookingsSnap = await tx\.get\(tripRef\.collection\("bookings"\)\)/);
+  assert.match(operational, /reconciledSegmentCapacity\(trip, candidates, now\)/);
+  assert.match(operational, /canonicalCapacityPersistence\(trip, candidates, capacityState, now\)/);
+  assert.doesNotMatch(operational, /if \(afterBookingStatus !== previous\.status\)/);
 });
 
 test("same capacity revision is not enough to declare public no-op", () => {
