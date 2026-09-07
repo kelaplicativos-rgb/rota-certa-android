@@ -9,14 +9,21 @@ const test = require("node:test");
 
 const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 
-test("sync-state exposes the hash of the actual public projection", () => {
+test("sync-state exposes the server-authored canonical public projection hash", () => {
   const syncState = source.slice(
     source.indexOf("async function listDriverTripSyncState0402"),
     source.indexOf("async function reconcileDriverAgendaSeatAllocation"),
   );
-  assert.match(syncState, /publicProjectionHash:\s*canonicalPublicTripHash0411/);
+  assert.match(syncState, /publicProjectionHash:\s*cleanText\(data\.publicProjectionHash0434, 160\)/);
   assert.match(syncState, /canonicalPublicTripPayload0411\(doc\.id, data\)/);
   assert.match(syncState, /bookingsCount:/);
+
+  const serverProjection = source.slice(
+    source.indexOf("function canonicalServerProjectionPatch0468"),
+    source.indexOf("function assertNoOperationalOverbooking"),
+  );
+  assert.match(serverProjection, /canonicalPublicTripPayload0411\(token, projectionSource\)/);
+  assert.match(serverProjection, /publicProjectionHash0434\s*=\s*canonicalPublicTripHash0411\(canonicalPublicProjection0434\)/);
 });
 
 test("same capacity revision is not enough to declare public no-op", () => {
@@ -346,7 +353,8 @@ test("readback and public agenda share one visibility predicate 0466", () => {
   assert.match(visibility, /publicProjectionCommittedCurrent0434/);
   assert.doesNotMatch(visibility, /publicTripProfileUuids0417/);
   assert.doesNotMatch(visibility, /PUBLIC_AGENDA_PROFILE_SCOPE_EXCLUDED/);
-  assert.doesNotMatch(visibility, /tripPublicOnline0471/);
+  assert.match(visibility, /tripPublicOnline0471\(data\)/);
+  assert.match(visibility, /PUBLIC_AGENDA_OFFLINE_0491/);
 
   const readback = source.slice(
     source.indexOf("async function getDriverPublicTripReadback0411"),
