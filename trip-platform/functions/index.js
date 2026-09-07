@@ -3629,6 +3629,74 @@ function selectCanonicalTripDocuments0495(docs) {
   return selected;
 }
 
+
+async function convergeLegacyCanonicalTripDocuments0495(docs) {
+  const all = Array.isArray(docs) ? docs : [];
+  const canonicalDocs = all.filter((doc) => !canonicalTripLegacyProjection0495(doc));
+  const canonicalKeyOwners = new Map();
+  canonicalDocs
+    .slice()
+    .sort(canonicalTripWinnerCompare0495)
+    .forEach((doc) => {
+      canonicalTripIdentityKeys0495(doc).forEach((key) => {
+        if (!canonicalKeyOwners.has(key)) canonicalKeyOwners.set(key, doc);
+      });
+    });
+
+  const plans = [];
+  let unresolvedLegacy = 0;
+  let protectedLegacy = 0;
+  all.filter(canonicalTripLegacyProjection0495).forEach((legacy) => {
+    const data = legacy.data();
+    const winner = canonicalTripIdentityKeys0495(legacy)
+      .map((key) => canonicalKeyOwners.get(key))
+      .find(Boolean);
+    if (!winner) {
+      unresolvedLegacy++;
+      return;
+    }
+    if (Math.max(0, Number(data.bookingsCount || 0)) > 0) {
+      protectedLegacy++;
+      return;
+    }
+    const winnerData = winner.data();
+    const winnerCanonicalTripId = cleanText(
+      winnerData.canonicalTripId || winnerData.localTripId || winner.id,
+      180,
+    );
+    if (
+      data.publicationTombstone === true &&
+      cleanText(data.supersededByCanonicalTripId0495, 180) === winnerCanonicalTripId
+    ) return;
+    plans.push({ legacy, winnerCanonicalTripId });
+  });
+
+  if (plans.length) {
+    const now = Date.now();
+    const batch = db.batch();
+    plans.forEach(({ legacy, winnerCanonicalTripId }) => {
+      batch.set(legacy.ref, {
+        publicationTombstone: true,
+        status: "CANCELLED",
+        legacyProjectionState0495: "SUPERSEDED",
+        supersededByCanonicalTripId0495: winnerCanonicalTripId,
+        supersededAtMillis0495: now,
+        updatedAtMillis: now,
+      }, { merge: true });
+    });
+    await batch.commit();
+  }
+  if (plans.length || unresolvedLegacy || protectedLegacy) {
+    console.log("CANONICAL_TRIP_SUPERSEDED", {
+      migrated: plans.length,
+      unresolvedLegacy,
+      protectedLegacy,
+      source: "STRONG_IDENTITY_ONLY_0495",
+    });
+  }
+  return { migrated: plans.length, unresolvedLegacy, protectedLegacy };
+}
+
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
   // 0491: public visibility is a publication state, distinct from operational
   // status and source. Administration remains in the authenticated Android path.
@@ -8258,6 +8326,14 @@ async function listDriverTripSyncState0402(req, res) {
   const snapshot = await query.get();
   const now = Date.now();
 
+  if (timelineProjection0494) {
+    await convergeLegacyCanonicalTripDocuments0495(snapshot.docs).catch((error) => {
+      console.error("CANONICAL_TRIP_SUPERSEDE_FAILED", {
+        reason: cleanText(error && error.message, 180),
+        source: "STRONG_IDENTITY_ONLY_0495",
+      });
+    });
+  }
   const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
   let trips = (await Promise.all(canonicalDocs0495.map(async (doc) => {
     const data = doc.data();
