@@ -145,6 +145,31 @@ internal fun timelinePublicCapacityResolution(
     )
 }
 
+internal fun canonicalTimelineSegmentLoads0494(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+): List<SegmentLoad> {
+    if (!entry.canonicalBackendAuthoritative0494 || trip == null) return emptyList()
+    val stops = trip.stops.sortedBy(TripStop::order)
+    if (stops.size < 2 || entry.canonicalSegmentLoads0494.isEmpty()) return emptyList()
+    return (0 until stops.lastIndex).mapNotNull { index ->
+        val occupied = entry.canonicalSegmentLoads0494.getOrNull(index) ?: return@mapNotNull null
+        SegmentLoad(
+            from = stops[index],
+            to = stops[index + 1],
+            occupiedSeats = occupied.coerceAtLeast(0),
+            availableSeats = entry.canonicalSegmentAvailableSeats0494.getOrNull(index)
+                ?.coerceAtLeast(0)
+                ?: return@mapNotNull null,
+            passengerSeats = entry.canonicalSegmentPassengerLoads0494.getOrNull(index)
+                ?.coerceAtLeast(0)
+                ?: occupied.coerceAtLeast(0),
+            blockedSeats = entry.canonicalSegmentBlockedLoads0494.getOrNull(index)?.coerceAtLeast(0) ?: 0,
+            overbookingSeats = (occupied - entry.capacity).coerceAtLeast(0),
+        )
+    }
+}
+
 internal fun timelinePublicSegmentLoads(
     entry: TripTimelineEntry,
     physicalLoads: List<SegmentLoad>,
