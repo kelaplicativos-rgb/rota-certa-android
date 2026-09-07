@@ -140,112 +140,76 @@ fun TripTimelineScreen(
         }
     }
 
-    val canonicalCollectorResponse0403 = remember(trips) {
-        val canonicalExternal = trips.filter {
-            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !it.deleted && it.status != TripStatus.CANCELLED && it.externalSnapshot != null
-        }
-        val snapshots = canonicalExternal.mapNotNull { it.externalSnapshot }
-        snapshots.takeIf { it.isNotEmpty() }?.let {
-            BlaBlaCollectorMonthResponse(
-                status = "canonical",
-                trips = it,
-                coverage = BlaBlaCollectorCoverage(
-                    complete_for_scope = canonicalExternal.all { it.externalSnapshotComplete },
-                    reason = "trip_store_canonical_projection",
-                    unresolved_target_cards = canonicalExternal.count { trip -> !trip.externalSnapshotComplete },
-                ),
-            )
-        }
+    val onlineSettings0494 = remember(store) { store.onlineSettings() }
+    var canonicalResponse0494 by remember(store) {
+        mutableStateOf(store.timelineCanonicalCache0494())
     }
+    var canonicalBackendStale0494 by remember(store) {
+        mutableStateOf(canonicalResponse0494 != null)
+    }
+    var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
 
-    val collectedIdentityKey = canonicalCollectorResponse0403?.trips.orEmpty()
-        .flatMap { collectedTrip ->
-            collectedTrip.passengers.map { passenger ->
-                listOf(
-                    collectedTrip.profile_uuid.orEmpty(),
-                    collectedTrip.trip_id.orEmpty(),
-                    passenger.booking_href.orEmpty(),
-                    passenger.name,
-                    passenger.phone.orEmpty(),
-                ).joinToString("~")
-            }
-        }
-        .joinToString("|")
-    LaunchedEffect(collectedIdentityKey) {
-        withContext(Dispatchers.IO) {
-            canonicalCollectorResponse0403?.trips.orEmpty().forEach { collectedTrip ->
-                collectedTrip.passengers.forEach { passenger ->
-                    val externalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
-                    passengerIdentityStore.observeExternalPassenger(
-                        displayName = passenger.name,
-                        whatsapp = passenger.phone,
-                        externalPassengerId = externalId,
-                        reservationKey = externalPassengerReservationKey(collectedTrip.profile_uuid, passenger.booking_href),
-                        externalTripId = collectedTrip.trip_id,
-                        driverProfileUuid = collectedTrip.profile_uuid,
+    LaunchedEffect(onlineSettings0494.apiBaseUrl, onlineSettings0494.driverUsername) {
+        while (true) {
+            if (!onlineSettings0494.configured) {
+                canonicalBackendStale0494 = canonicalResponse0494 != null
+                canonicalBackendFailure0494 = "Integração online não configurada."
+            } else {
+                runCatching {
+                    TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
+                        includePastForVerification0429 = true,
+                    )
+                }.onSuccess { response ->
+                    val cached = withContext(Dispatchers.IO) {
+                        store.saveTimelineCanonicalCache0494(response)
+                    }
+                    canonicalResponse0494 = cached
+                    canonicalBackendStale0494 = false
+                    canonicalBackendFailure0494 = null
+                    val revisions = cached.trips.map(DriverTripSyncState0402::canonicalRevision)
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CANONICAL_BACKEND_READ_0494",
+                        context.packageName,
+                        "source=CANONICAL_BACKEND trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} collectorRead=false",
+                    )
+                }.onFailure { error ->
+                    canonicalBackendStale0494 = true
+                    canonicalBackendFailure0494 = error.message ?: error.javaClass.simpleName
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CANONICAL_BACKEND_OFFLINE_0494",
+                        context.packageName,
+                        "cachePresent=${canonicalResponse0494 != null} collectorFallback=false reason=" +
+                            UnifiedDebugEventStore.sanitizeForExport(canonicalBackendFailure0494.orEmpty()).take(160),
                     )
                 }
             }
+            delay(10_000L)
         }
     }
 
     val traceId = AgendaTrace.currentTraceId()
-    val publicExternalBindings = remember(trips, bookings) {
-        store.publicExternalBindings()
-    }
-    val internallyCancelledExternalReservationKeys = remember(trips, bookings) {
-        passengerIdentityStore.internallyCancelledExternalReservationKeys()
-    }
-    val canonicalCollectorResponseForTimeline0403 = remember(canonicalCollectorResponse0403, internallyCancelledExternalReservationKeys) {
-        applyInternalCancellationTombstones(canonicalCollectorResponse0403, internallyCancelledExternalReservationKeys)
-    }
-    val mergedRaw = remember(canonicalCollectorResponseForTimeline0403, bookings, publicExternalBindings) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_MERGE", "TripTimelineScreen", traceId)
-        try {
-            applyPublicExternalBookingsToTimeline(
-                entries = BlaBlaTimelineAdapter.merge(emptyList(), canonicalCollectorResponseForTimeline0403),
-                bindings = publicExternalBindings,
-                bookings = bookings,
-            ).also {
-                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
-            }
-        } catch (error: Throwable) {
-            AgendaTrace.operationError(context, operation, error)
-            throw error
-        }
-    }
-    val merged = remember(mergedRaw, trips) {
-        applyCanonicalTripCapacity0406(
-            entries = mergedRaw,
-            canonicalTrips = trips,
-            fallbackRotaCertaSeatAllocation = 0,
+    val canonicalProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName) {
+        canonicalTimelineProjection0494(
+            response = canonicalResponse0494,
+            fallbackProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Rota Certa" },
         )
     }
-    val directionGeo = remember(merged, trips, appSettings) {
+    val canonicalTrips0494 = canonicalProjection0494.trips
+    val canonicalBookings0494 = canonicalProjection0494.bookings
+    val directionGeo = remember(canonicalTrips0494, appSettings) {
         TripTimelineGeoResolver.resolveTrustedStops(
-            places = merged.flatMap { listOf(it.origin, it.destination) },
-            trustedStops = timelineTrustedDirectionStops(trips, appSettings),
+            places = canonicalProjection0494.entries.flatMap { listOf(it.origin, it.destination) },
+            trustedStops = timelineTrustedDirectionStops(canonicalTrips0494, appSettings),
         )
     }
     val directionReference = remember(referenceOrigin, appSettings.homeCoordinate, appSettings.homeRadiusKm) {
         timelineDirectionReference(referenceOrigin, appSettings)
     }
-    val physical = remember(merged, directionGeo) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_PHYSICAL_CONSOLIDATION", "TripTimelineScreen", traceId)
+    val entries = remember(canonicalProjection0494.entries, archiveRevision, showArchived) {
+        val operation = AgendaTrace.operationStart(context, "TIMELINE_CANONICAL_SORT_0494", "TripTimelineScreen", traceId)
         try {
-            TripPhysicalRideConsolidator.consolidate(merged, directionGeo).also {
-                AgendaTrace.operationEnd(context, operation, processedCount = it.size)
-            }
-        } catch (error: Throwable) {
-            AgendaTrace.operationError(context, operation, error)
-            throw error
-        }
-    }
-    val entries = remember(physical, archiveRevision, showArchived) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_SORT", "TripTimelineScreen", traceId)
-        try {
-            physical.filter { archiveStore.isArchived(it) == showArchived }
+            canonicalProjection0494.entries
+                .filter { archiveStore.isArchived(it) == showArchived }
                 .sortedBy(TripTimelineEntry::departureAtMillis)
                 .also { AgendaTrace.operationEnd(context, operation, processedCount = it.size) }
         } catch (error: Throwable) {
@@ -253,15 +217,9 @@ fun TripTimelineScreen(
             throw error
         }
     }
-    val tripById = remember(trips) { trips.associateBy(Trip::id) }
-    val timelineTripByEntryId = remember(entries, trips, publicExternalBindings) {
-        entries.associate { entry ->
-            val trip = entry.localTripId?.let(tripById::get)
-                ?: tripById[entry.tripId]
-                ?: publicExternalBindings.firstOrNull { it.matches(entry) }?.asTrip()
-                ?: findExistingTimelineBackingTrip(entry, trips)
-            entry.tripId to trip
-        }
+    val timelineTripByEntryId = remember(entries, canonicalTrips0494) {
+        val byId = canonicalTrips0494.associateBy(Trip::id)
+        entries.associate { entry -> entry.tripId to byId[entry.tripId] }
     }
 
     val capacityAuditKey = remember(entries) {
@@ -337,13 +295,13 @@ fun TripTimelineScreen(
         if (profileUuid.isBlank() || tripId.isBlank()) false
         else externalSyncStateIsPending(seatSyncStates[profileUuid.lowercase() + "|" + tripId]?.state)
     }
-    val searchedEntries = remember(entries, trips, bookings, searchQuery) {
-        filterTimelineEntries(entries, trips, bookings, searchQuery)
+    val searchedEntries = remember(entries, canonicalTrips0494, canonicalBookings0494, searchQuery) {
+        filterTimelineEntries(entries, canonicalTrips0494, canonicalBookings0494, searchQuery)
     }
     val focusedBookingTripId = focusedBookingId
-        ?.let { targetId -> bookings.firstOrNull { it.id == targetId } }
+        ?.let { targetId -> canonicalBookings0494.firstOrNull { it.id == targetId } }
         ?.tripId
-    val reservationTripIds = bookings
+    val reservationTripIds = canonicalBookings0494
         .filter { it.status == BookingStatus.REQUESTED }
         .map(Booking::tripId)
         .toSet()
@@ -375,7 +333,7 @@ fun TripTimelineScreen(
             publicCards = publicTimelineCards,
         )
     }
-    val registeredAccounts0432 = remember(entries, canonicalCollectorResponse0403) {
+    val registeredAccounts0432 = remember(entries) {
         BlaBlaDynamicAccountRegistry(context).list()
     }
     val registeredProfileUuids = remember(registeredAccounts0432) {
@@ -453,6 +411,17 @@ fun TripTimelineScreen(
         resumeTripId = addPassengerResumeTripId,
     )
 
+    if (canonicalBackendStale0494) {
+        Text(
+            if (canonicalResponse0494 != null) {
+                "⚠️ Backend canônico indisponível: exibindo o último snapshot canônico conhecido. O coletor não será usado como fallback."
+            } else {
+                "⚠️ Backend canônico indisponível. A Timeline não consultará o coletor como fallback."
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+
     OutlinedTextField(
         value = searchQuery,
         onValueChange = { searchQuery = it },
@@ -473,7 +442,7 @@ fun TripTimelineScreen(
 
     val timelineEmptyMessage = when {
         entries.isEmpty() && publicResponseForTimeline == null ->
-            if (showArchived) "Nenhuma viagem arquivada." else "Nenhuma viagem sincronizada."
+            if (showArchived) "Nenhuma viagem canônica arquivada." else "Nenhuma viagem canônica disponível."
         syncPendingOnly && visibleEntries.isEmpty() ->
             "Nenhum card está com sincronização externa pendente."
         visibleEntries.isEmpty() && publicResponseForTimeline == null ->
@@ -534,7 +503,7 @@ fun TripTimelineScreen(
                         referenceRadiusKm = directionReference.radiusKm,
                         directionGeo = directionGeo,
                         currentCoordinate = currentCoordinate,
-                        bookingsSnapshot0432 = bookings,
+                        bookingsSnapshot0432 = canonicalBookings0494,
                         passiveTripTarget0407 = tripTargetsByCard0432[timelineLazyItemKey0380(entry)],
                         passiveSeatCapabilityState0407 = seatSyncStates[
                             entry.blablaProfileUuid?.trim()?.lowercase().orEmpty() + "|" + entry.blablaTripId?.trim().orEmpty()
@@ -565,13 +534,17 @@ fun TripTimelineScreen(
 }
 
 internal fun timelineLazyItemKey0380(entry: TripTimelineEntry): String =
-    "timeline:" + (
-        canonicalExternalTripIdentityKey(
-            entry.blablaProfileUuid,
-            entry.blablaTripId,
-            entry.blablaTripHref,
-        ) ?: entry.localTripId ?: entry.tripId
-    )
+    if (entry.canonicalBackendAuthoritative0494) {
+        "timeline:canonical:" + entry.tripId
+    } else {
+        "timeline:" + (
+            canonicalExternalTripIdentityKey(
+                entry.blablaProfileUuid,
+                entry.blablaTripId,
+                entry.blablaTripHref,
+            ) ?: entry.localTripId ?: entry.tripId
+        )
+    }
 
 
 internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
