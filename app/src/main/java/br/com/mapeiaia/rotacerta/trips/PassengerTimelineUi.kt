@@ -96,9 +96,13 @@ internal fun buildPassengerTimelineRenderSnapshot0394(
     store: TripStore,
     passengerStore: PassengerIdentityStore,
     completionService: PassengerCompletionService,
+    canonicalBookings0494: List<Booking>? = null,
 ): PassengerTimelineRenderSnapshot0394 {
     val externalMetadata = passengerStore.externalMetadataSnapshot0394()
-    val localBookings = trip?.let { store.bookingsFor(it.id) }.orEmpty()
+    val localBookings = trip?.let { selectedTrip ->
+        canonicalBookings0494?.filter { it.tripId == selectedTrip.id }
+            ?: store.bookingsFor(selectedTrip.id)
+    }.orEmpty()
     val rows = enhancedPassengerRows(
         entry = entry,
         trip = trip,
@@ -141,6 +145,7 @@ internal fun EnhancedPassengerTimelineSection(
     onChanged: (String) -> Unit,
     onAddManualPassenger: (() -> Unit)? = null,
     focusedBookingId: String? = null,
+    canonicalBookings0494: List<Booking>? = null,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -160,6 +165,7 @@ internal fun EnhancedPassengerTimelineSection(
                 store = store,
                 passengerStore = passengerStore,
                 completionService = completionService,
+                canonicalBookings0494 = canonicalBookings0494,
             )
         }
     }
@@ -171,7 +177,7 @@ internal fun EnhancedPassengerTimelineSection(
             listOf(row.externalPassengerId.orEmpty(), row.name, row.phone.orEmpty(), row.externalReservationKey.orEmpty()).joinToString("~")
         }
     LaunchedEffect(entry.tripId, entry.blablaTripId, entry.blablaProfileUuid, externalObservationKey) {
-        if (externalObservationKey.isBlank()) return@LaunchedEffect
+        if (entry.canonicalBackendAuthoritative0494 || externalObservationKey.isBlank()) return@LaunchedEffect
         val observed = withContext(Dispatchers.IO) {
             var anyObserved = false
             rawRows.filter { BookingSource.BLABLACAR in it.sources }.forEach { row ->
@@ -310,134 +316,52 @@ internal fun EnhancedPassengerTimelineSection(
                 return@select
             }
             scope.launch {
-                if (selection == "COMPLETED") {
-                    val completion = completionService.confirm(entry, passenger)
-                    if (completion == null) {
-                        onChanged("Não foi possível identificar este passageiro para concluir a viagem.")
-                        return@launch
-                    }
-                    completionRevision++
-                    identityRevision++
-                    UnifiedDebugEventStore.record(
-                        "PASSENGER_COMPLETION_SUCCESS",
-                        context.packageName,
-                        "timeline=true newlyCompleted=" + completion.newlyCompleted,
-                    )
-                }
-
                 val selectedTrip = trip
                 val booking = currentBooking
-                if (booking == null) {
-                    val reservationKey = passenger.externalReservationKey
-                    if (BookingSource.BLABLACAR in passenger.sources && !reservationKey.isNullOrBlank()) {
-                        val currentMetadata = passengerStore.externalMetadata(reservationKey)
-                            ?: ExternalPassengerMetadata(
-                                reservationKey = reservationKey,
-                                passengerId = passenger.passengerId.orEmpty(),
-                                externalPassengerId = passenger.externalPassengerId.orEmpty(),
-                                externalTripId = entry.blablaTripId.orEmpty(),
-                                externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
-                            )
-                        val nextOperational = when (selection) {
-                            "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
-                            "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
-                            "IN_CAR" -> PassengerOperationalStatus.IN_CAR
-                            "COMPLETED" -> PassengerOperationalStatus.COMPLETED
-                            "PAID" -> currentMetadata.operationalStatus
-                            else -> currentMetadata.operationalStatus
-                        }
-                        val nextPayment = if (selection == "PAID") {
-                            PassengerPaymentStatus.PAID
-                        } else {
-                            currentMetadata.paymentStatus
-                        }
-                        passengerStore.saveExternalMetadata(
-                            currentMetadata.copy(
-                                operationalStatus = nextOperational,
-                                paymentStatus = nextPayment,
-                                lastDriverSelection = selection,
-                            ),
-                        )
-                        identityRevision++
-                        UnifiedDebugEventStore.record(
-                            if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
-                            context.packageName,
-                            "timeline=true selection=" + selection + " authority=EXTERNAL_RESERVATION_METADATA",
-                        )
-                        onChanged(
-                            when (selection) {
-                                "CONFIRMED" -> "Passageiro BlaBlaCar confirmado."
-                                "AT_LOCATION" -> "Status BlaBlaCar alterado para No local."
-                                "IN_CAR" -> "Status BlaBlaCar alterado para No carro."
-                                "PAID" -> "Pagamento BlaBlaCar confirmado; fase da viagem preservada."
-                                "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService; ocorrência externa atualizada."
-                                else -> "Status externo atualizado."
-                            },
-                        )
+                val settings0494 = store.onlineSettings()
+                val remoteId0494 = selectedTrip?.remoteId?.takeIf(String::isNotBlank)
+                when {
+                    selectedTrip == null || booking == null -> {
+                        onChanged("A ocorrência canônica não está disponível para alterar o status.")
                         return@launch
                     }
-                    onChanged("Não foi possível identificar a ocorrência exata para alterar o status com segurança.")
-                    return@launch
-                }
-                if (selectedTrip == null) {
-                    onChanged("A Booking foi localizada, mas a viagem correspondente não está disponível para sincronização.")
-                    return@launch
+                    !settings0494.configured || remoteId0494 == null -> {
+                        onChanged("Backend canônico indisponível. Nada foi alterado; o coletor não será usado como fallback.")
+                        return@launch
+                    }
                 }
 
-                val nextOperational = when (selection) {
-                    "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
-                    "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
-                    "IN_CAR" -> PassengerOperationalStatus.IN_CAR
-                    "COMPLETED" -> PassengerOperationalStatus.COMPLETED
-                    "PAID" -> booking.operationalStatus
-                    else -> booking.operationalStatus
+                runCatching {
+                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
+                        remoteTripId = remoteId0494!!,
+                        bookingId = booking.id,
+                        selection = selection,
+                    )
+                }.onSuccess { ack0494 ->
+                    if (selection == "COMPLETED") {
+                        completionService.confirm(entry, passenger)?.let {
+                            completionRevision++
+                            identityRevision++
+                        }
+                    }
+                    BookingRealtimeEvents0356.notifyChanged()
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_CANONICAL_PASSENGER_MUTATION_0494",
+                        context.packageName,
+                        "canonicalTripId=${seatSyncDiagnosticKey(selectedTrip.id)} bookingIdPresent=true selection=$selection entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                    )
+                    val message = when (selection) {
+                        "CONFIRMED" -> "Passageiro confirmado no estado canônico."
+                        "AT_LOCATION" -> "Status No local salvo no estado canônico."
+                        "IN_CAR" -> "Status No carro salvo no estado canônico."
+                        "PAID" -> "Pagamento confirmado no estado canônico."
+                        "COMPLETED" -> "Passageiro concluído no estado canônico."
+                        else -> "Status atualizado no estado canônico."
+                    }
+                    onChanged(message)
+                }.onFailure { error ->
+                    onChanged("Nada foi alterado: ${error.message ?: "falha ao gravar no backend canônico"}")
                 }
-                val nextPayment = if (selection == "PAID") {
-                    PassengerPaymentStatus.PAID
-                } else {
-                    booking.paymentStatus
-                }
-                val nextBookingStatus = if (
-                    selection == "CONFIRMED" &&
-                    booking.status in setOf(BookingStatus.REQUESTED, BookingStatus.HELD)
-                ) BookingStatus.CONFIRMED else booking.status
-
-                val localNext = booking.copy(
-                    status = nextBookingStatus,
-                    operationalStatus = nextOperational,
-                    paymentStatus = nextPayment,
-                    lastDriverSelection = selection,
-                )
-                store.saveBooking(localNext)
-                val queued = mutationCoordinator.recordLocalMutation(
-                    canonicalTripId = selectedTrip.id,
-                    mutationType = "PASSENGER_STATUS_$selection",
-                    source = "TIMELINE_PASSENGER_STATUS",
-                )
-                if (queued != null) {
-                    AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_status")
-                }
-                BookingRealtimeEvents0356.notifyChanged()
-                UnifiedDebugEventStore.record(
-                    "PASSENGER_STATUS_OUTBOX",
-                    context.packageName,
-                    "timeline=true selection=$selection queued=${queued != null} backgroundQueued=${queued != null} fullSyncRequested=false blablaSync=false",
-                )
-
-                UnifiedDebugEventStore.record(
-                    if (selection == "PAID") "PASSENGER_PAYMENT_CONFIRMED" else "PASSENGER_STATUS_CHANGED",
-                    context.packageName,
-                    "timeline=true selection=" + selection + " bookingPresent=true",
-                )
-                val message = when (selection) {
-                    "CONFIRMED" -> "Passageiro confirmado."
-                    "AT_LOCATION" -> "Status alterado para No local."
-                    "IN_CAR" -> "Status alterado para No carro."
-                    "PAID" -> "Pagamento confirmado; fase da viagem preservada."
-                    "COMPLETED" -> "Viagem concluída pelo PassengerCompletionService e sincronizada."
-                    else -> "Status atualizado."
-                }
-                onChanged(message)
             }
         }
 
@@ -539,27 +463,25 @@ internal fun EnhancedPassengerTimelineSection(
                                 decisionRunning = "APPROVE"
                                 scope.launch {
                                     runCatching {
-                                        val approved = booking.copy(
-                                            status = BookingStatus.CONFIRMED,
-                                            operationalStatus = PassengerOperationalStatus.CONFIRMED,
-                                            lastDriverSelection = "APPROVE",
+                                        val settings0494 = store.onlineSettings()
+                                        val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
+                                            ?: error("Viagem sem identidade remota canônica.")
+                                        check(settings0494.configured) { "Backend canônico indisponível." }
+                                        TripRemoteApi(settings0494).decideDriverBooking(
+                                            remoteTripId = remoteId0494,
+                                            bookingId = booking.id,
+                                            action = "APPROVE",
                                         )
-                                        store.saveBooking(approved)
-                                        val queued = mutationCoordinator.recordLocalMutation(
-                                            canonicalTripId = selectedTrip.id,
-                                            mutationType = "RESERVATION_APPROVED",
-                                            source = "TIMELINE_RESERVATION_DECISION",
-                                        )
-                                        if (queued != null) {
-                                            AgendaBackgroundSync0392.enqueueImmediate(context, "reservation_approved")
-                                        }
+                                    }.onSuccess { ack0494 ->
                                         BookingRealtimeEvents0356.notifyChanged()
-                                        queued
-                                    }.onSuccess {
-                                        // BlaBlaCar is never synchronized automatically after an internal mutation.
-                                        onChanged("Reserva aprovada ✅")
+                                        UnifiedDebugEventStore.record(
+                                            "TIMELINE_CANONICAL_BOOKING_DECISION_0494",
+                                            context.packageName,
+                                            "action=APPROVE authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false",
+                                        )
+                                        onChanged("Reserva aprovada no estado canônico ✅")
                                     }.onFailure { error ->
-                                        onChanged("Não foi possível persistir a aprovação: ${error.message ?: error.javaClass.simpleName}")
+                                        onChanged("Nada foi alterado: ${error.message ?: error.javaClass.simpleName}")
                                     }
                                     decisionRunning = null
                                 }
@@ -602,29 +524,28 @@ internal fun EnhancedPassengerTimelineSection(
                                     decisionRunning = "REJECT"
                                     scope.launch {
                                         runCatching {
-                                            val rejected = booking.copy(
-                                                status = BookingStatus.REJECTED,
-                                                operationalStatus = PassengerOperationalStatus.PENDING,
-                                                lastDriverSelection = "REJECT",
+                                            val settings0494 = store.onlineSettings()
+                                            val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
+                                                ?: error("Viagem sem identidade remota canônica.")
+                                            check(settings0494.configured) { "Backend canônico indisponível." }
+                                            TripRemoteApi(settings0494).decideDriverBooking(
+                                                remoteTripId = remoteId0494,
+                                                bookingId = booking.id,
+                                                action = "REJECT",
+                                                reason = rejectReason,
                                             )
-                                            store.saveBooking(rejected)
-                                            val queued = mutationCoordinator.recordLocalMutation(
-                                                canonicalTripId = selectedTrip.id,
-                                                mutationType = "RESERVATION_REJECTED",
-                                                source = "TIMELINE_RESERVATION_DECISION",
-                                            )
-                                            if (queued != null) {
-                                                AgendaBackgroundSync0392.enqueueImmediate(context, "reservation_rejected")
-                                            }
+                                        }.onSuccess { ack0494 ->
                                             BookingRealtimeEvents0356.notifyChanged()
-                                            queued
-                                        }.onSuccess {
-                                            // BlaBlaCar is never synchronized automatically after an internal mutation.
+                                            UnifiedDebugEventStore.record(
+                                                "TIMELINE_CANONICAL_BOOKING_DECISION_0494",
+                                                context.packageName,
+                                                "action=REJECT authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false",
+                                            )
                                             rejectConfirmOpen = false
                                             rejectReason = ""
-                                            onChanged("Solicitação recusada")
+                                            onChanged("Solicitação recusada no estado canônico")
                                         }.onFailure { error ->
-                                            onChanged("Não foi possível persistir a recusa: ${error.message ?: error.javaClass.simpleName}")
+                                            onChanged("Nada foi alterado: ${error.message ?: error.javaClass.simpleName}")
                                         }
                                         decisionRunning = null
                                     }
@@ -983,231 +904,62 @@ internal fun EnhancedPassengerTimelineSection(
 
     cancelManualRow?.let { row ->
         val currentTrip = trip
-        val booking = currentTrip?.let { selectedTrip ->
-            row.localBookingId?.let { bookingId ->
-                store.bookingsFor(selectedTrip.id).firstOrNull { candidate ->
-                    candidate.id == bookingId &&
-                        candidate.capacityClaimType == CapacityClaimType.PASSENGER &&
-                        candidate.status in setOf(BookingStatus.CONFIRMED, BookingStatus.HELD, BookingStatus.REQUESTED)
-                }
-            }
-        }
-        val externalOnly =
-            booking == null &&
-                BookingSource.BLABLACAR in row.sources &&
-                !row.externalReservationKey.isNullOrBlank()
+        val booking = row.localBookingId?.let(renderSnapshot.bookingsById::get)
         AlertDialog(
             onDismissRequest = { cancelManualRow = null },
             title = { Text("Cancelar no Rota Certa e liberar a(s) vaga(s)?") },
             text = {
                 Text(
                     if (BookingSource.BLABLACAR in row.sources) {
-                        "O cancelamento é interno no Rota Certa. A reserva BlaBlaCar não será cancelada automaticamente. " +
-                            "A ocorrência ficará cancelada, fora do carro e deixará de ocupar as vagas internas desta viagem."
+                        "O backend canônico do Rota Certa marcará esta ocorrência como cancelada e recalculará as vagas. A publicação BlaBlaCar não será cancelada automaticamente."
                     } else {
-                        "A reserva será cancelada no Rota Certa, o passageiro sairá da ocupação ativa e as vagas serão recalculadas somente nos trechos desta reserva."
+                        "A reserva será cancelada no backend canônico e as vagas serão recalculadas nos trechos correspondentes."
                     },
                 )
             },
             confirmButton = {
                 TextButton(
-                    enabled = (currentTrip != null && booking != null) || externalOnly,
+                    enabled = currentTrip?.remoteId?.isNotBlank() == true && booking != null,
                     onClick = {
-                        val trace = passengerCancellationDebugContext(entry, row, booking)
-                        val inCarBefore = row.operationalStatus == PassengerOperationalStatus.IN_CAR
-                        val seatsBefore = booking?.seats ?: row.seats
-                        scope.launch {
-                            UnifiedDebugEventStore.record(
-                                "BOOKING_CANCEL_START",
-                                context.packageName,
-                                "$trace seatsBefore=$seatsBefore inCarBefore=$inCarBefore source=TIMELINE",
-                            )
-                            UnifiedDebugEventStore.record(
-                                "BOOKING_SEATS_RELEASE_START",
-                                context.packageName,
-                                "$trace seatsBefore=$seatsBefore",
-                            )
-
-                            val reservationKey = row.externalReservationKey
-                            val existingExternal = reservationKey?.let(passengerStore::externalMetadata)
-                            val cancelledExternal = reservationKey?.let { key ->
-                                passengerStore.saveExternalMetadata(
-                                    (existingExternal ?: ExternalPassengerMetadata(
-                                        reservationKey = key,
-                                        passengerId = row.passengerId.orEmpty(),
-                                        externalPassengerId = row.externalPassengerId.orEmpty(),
-                                        externalTripId = entry.blablaTripId.orEmpty(),
-                                        externalProfileUuid = entry.blablaProfileUuid.orEmpty(),
-                                    )).copy(
-                                        operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                        lastDriverSelection = "CANCELLED",
-                                    ),
-                                )
-                            }
-
-                            val selectedBooking = booking
-                            val selectedTrip = currentTrip
-                            var onlineSyncSucceeded = false
-                            var onlineSyncPendingReason: String? = null
-                            if (selectedBooking != null && selectedTrip != null) {
-                                val beforeLoads = SeatAvailabilityEngine.segmentLoads(
-                                    selectedTrip,
-                                    store.bookingsFor(selectedTrip.id),
-                                )
-                                val cancelledBooking0491 = selectedBooking.copy(
-                                    status = BookingStatus.CANCELLED,
-                                    operationalStatus = PassengerOperationalStatus.CANCELLED,
-                                    lastDriverSelection = "CANCELLED",
-                                )
-                                val settings0491 = store.onlineSettings()
-                                val remoteId0491 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
-                                val syncOnline0491 = settings0491.configured && remoteId0491 != null
-                                val remoteAck0491 = if (syncOnline0491) {
-                                    if (selectedBooking.source == BookingSource.ROTA_CERTA) {
-                                        TripRemoteApi(settings0491).cancelProtectedDriverBooking(remoteId0491!!, selectedBooking.id)
-                                    } else {
-                                        TripRemoteApi(settings0491).upsertDriverBooking(remoteId0491!!, cancelledBooking0491)
-                                    }
-                                } else {
-                                    null
-                                }
-                                val localCancelled = store.saveBooking(cancelledBooking0491)
-                                val queued = if (remoteAck0491 != null && remoteAck0491.entityRevision > 0L) {
-                                    mutationCoordinator.recordRemoteAppliedLocal(
-                                        canonicalTripId = selectedTrip.id,
-                                        revision = remoteAck0491.entityRevision,
-                                        mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                        source = "TIMELINE_BOOKING_CANCEL",
-                                    )
-                                    null
-                                } else if (!syncOnline0491) {
-                                    when (resolvedTripRecordOrigin(selectedTrip)) {
-                                        TripRecordOrigin.EXTERNAL_BACKING -> selectedTrip.externalSnapshot?.let { sourceTrip ->
-                                            mutationCoordinator.recordExternalManualMutation(
-                                                sourceTrip = sourceTrip,
-                                                configuredRotaCertaSeatAllocation = selectedTrip.rotaCertaSeatAllocation ?: 0,
-                                                mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                            )
-                                        }
-                                        TripRecordOrigin.LOCAL -> mutationCoordinator.recordLocalMutation(
-                                            canonicalTripId = selectedTrip.id,
-                                            mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                            source = "TIMELINE_BOOKING_CANCEL",
-                                        )
-                                    }
-                                } else {
-                                    null
-                                }
-                                BookingRealtimeEvents0356.notifyChanged()
-                                onlineSyncSucceeded = remoteAck0491 != null || queued == null
-                                onlineSyncPendingReason = if (queued != null) "background_delta_queued" else null
-                                UnifiedDebugEventStore.record(
-                                    "PUBLIC_BOOKING_CANCEL_OUTBOX",
-                                    context.packageName,
-                                    "$trace queued=${queued != null} backgroundQueued=${queued != null} result=${if (queued == null) "no_op" else "pending"} fullSyncRequested=false blablaSync=false",
-                                )
-
-                                val afterLoads = SeatAvailabilityEngine.segmentLoads(
-                                    selectedTrip,
-                                    store.bookingsFor(selectedTrip.id),
-                                )
-                                val beforeOccupied = beforeLoads.sumOf { it.occupiedSeats }
-                                val afterOccupied = afterLoads.sumOf { it.occupiedSeats }
-                                UnifiedDebugEventStore.record(
-                                    "BOOKING_CANCEL_PERSISTED",
-                                    context.packageName,
-                                    "$trace bookingStatus=CANCELLED operationalStatus=CANCELLED",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "PASSENGER_IN_CAR_CLEARED",
-                                    context.packageName,
-                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "BOOKING_SEATS_RELEASE_END",
-                                    context.packageName,
-                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 occupiedSegmentsBefore=$beforeOccupied occupiedSegmentsAfter=$afterOccupied",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "SEGMENT_CAPACITY_RECALCULATED",
-                                    context.packageName,
-                                    "$trace segments=${afterLoads.size} occupiedBefore=$beforeOccupied occupiedAfter=$afterOccupied",
-                                )
-                            } else if (externalOnly && cancelledExternal != null) {
-                                val passengerId = cancelledExternal.passengerId.ifBlank { row.passengerId.orEmpty() }
-                                if (passengerId.isNotBlank()) {
-                                    passengerStore.recordOccurrence(
-                                        passengerId = passengerId,
-                                        rideKey = externalPassengerOccurrenceKey(
-                                            driverProfileUuid = entry.blablaProfileUuid,
-                                            externalTripId = entry.blablaTripId,
-                                            reservationKey = row.externalReservationKey,
-                                            externalPassengerId = row.externalPassengerId,
-                                        ),
-                                        status = PassengerOccurrenceStatus.CANCELLED,
-                                        tripId = entry.tripId,
-                                        externalTripId = entry.blablaTripId.orEmpty(),
-                                        driverProfileUuid = entry.blablaProfileUuid.orEmpty(),
-                                        source = "BLABLACAR",
-                                        reservationKey = row.externalReservationKey.orEmpty(),
-                                        boarding = row.boarding.orEmpty(),
-                                        dropoff = row.dropoff.orEmpty(),
-                                        seats = row.seats,
-                                    )
-                                }
-                                UnifiedDebugEventStore.record(
-                                    "BOOKING_CANCEL_PERSISTED",
-                                    context.packageName,
-                                    "$trace authority=EXTERNAL_RESERVATION_METADATA operationalStatus=CANCELLED",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "PASSENGER_IN_CAR_CLEARED",
-                                    context.packageName,
-                                    "$trace inCarBefore=$inCarBefore inCarAfter=false",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "BOOKING_SEATS_RELEASE_END",
-                                    context.packageName,
-                                    "$trace seatsBefore=$seatsBefore seatsAfter=0 authority=external_tombstone",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "SEGMENT_CAPACITY_RECALCULATED",
-                                    context.packageName,
-                                    "$trace source=collector_overlay exactReservation=true",
-                                )
-                                UnifiedDebugEventStore.record(
-                                    "PUBLIC_BOOKING_CANCEL_SYNC",
-                                    context.packageName,
-                                    "$trace result=queued_via_public_agenda_sync externalPlatformChanged=false",
-                                )
-                            } else {
-                                cancelManualRow = null
-                                onChanged("A reserva/ocorrência deixou de estar disponível antes da confirmação. Nada foi alterado.")
-                                return@launch
-                            }
-
-                            identityRevision++
+                        val selectedTrip = currentTrip
+                        val selectedBooking = booking
+                        if (selectedTrip == null || selectedBooking == null) {
                             cancelManualRow = null
-                            UnifiedDebugEventStore.record(
-                                "TIMELINE_AFTER_CANCEL",
-                                context.packageName,
-                                "$trace activeBooking=false seatsAfter=0 inCarAfter=false",
-                            )
-                            UnifiedDebugEventStore.record(
-                                "PASSENGER_STATUS_CHANGE_END",
-                                context.packageName,
-                                "$trace final=CANCELLED onlineSync=$onlineSyncSucceeded",
-                            )
-                            onChanged(
-                                when {
-                                    BookingSource.BLABLACAR in row.sources && onlineSyncPendingReason == null ->
-                                        "Reserva cancelada dentro do Rota Certa. Passageiro fora do carro e vagas internas liberadas. A BlaBlaCar não foi alterada."
-                                    onlineSyncPendingReason != null ->
-                                        "Reserva cancelada e vagas liberadas no Rota Certa. Sincronização online pendente: $onlineSyncPendingReason"
-                                    else ->
-                                        "Reserva cancelada. Passageiro fora do carro e vagas por trecho recalculadas."
-                                },
-                            )
+                            onChanged("Reserva canônica não localizada. Nada foi alterado.")
+                        } else {
+                            scope.launch {
+                                val settings0494 = store.onlineSettings()
+                                val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
+                                if (!settings0494.configured || remoteId0494 == null) {
+                                    onChanged("Backend canônico indisponível. Nada foi alterado; o coletor não será usado como fallback.")
+                                    return@launch
+                                }
+                                runCatching {
+                                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
+                                        remoteTripId = remoteId0494,
+                                        bookingId = selectedBooking.id,
+                                        selection = "CANCELLED",
+                                    )
+                                }.onSuccess { ack0494 ->
+                                    cancelManualRow = null
+                                    identityRevision++
+                                    BookingRealtimeEvents0356.notifyChanged()
+                                    UnifiedDebugEventStore.record(
+                                        "TIMELINE_CANONICAL_BOOKING_CANCEL_0494",
+                                        context.packageName,
+                                        "authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false blablaPlatformChanged=false",
+                                    )
+                                    onChanged(
+                                        if (BookingSource.BLABLACAR in row.sources) {
+                                            "Reserva cancelada no Rota Certa e vagas canônicas recalculadas. A BlaBlaCar não foi alterada."
+                                        } else {
+                                            "Reserva cancelada no estado canônico e vagas recalculadas."
+                                        },
+                                    )
+                                }.onFailure { error ->
+                                    onChanged("Nada foi alterado: ${error.message ?: error.javaClass.simpleName}")
+                                }
+                            }
                         }
                     },
                 ) { Text("Cancelar reserva") }
