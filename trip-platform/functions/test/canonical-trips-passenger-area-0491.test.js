@@ -52,8 +52,10 @@ test("0491 Android sends canonical passengerId and waits for remote canonical bo
   assert.match(quickUi, /recordRemoteAppliedLocal/);
   assert.match(quickUi, /recordExternalManualMutation/);
   assert.match(timeline, /updateProtectedDriverBooking/);
-  assert.match(timeline, /cancelProtectedDriverBooking/);
+  assert.match(timeline, /updateDriverPassengerOperationalStatus/);
+  assert.match(timeline, /selection = "CANCELLED"/);
   assert.match(timeline, /upsertDriverBooking/);
+  assert.match(timeline, /authority=CANONICAL_BACKEND/);
 });
 
 test("0491 manual Trip already uses the same local canonical publication pipeline without BlaBlaCar dependency", () => {
