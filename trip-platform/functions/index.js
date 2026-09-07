@@ -1215,7 +1215,7 @@ function itineraryIsAuthoritative(token, data) {
 }
 
 function safePublicTripFromCanonical0434(token, data) {
-  const payload = canonicalPublicTripPayloadFromStored0434(data && data.canonicalPublicProjection0434);
+  const payload = canonicalPublicTripPayload0411(token, data);
   const capacity = Math.max(0, Number(payload.capacity || 0));
   const reliable = payload.capacityReliable === true;
   const payloadAvailableMaximum = Math.max(0, Number(payload.availableSeatsMaximum || 0));
@@ -1482,9 +1482,86 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
   };
 }
 
+function canonicalSegmentVector0497(primaryRaw, fallbackRaw, expectedSegments) {
+  const expected = Math.max(0, Number(expectedSegments || 0));
+  if (!expected) return [];
+  const normalize = (raw) => (Array.isArray(raw) ? raw : [])
+    .slice(0, expected)
+    .map((value) => Math.max(0, Number(value || 0)));
+  const primary = normalize(primaryRaw);
+  if (primary.length === expected) return primary;
+  const fallback = normalize(fallbackRaw);
+  return fallback.length === expected ? fallback : [];
+}
+
+function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data) {
+  const payload = canonicalPublicTripPayloadFromStored0434(data && data.canonicalPublicProjection0434);
+  const expectedSegments = Math.max(0, (Array.isArray(payload.stops) ? payload.stops.length : 0) - 1);
+  const segmentLoads = canonicalSegmentVector0497(data && data.segmentLoads, payload.segmentLoads, expectedSegments);
+  const segmentBlockedLoads = canonicalSegmentVector0497(
+    data && data.segmentBlockedLoads,
+    payload.segmentBlockedLoads,
+    expectedSegments,
+  );
+  let segmentPassengerLoads = canonicalSegmentVector0497(
+    data && data.segmentPassengerLoads,
+    payload.segmentPassengerLoads,
+    expectedSegments,
+  );
+
+  if (segmentPassengerLoads.length !== expectedSegments && segmentLoads.length === expectedSegments) {
+    segmentPassengerLoads = segmentLoads.map((load, index) =>
+      Math.max(0, Number(load || 0) - Math.max(0, Number(segmentBlockedLoads[index] || 0)))
+    );
+  }
+
+  const confirmedPassengerSeats = Math.max(0, Number(data && data.confirmedPassengerSeats || 0));
+  const passengerMaximum = segmentPassengerLoads.length
+    ? Math.max(...segmentPassengerLoads.map((value) => Math.max(0, Number(value || 0))))
+    : 0;
+  if (
+    expectedSegments > 0 &&
+    confirmedPassengerSeats > passengerMaximum &&
+    segmentLoads.length === expectedSegments
+  ) {
+    const derivedPassengerLoads = segmentLoads.map((load, index) =>
+      Math.max(0, Number(load || 0) - Math.max(0, Number(segmentBlockedLoads[index] || 0)))
+    );
+    if (
+      derivedPassengerLoads.length &&
+      Math.max(...derivedPassengerLoads) >= confirmedPassengerSeats
+    ) {
+      segmentPassengerLoads = derivedPassengerLoads;
+    }
+  }
+
+  const capacityReliable = typeof (data && data.capacityReliable) === "boolean"
+    ? data.capacityReliable === true
+    : payload.capacityReliable === true;
+  const capacityState = canonicalPublicCapacityState0485({
+    capacity: payload.capacity,
+    status: payload.status,
+    stops: payload.stops,
+    segmentLoads,
+    capacityReliable,
+    operationalOverbookingSeats: Math.max(0, Number(data && data.operationalOverbookingSeats || 0)),
+  });
+
+  return {
+    ...payload,
+    segmentLoads,
+    segmentPassengerLoads,
+    segmentBlockedLoads,
+    availableSeatsMinimum: capacityState.availableSeatsMinimum,
+    availableSeatsMaximum: capacityState.availableSeatsMaximum,
+    operationalAvailableSeats: capacityState.availableSeatsMinimum,
+    capacityReliable: capacityState.reliable,
+  };
+}
+
 function canonicalPublicTripPayload0411(token, data) {
   if (data && data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object") {
-    return canonicalPublicTripPayloadFromStored0434(data.canonicalPublicProjection0434);
+    return canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data);
   }
   const publicTrip = safePublicTrip(token, data);
   const profileUuid = cleanText(data.blablaProfileUuid, 160).toLowerCase();
@@ -7146,19 +7223,15 @@ async function mutateDriverPassengerOperationalStatus(req, res, token, bookingId
         updatedAtMillis: now,
       };
 
-      let tripCapacityPersistence = {};
-      let tripStatus = trip.status;
-      if (afterBookingStatus !== previous.status) {
-        const bookingsSnap = await tx.get(tripRef.collection("bookings"));
-        const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        const candidates = records.map((record) => record.id === bookingId ? updated : record);
-        const capacityState = reconciledSegmentCapacity(trip, candidates, now);
-        const loads = capacityState.loads;
-        assertNoOverbooking(trip, loads);
-        assertNoOperationalOverbooking(trip, candidates, now);
-        tripCapacityPersistence = canonicalCapacityPersistence(trip, candidates, capacityState, now);
-        tripStatus = statusForReconciledLoads(trip, loads);
-      }
+      const bookingsSnap = await tx.get(tripRef.collection("bookings"));
+      const records = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const candidates = records.map((record) => record.id === bookingId ? updated : record);
+      const capacityState = reconciledSegmentCapacity(trip, candidates, now);
+      const loads = capacityState.loads;
+      assertNoOverbooking(trip, loads);
+      assertNoOperationalOverbooking(trip, candidates, now);
+      const tripCapacityPersistence = canonicalCapacityPersistence(trip, candidates, capacityState, now);
+      const tripStatus = statusForReconciledLoads(trip, loads);
 
       const persisted = { ...updated };
       delete persisted.id;
@@ -8625,10 +8698,8 @@ async function listDriverTripSyncState0402(req, res) {
       if (!includePastForVerification && Number(data.departureAtMillis || 0) < now - 6 * 60 * 60 * 1000) return null;
     }
 
-    const canonicalProjection0494 =
-      data.canonicalPublicProjection0434 && typeof data.canonicalPublicProjection0434 === "object"
-        ? data.canonicalPublicProjection0434
-        : canonicalPublicTripPayload0411(doc.id, data);
+    const canonicalProjection0494 = canonicalPublicTripPayload0411(doc.id, data);
+    const currentPublicProjectionHash0497 = canonicalPublicTripHash0411(canonicalProjection0494);
     const stops0494 = canonicalDepartureStops0495(
       Array.isArray(canonicalProjection0494.stops)
         ? canonicalProjection0494.stops
@@ -8711,7 +8782,7 @@ async function listDriverTripSyncState0402(req, res) {
       canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
       canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180) || doc.id,
       canonicalStateHash: cleanText(data.canonicalStateHash, 160),
-      publicProjectionHash: cleanText(data.publicProjectionHash0434, 160),
+      publicProjectionHash: currentPublicProjectionHash0497,
       bookingsCount: Math.max(0, Number(data.bookingsCount || bookings0494.length || 0)),
       tripKey: cleanText(data.tripKey, 180),
       blablaProfileUuid: cleanText(data.blablaProfileUuid, 180),
