@@ -267,10 +267,11 @@ fun TripTimelineScreen(
     }
 
     val traceId = AgendaTrace.currentTraceId()
-    val canonicalProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName) {
+    val canonicalProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName, bookings) {
         canonicalTimelineProjection0494(
             response = canonicalResponse0494,
             fallbackProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Rota Certa" },
+            existingLocalBookings = bookings,
         )
     }
     val canonicalTrips0494 = canonicalProjection0494.trips
