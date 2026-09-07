@@ -625,20 +625,44 @@ private fun TripApp(
                         screen = parentRootScreen0396
                     },
                     onSave = { trip ->
-                        store.saveTrip(trip)
-                        refresh()
-                        selectedId = trip.id
-                        val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
-                        pendingCreateForPassengerId = ""
-                        if (resumePassengerId != null) {
-                            addPassengerResumePassengerId = resumePassengerId
-                            addPassengerResumeTripId = trip.id
-                            addPassengerResumeToken++
-                            message = "Viagem criada. Continue a inclusão do passageiro já selecionado."
+                        val online0494 = store.onlineSettings()
+                        if (!online0494.configured) {
+                            message = "Backend canônico indisponível. A viagem não foi criada localmente como fonte paralela."
                         } else {
-                            message = "Viagem criada. Publique quando estiver pronta."
+                            shareScope.launch {
+                                runCatching {
+                                    val published0494 = TripRemoteApi(online0494).publish(trip)
+                                    trip.copy(
+                                        remoteId = published0494.tripId,
+                                        publicToken = published0494.publicToken,
+                                        publicUrl = published0494.publicUrl.takeIf(String::isNotBlank),
+                                        publicationRevision = maxOf(trip.publicationRevision, published0494.entityRevision),
+                                    ) to published0494
+                                }.onSuccess { (canonicalCache0494, published0494) ->
+                                    store.saveTrip(canonicalCache0494)
+                                    refresh()
+                                    selectedId = canonicalCache0494.id
+                                    val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
+                                    pendingCreateForPassengerId = ""
+                                    if (resumePassengerId != null) {
+                                        addPassengerResumePassengerId = resumePassengerId
+                                        addPassengerResumeTripId = canonicalCache0494.id
+                                        addPassengerResumeToken++
+                                        message = "Viagem criada no backend canônico. Continue a inclusão do passageiro já selecionado."
+                                    } else {
+                                        message = "Viagem manual criada no backend canônico. Ela não depende de identidade BlaBlaCar."
+                                    }
+                                    UnifiedDebugEventStore.record(
+                                        "MANUAL_TRIP_CANONICAL_CREATED_0494",
+                                        activity.packageName,
+                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} authority=CANONICAL_BACKEND",
+                                    )
+                                    screen = parentRootScreen0396
+                                }.onFailure { error ->
+                                    message = "Nada foi criado localmente: ${error.message ?: "falha no backend canônico"}"
+                                }
+                            }
                         }
-                        screen = parentRootScreen0396
                     },
                 )
                 TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
