@@ -146,6 +146,76 @@ jobs:
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
 
+      - name: Configure Firebase deployment authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-deploy-sa.json
+            chmod 600 /tmp/firebase-deploy-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-deploy-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo "Firebase deployment credential is missing."
+            exit 3
+          fi
+
+      - name: Install Functions deployment dependencies
+        shell: bash
+        run: npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Deploy exact-head Agenda backend and hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+          else
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+          fi
+
+      - name: Smoke live Agenda expansion contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 10 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0506.json
+          grep -Fq '"ok":true' /tmp/live-health-0506.json
+
+          propagated=false
+          for attempt in $(seq 1 18); do
+            BUST="$GITHUB_SHA-$attempt-$(date +%s%N)"
+            curl --retry 3 --retry-delay 2 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app-0506.js
+            curl --retry 3 --retry-delay 2 --fail --silent --show-error "$BASE/?v=$BUST" -o /tmp/live-index-0506.html
+            curl --retry 3 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel?verify=$BUST" -o /tmp/live-agenda-0506.json
+            if grep -Fq 'expandedAgendaTripKeys0506' /tmp/live-app-0506.js &&
+               grep -Fq 'DATA_UPDATE_STATE_RESTORED' /tmp/live-app-0506.js &&
+               grep -Fq 'TRIP_REMOVED' /tmp/live-app-0506.js &&
+               grep -Fq 'app.js?v=0.1.506' /tmp/live-index-0506.html &&
+               grep -Eq '"publicTripKey0506":"agenda-trip-[a-f0-9]{40}"' /tmp/live-agenda-0506.json; then
+              propagated=true
+              break
+            fi
+            sleep 5
+          done
+          test "$propagated" = true
+
+          ! grep -Eiq '"(canonicalTripId|publicToken|passengerName|passengerContact|passengerId|sourceReference|fareMinorUnits|paymentStatus|boardingAddress|dropoffAddress|bookings|blablaTripId|whatsapp)"[[:space:]]*:' /tmp/live-agenda-0506.json
+          grep -Fq 'function applyAgendaTripExpansionState0506' /tmp/live-app-0506.js
+          grep -Fq 'expandedAgendaTripKeys0506.has(tripKey0506)' /tmp/live-app-0506.js
+          grep -Fq '"USER_TOGGLE"' /tmp/live-app-0506.js
+          printf 'LIVE_AGENDA_CARD_EXPANSION_0506=PASS sha=%s\n' "$GITHUB_SHA" | tee /tmp/live-smoke-0506.txt
+
       - name: Materialize exact-head APK and evidence
         shell: bash
         run: |
@@ -157,6 +227,7 @@ jobs:
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0506/
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log /tmp/0506/
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0506/
+          cp /tmp/live-health-0506.json /tmp/live-app-0506.js /tmp/live-index-0506.html /tmp/live-agenda-0506.json /tmp/live-smoke-0506.txt /tmp/0506/
           cat > /tmp/0506/final-status.txt <<EOF
           agenda_card_expansion_state=CANONICAL_OPAQUE_KEY
           snapshot_update_collapses_card=false
@@ -170,7 +241,7 @@ jobs:
           timeline_collector_isolation=UNCHANGED
           capacity_logic=UNCHANGED
           farol_untouched=PASS
-          deployment=false
+          deployment=PASS
           merge=false
           release=false
           latest=false
