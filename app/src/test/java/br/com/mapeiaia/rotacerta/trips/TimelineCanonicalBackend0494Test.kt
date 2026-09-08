@@ -499,9 +499,9 @@ class TimelineCanonicalBackend0494Test {
         val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
         assertTrue(passengerUi.contains("it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY"))
         assertTrue(passengerUi.contains("ic_whatsapp_action"))
-        assertTrue(passengerUi.contains("Text(\"📍\")"))
-        assertTrue(passengerUi.contains("Text(\"🏁\")"))
-        assertTrue(passengerUi.contains("Text(\"💬\")"))
+        assertTrue(passengerUi.contains("Text(\"📍\""))
+        assertTrue(passengerUi.contains("Text(\"🏁\""))
+        assertTrue(passengerUi.contains("Text(\"💬\""))
     }
 
     @Test
