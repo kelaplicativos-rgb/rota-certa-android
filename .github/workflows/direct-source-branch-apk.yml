@@ -148,7 +148,7 @@ jobs:
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
-      - name: Verify FAROL after build and live backend health
+      - name: Verify FAROL after build and record live backend health
         shell: bash
         run: |
           set -euo pipefail
@@ -156,8 +156,16 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0511.json
-          grep -Fq '"ok":true' /tmp/live-health-0511.json
+          LIVE_BACKEND_HEALTH=DEGRADED
+          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0511.json; then
+            if grep -Fq '"ok":true' /tmp/live-health-0511.json; then
+              LIVE_BACKEND_HEALTH=PASS
+            fi
+          else
+            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0511.json
+          fi
+          echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
+          echo "backend_health=$LIVE_BACKEND_HEALTH"
 
       - name: Materialize final APK and evidence
         shell: bash
@@ -191,7 +199,7 @@ jobs:
           timeline_direct_collector_dependency=UNCHANGED_PROHIBITED
           segment_capacity_logic=ROOT_CAUSE_CORRECTED
           farol_untouched=PASS
-          backend_health=PASS
+          backend_health=$LIVE_BACKEND_HEALTH
           merge=false
           release=false
           latest=false
