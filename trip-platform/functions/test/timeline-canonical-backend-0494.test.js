@@ -110,21 +110,21 @@ test("0494 missing trusted coordinates fails closed instead of inventing telepor
   assert.equal(trips[1].canonicalIssues.includes("PROFILE_CONTINUITY"), false);
 });
 
-test("0500 Timeline endpoint delegates to the authenticated native-only provenance firewall", () => {
+test("0503 Timeline endpoint reads canonical Agenda and authenticated private mirror without collector fallback", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
-  const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
   assert.match(fn, /requireDriver\(req, res\)/);
   assert.match(fn, /timelineProjection0494/);
-  assert.match(fn, /listDriverTimelineNativeState0500/);
-  assert.match(firewall, /timelineTripHasCollectorProvenance0500/);
-  assert.match(firewall, /timelineBookingHasCollectorProvenance0500/);
-  assert.match(firewall, /source === "BLABLACAR"/);
-  assert.match(firewall, /claimType === "EXTERNAL_OCCUPANCY"/);
-  assert.match(firewall, /collectorRead: false/);
-  assert.match(firewall, /collectorFallback: false/);
-  assert.match(firewall, /collectorDerivedData: false/);
-  assert.match(firewall, /source: "CANONICAL_NATIVE_FIREWALL"/);
-  assert.doesNotMatch(firewall, /tripPrivateMirrors0434/);
+  assert.match(fn, /db\.collection\("trips"\)/);
+  assert.match(fn, /tripPrivateMirrors0434/);
+  assert.match(fn, /privateMirrorCurrent0499/);
+  assert.match(fn, /bookings0494/);
+  assert.match(fn, /blablaTripId:/);
+  assert.match(fn, /notes0499:/);
+  assert.match(fn, /AGENDA_CANONICAL_ONLY_0503/);
+  assert.match(fn, /collectorRead: false/);
+  assert.match(fn, /collectorFallback: false/);
+  assert.match(fn, /collectorDerivedData: false/);
+  assert.doesNotMatch(fn, /BlaBlaTimelineAdapter|BlaBlaCollector|AUTOMATIC_COLLECTOR/);
 });
 
 test("0494 operational mutations update canonical server projection atomically", () => {
@@ -323,21 +323,26 @@ test("0495 legacy convergence migrates bookings and passenger indexes without ro
 });
 
 
-test("0500 Timeline projection cannot read private Agenda mirror or return BlaBlaCar fields", () => {
+test("0503 Timeline canonical payload may retain BlaBla-origin fields after Agenda materialization", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
-  const firewall = between(api, "function timelineBookingHasCollectorProvenance0500", "async function listDriverTripSyncState0402");
-  const emittedTrip = between(
-    firewall,
-    "    return {\n      remoteTripId: doc.id,",
-    "  }))).filter(Boolean)",
-  );
-  assert.doesNotMatch(fn, /tripPrivateMirrors0434/);
-  assert.doesNotMatch(emittedTrip, /blablaTripId:/);
-  assert.doesNotMatch(emittedTrip, /blablaProfileUuid:/);
-  assert.doesNotMatch(emittedTrip, /blablaPublicUrl:/);
-  assert.doesNotMatch(emittedTrip, /publishedSeats:/);
-  assert.match(firewall, /timelineTripHasCollectorProvenance0500/);
-  assert.match(firewall, /timelineBookingHasCollectorProvenance0500/);
-  assert.match(firewall, /BLABLACAR_BLOCK_ALL_0500/);
-  assert.match(firewall, /timeline-native-v1:/);
+  assert.match(fn, /selectCanonicalTripDocuments0495/);
+  assert.match(fn, /blablaProfileUuid:/);
+  assert.match(fn, /blablaTripId:/);
+  assert.match(fn, /blablaPublicUrl:/);
+  assert.match(fn, /publishedSeats:/);
+  assert.match(fn, /bookings: bookings0494/);
+  assert.doesNotMatch(fn, /timelineTripHasCollectorProvenance0500/);
+  assert.doesNotMatch(fn, /timelineBookingHasCollectorProvenance0500/);
+});
+
+test("0503 same transport revision collision returns stale so Android outbox can rebase", () => {
+  const start = api.indexOf("if (deterministicRequest && entityRevision === currentEntityRevision");
+  assert.notEqual(start, -1);
+  const end = api.indexOf("const capacityNoOpProven0425", start);
+  assert.ok(end > start);
+  const sameRevision = api.slice(start, end);
+  assert.match(sameRevision, /currentEventId !== outboxEventId/);
+  assert.match(sameRevision, /stale: true/);
+  assert.match(sameRevision, /entityRevision: currentEntityRevision/);
+  assert.doesNotMatch(sameRevision, /publication_revision_conflict/);
 });
