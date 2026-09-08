@@ -77,8 +77,8 @@ jobs:
           grep -Fq 'collectorDerivedData: false' trip-platform/functions/index.js
           grep -Fq 'BookingSource.BLABLACAR' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'preserve_capacity_claims_project_canonical' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'fullSyncEntityRevision0503' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'PUBLIC_CAPACITY_FULL_SYNC_REBASED_0503' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'fullSyncEntityRevision0502' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_CAPACITY_FULL_SYNC_REBASED_0502' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           sha256sum "$FAROL" | tee /tmp/farol.sha256
 
       - uses: actions/setup-node@v4
