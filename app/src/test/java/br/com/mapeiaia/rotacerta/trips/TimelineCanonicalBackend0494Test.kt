@@ -192,7 +192,7 @@ class TimelineCanonicalBackend0494Test {
 
         assertTrue(backend.contains("timelineProjection0494"))
         assertTrue(backend.contains("source: timelineProjection0494 ? \"CANONICAL_NATIVE_FIREWALL\" : \"CANONICAL_BACKEND\""))
-        assertTrue(backend.contains("provenancePolicy0500: \"AGENDA_CANONICAL_ONLY_0503\""))
+        assertTrue(backend.contains("provenancePolicy0500: timelineProjection0494 ? \"AGENDA_CANONICAL_ONLY_0503\" : \"\""))
         assertTrue(backend.contains("applyCanonicalTimelinePhysicalIssues0494"))
     }
 
