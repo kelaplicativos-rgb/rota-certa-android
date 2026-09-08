@@ -1,4 +1,5 @@
 name: Rota Certa 0.1.508 canonical segment root-cause validation
+# 0.1.508: final validation after version-contract synchronization.
 
 on:
   push:
