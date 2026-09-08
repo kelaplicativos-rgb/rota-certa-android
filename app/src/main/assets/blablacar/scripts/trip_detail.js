@@ -100,6 +100,22 @@
     return markerRequestsMore || collapsedNearRoute;
   });
   const hasMore = rosterExpandControls.length > 0;
+  const scrollingElement = document.scrollingElement || document.documentElement || document.body;
+  const scrollY = Math.max(0, Math.round(window.scrollY || (scrollingElement && scrollingElement.scrollTop) || 0));
+  const scrollHeight = Math.max(
+    0,
+    Math.round(
+      (scrollingElement && scrollingElement.scrollHeight) ||
+      (document.documentElement && document.documentElement.scrollHeight) ||
+      (document.body && document.body.scrollHeight) ||
+      0
+    )
+  );
+  const viewportHeight = Math.max(
+    1,
+    Math.round(window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 1)
+  );
+  const atBottom = scrollHeight <= viewportHeight || (scrollY + viewportHeight >= scrollHeight - 8);
   const isVisible = (node) => {
     if (!node || !node.isConnected) return false;
     const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
@@ -219,6 +235,10 @@ const html = clone.outerHTML || '';
     explicitEmptyRoster: explicitEmptyRoster,
     rosterHasMore: hasMore,
     rosterTerminalEvidence: rosterTerminalEvidence,
+    scrollY: scrollY,
+    scrollHeight: scrollHeight,
+    viewportHeight: viewportHeight,
+    atBottom: atBottom,
     editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
     publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
