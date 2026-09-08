@@ -32,6 +32,73 @@ const driverUsername = queryDriverUsername || publicSlug;
 let agendaChangeCursor0495 = 0;
 let agendaChangeWatchRunning0495 = false;
 
+function agendaExpansionStorageKey0506() {
+  const scope = publicSlug || driverUsername || agendaToken || "public";
+  return "rota-certa:agenda-expanded:0506:" + scope;
+}
+
+function restoreExpandedAgendaTripKeys0506() {
+  try {
+    const navigation = typeof performance !== "undefined" && performance.getEntriesByType
+      ? performance.getEntriesByType("navigation")[0]
+      : null;
+    if (navigation && navigation.type !== "reload") {
+      sessionStorage.removeItem(agendaExpansionStorageKey0506());
+      return new Set();
+    }
+    const parsed = JSON.parse(sessionStorage.getItem(agendaExpansionStorageKey0506()) || "[]");
+    return new Set(
+      (Array.isArray(parsed) ? parsed : [])
+        .map((value) => String(value || "").trim())
+        .filter((value) => /^agenda-trip-[a-f0-9]{40}$/.test(value)),
+    );
+  } catch (_) {
+    return new Set();
+  }
+}
+
+const expandedAgendaTripKeys0506 = restoreExpandedAgendaTripKeys0506();
+const agendaTripRevisionByKey0506 = new Map();
+
+function persistExpandedAgendaTripKeys0506() {
+  try {
+    sessionStorage.setItem(
+      agendaExpansionStorageKey0506(),
+      JSON.stringify([...expandedAgendaTripKeys0506]),
+    );
+  } catch (_) {
+    // Estado visual continua funcional em memória quando sessionStorage não estiver disponível.
+  }
+}
+
+function publicAgendaTripKey0506(item) {
+  const value = String(item?.publicTripKey0506 || "").trim();
+  return /^agenda-trip-[a-f0-9]{40}$/.test(value) ? value : "";
+}
+
+function agendaTripRevision0506(item) {
+  return Math.max(0, Number(item?.publicProjectionRevision0434 || 0));
+}
+
+function agendaCardTelemetry0506(eventName, item, reason, previousRevision, newRevision) {
+  const canonicalTripRef = publicAgendaTripKey0506(item);
+  if (!canonicalTripRef) return;
+  const detail = {
+    event: eventName,
+    canonicalTripRef,
+    source: "PUBLIC_AGENDA_UI",
+    reason,
+    previousRevision: Math.max(0, Number(previousRevision || 0)),
+    newRevision: Math.max(0, Number(newRevision || 0)),
+  };
+  console.info("[RotaCertaAgendaCard0506]", detail);
+  try {
+    window.dispatchEvent(new CustomEvent("rota-certa-agenda-card-state-0506", { detail }));
+  } catch (_) {
+    // Console estruturado permanece como telemetria mínima de prova.
+  }
+}
+
 function show(id, visible = true) {
   const node = $(id);
   if (node) node.classList.toggle("hidden", !visible);
@@ -273,8 +340,7 @@ function agendaStopMoment0480(item, stop, index, lastIndex) {
   return Number(stop.plannedArrivalMillis || stop.plannedDepartureMillis || 0);
 }
 
-function toggleAgendaTripDetails0480(card, dateNode, detailsNode, hintNode) {
-  const expanded = card.getAttribute("aria-expanded") !== "true";
+function applyAgendaTripExpansionState0506(card, dateNode, detailsNode, hintNode, expanded) {
   card.setAttribute("aria-expanded", expanded ? "true" : "false");
   card.classList.toggle("agendaTripExpanded0480", expanded);
   detailsNode.setAttribute("aria-hidden", expanded ? "false" : "true");
@@ -282,8 +348,41 @@ function toggleAgendaTripDetails0480(card, dateNode, detailsNode, hintNode) {
   hintNode.textContent = expanded ? "Recolher trajeto" : "Ver paradas";
 }
 
+function toggleAgendaTripDetails0480(card, dateNode, detailsNode, hintNode, item) {
+  const expanded = card.getAttribute("aria-expanded") !== "true";
+  applyAgendaTripExpansionState0506(card, dateNode, detailsNode, hintNode, expanded);
+
+  const tripKey0506 = publicAgendaTripKey0506(item);
+  const revision0506 = agendaTripRevision0506(item);
+  if (tripKey0506) {
+    if (expanded) {
+      expandedAgendaTripKeys0506.add(tripKey0506);
+    } else {
+      expandedAgendaTripKeys0506.delete(tripKey0506);
+    }
+    agendaTripRevisionByKey0506.set(tripKey0506, revision0506);
+    persistExpandedAgendaTripKeys0506();
+  }
+  agendaCardTelemetry0506(
+    expanded ? "AGENDA_CARD_EXPANDED" : "AGENDA_CARD_COLLAPSED",
+    item,
+    "USER_TOGGLE",
+    revision0506,
+    revision0506,
+  );
+}
+
 function renderAgendaCards(entries, container) {
   entries.forEach((item) => {
+    const tripKey0506 = publicAgendaTripKey0506(item);
+    const previousRevision0506 = tripKey0506
+      ? Math.max(0, Number(agendaTripRevisionByKey0506.get(tripKey0506) || 0))
+      : 0;
+    const newRevision0506 = agendaTripRevision0506(item);
+    const restoreExpanded0506 = Boolean(
+      tripKey0506 && expandedAgendaTripKeys0506.has(tripKey0506)
+    );
+    if (tripKey0506) agendaTripRevisionByKey0506.set(tripKey0506, newRevision0506);
     const stops = orderedStops(item);
     const fromIndex = 0;
     const toIndex = stops.length - 1;
@@ -298,6 +397,7 @@ function renderAgendaCards(entries, container) {
     card.setAttribute("role", "button");
     card.setAttribute("tabindex", "0");
     card.setAttribute("aria-expanded", "false");
+    if (tripKey0506) card.dataset.publicTripKey0506 = tripKey0506;
     card.setAttribute("aria-label", "Ver detalhes da viagem de " + from + " para " + to);
     const startStop0473 = stops[fromIndex];
     const endStop0473 = stops[toIndex];
@@ -498,14 +598,31 @@ function renderAgendaCards(entries, container) {
       card.appendChild(fullWord);
     }
 
+    applyAgendaTripExpansionState0506(
+      card,
+      date,
+      expandedItinerary0480,
+      expandHint0480,
+      restoreExpanded0506,
+    );
+    if (restoreExpanded0506) {
+      agendaCardTelemetry0506(
+        "AGENDA_CARD_EXPANDED",
+        item,
+        "DATA_UPDATE_STATE_RESTORED",
+        previousRevision0506,
+        newRevision0506,
+      );
+    }
+
     card.addEventListener("click", (event) => {
       if (event.target.closest("a,button,input,select,textarea")) return;
-      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480);
+      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480, item);
     });
     card.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480);
+      toggleAgendaTripDetails0480(card, date, expandedItinerary0480, expandHint0480, item);
     });
 
     container.appendChild(card);
@@ -516,6 +633,30 @@ function renderAgenda(trips) {
   const visibleTrips = trips
     .filter(publicCardEligible0475)
     .sort((a, b) => Number(a.departureAtMillis || 0) - Number(b.departureAtMillis || 0));
+
+  const visibleTripKeys0506 = new Set(
+    visibleTrips.map(publicAgendaTripKey0506).filter(Boolean),
+  );
+  for (const expandedKey0506 of [...expandedAgendaTripKeys0506]) {
+    if (visibleTripKeys0506.has(expandedKey0506)) continue;
+    const previousRevision0506 = Math.max(
+      0,
+      Number(agendaTripRevisionByKey0506.get(expandedKey0506) || 0),
+    );
+    agendaCardTelemetry0506(
+      "AGENDA_CARD_COLLAPSED",
+      {
+        publicTripKey0506: expandedKey0506,
+        publicProjectionRevision0434: previousRevision0506,
+      },
+      "TRIP_REMOVED",
+      previousRevision0506,
+      0,
+    );
+    expandedAgendaTripKeys0506.delete(expandedKey0506);
+    agendaTripRevisionByKey0506.delete(expandedKey0506);
+  }
+  persistExpandedAgendaTripKeys0506();
 
   $("agendaTrips").innerHTML = "";
   if (!visibleTrips.length) {
