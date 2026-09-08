@@ -41,6 +41,11 @@ function compileLabels() {
   return Function(source + "\nreturn { publicSegmentRows0484, segmentAvailabilityLabel0484 };")();
 }
 
+function compileAvailabilityLabels() {
+  const source = between(app, "function seatRange", "function publicSegmentRows0484");
+  return Function(source + "\nreturn { exactAvailabilityLabel, publicAvailabilityLabel };")();
+}
+
 test("0484 canonical occupancy consumes only the segments actually crossed", () => {
   const { reconciledSegmentCapacity } = compileSegmentCapacity();
   const trip = {
@@ -188,14 +193,62 @@ test("0484 browser renders server rows without recomputing capacity from passeng
   assert.doesNotMatch(bottom, /confirmedPassengerSeats|passengerStack0473|passengerCount0473/);
 });
 
-test("0484 public labels are exact and privacy-safe", () => {
+test("0504 public labels keep canonical availability numeric and privacy-safe", () => {
   const { segmentAvailabilityLabel0484 } = compileLabels();
-  assert.equal(segmentAvailabilityLabel0484(0), "LOTADO");
+  assert.equal(segmentAvailabilityLabel0484(0), "0 vagas");
   assert.equal(segmentAvailabilityLabel0484(1), "1 vaga");
   assert.equal(segmentAvailabilityLabel0484(2), "2 vagas");
   assert.match(html, /agendaSegmentAvailability0484/);
   assert.match(html, /agendaSegmentPassengers0489/);
-  assert.match(html, /app\.js\?v=0\.1\.498/);
+  assert.match(html, /app\.js\?v=0\.1\.504/);
+});
+
+test("0504 card summary remains numeric for zero, exact and segment ranges", () => {
+  const { exactAvailabilityLabel, publicAvailabilityLabel } = compileAvailabilityLabels();
+  assert.equal(exactAvailabilityLabel(0), "0 vagas disponíveis");
+  assert.equal(exactAvailabilityLabel(1), "1 vaga disponível");
+  assert.equal(exactAvailabilityLabel(3), "3 vagas disponíveis");
+  assert.equal(publicAvailabilityLabel({
+    capacityReliable: true,
+    availableSeatsMinimum: 0,
+    availableSeatsMaximum: 0,
+  }), "0 vagas disponíveis");
+  assert.equal(publicAvailabilityLabel({
+    capacityReliable: true,
+    availableSeatsMinimum: 0,
+    availableSeatsMaximum: 2,
+  }), "0–2 vagas disponíveis por trecho");
+  assert.equal(publicAvailabilityLabel({
+    capacityReliable: true,
+    availableSeatsMinimum: 1,
+    availableSeatsMaximum: 3,
+  }), "1–3 vagas disponíveis por trecho");
+});
+
+test("0504 requested A-B-C-D segment example renders 2, 0 and 3 vacancies without recomputing in UI", () => {
+  const { publicSegmentAvailability0484 } = compilePublicSegments();
+  const rows = publicSegmentAvailability0484({
+    capacity: 3,
+    stops: [{ name: "A" }, { name: "B" }, { name: "C" }, { name: "D" }],
+  }, [1, 3, 0], true, [1, 3, 0]);
+  assert.deepEqual(rows, [
+    { from: "A", to: "B", availableSeats: 2, passengerSeats: 1 },
+    { from: "B", to: "C", availableSeats: 0, passengerSeats: 3 },
+    { from: "C", to: "D", availableSeats: 3, passengerSeats: 0 },
+  ]);
+  const { segmentAvailabilityLabel0484 } = compileLabels();
+  assert.deepEqual(rows.map((row) => segmentAvailabilityLabel0484(row.availableSeats)), ["2 vagas", "0 vagas", "3 vagas"]);
+});
+
+test("0504 canonical capacity is per-trip and is not hardcoded to 3 or 4", () => {
+  const { publicSegmentAvailability0484 } = compilePublicSegments();
+  for (const capacity of [3, 4, 5]) {
+    const occupied = Math.max(0, capacity - 1);
+    assert.deepEqual(publicSegmentAvailability0484(
+      { capacity, stops: [{ name: "A" }, { name: "B" }] },
+      [occupied], true, [occupied],
+    ), [{ from: "A", to: "B", availableSeats: 1, passengerSeats: occupied }]);
+  }
 });
 
 
