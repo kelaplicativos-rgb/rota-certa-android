@@ -14,6 +14,9 @@ import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
 import android.view.Window
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Proxy
@@ -70,6 +73,9 @@ internal data class AgendaOperationToken(
     val operationId: String,
     val parentOperationId: String?,
     val origin: String,
+    val parentModule: DiagnosticModule0507,
+    val originModule: DiagnosticModule0507,
+    val executorModule: DiagnosticModule0507,
     val startedNs: Long,
     val startedWallMs: Long,
 )
@@ -205,6 +211,7 @@ internal object AgendaTrace {
         operationId: String? = null,
         wallMs: Long = System.currentTimeMillis(),
         monotonicNs: Long = SystemClock.elapsedRealtimeNanos(),
+        diagnosticContext: DiagnosticEventContext0507? = null,
     ) {
         val causal = buildString {
             append("traceId=").append(safeKey(traceId).ifBlank { "trace_unavailable" })
@@ -217,6 +224,7 @@ internal object AgendaTrace {
             details = causal,
             wallMs = wallMs,
             monotonicNs = monotonicNs,
+            diagnosticContext = diagnosticContext,
         )
     }
 
@@ -246,6 +254,9 @@ internal object AgendaTrace {
         origin: String,
         traceId: String = currentTraceId(),
         parentOperationId: String? = null,
+        parentModule: DiagnosticModule0507 = DiagnosticModule0507.ALL_TRIPS,
+        originModule: DiagnosticModule0507 = parentModule,
+        executorModule: DiagnosticModule0507 = originModule,
     ): AgendaOperationToken {
         val safeOperation = safeStage(operation).removeSuffix("_START").removeSuffix("_END")
         val startedNs = SystemClock.elapsedRealtimeNanos()
@@ -257,13 +268,17 @@ internal object AgendaTrace {
             operationId = operationId,
             parentOperationId = parentOperationId?.let(::safeKey)?.takeIf(String::isNotBlank),
             origin = safeKey(origin).ifBlank { "unknown" },
+            parentModule = parentModule,
+            originModule = originModule,
+            executorModule = executorModule,
             startedNs = startedNs,
             startedWallMs = startedWall,
         )
         activeOperations[token.operationId] = token
         val details = operationDetails(token)
-        event(context, "OPERATION_START", details, token.traceId, token.operationId, startedWall, startedNs)
-        event(context, "${token.operation}_START", details, token.traceId, token.operationId, startedWall, startedNs)
+        val diagnostic = diagnosticContext0507(token, DiagnosticSeverity0507.INFO, result = "STARTED")
+        event(context, "OPERATION_START", details, token.traceId, token.operationId, startedWall, startedNs, diagnostic)
+        event(context, "${token.operation}_START", details, token.traceId, token.operationId, startedWall, startedNs, diagnostic)
         return token
     }
 
@@ -462,8 +477,17 @@ internal object AgendaTrace {
             "CANCELLED" -> "OPERATION_CANCELLED"
             else -> "OPERATION_TERMINAL"
         }
-        event(context, terminalStage, details, token.traceId, token.operationId)
-        event(context, "${token.operation}_$terminal", details, token.traceId, token.operationId)
+        val severity0507 = if (terminal == "ERROR") DiagnosticSeverity0507.ERROR else DiagnosticSeverity0507.INFO
+        val diagnostic0507 = diagnosticContext0507(
+            token = token,
+            severity = severity0507,
+            result = safeKey(result).ifBlank { "unknown" },
+            errorCode = failureEvidence?.let { structuredValue0507(it, "errorCode") }.orEmpty(),
+            reason = failureEvidence?.let { structuredValue0507(it, "rootCauseClass") }.orEmpty(),
+            durationMs = durationMs,
+        )
+        event(context, terminalStage, details, token.traceId, token.operationId, diagnosticContext = diagnostic0507)
+        event(context, "${token.operation}_$terminal", details, token.traceId, token.operationId, diagnosticContext = diagnostic0507)
         if (failureEvidence != null) {
             event(
                 context,
@@ -483,6 +507,36 @@ internal object AgendaTrace {
             )
         }
     }
+
+    private fun diagnosticContext0507(
+        token: AgendaOperationToken,
+        severity: DiagnosticSeverity0507,
+        result: String = "",
+        errorCode: String = "",
+        reason: String = "",
+        durationMs: Long? = null,
+    ): DiagnosticEventContext0507 = DiagnosticEventContext0507(
+        parentModule = token.parentModule,
+        originModule = token.originModule,
+        executorModule = token.executorModule,
+        component = token.origin,
+        operation = token.operation,
+        severity = severity,
+        correlationId = token.traceId,
+        traceId = token.traceId,
+        operationId = token.operationId,
+        parentOperationId = token.parentOperationId.orEmpty(),
+        result = result,
+        errorCode = errorCode,
+        reason = reason,
+        durationMs = durationMs,
+    )
+
+    private fun structuredValue0507(raw: String, key: String): String =
+        Regex("(?:^|\\s)${Regex.escape(key)}=(?:\\\"([^\\\"]*)\\\"|([^\\s|]+))")
+            .find(raw)
+            ?.let { match -> match.groupValues.getOrNull(1).orEmpty().ifBlank { match.groupValues.getOrNull(2).orEmpty() } }
+            .orEmpty()
 
     private fun operationDetails(token: AgendaOperationToken): String = buildString {
         append("operation=").append(token.operation)
@@ -627,6 +681,7 @@ internal object AgendaTrace {
         details: String,
         wallMs: Long = System.currentTimeMillis(),
         monotonicNs: Long = SystemClock.elapsedRealtimeNanos(),
+        diagnosticContext: DiagnosticEventContext0507? = null,
     ) {
         runCatching {
             UnifiedDebugEventStore.recordAlways(
@@ -635,6 +690,7 @@ internal object AgendaTrace {
                 details = details.take(DETAIL_LIMIT),
                 nowMillis = wallMs,
                 monotonicNs = monotonicNs,
+                diagnosticContext = diagnosticContext,
             )
         }
     }

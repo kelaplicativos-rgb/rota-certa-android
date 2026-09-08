@@ -2,6 +2,9 @@ package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
 import android.webkit.WebView
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
@@ -200,10 +203,15 @@ internal class BlaBlaBrowserOrchestrator {
         val previous = current()
         val token = startOrReuse(request, executionContext, reason)
         if (previous?.generation != token.generation) {
-            UnifiedDebugEventStore.record(
+            UnifiedDebugEventStore.recordAlways(
                 "BROWSER_REQUEST_STARTED",
                 androidContext.packageName,
                 "accountId=${executionContext.accountId.take(80)} request=${request.name} operation=${request.operation.name} token=${token.generation} sync=${executionContext.syncGeneration} nav=${executionContext.navigationGeneration} tripIdPresent=${executionContext.tripId.isNotBlank()} passengerKeyPresent=${executionContext.passengerKey.isNotBlank()}",
+                diagnosticContext = browserDiagnosticContext0507(
+                    request = request,
+                    executionContext = executionContext,
+                    result = "STARTED",
+                ),
             )
         }
         var completed = false
@@ -212,10 +220,19 @@ internal class BlaBlaBrowserOrchestrator {
                 if (completed || !isCurrent(token, currentContext())) return@postDelayed
                 completed = true
                 finish(token)
-                UnifiedDebugEventStore.record(
+                UnifiedDebugEventStore.recordAlways(
                     "BROWSER_REQUEST_TIMEOUT",
                     androidContext.packageName,
                     "accountId=${executionContext.accountId.take(80)} request=${request.name} operation=${request.operation.name} timeoutMs=$timeoutMs failClosed=true",
+                    diagnosticContext = browserDiagnosticContext0507(
+                        request = request,
+                        executionContext = executionContext,
+                        severity = DiagnosticSeverity0507.WARNING,
+                        result = "FAILED",
+                        errorCode = "BROWSER_REQUEST_TIMEOUT",
+                        reason = "timeout",
+                        durationMs = timeoutMs,
+                    ),
                 )
                 callback(null)
             }, timeoutMs)
@@ -233,6 +250,16 @@ internal class BlaBlaBrowserOrchestrator {
                 return@evaluateJavascript
             }
             completed = true
+            UnifiedDebugEventStore.recordAlways(
+                "BROWSER_REQUEST_COMPLETED",
+                androidContext.packageName,
+                "request=${request.name} operation=${request.operation.name} token=${token.generation}",
+                diagnosticContext = browserDiagnosticContext0507(
+                    request = request,
+                    executionContext = executionContext,
+                    result = "SUCCEEDED",
+                ),
+            )
             callback(encoded)
         }
         return token
@@ -265,6 +292,31 @@ internal class BlaBlaBrowserOrchestrator {
         }
     }
 
+    private fun browserDiagnosticContext0507(
+        request: BlaBlaBrowserRequest,
+        executionContext: BlaBlaBrowserExecutionContext,
+        severity: DiagnosticSeverity0507 = DiagnosticSeverity0507.INFO,
+        result: String = "",
+        errorCode: String = "",
+        reason: String = "",
+        durationMs: Long? = null,
+    ): DiagnosticEventContext0507 = DiagnosticEventContext0507(
+        parentModule = executionContext.diagnosticParentModule,
+        originModule = executionContext.diagnosticOriginModule,
+        executorModule = DiagnosticModule0507.BLABLACAR,
+        submodule = request.operation.name,
+        component = "BlaBlaBrowserOrchestrator",
+        operation = request.name,
+        severity = severity,
+        correlationId = executionContext.diagnosticCorrelationId,
+        entityType = if (executionContext.tripId.isNotBlank()) "trip" else "",
+        entityId = executionContext.tripId,
+        result = result,
+        errorCode = errorCode,
+        reason = reason,
+        durationMs = durationMs,
+    )
+
     private fun registry(context: Context): BlaBlaBrowserScriptRegistry =
         scriptRegistry ?: BlaBlaBrowserScriptRegistry(context).also { scriptRegistry = it }
 
@@ -274,10 +326,18 @@ internal class BlaBlaBrowserOrchestrator {
         executionContext: BlaBlaBrowserExecutionContext,
         reason: String,
     ) {
-        UnifiedDebugEventStore.record(
+        UnifiedDebugEventStore.recordAlways(
             "BROWSER_REQUEST_REJECTED",
             context.packageName,
             "accountId=${executionContext.accountId.take(80)} request=${request.name} operation=${request.operation.name} reason=$reason",
+            diagnosticContext = browserDiagnosticContext0507(
+                request = request,
+                executionContext = executionContext,
+                severity = DiagnosticSeverity0507.WARNING,
+                result = "REJECTED",
+                errorCode = "BROWSER_REQUEST_REJECTED",
+                reason = reason,
+            ),
         )
     }
 

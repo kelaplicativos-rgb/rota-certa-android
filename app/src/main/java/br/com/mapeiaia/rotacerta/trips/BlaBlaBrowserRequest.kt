@@ -1,5 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+
 /**
  * One browser request = one responsibility.
  *
@@ -73,6 +75,9 @@ internal data class BlaBlaBrowserExecutionContext(
     val tripId: String = "",
     val passengerKey: String = "",
     val url: String = "",
+    val diagnosticParentModule: DiagnosticModule0507 = DiagnosticModule0507.BLABLACAR,
+    val diagnosticOriginModule: DiagnosticModule0507 = diagnosticParentModule,
+    val diagnosticCorrelationId: String = "",
 )
 
 internal data class BlaBlaBrowserRequestToken(

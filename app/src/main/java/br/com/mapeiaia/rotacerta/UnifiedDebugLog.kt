@@ -44,6 +44,7 @@ object UnifiedDebugEventStore {
         val packageName: String,
         val details: String,
         val threadName: String,
+        val diagnosticContext: DiagnosticEventContext0507? = null,
     )
 
     data class Snapshot(
@@ -74,6 +75,7 @@ object UnifiedDebugEventStore {
         packageName: String?,
         details: String = "",
         nowMillis: Long = System.currentTimeMillis(),
+        diagnosticContext: DiagnosticEventContext0507? = null,
     ) {
         // Diagnostics are observational only. A sanitizer/recorder failure must
         // never escape into the business path being observed.
@@ -87,6 +89,7 @@ object UnifiedDebugEventStore {
                 details = safeDetails,
                 nowMillis = nowMillis,
                 monotonicNs = SystemClock.elapsedRealtimeNanos(),
+                diagnosticContext = diagnosticContext,
             )
         }
     }
@@ -102,6 +105,7 @@ object UnifiedDebugEventStore {
         details: String = "",
         nowMillis: Long = System.currentTimeMillis(),
         monotonicNs: Long = SystemClock.elapsedRealtimeNanos(),
+        diagnosticContext: DiagnosticEventContext0507? = null,
     ) {
         // Always-on evidence must also be fail-open. If the export sanitizer is
         // the failing component, preserve a non-sensitive fallback marker and
@@ -115,6 +119,7 @@ object UnifiedDebugEventStore {
                 details = safeDetails,
                 nowMillis = nowMillis,
                 monotonicNs = monotonicNs,
+                diagnosticContext = diagnosticContext,
             )
         }
     }
@@ -155,6 +160,13 @@ object UnifiedDebugEventStore {
                 append(" | thread=").append(event.threadName)
                 append(" | ").append(event.stage)
                 append(" | pacote=").append(event.packageName)
+                event.diagnosticContext?.let { diagnostic ->
+                    append(" | parentModule=").append(diagnostic.parentModule.name)
+                    append(" | originModule=").append(diagnostic.originModule.name)
+                    append(" | executorModule=").append(diagnostic.executorModule.name)
+                    if (diagnostic.correlationId.isNotBlank()) append(" | correlationId=").append(diagnostic.correlationId)
+                    if (diagnostic.operationId.isNotBlank()) append(" | operationId=").append(diagnostic.operationId)
+                }
                 if (event.details.isNotBlank()) append(" | ").append(event.details)
             }
         }
@@ -186,6 +198,7 @@ object UnifiedDebugEventStore {
         details: String,
         nowMillis: Long,
         monotonicNs: Long,
+        diagnosticContext: DiagnosticEventContext0507?,
     ) {
         val overheadStartNs = System.nanoTime()
         val event = SnapshotEvent(
@@ -197,6 +210,7 @@ object UnifiedDebugEventStore {
             // Do not invoke the regex sanitizer a second time here.
             details = details.take(MAX_DETAILS),
             threadName = sanitize(Thread.currentThread().name).ifBlank { "unknown" }.take(100),
+            diagnosticContext = diagnosticContext?.sanitized0507(),
         )
         synchronized(lock) {
             while (events.size >= MAX_EVENTS) {
@@ -231,8 +245,11 @@ object UnifiedDebugEventStore {
             "Bearer [segredo mascarado]",
         )
         .replace(
-            Regex("(?i)([\"']?(?:authorization|proxy-authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|password|senha|secret|client[_-]?secret|api[_-]?key|private[_-]?key|jwt|session[_-]?token|view[_-]?token|x-rota-certa-driver-token)[\"']?\\s*[:=]\\s*)(?:\"[^\"]*\"|'[^']*'|[^,|;\\s}]+)"),
+            Regex("(?i)([\"']?(?:authorization|proxy-authorization|cookie|set-cookie|token|access[_-]?token|refresh[_-]?token|password|senha|secret|client[_-]?secret|api[_-]?key|private[_-]?key|jwt|session[_-]?(?:token|id)|view[_-]?token|x-rota-certa-driver-token)[\"']?\\s*[:=]\\s*)(?:\\[[^\\]]*\\]|\"[^\"]*\"|'[^']*'|[^,|;\\s}]+)"),
         ) { match -> "${match.groupValues[1]}[segredo mascarado]" }
+        .replace(
+            Regex("(?i)([\"']?(?:address|home[_-]?address|residential[_-]?address|boarding[_-]?address|dropoff[_-]?address|latitude|longitude|coordinates|lat|lng)[\"']?\\s*[:=]\\s*)(?:\\[[^\\]]*\\]|\"[^\"]*\"|'[^']*'|[^,|;\\s}]+)"),
+        ) { match -> "${match.groupValues[1]}[local privado mascarado]" }
         .replace(
             Regex("(?<!\\d)(?:\\+?55\\s*)?(?:\\(?\\d{2}\\)?\\s*)?9?\\d{4}[-\\s]?\\d{4}(?!\\d)"),
             "[telefone mascarado]",

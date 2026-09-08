@@ -42,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.AppSettings
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.MainActivity
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.SettingsRepository
@@ -126,7 +129,7 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS }
+private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.TIMELINE ||
@@ -149,6 +152,21 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
     else -> AgendaRootSection0396.ALL_TRIPS
 }
 
+private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this) {
+    TripScreen.TIMELINE -> DiagnosticModule0507.ALL_TRIPS
+    TripScreen.ASSISTANT -> DiagnosticModule0507.ASSISTANT
+    TripScreen.AUTO_SYNC -> DiagnosticModule0507.BLABLACAR
+    TripScreen.SCRIPTS -> DiagnosticModule0507.SCRIPTS
+    TripScreen.PUBLIC_SEARCH -> DiagnosticModule0507.PUBLIC_QUERY
+    TripScreen.PASSENGERS -> DiagnosticModule0507.PASSENGERS
+    TripScreen.SETTINGS -> DiagnosticModule0507.INTEGRATIONS
+    TripScreen.APP_SETTINGS -> DiagnosticModule0507.SETTINGS
+    else -> DiagnosticModule0507.UNKNOWN
+}
+
+private fun TripScreen.hasContextualDebugReport0507(): Boolean =
+    diagnosticModule0507() != DiagnosticModule0507.UNKNOWN
+
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.TIMELINE -> "Todas as viagens"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
@@ -162,6 +180,7 @@ private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.CREATE -> "Nova viagem"
     TripScreen.SETTINGS -> "Integrações"
     TripScreen.LIST -> "Gerenciar viagem"
+    TripScreen.DEBUG_REPORT -> "Relatório de depuração"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -262,6 +281,7 @@ private fun TripApp(
     var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
     var scriptsUiCommand0488 by remember { mutableStateOf<BlaBlaScriptsCommand0488?>(null) }
     var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
+    var debugReportModule0507 by rememberSaveable { mutableStateOf(DiagnosticModule0507.ALL_TRIPS.name) }
     var selectedId by remember { mutableStateOf(initialTripId) }
     var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
@@ -479,7 +499,29 @@ private fun TripApp(
         shareScope.launch { refreshDriverNotifications() }
         Unit
     }
-    val headerActions0396 = when (screen) {
+    androidx.compose.runtime.LaunchedEffect(screen) {
+        val module0507 = screen.diagnosticModule0507()
+        if (module0507 != DiagnosticModule0507.UNKNOWN) {
+            UnifiedDebugEventStore.recordAlways(
+                "MODULE_VIEW_OPENED_0507",
+                activity.packageName,
+                "screen=${screen.name}",
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = module0507,
+                    originModule = module0507,
+                    executorModule = module0507,
+                    component = "TripsActivity",
+                    operation = "MODULE_VIEW",
+                    severity = DiagnosticSeverity0507.INFO,
+                    correlationId = traceId,
+                    traceId = traceId,
+                    result = "OPENED",
+                ),
+            )
+        }
+    }
+
+    val baseHeaderActions0396 = when (screen) {
         TripScreen.SCRIPTS -> listOf(
             AgendaHeaderAction0396("Novo script") {
                 scriptsUiCommand0488 = BlaBlaScriptsCommand0488.NEW_SCRIPT
@@ -516,12 +558,40 @@ private fun TripApp(
         )
         else -> emptyList()
     }
+    val headerActions0396 = if (screen.hasContextualDebugReport0507()) {
+        baseHeaderActions0396 + AgendaHeaderAction0396("Relatório de depuração") {
+            val module0507 = screen.diagnosticModule0507()
+            debugReportModule0507 = module0507.name
+            parentRootScreen0396 = screen
+            UnifiedDebugEventStore.recordAlways(
+                "DEBUG_REPORT_OPENED_0507",
+                activity.packageName,
+                "module=${module0507.name}",
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = module0507,
+                    originModule = module0507,
+                    executorModule = module0507,
+                    component = "TripsActivity",
+                    operation = "OPEN_DEBUG_REPORT",
+                    severity = DiagnosticSeverity0507.INFO,
+                    correlationId = traceId,
+                    traceId = traceId,
+                    result = "OPENED",
+                ),
+            )
+            screen = TripScreen.DEBUG_REPORT
+        }
+    } else {
+        baseHeaderActions0396
+    }
     val passengerSubscreenActive0396 = screen == TripScreen.PASSENGERS && passengerSubscreenOpen0396
     val headerIsRoot0396 = screen.isAgendaRoot0396() && !passengerSubscreenActive0396
-    val headerLabel0396 = if (passengerSubscreenActive0396) {
-        "Histórico do passageiro"
-    } else {
-        screen.agendaHeaderLabel0396()
+    val activeDebugModule0507 = runCatching { DiagnosticModule0507.valueOf(debugReportModule0507) }
+        .getOrDefault(DiagnosticModule0507.ALL_TRIPS)
+    val headerLabel0396 = when {
+        passengerSubscreenActive0396 -> "Histórico do passageiro"
+        screen == TripScreen.DEBUG_REPORT -> "Relatório de depuração — ${activeDebugModule0507.label}"
+        else -> screen.agendaHeaderLabel0396()
     }
     val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
     val drawerOnlineSettings0397 = store.onlineSettings()
@@ -598,7 +668,7 @@ private fun TripApp(
             },
         ) { padding ->
             Column(
-                modifier = if (screen == TripScreen.TIMELINE) {
+                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.DEBUG_REPORT) {
                     Modifier
                         .padding(padding)
                         .padding(16.dp)
@@ -622,6 +692,7 @@ private fun TripApp(
                 }
             }
             when (screen) {
+                TripScreen.DEBUG_REPORT -> ContextualDebugReportScreen0507(activeDebugModule0507)
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
                     defaultRotaCertaSeatAllocation = 0,

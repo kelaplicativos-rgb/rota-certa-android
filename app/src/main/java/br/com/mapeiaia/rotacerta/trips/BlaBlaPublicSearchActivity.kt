@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -539,6 +540,9 @@ class BlaBlaPublicSearchActivity : Activity() {
         navigationGeneration = generation,
         tripId = "public-task-$taskIndex",
         url = if (::webView.isInitialized) webView.url.orEmpty() else "",
+        diagnosticParentModule = DiagnosticModule0507.PUBLIC_QUERY,
+        diagnosticOriginModule = DiagnosticModule0507.PUBLIC_QUERY,
+        diagnosticCorrelationId = request.collectionId,
     )
 
     private fun exactSearchUrl(raw: String, task: BlaBlaPublicSearchTask): Boolean {
