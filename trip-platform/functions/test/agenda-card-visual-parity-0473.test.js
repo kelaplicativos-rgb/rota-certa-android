@@ -92,8 +92,11 @@ test("0480 expanded card date is complete and includes the four-digit year", () 
   assert.match(longDate, /agendaDateParts0496\(ms, timezoneId\)/);
   assert.match(longDate, /months\[date\.month\] \+ " de " \+ date\.year/);
 
+  const state = between(app, "function applyAgendaTripExpansionState0506", "function toggleAgendaTripDetails0480");
+  assert.match(state, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+
   const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
-  assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+  assert.match(toggle, /applyAgendaTripExpansionState0506\(card, dateNode, detailsNode, hintNode, expanded\)/);
 });
 
 

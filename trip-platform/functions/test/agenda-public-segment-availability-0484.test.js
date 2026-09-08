@@ -336,8 +336,13 @@ test("0500 A-B-C-D passengers consume every and only traversed segment", () => {
 });
 
 test("0500 public Agenda projection allowlist removes passenger/private/admin data before JSON", () => {
-  const production = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
-  const { publicTripProjection0491 } = Function(production + "\nreturn { publicTripProjection0491 };")();
+  const production = between(api, "function publicAgendaUiTripKey0506", "function canonicalPublicStop0411");
+  const { publicTripProjection0491 } = Function(
+    'function cleanText(value, max) { return String(value || "").trim().slice(0, max || 9999); }\n' +
+    'function sha256Hex() { return "0".repeat(64); }\n' +
+    production +
+    "\nreturn { publicTripProjection0491 };"
+  )();
   const projected = publicTripProjection0491({
     title: "A → B", departureAtMillis: 123, capacity: 4, status: "PUBLISHED",
     stops: [{ id: "private-stop-id", order: 0, name: "A", address: "Parada pública" }, { id: "private-stop-id-2", order: 1, name: "B" }],
