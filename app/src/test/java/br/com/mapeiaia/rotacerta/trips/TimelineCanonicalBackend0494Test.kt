@@ -457,6 +457,54 @@ class TimelineCanonicalBackend0494Test {
         assertEquals("booking-bla-canonical", projection.bookings.single().id)
     }
     @Test
+    fun testQ2_canonicalExternalBookingsDrivePassengerCountAndExistingShortcutRows() {
+        val remoteBooking = RemoteBooking(
+            id = "external-count",
+            tripId = "remote-count",
+            passengerName = "Norma",
+            passengerContact = "+5511999999999",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+            sourceReference = "BLABLACAR_SYNC:external-count",
+            fareMinorUnits = 9_300L,
+            fareCurrencyCode = "BRL",
+            boardingAddress = "Terminal Rodoviário do Tietê",
+            dropoffAddress = "Rodoviária de São Thomé das Letras",
+        )
+        val base = state(
+            canonicalId = "canonical-count",
+            revision = 15L,
+            blablaTripId = "provider-count",
+            bookings = listOf(remoteBooking),
+        ).copy(sourceSeatCounts = emptyMap())
+        val projection = canonicalTimelineProjection0494(
+            DriverTripSyncStateResponse0402(
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
+                trips = listOf(base),
+            ),
+        )
+
+        assertEquals(1, projection.entries.single().sourcePassengerSeats[BookingSource.BLABLACAR])
+        assertEquals("+5511999999999", projection.bookings.single().passengerContact)
+        assertEquals(9_300L, projection.bookings.single().fareMinorUnits)
+
+        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+        assertTrue(passengerUi.contains("it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY"))
+        assertTrue(passengerUi.contains("ic_whatsapp_action"))
+        assertTrue(passengerUi.contains("Text(\"📍\")"))
+        assertTrue(passengerUi.contains("Text(\"🏁\")"))
+        assertTrue(passengerUi.contains("Text(\"💬\")"))
+    }
+
+    @Test
     fun testQ_timelineZeroAvailabilityIsNumericWithoutLotadoSuffix() {
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
 
