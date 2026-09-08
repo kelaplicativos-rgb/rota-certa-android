@@ -871,14 +871,14 @@ class TripRemoteApi(
         )
         require(
             response.source == "CANONICAL_NATIVE_FIREWALL" &&
-                response.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
                 !response.collectorRead &&
                 !response.collectorFallback &&
                 !response.collectorDerivedData,
-        ) { "Timeline recusou payload sem firewall de proveniência nativa." }
+        ) { "Timeline recusou payload fora da Agenda canônica autenticada." }
         return response.copy(
             source = "CANONICAL_NATIVE_FIREWALL",
-            provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
             collectorRead = false,
             collectorFallback = false,
             collectorDerivedData = false,
