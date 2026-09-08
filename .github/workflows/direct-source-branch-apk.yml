@@ -208,4 +208,4 @@ jobs:
           name: rota-certa-0.1.510-canonical-segment-root-cause-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0509
+          path: /tmp/0510
