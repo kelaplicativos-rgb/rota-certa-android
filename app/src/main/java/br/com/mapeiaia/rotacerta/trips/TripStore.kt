@@ -49,7 +49,7 @@ class TripStore(context: Context) {
         val cached = decode<DriverTripSyncStateResponse0402>(prefs.getString(timelineCanonicalCacheKey0494, null))
         return cached?.takeIf {
             it.source == "CANONICAL_NATIVE_FIREWALL" &&
-                it.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                it.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
                 !it.collectorRead &&
                 !it.collectorFallback &&
                 !it.collectorDerivedData
@@ -65,12 +65,12 @@ class TripStore(context: Context) {
     ): DriverTripSyncStateResponse0402 = synchronized(CANONICAL_LOCK) {
         require(
             incoming.source == "CANONICAL_NATIVE_FIREWALL" &&
-                incoming.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+                incoming.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
                 !incoming.collectorRead &&
                 !incoming.collectorFallback &&
                 !incoming.collectorDerivedData,
         ) {
-            "Timeline aceita somente snapshot canônico filtrado por proveniência nativa."
+            "Timeline aceita somente snapshot da Agenda canônica autenticada."
         }
         val previous = timelineCanonicalCache0494()
         val previousById = previous?.trips.orEmpty().associateBy { state ->
@@ -95,7 +95,7 @@ class TripStore(context: Context) {
         val normalized = incoming.copy(
             trips = accepted,
             source = "CANONICAL_NATIVE_FIREWALL",
-            provenancePolicy0500 = "BLABLACAR_BLOCK_ALL_0500",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
             collectorRead = false,
             collectorFallback = false,
             collectorDerivedData = false,
