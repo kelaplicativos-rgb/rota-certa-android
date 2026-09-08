@@ -231,21 +231,6 @@ internal data class CanonicalTimelineProjection0494(
     val snapshotAtMillis: Long,
 )
 
-internal fun DriverTripSyncState0402.timelineCollectorContaminated0500(): Boolean =
-    blablaProfileUuid.isNotBlank() ||
-        blablaTripId.isNotBlank() ||
-        blablaPublicUrl.isNotBlank() ||
-        publishedSeats != null ||
-        sourceSeatCounts.any { (source, seats) ->
-            source.equals(BookingSource.BLABLACAR.name, ignoreCase = true) && seats > 0
-        } ||
-        bookings.any { booking ->
-            booking.source == BookingSource.BLABLACAR ||
-                booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY ||
-                booking.sourceReference.contains("BLABLACAR", ignoreCase = true) ||
-                booking.sourceReference.contains("BLABLA_SYNC", ignoreCase = true)
-        }
-
 internal fun canonicalTimelineProjection0494(
     response: DriverTripSyncStateResponse0402?,
     fallbackProfileLabel: String = "Rota Certa",
@@ -254,14 +239,13 @@ internal fun canonicalTimelineProjection0494(
     if (response == null) return CanonicalTimelineProjection0494(emptyList(), emptyList(), emptyList(), 0L)
     require(
         response.source == "CANONICAL_NATIVE_FIREWALL" &&
-            response.provenancePolicy0500 == "BLABLACAR_BLOCK_ALL_0500" &&
+            response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
             !response.collectorRead &&
             !response.collectorFallback &&
             !response.collectorDerivedData,
-    ) { "Timeline recusou datasource sem firewall de proveniência nativa: ${response.source}" }
+    ) { "Timeline recusou datasource fora da Agenda canônica: ${response.source}" }
 
     val winners = response.trips
-        .filterNot(DriverTripSyncState0402::timelineCollectorContaminated0500)
         .filter { state -> state.canonicalTripId.isNotBlank() || state.remoteTripId.isNotBlank() }
         .groupBy { state -> state.canonicalTripId.ifBlank { state.remoteTripId } }
         .mapValues { (_, candidates) ->
@@ -277,14 +261,16 @@ internal fun canonicalTimelineProjection0494(
     val projectedTrips = mutableListOf<Trip>()
     val projectedBookings = mutableListOf<Booking>()
     val projectedEntries = mutableListOf<TripTimelineEntry>()
+
     winners.forEach { state ->
         val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }
         val stops = state.stops.sortedBy(TripStop::order)
         if (canonicalId.isBlank() || stops.size < 2) return@forEach
-        val tripStatus = runCatching { TripStatus.valueOf(state.status.trim().uppercase()) }.getOrDefault(TripStatus.DRAFT)
+        val tripStatus = runCatching { TripStatus.valueOf(state.status.trim().uppercase()) }
+            .getOrDefault(TripStatus.DRAFT)
         val sourceCounts = state.sourceSeatCounts.mapNotNull { (source, seats) ->
-            runCatching { BookingSource.valueOf(source.trim().uppercase()) }.getOrNull()
-                ?.takeIf { it != BookingSource.BLABLACAR }
+            runCatching { BookingSource.valueOf(source.trim().uppercase()) }
+                .getOrNull()
                 ?.let { it to seats.coerceAtLeast(0) }
         }.toMap()
         val canonicalIssues = state.canonicalIssues.mapNotNull { issue ->
@@ -292,6 +278,7 @@ internal fun canonicalTimelineProjection0494(
         }.toSet()
         val origin = stops.first()
         val destination = stops.last()
+        val strongExternal = state.blablaProfileUuid.isNotBlank() && state.blablaTripId.isNotBlank()
         val trip = Trip(
             id = canonicalId,
             title = state.title.ifBlank { "${origin.name} → ${destination.name}" },
@@ -302,40 +289,36 @@ internal fun canonicalTimelineProjection0494(
             publicToken = state.remoteTripId.ifBlank { canonicalId },
             remoteId = state.remoteTripId.takeIf(String::isNotBlank),
             publicUrl = state.publicUrl.takeIf(String::isNotBlank),
-            blablaProfileUuid = null,
-            blablaTripId = null,
-            blablaPublicUrl = null,
+            blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaPublicUrl = state.blablaPublicUrl.takeIf(String::isNotBlank),
             publicBookingEnabled = state.publicBookingEnabled,
             itineraryAuthoritative = state.itineraryAuthoritative,
-            notes = "",
+            notes = state.notes0499,
             publicTimezoneId0411 = state.timezoneId0499,
-            publishedSeats = null,
+            publishedSeats = state.publishedSeats,
             capacityReliable = state.capacityReliable,
             rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,
-            recordOrigin = TripRecordOrigin.LOCAL,
+            recordOrigin = if (strongExternal) TripRecordOrigin.EXTERNAL_BACKING else TripRecordOrigin.LOCAL,
             canonicalRevision = state.canonicalRevision,
             publicationRevision = state.publicationRevision,
-            tripKey = state.canonicalTripId.ifBlank { canonicalId },
+            tripKey = state.tripKey,
             canonicalStateHash = state.canonicalStateHash,
             updatedAtMillis = state.updatedAtMillis.takeIf { it > 0L } ?: response.snapshotAtMillis,
         )
-        val bookings = state.bookings
-            .filterNot { remote ->
-                remote.source == BookingSource.BLABLACAR ||
-                    remote.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY ||
-                    remote.sourceReference.contains("BLABLACAR", ignoreCase = true) ||
-                    remote.sourceReference.contains("BLABLA_SYNC", ignoreCase = true)
-            }
-            .map { remote ->
-                val existingLocal = existingLocalBookings.firstOrNull { local -> local.id == remote.id }
-                remote.toLocalBooking(localTripId = canonicalId, existingLocal = existingLocal)
-            }
+        val bookings = state.bookings.map { remote ->
+            val existingLocal = existingLocalBookings.firstOrNull { local -> local.id == remote.id }
+            remote.toLocalBooking(
+                localTripId = canonicalId,
+                existingLocal = existingLocal,
+            )
+        }
         projectedTrips += trip
         projectedBookings += bookings
         projectedEntries += TripTimelineEntry(
             tripId = canonicalId,
             localTripId = canonicalId,
-            profileId = canonicalId,
+            profileId = state.blablaProfileUuid.ifBlank { canonicalId },
             profileLabel = state.driverDisplayName.ifBlank { fallbackProfileLabel },
             departureAtMillis = state.departureAtMillis,
             arrivalAtMillis = state.arrivalAtMillis.takeIf { it > 0L } ?: destination.plannedArrivalMillis,
@@ -346,14 +329,13 @@ internal fun canonicalTimelineProjection0494(
             minimumOccupiedSeats = state.minimumOccupiedSeats.coerceAtLeast(0),
             maximumOccupiedSeats = state.maximumOccupiedSeats.coerceAtLeast(0),
             sourcePassengerSeats = sourceCounts,
-            blablaTripId = null,
-            blablaTripHref = null,
-            blablaPublicHref = null,
-            blablaProfileUuid = null,
-            blablaItineraryStops = emptyList(),
-            blablaPublishedSeats = null,
+            blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaPublicHref = state.blablaPublicUrl.takeIf(String::isNotBlank),
+            blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
+            blablaItineraryStops = stops.map(TripStop::name),
+            blablaPublishedSeats = state.publishedSeats,
             blablaPassengers = emptyList(),
-            blablaPassengerRosterComplete = null,
+            blablaPassengerRosterComplete = true,
             issues = canonicalIssues,
             rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,
             operationalBlockedSeats = state.operationalBlockedSeats.coerceAtLeast(0),
@@ -373,6 +355,7 @@ internal fun canonicalTimelineProjection0494(
             publicUrl0494 = state.publicUrl,
         )
     }
+
     return CanonicalTimelineProjection0494(
         trips = projectedTrips,
         bookings = projectedBookings.distinctBy { booking -> "${booking.tripId}|${booking.id}" },
