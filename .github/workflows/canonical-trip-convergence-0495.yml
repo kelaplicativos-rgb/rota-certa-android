@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.502 Agenda vacancy full-sync revision rebase
+name: Rota Certa 0.1.503 Agenda canonical Timeline restore and revision rebase
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-segment-vacancy-dots-0502-${{ github.ref }}
+  group: agenda-canonical-timeline-0503-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,8 +24,8 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: a376f7286a126e03b248d02d1f8bebdee66425d2
-      EXPECTED_VERSION_CODE: '5794'
-      EXPECTED_VERSION_NAME: '0.1.502'
+      EXPECTED_VERSION_CODE: '5795'
+      EXPECTED_VERSION_NAME: '0.1.503'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -62,7 +62,7 @@ jobs:
           ! grep -Fq 'TripPhysicalRideConsolidator.consolidate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           ! grep -Fq 'externalSnapshot' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'CANONICAL_NATIVE_FIREWALL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
-          grep -Fq 'BLABLACAR_BLOCK_ALL_0500' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
+          grep -Fq 'AGENDA_CANONICAL_ONLY_0503' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt
           grep -Fq 'selectCanonicalTripDocuments0495' trip-platform/functions/index.js
           grep -Fq 'canonicalDepartureStops0495' trip-platform/functions/index.js
           grep -Fq 'LEGACY_TRIP_SUPERSEDED' trip-platform/functions/index.js
@@ -70,13 +70,15 @@ jobs:
           grep -Fq 'TIMELINE_CANONICAL_PASSENGER_ADD_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
           grep -Fq 'AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'USER_PULL_REFRESH' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'timelineTripHasCollectorProvenance0500' trip-platform/functions/index.js
-          grep -Fq 'timelineBookingHasCollectorProvenance0500' trip-platform/functions/index.js
+          grep -Fq 'tripPrivateMirrors0434' trip-platform/functions/index.js
+          grep -Fq 'privateMirrorCurrent0499' trip-platform/functions/index.js
+          ! grep -Fq 'timelineTripHasCollectorProvenance0500' trip-platform/functions/index.js
+          ! grep -Fq 'timelineBookingHasCollectorProvenance0500' trip-platform/functions/index.js
           grep -Fq 'collectorDerivedData: false' trip-platform/functions/index.js
           grep -Fq 'BookingSource.BLABLACAR' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'preserve_capacity_claims_project_canonical' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'fullSyncEntityRevision0502' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'PUBLIC_CAPACITY_FULL_SYNC_REBASED_0502' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'fullSyncEntityRevision0503' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_CAPACITY_FULL_SYNC_REBASED_0503' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           sha256sum "$FAROL" | tee /tmp/farol.sha256
 
       - uses: actions/setup-node@v4
@@ -279,17 +281,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0502
+          mkdir -p /tmp/0503
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          cp "$APK" "/tmp/0502/rota-certa-$EXPECTED_VERSION_NAME-agenda-segment-vacancies-revision-rebase.apk"
-          sha256sum "/tmp/0502/rota-certa-$EXPECTED_VERSION_NAME-agenda-segment-vacancies-revision-rebase.apk" | tee /tmp/0502/apk.sha256
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0502/
-          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0502/
-          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0502/
-          cp /tmp/live-health-0498.json /tmp/live-public-agenda-0500.json /tmp/live-app-0498.js /tmp/live-index-0498.html /tmp/live-smoke-0498.txt /tmp/0502/
-          cp /tmp/live-minha-area-0498.js /tmp/live-minha-area-0498.html /tmp/0502/
+          cp "$APK" "/tmp/0503/rota-certa-$EXPECTED_VERSION_NAME-agenda-canonical-timeline-revision-rebase.apk"
+          sha256sum "/tmp/0503/rota-certa-$EXPECTED_VERSION_NAME-agenda-canonical-timeline-revision-rebase.apk" | tee /tmp/0503/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0503/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0503/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0503/
+          cp /tmp/live-health-0498.json /tmp/live-public-agenda-0500.json /tmp/live-app-0498.js /tmp/live-index-0498.html /tmp/live-smoke-0498.txt /tmp/0503/
+          cp /tmp/live-minha-area-0498.js /tmp/live-minha-area-0498.html /tmp/0503/
 
-          cat > /tmp/0502/final-status.txt <<EOF
+          cat > /tmp/0503/final-status.txt <<EOF
           canonical_trip_single_authority=PASS
           collector_to_agenda=ENABLED_EXISTING_CANONICAL_PATH
           public_passenger_segments=LIVE_CANONICAL_BOOKINGS
@@ -300,14 +302,15 @@ jobs:
           public_passenger_pii=ABSENT
           public_driver_whatsapp=ABSENT
           incomplete_collector_snapshot=DOES_NOT_ZERO_VALID_OCCUPANCY
-          timeline_provenance_policy=BLABLACAR_BLOCK_ALL_0500
+          timeline_provenance_policy=AGENDA_CANONICAL_ONLY_0503
           timeline_source=CANONICAL_NATIVE_FIREWALL
           collectorRead=false
           collectorFallback=false
           collectorDerivedData=false
-          timeline_private_mirror=ABSENT
-          timeline_blabla_trip_fields=ABSENT_FROM_SERVER_PAYLOAD
-          timeline_blabla_bookings=FILTERED_FAIL_CLOSED
+          timeline_private_mirror=AUTHENTICATED_CANONICAL_HYDRATION
+          timeline_blabla_trip_fields=CANONICAL_AGENDA_PROJECTION
+          timeline_blabla_bookings=CANONICAL_AGENDA_PROJECTION
+          publication_revision_collision=AUTO_REBASE_EXISTING_OUTBOX
           canonical_identity_selector=ENFORCED
           canonical_revision_regression=REJECTED
           event_driven_timeline_refresh=PASS
@@ -325,11 +328,11 @@ jobs:
           latest=false
           physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
-          cat /tmp/0502/final-status.txt
+          cat /tmp/0503/final-status.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.502-agenda-segment-vacancies-revision-rebase-${{ github.sha }}
+          name: rota-certa-0.1.503-agenda-canonical-timeline-revision-rebase-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0502
+          path: /tmp/0503
