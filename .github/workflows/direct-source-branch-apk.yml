@@ -166,7 +166,7 @@ jobs:
           OUT=/tmp/0511
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-segment-root-cause.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-private-agenda.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
@@ -199,7 +199,10 @@ jobs:
           passenger_roster_bottom_traversal=PASS
           passenger_roster_network_subset_authority=PROHIBITED
           public_real_parity_coverage=PHYSICAL_VALIDATION_PENDING
-          timeline_private_agenda_shortcuts=RESTORED_EXISTING_UI\n          canonical_external_passenger_rows=INCLUDED\n          private_mirror_post_canonical_ack=ENABLED\n          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          timeline_private_agenda_shortcuts=RESTORED_EXISTING_UI
+          canonical_external_passenger_rows=INCLUDED
+          private_mirror_post_canonical_ack=ENABLED
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
           cat "$OUT/final-status.txt"
 
@@ -208,4 +211,4 @@ jobs:
           name: rota-certa-0.1.511-timeline-private-agenda-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0510
+          path: /tmp/0511
