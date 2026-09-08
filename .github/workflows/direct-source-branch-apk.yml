@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.509 canonical segment root-cause validation
-# 0.1.509: final validation after version-contract synchronization.
+name: Rota Certa 0.1.510 canonical segment root-cause validation
+# 0.1.510: parent-module diagnostics and collector proof after physical 0.1.509 evidence.
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: canonical-segment-root-0509-${{ github.ref }}
+  group: canonical-segment-root-0510-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: canonical_segment_0509_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: canonical_segment_0510_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5801'
-      EXPECTED_VERSION_NAME: '0.1.509'
+      EXPECTED_VERSION_CODE: '5802'
+      EXPECTED_VERSION_NAME: '0.1.510'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -156,14 +156,14 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0509.json
-          grep -Fq '"ok":true' /tmp/live-health-0509.json
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0510.json
+          grep -Fq '"ok":true' /tmp/live-health-0510.json
 
       - name: Materialize final APK and evidence
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0509
+          OUT=/tmp/0510
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-segment-root-cause.apk"
@@ -173,7 +173,7 @@ jobs:
           cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0509.json "$OUT/"
+          cp /tmp/live-health-0510.json "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
@@ -205,7 +205,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.509-canonical-segment-root-cause-${{ github.sha }}
+          name: rota-certa-0.1.510-canonical-segment-root-cause-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0509
