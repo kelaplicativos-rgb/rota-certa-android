@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.504 numeric segment vacancy regression
+name: Rota Certa 0.1.505 Timeline numeric vacancy regression
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agenda-numeric-segment-vacancy-0504-${{ github.ref }}
+  group: timeline-numeric-vacancy-0505-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,8 +24,8 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: a376f7286a126e03b248d02d1f8bebdee66425d2
-      EXPECTED_VERSION_CODE: '5796'
-      EXPECTED_VERSION_NAME: '0.1.504'
+      EXPECTED_VERSION_CODE: '5797'
+      EXPECTED_VERSION_NAME: '0.1.505'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -70,6 +70,8 @@ jobs:
           grep -Fq 'TIMELINE_CANONICAL_PASSENGER_ADD_0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
           grep -Fq 'AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'USER_PULL_REFRESH' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq '"LOTADO"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'val availabilityLabel = statusMark(entry)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'tripPrivateMirrors0434' trip-platform/functions/index.js
           grep -Fq 'privateMirrorCurrent0499' trip-platform/functions/index.js
           ! grep -Fq 'timelineTripHasCollectorProvenance0500' trip-platform/functions/index.js
@@ -281,17 +283,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/0504
+          mkdir -p /tmp/0505
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          cp "$APK" "/tmp/0504/rota-certa-$EXPECTED_VERSION_NAME-agenda-canonical-timeline-revision-rebase.apk"
-          sha256sum "/tmp/0504/rota-certa-$EXPECTED_VERSION_NAME-agenda-canonical-timeline-revision-rebase.apk" | tee /tmp/0504/apk.sha256
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0504/
-          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0504/
-          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0504/
-          cp /tmp/live-health-0498.json /tmp/live-public-agenda-0500.json /tmp/live-app-0498.js /tmp/live-index-0498.html /tmp/live-smoke-0498.txt /tmp/0504/
-          cp /tmp/live-minha-area-0498.js /tmp/live-minha-area-0498.html /tmp/0504/
+          cp "$APK" "/tmp/0505/rota-certa-$EXPECTED_VERSION_NAME-timeline-numeric-vacancy.apk"
+          sha256sum "/tmp/0505/rota-certa-$EXPECTED_VERSION_NAME-timeline-numeric-vacancy.apk" | tee /tmp/0505/apk.sha256
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt /tmp/farol.sha256 /tmp/0505/
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/android-compile.log /tmp/assemble.log /tmp/0505/
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt /tmp/0505/
+          cp /tmp/live-health-0498.json /tmp/live-public-agenda-0500.json /tmp/live-app-0498.js /tmp/live-index-0498.html /tmp/live-smoke-0498.txt /tmp/0505/
+          cp /tmp/live-minha-area-0498.js /tmp/live-minha-area-0498.html /tmp/0505/
 
-          cat > /tmp/0504/final-status.txt <<EOF
+          cat > /tmp/0505/final-status.txt <<EOF
           canonical_trip_single_authority=PASS
           collector_to_agenda=ENABLED_EXISTING_CANONICAL_PATH
           public_passenger_segments=LIVE_CANONICAL_BOOKINGS
@@ -317,6 +319,7 @@ jobs:
           polling_role=RECOVERY_ONLY
           public_agenda_invalidation=TESTED
           timeline_export_schema=3.0
+          timeline_zero_vacancy_label=NUMERIC_NO_LOTADO
           farol_untouched=PASS
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
@@ -328,11 +331,11 @@ jobs:
           latest=false
           physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
-          cat /tmp/0504/final-status.txt
+          cat /tmp/0505/final-status.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.504-numeric-segment-vacancy-${{ github.sha }}
+          name: rota-certa-0.1.505-timeline-numeric-vacancy-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0504
+          path: /tmp/0505

@@ -1629,19 +1629,19 @@ private fun TimelineEntryCard(
             val operationalInventory = publicCapacity.operationalInventory
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
                     if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
                     Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED -> {
-                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
                 }
                 TimelineOccupancyReadState.COMPLETE_EMPTY -> {
                     val emptyFree = free ?: operationalInventory ?: 0
-                    val availabilityLabel = if (emptyFree == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: $emptyFree $availabilityLabel")
                 }
                 TimelineOccupancyReadState.PENDING ->

@@ -456,4 +456,14 @@ class TimelineCanonicalBackend0494Test {
         assertEquals(BookingSource.BLABLACAR, projection.bookings.single().source)
         assertEquals("booking-bla-canonical", projection.bookings.single().id)
     }
+    @Test
+    fun testQ_timelineZeroAvailabilityIsNumericWithoutLotadoSuffix() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+
+        assertFalse(timeline.contains("\"LOTADO\""))
+        assertEquals(3, "val availabilityLabel = statusMark(entry)".toRegex().findAll(timeline).count())
+        assertTrue(timeline.contains("🪑 Vagas disponíveis: \${free ?: 0} \$availabilityLabel"))
+        assertTrue(timeline.contains("🪑 Vagas disponíveis: \$emptyFree \$availabilityLabel"))
+    }
+
 }
