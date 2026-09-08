@@ -1980,7 +1980,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         hasMore = sourceBackedResult.rosterHasMore,
                         terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
                         stablePasses = tripRosterStablePasses,
-                    ))
+                    )
                 val passengerResult = sourceBackedResult.copy(
                     detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
                 )
