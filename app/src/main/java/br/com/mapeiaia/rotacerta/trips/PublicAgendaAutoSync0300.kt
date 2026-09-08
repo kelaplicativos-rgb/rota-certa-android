@@ -1139,7 +1139,7 @@ internal object PublicAgendaAutoSync0300 {
             previousStage = "CANONICAL_SOURCE_RESOLUTION",
             nextStage = "DIAGNOSTIC_KEY_BUILD",
         ) {
-            canonical?.let { canonicalTrip ->
+            val projected = canonical?.let { canonicalTrip ->
                 toCanonicalExternalProjection0406(
                     canonical = canonicalTrip,
                     source = source,
@@ -1155,6 +1155,14 @@ internal object PublicAgendaAutoSync0300 {
                     nowMillis = nowMillis,
                 )
             }
+            val identityStore = PassengerIdentityStore(context)
+            projected?.copy(
+                capacityClaims = externalPrivateMirrorBookings0511(
+                    source = source,
+                    bookings = projected.capacityClaims,
+                    metadataLookup = identityStore::externalMetadata,
+                ),
+            )
         }
         if (synthesized == null) {
             val projectionReason0460 = if (canonical != null) {
@@ -1385,6 +1393,48 @@ internal object PublicAgendaAutoSync0300 {
             )
             throw error
         }
+        if (serverCanonicalAuthority0468 && result.canonicalRevision > 0L) {
+            val committedPrivateTrip0511 = privateMirrorTrip0434.copy(
+                canonicalRevision = result.canonicalRevision,
+                canonicalStateHash = result.canonicalStateHash,
+            )
+            val committedEvidence0511 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+                RemotePublicationEvidenceContext0421(
+                    evidenceId = publicationEvidenceId0421(traceId, result.canonicalRevision),
+                    traceId = traceId,
+                    canonicalTripId = canonicalTripId0434,
+                    logicalRevision = result.canonicalRevision,
+                    transportRevision = result.publicationRevision,
+                    mutationId = mutationId0421,
+                    idempotencyKey = idempotencyKey0421,
+                )
+            }
+            syncPrivateAgendaMirror0434(
+                api = api,
+                trip = committedPrivateTrip0511,
+                bookings = privateMirrorBookings0434,
+                operationalSnapshot = canonicalOperational0434,
+                canonicalTripId = canonicalTripId0434,
+                correlationId = outboxEventId,
+                syncOperationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+                evidence0421 = committedEvidence0511,
+            )
+            UnifiedDebugEventStore.record(
+                "TIMELINE_PRIVATE_MIRROR_COMMITTED_0511",
+                context.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId0434) +
+                    " canonicalRevision=" + result.canonicalRevision +
+                    " bookings=" + privateMirrorBookings0434.size +
+                    " privateFields=" + privateMirrorBookings0434.count {
+                        it.passengerContact.isNotBlank() ||
+                            it.fareMinorUnits != null ||
+                            it.boardingAddress.isNotBlank() ||
+                            it.dropoffAddress.isNotBlank()
+                    },
+            )
+        }
+
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_INCREMENTAL_END",
@@ -2201,6 +2251,44 @@ internal object PublicAgendaAutoSync0300 {
             val fromIndex = from?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
             val toIndex = to?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
             fromIndex >= 0 && toIndex > fromIndex
+        }
+    }
+
+    internal fun externalPrivateMirrorBookings0511(
+        source: BlaBlaCollectorTrip,
+        bookings: List<Booking>,
+        metadataLookup: (String) -> ExternalPassengerMetadata?,
+    ): List<Booking> {
+        val passengersByReservationKey = source.passengers.mapNotNull { passenger ->
+            externalPassengerReservationKey(source.profile_uuid, passenger.booking_href)
+                ?.takeIf(String::isNotBlank)
+                ?.let { key -> key to passenger }
+        }.toMap()
+
+        return bookings.map { booking ->
+            if (
+                booking.source != BookingSource.BLABLACAR ||
+                booking.capacityClaimType != CapacityClaimType.EXTERNAL_OCCUPANCY
+            ) {
+                return@map booking
+            }
+            val reservationKey = booking.sourceReference
+                .takeIf { it.startsWith(EXTERNAL_MIRROR_PREFIX) }
+                ?.removePrefix(EXTERNAL_MIRROR_PREFIX)
+                ?.takeIf(String::isNotBlank)
+                ?: return@map booking
+            val passenger = passengersByReservationKey[reservationKey]
+            val metadata = metadataLookup(reservationKey)
+            booking.copy(
+                passengerId = booking.passengerId.ifBlank { metadata?.passengerId.orEmpty() },
+                passengerContact = booking.passengerContact.ifBlank {
+                    BlaBlaCollectorPassengerModule.normalizePhone(passenger?.phone).orEmpty()
+                },
+                fareMinorUnits = booking.fareMinorUnits ?: metadata?.fareMinorUnits,
+                fareCurrencyCode = booking.fareCurrencyCode.ifBlank { metadata?.fareCurrencyCode.orEmpty() },
+                boardingAddress = booking.boardingAddress.ifBlank { metadata?.boardingAddress.orEmpty() },
+                dropoffAddress = booking.dropoffAddress.ifBlank { metadata?.dropoffAddress.orEmpty() },
+            )
         }
     }
 
