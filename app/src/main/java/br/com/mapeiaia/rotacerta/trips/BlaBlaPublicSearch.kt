@@ -47,6 +47,7 @@ data class BlaBlaPublicSearchCard(
     val tripId: String? = null,
     val profileUuid: String? = null,
     val profileUuidEvidence: String? = null,
+    val identityState: String = "PENDING_UNKNOWN",
     val currency: String? = null,
     val capturedAtMillis: Long? = null,
     val captureIndex: Int = -1,
@@ -236,14 +237,59 @@ object BlaBlaPublicSearchPlanner {
             val cardUuid = card.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
             val knownUuids = knownByName[key].orEmpty().filterNotNull().toSet()
             when {
-                knownUuids.size > 1 -> false
-                knownUuids.size == 1 -> cardUuid == knownUuids.single()
+                knownUuids.isNotEmpty() && cardUuid == null -> true
+                knownUuids.isNotEmpty() -> cardUuid in knownUuids
                 observedStrongUuids[key].orEmpty().size > 1 -> false
                 observedStrongUuids[key].orEmpty().size == 1 -> cardUuid == observedStrongUuids.getValue(key).single()
                 else -> true
             }
         }
         return dedupeUsefulCards(filtered)
+    }
+
+    data class PublicProfileIdentityResolution0507(
+        val state: String,
+        val profileUuid: String? = null,
+        val reasonCode: String,
+    )
+
+    fun resolvePublicProfileIdentity0507(
+        expectedProfileUuids: Set<String>,
+        observedProfileUuids: Set<String>,
+    ): PublicProfileIdentityResolution0507 {
+        val expected = expectedProfileUuids.map { it.trim().lowercase() }.filter(String::isNotBlank).toSet()
+        val observed = observedProfileUuids.map { it.trim().lowercase() }.filter(String::isNotBlank).toSet()
+        if (expected.isEmpty()) {
+            return PublicProfileIdentityResolution0507(
+                state = "PENDING_IDENTITY_ENRICHMENT",
+                reasonCode = "NO_CONNECTED_PROFILE_UUID",
+            )
+        }
+        if (observed.isEmpty()) {
+            return PublicProfileIdentityResolution0507(
+                state = "PENDING_IDENTITY_ENRICHMENT",
+                reasonCode = "PROFILE_UUID_NOT_OBSERVED",
+            )
+        }
+        if (observed.size != 1) {
+            return PublicProfileIdentityResolution0507(
+                state = "IDENTITY_CONFLICT",
+                reasonCode = "MULTIPLE_PUBLIC_PROFILE_UUIDS",
+            )
+        }
+        val uuid = observed.single()
+        return if (uuid in expected) {
+            PublicProfileIdentityResolution0507(
+                state = "CONFIRMED_STRONG_IDENTITY",
+                profileUuid = uuid,
+                reasonCode = "PROFILE_UUID_CONFIRMED",
+            )
+        } else {
+            PublicProfileIdentityResolution0507(
+                state = "IDENTITY_CONFLICT",
+                reasonCode = "PUBLIC_PROFILE_UUID_MISMATCH",
+            )
+        }
     }
 
     private fun dedupeUsefulCards(cards: List<BlaBlaPublicSearchCard>): List<BlaBlaPublicSearchCard> =

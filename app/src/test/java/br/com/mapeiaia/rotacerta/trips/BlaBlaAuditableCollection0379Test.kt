@@ -159,7 +159,7 @@ class BlaBlaAuditableCollection0379Test {
         val snapshot = build(response, listOf(ownProfile), listOf(trip), listOf(booking))
         val local = snapshot.reconciledTrips.single()
         assertEquals("CONFIRMED_STRONG_IDENTITY", local.reconciliation.state)
-        assertEquals(listOf("PROFILE_UUID", "TRIP_ID"), local.reconciliation.matchedBy)
+        assertEquals(listOf("BOUND_PUBLIC_TRIP_ID", "PROFILE_UUID", "PUBLIC_TRIP_HREF"), local.reconciliation.matchedBy)
         assertEquals(3, local.inventory.blablaQuotaSeats)
         assertEquals(2, local.inventory.rotaCertaQuotaSeats)
         assertEquals(5, local.inventory.operationalInventorySeats)
@@ -196,7 +196,7 @@ class BlaBlaAuditableCollection0379Test {
         )
         val snapshot = build(response, listOf(ownProfile), listOf(local("local-a", "local-a-ex"), local("local-b", "local-b-ex")))
         assertEquals(2, snapshot.reconciledTrips.size)
-        assertTrue(snapshot.reconciledTrips.all { it.reconciliation.state == "NO_STRONG_PUBLIC_MATCH" })
+        assertTrue(snapshot.reconciledTrips.all { it.reconciliation.state == "NO_MATCH" })
         assertEquals(1, snapshot.publicCards.size)
     }
 

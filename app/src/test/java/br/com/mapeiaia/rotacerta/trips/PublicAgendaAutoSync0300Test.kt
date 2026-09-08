@@ -425,3 +425,71 @@ class PublicAgendaAutoSync0300Test {
         assertEquals(0L, PublicAgendaAutoSync0300.parsePriceCents(null))
     }
 }
+
+
+class PublicAgendaCanonicalExternalResolution0507Test {
+    private fun canonical(
+        id: String,
+        profile: String,
+        canonicalProviderTripId: String,
+        snapshotProviderTripId: String,
+        publicHref: String,
+    ) = Trip(
+        id = id,
+        title = "Origin → Destination",
+        departureAtMillis = 4_000_000_000_000L,
+        status = TripStatus.PUBLISHED,
+        recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+        blablaProfileUuid = profile,
+        blablaTripId = canonicalProviderTripId,
+        blablaPublicUrl = publicHref,
+        tripKey = "tripkey:$id",
+        externalSnapshot = BlaBlaCollectorTrip(
+            profile_uuid = profile,
+            trip_id = snapshotProviderTripId,
+            public_trip_href = publicHref,
+            trip_href = "https://www.blablacar.com/rides/offer/$canonicalProviderTripId",
+        ),
+    )
+
+    @kotlin.test.Test
+    fun snapshotNamespaceBindsCanonicalEvenWhenAdministrativeTripIdDiffers() {
+        val profile = "11111111-1111-4111-8111-111111111111"
+        val canonical = canonical(
+            id = "canonical-1",
+            profile = profile,
+            canonicalProviderTripId = "administrative-trip-id",
+            snapshotProviderTripId = "public-trip-id",
+            publicHref = "https://www.blablacar.com/trip?id=public-trip-id",
+        )
+        val source = canonical.externalSnapshot!!.copy(booked_seats = 4, availability = "full")
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(canonical), source)
+        kotlin.test.assertEquals("CONFIRMED_STRONG_IDENTITY", resolution.state)
+        kotlin.test.assertEquals(canonical.id, resolution.canonical?.id)
+    }
+
+    @kotlin.test.Test
+    fun missingProfileUuidStaysPendingAndNeverFallsBackToRouteOrName() {
+        val canonical = canonical(
+            id = "canonical-1",
+            profile = "11111111-1111-4111-8111-111111111111",
+            canonicalProviderTripId = "admin",
+            snapshotProviderTripId = "public",
+            publicHref = "https://www.blablacar.com/trip?id=public",
+        )
+        val source = canonical.externalSnapshot!!.copy(profile_uuid = "", actual_departure = canonical.title, actual_arrival = canonical.title)
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(canonical), source)
+        kotlin.test.assertEquals("PENDING_IDENTITY_ENRICHMENT", resolution.state)
+        kotlin.test.assertEquals(null, resolution.canonical)
+    }
+
+    @kotlin.test.Test
+    fun twoStrongCandidatesBecomeConflictInsteadOfSilentDropOrGuess() {
+        val profile = "11111111-1111-4111-8111-111111111111"
+        val a = canonical("a", profile, "admin-a", "public-shared", "https://www.blablacar.com/trip?id=public-shared")
+        val b = canonical("b", profile, "admin-b", "public-shared", "https://www.blablacar.com/trip?id=public-shared")
+        val resolution = PublicAgendaAutoSync0300.resolveCanonicalExternalSource0507(listOf(a, b), a.externalSnapshot!!)
+        kotlin.test.assertEquals("IDENTITY_CONFLICT", resolution.state)
+        kotlin.test.assertEquals(null, resolution.canonical)
+    }
+}

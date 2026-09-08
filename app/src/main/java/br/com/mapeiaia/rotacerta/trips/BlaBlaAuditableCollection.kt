@@ -209,6 +209,8 @@ data class BlaBlaAuditSummary(
     val publicCardsFound: Int,
     val ownPublicTripsRecognized: Int,
     val reconciledLocalTrips: Int,
+    val identityPending: Int = 0,
+    val identityConflicts: Int = 0,
     val coverageComplete: Boolean,
 )
 
@@ -345,8 +347,11 @@ object BlaBlaAuditableCollectionBuilder {
                     tripId = tripId,
                     profileUuid = profileUuid,
                     identifierEvidence = evidence,
-                    ownership = if (own) BlaBlaAuditOwnership("CONFIRMED", profileUuid, listOf("PROFILE_UUID"))
-                    else BlaBlaAuditOwnership("PENDING_UNKNOWN"),
+                    ownership = when {
+                        own -> BlaBlaAuditOwnership("CONFIRMED", profileUuid, listOf("PROFILE_UUID"))
+                        card.identityState == "IDENTITY_CONFLICT" -> BlaBlaAuditOwnership("IDENTITY_CONFLICT")
+                        else -> BlaBlaAuditOwnership("PENDING_UNKNOWN")
+                    },
                     capturedAt = card.capturedAtMillis?.takeIf { it > 0 }?.let(::iso),
                     identityKind = if (tripId != null) "CANONICAL_TRIP_ID" else "COMPOSITE_FALLBACK_NON_CANONICAL",
                 ),
@@ -380,14 +385,40 @@ object BlaBlaAuditableCollectionBuilder {
             val segments = SeatAvailabilityEngine.segmentLoads(inventoryTrip, tripBookings, response.collectedAtMillis)
             val tripId = trip.blablaTripId?.trim()?.takeIf(String::isNotBlank)
             val profileUuid = strongUuid(trip.blablaProfileUuid)
-            val match = publicCards.firstOrNull { card ->
-                tripId != null && card.tripId == tripId &&
-                    (card.profileUuid == null || profileUuid == null || card.profileUuid.equals(profileUuid, true))
+            val canonicalPublicHref = trip.blablaPublicUrl
+                ?.let(BlaBlaCollectorUrlModule::canonical)
+                ?.takeIf(String::isNotBlank)
+            val boundPublicTripId = canonicalPublicHref?.let(BlaBlaCollectorUrlModule::tripId)
+            val sameProfileCards = publicCards.filter { card ->
+                profileUuid != null && card.profileUuid != null && card.profileUuid.equals(profileUuid, true)
+            }
+            val match = sameProfileCards.firstOrNull { card ->
+                val hrefMatch = canonicalPublicHref != null &&
+                    card.tripHref?.let(BlaBlaCollectorUrlModule::canonical) == canonicalPublicHref
+                val provenPublicTripIdMatch = boundPublicTripId != null && card.tripId == boundPublicTripId
+                hrefMatch || provenPublicTripIdMatch
+            }
+            val conflictingCard = publicCards.firstOrNull { card ->
+                val sameBoundPublicId = boundPublicTripId != null && card.tripId == boundPublicTripId
+                val sameHref = canonicalPublicHref != null &&
+                    card.tripHref?.let(BlaBlaCollectorUrlModule::canonical) == canonicalPublicHref
+                (sameBoundPublicId || sameHref) &&
+                    profileUuid != null &&
+                    card.profileUuid != null &&
+                    !card.profileUuid.equals(profileUuid, true)
             }
             val matchedBy = buildList {
-                if (match != null && tripId != null) add("TRIP_ID")
                 if (match?.profileUuid != null && profileUuid != null && match.profileUuid.equals(profileUuid, true)) add("PROFILE_UUID")
+                if (match != null && canonicalPublicHref != null && match.tripHref?.let(BlaBlaCollectorUrlModule::canonical) == canonicalPublicHref) add("PUBLIC_TRIP_HREF")
+                if (match != null && boundPublicTripId != null && match.tripId == boundPublicTripId) add("BOUND_PUBLIC_TRIP_ID")
             }.sorted()
+            val reconciliationState0507 = when {
+                match != null -> "CONFIRMED_STRONG_IDENTITY"
+                conflictingCard != null -> "IDENTITY_CONFLICT"
+                profileUuid == null -> "PENDING_IDENTITY_ENRICHMENT"
+                sameProfileCards.isNotEmpty() -> "PENDING_IDENTITY_ENRICHMENT"
+                else -> "NO_MATCH"
+            }
             val orderedStops = trip.stops.sortedBy(TripStop::order)
             BlaBlaAuditReconciledTrip(
                 internalTripId = trip.id,
@@ -438,9 +469,11 @@ object BlaBlaAuditableCollectionBuilder {
                         overbookingSeats = load.overbookingSeats,
                     )
                 },
-                reconciliation = if (match != null) {
-                    BlaBlaAuditReconciliation(match.tripId, matchedBy, "CONFIRMED_STRONG_IDENTITY")
-                } else BlaBlaAuditReconciliation(state = "NO_STRONG_PUBLIC_MATCH"),
+                reconciliation = BlaBlaAuditReconciliation(
+                    publicCardTripId = match?.tripId ?: conflictingCard?.tripId,
+                    matchedBy = matchedBy,
+                    state = reconciliationState0507,
+                ),
                 continuityPositionState = if (
                     orderedStops.firstOrNull()?.name?.isNotBlank() == true &&
                     orderedStops.lastOrNull()?.name?.isNotBlank() == true
@@ -472,6 +505,8 @@ object BlaBlaAuditableCollectionBuilder {
             publicCardsFound = publicCards.size,
             ownPublicTripsRecognized = publicCards.count { it.ownership.ownership == "CONFIRMED" },
             reconciledLocalTrips = reconciledTrips.size,
+            identityPending = reconciledTrips.count { it.reconciliation.state == "PENDING_IDENTITY_ENRICHMENT" },
+            identityConflicts = reconciledTrips.count { it.reconciliation.state == "IDENTITY_CONFLICT" },
             coverageComplete = expected > 0 && auditQueries.size == expected && auditQueries.all { it.status == "COMPLETE" },
         )
 

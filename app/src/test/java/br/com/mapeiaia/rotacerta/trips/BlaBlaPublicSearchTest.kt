@@ -465,3 +465,47 @@ class BlaBlaPublicSearchTest {
         )
     }
 }
+
+
+class BlaBlaPublicIdentity0507Test {
+    @kotlin.test.Test
+    fun publicCardWithoutUuidRemainsCandidateForStrongProfileEnrichment() {
+        val request = BlaBlaPublicSearchRequest(
+            targetNames = listOf("Driver"),
+            from = "Origin",
+            to = "Destination",
+            selectedDates = listOf("2030-01-01"),
+        )
+        val pending = BlaBlaPublicSearchCard(
+            driverName = "Driver",
+            date = "2030-01-01",
+            searchFrom = "Origin",
+            searchTo = "Destination",
+            tripId = "public-id",
+            profileUuid = null,
+        )
+        val result = BlaBlaPublicSearchPlanner.filterRequestedCards(
+            listOf(pending),
+            request,
+            listOf(BlaBlaPublicSearchPlanner.KnownProfile("Driver", "11111111-1111-4111-8111-111111111111")),
+        )
+        kotlin.test.assertEquals(1, result.size)
+    }
+
+    @kotlin.test.Test
+    fun sameNameDifferentUuidNeverClaimsTripWithoutConfirmedUuid() {
+        val expected = setOf("11111111-1111-4111-8111-111111111111")
+        val wrong = setOf("22222222-2222-4222-8222-222222222222")
+        val outcome = BlaBlaPublicSearchPlanner.resolvePublicProfileIdentity0507(expected, wrong)
+        kotlin.test.assertEquals("IDENTITY_CONFLICT", outcome.state)
+        kotlin.test.assertEquals(null, outcome.profileUuid)
+    }
+
+    @kotlin.test.Test
+    fun profileOpenUuidConfirmsStrongIdentity() {
+        val uuid = "11111111-1111-4111-8111-111111111111"
+        val outcome = BlaBlaPublicSearchPlanner.resolvePublicProfileIdentity0507(setOf(uuid), setOf(uuid))
+        kotlin.test.assertEquals("CONFIRMED_STRONG_IDENTITY", outcome.state)
+        kotlin.test.assertEquals(uuid, outcome.profileUuid)
+    }
+}

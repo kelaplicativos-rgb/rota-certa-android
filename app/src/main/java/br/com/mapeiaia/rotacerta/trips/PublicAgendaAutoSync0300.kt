@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import android.content.Context
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
@@ -385,12 +388,25 @@ internal object PublicAgendaAutoSync0300 {
             canonicalResponse,
             internallyCancelledExternalReservationKeys,
         )
-        val canonicalByIdentity = canonicalExternalTrips.associateBy { trip ->
-            canonicalExternalTripIdentityKey(
-                trip.blablaProfileUuid,
-                trip.blablaTripId,
-                trip.blablaManageUrl,
-            ).orEmpty()
+        canonicalExternalTrips.forEach { trip ->
+            UnifiedDebugEventStore.recordAlways(
+                "CANONICAL_TRIP_DISCOVERED",
+                context.packageName,
+                "canonicalTripId=${seatSyncDiagnosticKey(trip.tripKey.ifBlank { trip.id })} recordOrigin=${trip.recordOrigin.name} status=${trip.status.name} deleted=${trip.deleted}",
+                diagnosticContext = DiagnosticEventContext0507(
+                    parentModule = DiagnosticModule0507.BLABLACAR,
+                    originModule = DiagnosticModule0507.BLABLACAR,
+                    executorModule = DiagnosticModule0507.PUBLIC_AGENDA,
+                    component = "PublicAgendaAutoSync0300",
+                    operation = "CANONICAL_EXTERNAL_PUBLICATION",
+                    severity = DiagnosticSeverity0507.INFO,
+                    correlationId = traceId,
+                    traceId = traceId,
+                    entityType = "canonicalTripId",
+                    entityId = trip.tripKey.ifBlank { trip.id },
+                    result = "DISCOVERED",
+                ),
+            )
         }
         UnifiedDebugEventStore.record(
             "PUBLIC_AGENDA_CANONICAL_SOURCE_0406",
@@ -407,23 +423,86 @@ internal object PublicAgendaAutoSync0300 {
             traceId,
             syncOperation.operationId,
         )
-        val externalTrips = cancellationAdjusted
+        val externalProjections0507 = cancellationAdjusted
             ?.trips
             .orEmpty()
             .asSequence()
-            .filterNot(BlaBlaCollectorTrip::identity_conflict)
             .mapNotNull { source ->
-                val key = canonicalExternalTripIdentityKey(source.profile_uuid, source.trip_id, source.trip_href).orEmpty()
-                val canonical = canonicalByIdentity[key] ?: return@mapNotNull null
-                toCanonicalExternalProjection0406(
+                val resolution0507 = resolveCanonicalExternalSource0507(canonicalExternalTrips, source)
+                val canonical = resolution0507.canonical
+                if (canonical == null) {
+                    UnifiedDebugEventStore.recordAlways(
+                        "AGENDA_PARITY_MISSING",
+                        context.packageName,
+                        "reasonCode=${resolution0507.reasonCode} state=${resolution0507.state} candidates=${resolution0507.candidateCount} sourceProfileUuidPresent=${source.profile_uuid.isNotBlank()} sourceTripIdPresent=${source.trip_id.isNotBlank()}",
+                        diagnosticContext = DiagnosticEventContext0507(
+                            parentModule = DiagnosticModule0507.BLABLACAR,
+                            originModule = DiagnosticModule0507.BLABLACAR,
+                            executorModule = DiagnosticModule0507.PUBLIC_AGENDA,
+                            component = "PublicAgendaAutoSync0300",
+                            operation = "CANONICAL_EXTERNAL_PUBLICATION",
+                            severity = if (resolution0507.state == "IDENTITY_CONFLICT") DiagnosticSeverity0507.ERROR else DiagnosticSeverity0507.WARNING,
+                            correlationId = traceId,
+                            traceId = traceId,
+                            result = "SKIPPED",
+                            errorCode = resolution0507.state,
+                            reason = resolution0507.reasonCode,
+                            retryable = resolution0507.state != "IDENTITY_CONFLICT",
+                        ),
+                    )
+                    return@mapNotNull null
+                }
+                val projected = toCanonicalExternalProjection0406(
                     canonical = canonical,
                     source = source,
                     nowMillis = nowMillis,
                 )
+                if (projected == null) {
+                    UnifiedDebugEventStore.recordAlways(
+                        "AGENDA_PARITY_EXPECTED_ABSENCE",
+                        context.packageName,
+                        "reasonCode=PUBLIC_AGENDA_CANONICAL_NOT_ELIGIBLE canonicalTripId=${seatSyncDiagnosticKey(canonical.tripKey.ifBlank { canonical.id })}",
+                        diagnosticContext = DiagnosticEventContext0507(
+                            parentModule = DiagnosticModule0507.BLABLACAR,
+                            originModule = DiagnosticModule0507.BLABLACAR,
+                            executorModule = DiagnosticModule0507.PUBLIC_AGENDA,
+                            component = "PublicAgendaAutoSync0300",
+                            operation = "CANONICAL_EXTERNAL_PUBLICATION",
+                            severity = DiagnosticSeverity0507.INFO,
+                            correlationId = traceId,
+                            traceId = traceId,
+                            entityType = "canonicalTripId",
+                            entityId = canonical.tripKey.ifBlank { canonical.id },
+                            result = "EXPECTED_ABSENCE",
+                            reason = "PUBLIC_AGENDA_CANONICAL_NOT_ELIGIBLE",
+                        ),
+                    )
+                    return@mapNotNull null
+                }
+                UnifiedDebugEventStore.recordAlways(
+                    "PUBLIC_PROJECTION_ATTEMPTED",
+                    context.packageName,
+                    "canonicalTripId=${seatSyncDiagnosticKey(canonical.tripKey.ifBlank { canonical.id })} identityState=${resolution0507.state}",
+                    diagnosticContext = DiagnosticEventContext0507(
+                        parentModule = DiagnosticModule0507.BLABLACAR,
+                        originModule = DiagnosticModule0507.BLABLACAR,
+                        executorModule = DiagnosticModule0507.PUBLIC_AGENDA,
+                        component = "PublicAgendaAutoSync0300",
+                        operation = "CANONICAL_EXTERNAL_PUBLICATION",
+                        severity = DiagnosticSeverity0507.INFO,
+                        correlationId = traceId,
+                        traceId = traceId,
+                        entityType = "canonicalTripId",
+                        entityId = canonical.tripKey.ifBlank { canonical.id },
+                        result = "ATTEMPTED",
+                    ),
+                )
+                CanonicalExternalProjection0507(canonical, projected)
             }
-            .distinctBy { it.trip.tripKey.ifBlank { it.trip.id } }
+            .distinctBy { it.projected.trip.tripKey.ifBlank { it.projected.trip.id } }
             .take(100)
             .toList()
+        val externalTrips = externalProjections0507.map(CanonicalExternalProjection0507::projected)
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
 
         val existingExternalBindings = store.publicExternalBindings()
@@ -463,7 +542,8 @@ internal object PublicAgendaAutoSync0300 {
             context.packageName,
             "requested=${externalTrips.size} serverStates=${remoteSyncStates0402.size} strongIdentities=${remoteByStrongIdentity0408.size} oneBatch=true",
         )
-        externalTrips.forEachIndexed { index, synthesized ->
+        externalProjections0507.forEachIndexed { index, projection0507 ->
+            val synthesized = projection0507.projected
             val diagnosticTripKey = sha256(synthesized.trip.publicToken).take(12)
             val existingBindingHint = existingExternalBindings.firstOrNull { binding ->
                 (binding.profileUuid.equals(synthesized.profileUuid, ignoreCase = true) && binding.blablaTripId == synthesized.blablaTripId) ||
@@ -474,7 +554,7 @@ internal object PublicAgendaAutoSync0300 {
                 synthesized.blablaTripId,
                 "",
             )
-            val canonicalSource0434 = strongIdentity0408?.let { canonicalByIdentity[it] } ?: synthesized.trip
+            val canonicalSource0434 = projection0507.canonical
             val canonicalTripId0434 = canonicalSource0434.tripKey.ifBlank { canonicalSource0434.id }
             val canonicalBookings0434 = canonicalMirrorBookings0441(
                 canonicalSourceAuthoritative = true,
@@ -532,6 +612,26 @@ internal object PublicAgendaAutoSync0300 {
                 )
                 if (snapshot.published) externalPublished++
                 seatClaimsSynced += snapshot.claimsApplied
+                UnifiedDebugEventStore.recordAlways(
+                    "PUBLIC_PROJECTION_COMMITTED",
+                    context.packageName,
+                    "canonicalTripId=${seatSyncDiagnosticKey(canonicalTripId0434)} changed=${snapshot.changed} published=${snapshot.published} claims=${snapshot.claimsApplied}",
+                    diagnosticContext = DiagnosticEventContext0507(
+                        parentModule = DiagnosticModule0507.BLABLACAR,
+                        originModule = DiagnosticModule0507.BLABLACAR,
+                        executorModule = DiagnosticModule0507.PUBLIC_AGENDA,
+                        component = "PublicAgendaAutoSync0300",
+                        operation = "CANONICAL_EXTERNAL_PUBLICATION",
+                        severity = DiagnosticSeverity0507.INFO,
+                        correlationId = traceId,
+                        traceId = traceId,
+                        operationId = operation.operationId,
+                        parentOperationId = syncOperation.operationId,
+                        entityType = "canonicalTripId",
+                        entityId = canonicalTripId0434,
+                        result = if (snapshot.changed || snapshot.published) "COMMITTED" else "CURRENT",
+                    ),
+                )
                 if (snapshot.shapePreserved) preservedShapes++
                 AgendaTrace.operationEnd(
                     context,
@@ -1286,6 +1386,86 @@ internal object PublicAgendaAutoSync0300 {
             "tripKey=$tripKey changed=${result.changed} claims=${result.claimsApplied} sourceComplete=${synthesized.sourceComplete} durationMs=$elapsedMs fullSyncRequested=false",
         )
         result
+    }
+
+    internal data class CanonicalExternalSourceResolution0507(
+        val canonical: Trip?,
+        val state: String,
+        val reasonCode: String,
+        val candidateCount: Int,
+    )
+
+    internal data class CanonicalExternalProjection0507(
+        val canonical: Trip,
+        val projected: PublicAgendaExternalTrip,
+    )
+
+    internal fun resolveCanonicalExternalSource0507(
+        canonicalTrips: List<Trip>,
+        source: BlaBlaCollectorTrip,
+    ): CanonicalExternalSourceResolution0507 {
+        if (source.identity_conflict) {
+            return CanonicalExternalSourceResolution0507(
+                canonical = null,
+                state = "IDENTITY_CONFLICT",
+                reasonCode = "PUBLIC_AGENDA_IDENTITY_CONFLICT",
+                candidateCount = 0,
+            )
+        }
+        val sourceProfile = source.profile_uuid.trim().lowercase()
+        if (sourceProfile.isBlank()) {
+            return CanonicalExternalSourceResolution0507(
+                canonical = null,
+                state = "PENDING_IDENTITY_ENRICHMENT",
+                reasonCode = "PUBLIC_AGENDA_IDENTITY_PENDING",
+                candidateCount = 0,
+            )
+        }
+        val sourceTripId = source.trip_id.trim().takeIf(String::isNotBlank)
+        val sourcePublicHref = source.public_trip_href
+            ?.let(BlaBlaCollectorUrlModule::canonical)
+            ?.takeIf(String::isNotBlank)
+        val sourceManageHref = source.trip_href
+            ?.let(BlaBlaCollectorUrlModule::canonical)
+            ?.takeIf(String::isNotBlank)
+
+        val profileCandidates = canonicalTrips.filter { canonical ->
+            canonical.blablaProfileUuid?.trim()?.lowercase() == sourceProfile
+        }
+        val matches = profileCandidates.filter { canonical ->
+            val snapshot = canonical.externalSnapshot ?: return@filter false
+            if (!snapshot.profile_uuid.equals(sourceProfile, ignoreCase = true)) return@filter false
+            val snapshotTripId = snapshot.trip_id.trim().takeIf(String::isNotBlank)
+            val snapshotPublicHref = snapshot.public_trip_href
+                ?.let(BlaBlaCollectorUrlModule::canonical)
+                ?.takeIf(String::isNotBlank)
+            val snapshotManageHref = snapshot.trip_href
+                ?.let(BlaBlaCollectorUrlModule::canonical)
+                ?.takeIf(String::isNotBlank)
+            (sourceTripId != null && snapshotTripId != null && sourceTripId == snapshotTripId) ||
+                (sourcePublicHref != null && snapshotPublicHref != null && sourcePublicHref == snapshotPublicHref) ||
+                (sourceManageHref != null && snapshotManageHref != null && sourceManageHref == snapshotManageHref)
+        }
+        return when (matches.size) {
+            1 -> CanonicalExternalSourceResolution0507(
+                canonical = matches.single(),
+                state = "CONFIRMED_STRONG_IDENTITY",
+                reasonCode = "CANONICAL_SNAPSHOT_BINDING_CONFIRMED",
+                candidateCount = 1,
+            )
+            0 -> CanonicalExternalSourceResolution0507(
+                canonical = null,
+                state = if (profileCandidates.isEmpty()) "NO_MATCH" else "PENDING_IDENTITY_ENRICHMENT",
+                reasonCode = if (profileCandidates.isEmpty()) "PUBLIC_AGENDA_NO_MATCH" else "PUBLIC_AGENDA_IDENTITY_PENDING",
+                candidateCount = profileCandidates.size,
+            )
+            else -> CanonicalExternalSourceResolution0507(
+                canonical = null,
+                state = "IDENTITY_CONFLICT",
+                reasonCode = "PUBLIC_AGENDA_IDENTITY_CONFLICT",
+                candidateCount = matches.size,
+            )
+        }
     }
 
     private suspend fun syncExternalCapacitySnapshot(

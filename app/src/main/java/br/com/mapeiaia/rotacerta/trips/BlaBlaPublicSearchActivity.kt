@@ -1,6 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
 import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -47,6 +49,9 @@ private data class PublicRenderedCard(
     val text: String = "",
     val href: String? = null,
     val profileHrefs: List<String> = emptyList(),
+    val verifiedProfileUuid: String? = null,
+    val profileUuidEvidence: String? = null,
+    val identityState: String = "PENDING_UNKNOWN",
 )
 
 @Serializable
@@ -64,6 +69,43 @@ private data class PublicScrollResult(
     val afterY: Int = 0,
     val scrollHeight: Int = 0,
 )
+
+@Serializable
+private data class PublicNavigationResult0507(
+    val found: Boolean = false,
+    val clicked: Boolean = false,
+    val href: String = "",
+)
+
+@Serializable
+private data class PublicDriverProfileEvidence0507(
+    val name: String = "",
+    val photoUrl: String = "",
+    val rating: String = "",
+    val reviewCount: Int? = null,
+    val bodyText: String = "",
+    val url: String = "",
+    val profileHrefs: List<String> = emptyList(),
+)
+
+private data class PendingQueryFinalize0507(
+    val task: BlaBlaPublicSearchTask,
+    val coverageStatus: String,
+    val exact: Boolean,
+    val zeroResults: Boolean,
+    val terminal: Boolean,
+    val bodyText: String,
+    val errorStage: String?,
+    val exceptionClass: String?,
+    val exceptionMessage: String?,
+)
+
+private enum class PublicIdentityEnrichmentStage0507 {
+    NONE,
+    WAIT_TRIP,
+    WAIT_PROFILE,
+    WAIT_SEARCH,
+}
 
 @Serializable
 private data class PublicSearchCheckpoint(
@@ -105,6 +147,11 @@ class BlaBlaPublicSearchActivity : Activity() {
     private val matches = mutableListOf<BlaBlaPublicSearchCard>()
     private val queries = mutableListOf<BlaBlaPublicSearchQueryResult>()
     private val demands = mutableListOf<BlaBlaPublicSearchDemand>()
+    private var identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.NONE
+    private var identityQueue0507: List<Int> = emptyList()
+    private var identityQueuePosition0507 = 0
+    private var identitySearchUrl0507 = ""
+    private var pendingFinalize0507: PendingQueryFinalize0507? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -190,7 +237,10 @@ class BlaBlaPublicSearchActivity : Activity() {
                 super.onPageFinished(view, url)
                 val expectedGeneration = generation
                 view.postDelayed({
-                    if (expectedGeneration == generation && taskIndex < tasks.size && !captureInFlight) {
+                    if (expectedGeneration != generation || taskIndex >= tasks.size || captureInFlight) return@postDelayed
+                    if (identityEnrichmentStage0507 != PublicIdentityEnrichmentStage0507.NONE) {
+                        continueIdentityEnrichment0507(expectedGeneration)
+                    } else {
                         captureCurrentPage(expectedGeneration)
                     }
                 }, PAGE_SETTLE_MS)
@@ -375,8 +425,25 @@ class BlaBlaPublicSearchActivity : Activity() {
         errorStage: String? = null,
         exceptionClass: String? = null,
         exceptionMessage: String? = null,
+        allowIdentityEnrichment0507: Boolean = true,
     ) {
         if (taskIndex >= tasks.size) return
+        if (
+            allowIdentityEnrichment0507 &&
+            beginIdentityEnrichment0507(
+                PendingQueryFinalize0507(
+                    task = task,
+                    coverageStatus = coverageStatus,
+                    exact = exact,
+                    zeroResults = zeroResults,
+                    terminal = terminal,
+                    bodyText = bodyText,
+                    errorStage = errorStage,
+                    exceptionClass = exceptionClass,
+                    exceptionMessage = exceptionMessage,
+                ),
+            )
+        ) return
         val queryId = publicSearchQueryId(request, task)
         val direction = publicSearchDirectionName(request, task)
         val demand = if (exact && bodyText.isNotBlank()) {
@@ -424,6 +491,252 @@ class BlaBlaPublicSearchActivity : Activity() {
         )
         persistCheckpoint()
         advance()
+    }
+
+    private fun beginIdentityEnrichment0507(pending: PendingQueryFinalize0507): Boolean {
+        if (identityEnrichmentStage0507 != PublicIdentityEnrichmentStage0507.NONE) return true
+        val queue = taskCards.indices.filter { index ->
+            val card = taskCards[index]
+            val directUuid = strongPublicProfileUuid(card.profileHrefs)
+            directUuid == null &&
+                card.verifiedProfileUuid.isNullOrBlank() &&
+                expectedProfileUuids0507(card.driverName).isNotEmpty()
+        }
+        if (queue.isEmpty()) return false
+
+        pendingFinalize0507 = pending
+        identityQueue0507 = queue
+        identityQueuePosition0507 = 0
+        identitySearchUrl0507 = webView.url.orEmpty()
+            .takeIf { exactSearchUrl(it, pending.task) }
+            ?: BlaBlaPublicPlaceDirectory.searchUrl(pending.task).orEmpty()
+        identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.WAIT_SEARCH
+        recordIdentityEvent0507(
+            stage = "BLABLACAR_PUBLIC_IDENTITY_ENRICHMENT_STARTED",
+            card = taskCards[queue.first()],
+            result = "STARTED",
+            reason = "public_card_missing_profile_uuid",
+        )
+        openNextIdentityCandidate0507()
+        return true
+    }
+
+    private fun continueIdentityEnrichment0507(expectedGeneration: Long) {
+        if (expectedGeneration != generation || taskIndex >= tasks.size || captureInFlight) return
+        when (identityEnrichmentStage0507) {
+            PublicIdentityEnrichmentStage0507.WAIT_TRIP -> openPublicDriverProfile0507()
+            PublicIdentityEnrichmentStage0507.WAIT_PROFILE -> capturePublicDriverProfile0507()
+            PublicIdentityEnrichmentStage0507.WAIT_SEARCH -> openNextIdentityCandidate0507()
+            PublicIdentityEnrichmentStage0507.NONE -> Unit
+        }
+    }
+
+    private fun openNextIdentityCandidate0507() {
+        val pending = pendingFinalize0507 ?: return
+        if (identityQueuePosition0507 >= identityQueue0507.size) {
+            finishIdentityEnrichment0507()
+            return
+        }
+        val index = identityQueue0507[identityQueuePosition0507]
+        val card = taskCards.getOrNull(index) ?: run {
+            identityQueuePosition0507++
+            openNextIdentityCandidate0507()
+            return
+        }
+        val resultIndex = card.cardIndex.takeIf { it >= 0 } ?: index
+        identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.WAIT_TRIP
+        captureInFlight = true
+        recordIdentityEvent0507(
+            stage = "BLABLACAR_PUBLIC_CANDIDATE_FOUND",
+            card = card,
+            result = "PENDING",
+            reason = "name_discovery_only_requires_profile_uuid",
+        )
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = webView,
+            request = BlaBlaBrowserRequest.PUBLIC_RESULT_OPEN,
+            executionContext = publicBrowserContext(),
+            currentContext = ::publicBrowserContext,
+            deserializer = PublicNavigationResult0507.serializer(),
+            arguments = mapOf("RESULT_INDEX" to resultIndex.toString()),
+            reason = "identity_enrichment_open_public_result",
+        ) { nav ->
+            captureInFlight = false
+            if (nav?.clicked != true) {
+                markIdentityPending0507(card, "PUBLIC_RESULT_OPEN_FAILED")
+                returnToSearchForNextIdentity0507()
+            }
+        }
+    }
+
+    private fun openPublicDriverProfile0507() {
+        val index = identityQueue0507.getOrNull(identityQueuePosition0507) ?: return
+        val card = taskCards.getOrNull(index) ?: return
+        identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.WAIT_PROFILE
+        captureInFlight = true
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = webView,
+            request = BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE_OPEN,
+            executionContext = publicBrowserContext(),
+            currentContext = ::publicBrowserContext,
+            deserializer = PublicNavigationResult0507.serializer(),
+            arguments = mapOf("DRIVER_NAME" to json.encodeToString(card.driverName)),
+            reason = "identity_enrichment_open_public_profile",
+        ) { nav ->
+            captureInFlight = false
+            if (nav?.clicked == true) {
+                recordIdentityEvent0507(
+                    stage = "BLABLACAR_PUBLIC_PROFILE_OPENED",
+                    card = card,
+                    result = "SUCCEEDED",
+                )
+            } else {
+                markIdentityPending0507(card, "PUBLIC_DRIVER_PROFILE_OPEN_FAILED")
+                returnToSearchForNextIdentity0507()
+            }
+        }
+    }
+
+    private fun capturePublicDriverProfile0507() {
+        val index = identityQueue0507.getOrNull(identityQueuePosition0507) ?: return
+        val card = taskCards.getOrNull(index) ?: return
+        captureInFlight = true
+        browserOrchestrator.executeCollectionStep(
+            androidContext = this,
+            webView = webView,
+            request = BlaBlaBrowserRequest.PUBLIC_DRIVER_PROFILE,
+            executionContext = publicBrowserContext(),
+            currentContext = ::publicBrowserContext,
+            deserializer = PublicDriverProfileEvidence0507.serializer(),
+            reason = "identity_enrichment_capture_profile_uuid",
+        ) { evidence ->
+            captureInFlight = false
+            val observed = evidence?.let {
+                BlaBlaCollectorIdentityModule.uuids(
+                    (listOf(it.url) + it.profileHrefs).filter(String::isNotBlank),
+                )
+            }.orEmpty()
+            val resolution = BlaBlaPublicSearchPlanner.resolvePublicProfileIdentity0507(
+                expectedProfileUuids = expectedProfileUuids0507(card.driverName),
+                observedProfileUuids = observed,
+            )
+            taskCards[index] = card.copy(
+                verifiedProfileUuid = resolution.profileUuid,
+                profileUuidEvidence = resolution.profileUuid?.let { "PUBLIC_PROFILE_OPEN_UUID" },
+                identityState = resolution.state,
+            )
+            when (resolution.state) {
+                "CONFIRMED_STRONG_IDENTITY" -> recordIdentityEvent0507(
+                    stage = "BLABLACAR_PUBLIC_PROFILE_UUID_CONFIRMED",
+                    card = taskCards[index],
+                    result = "CONFIRMED",
+                    reason = resolution.reasonCode,
+                )
+                "IDENTITY_CONFLICT" -> recordIdentityEvent0507(
+                    stage = "BLABLACAR_PUBLIC_IDENTITY_CONFLICT",
+                    card = taskCards[index],
+                    result = "FAILED",
+                    errorCode = "PUBLIC_PROFILE_IDENTITY_CONFLICT",
+                    reason = resolution.reasonCode,
+                    severity = DiagnosticSeverity0507.WARNING,
+                )
+                else -> markIdentityPending0507(taskCards[index], resolution.reasonCode)
+            }
+            returnToSearchForNextIdentity0507()
+        }
+    }
+
+    private fun markIdentityPending0507(card: PublicRenderedCard, reason: String) {
+        val index = identityQueue0507.getOrNull(identityQueuePosition0507)
+        if (index != null && index in taskCards.indices) {
+            taskCards[index] = card.copy(identityState = "PENDING_IDENTITY_ENRICHMENT")
+        }
+        recordIdentityEvent0507(
+            stage = "BLABLACAR_PUBLIC_IDENTITY_PENDING",
+            card = card,
+            result = "PENDING",
+            reason = reason,
+            severity = DiagnosticSeverity0507.WARNING,
+        )
+    }
+
+    private fun returnToSearchForNextIdentity0507() {
+        identityQueuePosition0507++
+        if (identityQueuePosition0507 >= identityQueue0507.size) {
+            finishIdentityEnrichment0507()
+            return
+        }
+        identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.WAIT_SEARCH
+        if (identitySearchUrl0507.isBlank()) {
+            finishIdentityEnrichment0507()
+        } else {
+            webView.loadUrl(identitySearchUrl0507)
+        }
+    }
+
+    private fun finishIdentityEnrichment0507() {
+        val pending = pendingFinalize0507 ?: return
+        identityEnrichmentStage0507 = PublicIdentityEnrichmentStage0507.NONE
+        identityQueue0507 = emptyList()
+        identityQueuePosition0507 = 0
+        identitySearchUrl0507 = ""
+        pendingFinalize0507 = null
+        finalizeQuery(
+            task = pending.task,
+            coverageStatus = pending.coverageStatus,
+            exact = pending.exact,
+            zeroResults = pending.zeroResults,
+            terminal = pending.terminal,
+            bodyText = pending.bodyText,
+            errorStage = pending.errorStage,
+            exceptionClass = pending.exceptionClass,
+            exceptionMessage = pending.exceptionMessage,
+            allowIdentityEnrichment0507 = false,
+        )
+    }
+
+    private fun expectedProfileUuids0507(driverName: String): Set<String> {
+        val wanted = BlaBlaPublicSearchPlanner.normalizePerson(driverName)
+        if (wanted.isBlank()) return emptySet()
+        return BlaBlaDynamicAccountRegistry(this).list()
+            .filter { account ->
+                val display = account.profileName?.trim().takeUnless { it.isNullOrBlank() } ?: account.displayLabel
+                BlaBlaPublicSearchPlanner.normalizePerson(display) == wanted
+            }
+            .mapNotNull { it.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank) }
+            .toSet()
+    }
+
+    private fun recordIdentityEvent0507(
+        stage: String,
+        card: PublicRenderedCard,
+        result: String,
+        errorCode: String = "",
+        reason: String = "",
+        severity: DiagnosticSeverity0507 = DiagnosticSeverity0507.INFO,
+    ) {
+        UnifiedDebugEventStore.recordAlways(
+            stage,
+            packageName,
+            "tripIdPresent=${!card.href?.let(BlaBlaCollectorUrlModule::tripId).isNullOrBlank()} profileUuidPresent=${!card.verifiedProfileUuid.isNullOrBlank()} identityState=${card.identityState}",
+            diagnosticContext = DiagnosticEventContext0507(
+                parentModule = DiagnosticModule0507.PUBLIC_QUERY,
+                originModule = DiagnosticModule0507.PUBLIC_QUERY,
+                executorModule = DiagnosticModule0507.BLABLACAR,
+                submodule = "PUBLIC_IDENTITY",
+                component = "BlaBlaPublicSearchActivity",
+                operation = "PUBLIC_PROFILE_IDENTITY_ENRICHMENT",
+                severity = severity,
+                correlationId = request.collectionId,
+                entityType = "public_trip_candidate",
+                entityId = card.href?.let(BlaBlaCollectorUrlModule::tripId).orEmpty(),
+                result = result,
+                errorCode = errorCode,
+                reason = reason,
+            ),
+        )
     }
 
     private fun advance() {
@@ -601,8 +914,15 @@ class BlaBlaPublicSearchActivity : Activity() {
             queryId = queryId,
             direction = direction,
             tripId = href?.let(BlaBlaCollectorUrlModule::tripId),
-            profileUuid = strongPublicProfileUuid(profileHrefs),
-            profileUuidEvidence = strongPublicProfileUuid(profileHrefs)?.let { "PUBLIC_CARD_PROFILE_LINK" },
+            profileUuid = verifiedProfileUuid ?: strongPublicProfileUuid(profileHrefs),
+            profileUuidEvidence = profileUuidEvidence
+                ?: strongPublicProfileUuid(profileHrefs)?.let { "PUBLIC_CARD_PROFILE_LINK" },
+            identityState = when {
+                !verifiedProfileUuid.isNullOrBlank() -> "CONFIRMED_STRONG_IDENTITY"
+                strongPublicProfileUuid(profileHrefs) != null -> "CONFIRMED_STRONG_IDENTITY"
+                identityState == "IDENTITY_CONFLICT" -> "IDENTITY_CONFLICT"
+                else -> "PENDING_IDENTITY_ENRICHMENT"
+            },
             currency = cleanCurrency(priceText),
             capturedAtMillis = capturedAtMillis,
             captureIndex = cardIndex.takeIf { it >= 0 } ?: index,
