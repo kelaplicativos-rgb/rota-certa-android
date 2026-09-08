@@ -444,8 +444,13 @@ class PublicAgendaCanonicalExternalResolution0507Test {
         blablaTripId = canonicalProviderTripId,
         blablaPublicUrl = publicHref,
         tripKey = "tripkey:$id",
+        stops = listOf(
+            TripStop(id = "$id-origin", order = 0, name = "Origin"),
+            TripStop(id = "$id-destination", order = 1, name = "Destination"),
+        ),
         externalSnapshot = BlaBlaCollectorTrip(
             profile_uuid = profile,
+            date = "2030-01-01",
             trip_id = snapshotProviderTripId,
             public_trip_href = publicHref,
             trip_href = "https://www.blablacar.com/rides/offer/$canonicalProviderTripId",
