@@ -1126,7 +1126,10 @@ internal fun enhancedPassengerRows(
         val stops = trip.stops.associateBy(TripStop::id)
         val local = (localBookingsSnapshot0394 ?: store.bookingsFor(trip.id))
             .filter { it.tripId == trip.id }
-            .filter { it.capacityClaimType == CapacityClaimType.PASSENGER }
+            .filter {
+                it.capacityClaimType == CapacityClaimType.PASSENGER ||
+                    it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY
+            }
             .filter { it.status == BookingStatus.CONFIRMED || it.status == BookingStatus.HELD }
             .filter { it.seats > 0 }
 
