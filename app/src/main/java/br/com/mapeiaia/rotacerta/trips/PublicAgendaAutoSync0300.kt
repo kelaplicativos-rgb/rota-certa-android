@@ -1312,6 +1312,11 @@ internal object PublicAgendaAutoSync0300 {
             ?: store.publicExternalBindingForStrongIdentity(synthesized.profileUuid, synthesized.blablaTripId)
             ?: store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
 
+        var effectiveEntityRevision0502 = fullSyncEntityRevision0502(
+            explicitEntityRevision = entityRevision,
+            remotePublicationRevision = remoteStateHint0402?.publicationRevision ?: 0L,
+        )
+
         if (!synthesized.sourceComplete) {
             if (serverCanonicalAuthority0468 && existingBinding == null) {
                 error("SERVER_CANONICAL_INGESTION_REQUIRES_COMPLETE_INITIAL_SNAPSHOT")
@@ -1379,10 +1384,6 @@ internal object PublicAgendaAutoSync0300 {
         var remoteTripId = remoteStateHint0402?.remoteTripId ?: existingBinding?.remoteTripId ?: publicTrip.publicToken
         val observedStopIds = publicTrip.stops.sortedBy(TripStop::order).map(TripStop::id)
         var effectiveTrip = publicTrip.copy(remoteId = remoteTripId)
-        var effectiveEntityRevision0502 = fullSyncEntityRevision0502(
-            explicitEntityRevision = entityRevision,
-            remotePublicationRevision = remoteStateHint0402?.publicationRevision ?: 0L,
-        )
         var effectiveClaims = if (synthesized.sourceComplete) synthesized.capacityClaims else emptyList()
         var shapePreserved = false
         var createdPlaceholder = false
