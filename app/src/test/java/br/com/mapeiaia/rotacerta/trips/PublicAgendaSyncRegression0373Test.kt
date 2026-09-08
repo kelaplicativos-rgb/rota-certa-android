@@ -330,6 +330,20 @@ class PublicAgendaSyncRegression0373Test {
     }
 
     @Test
+    fun fullSyncRebasesStalePublicProjectionWithoutOverridingExplicitOutboxRevision() {
+        assertEquals(0L, fullSyncEntityRevision0502(explicitEntityRevision = 0L, remotePublicationRevision = 0L))
+        assertEquals(17L, fullSyncEntityRevision0502(explicitEntityRevision = 0L, remotePublicationRevision = 17L))
+        assertEquals(9L, fullSyncEntityRevision0502(explicitEntityRevision = 9L, remotePublicationRevision = 17L))
+
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt").readText()
+        assertEquals(2, Regex("PUBLIC_CAPACITY_FULL_SYNC_REBASED_0502").findAll(source).count())
+        assertTrue(source.contains("response.stale &&\n            entityRevision <= 0L &&\n            outboxEventId.isBlank()"))
+        assertTrue(source.contains("remotePublicationRevision = remoteStateHint0402?.publicationRevision ?: 0L"))
+        assertTrue(source.contains("entityRevision = effectiveEntityRevision0502"))
+        assertTrue(source.contains("throw PublicationStaleRevision0387(response.entityRevision)"))
+    }
+
+    @Test
     fun firebaseBookingServiceNeverBlocksItsDeliveryThread() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt").readText()
         assertFalse(source.contains("runBlocking"))
