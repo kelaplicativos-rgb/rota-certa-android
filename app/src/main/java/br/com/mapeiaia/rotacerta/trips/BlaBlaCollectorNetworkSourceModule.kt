@@ -135,7 +135,10 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
             tripId = sourceTripId,
             bookings = resolved,
             itineraryStops = itineraryStops,
-            itineraryAuthoritative = evidence.waypointsComplete && itineraryStops.size >= 2,
+            // root.waypoints is observed on the booking-management payload. Runtime evidence
+            // proves its size changes with the booking set for the same strong trip identity,
+            // so it is useful route evidence but cannot define the complete published itinerary.
+            itineraryAuthoritative = false,
         )
     }
 

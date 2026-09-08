@@ -115,18 +115,27 @@
   });
   const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
   const rosterTerminalEvidence = !!edit || rosterContainers.length > 0 || document.readyState === 'complete';
+  const placeKey = (value) => clean(value)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const samePlace = (left, right) => {
+    const a = placeKey(left);
+    const b = placeKey(right);
+    return !!a && !!b && (a === b || a.startsWith(b + ' ') || b.startsWith(a + ' '));
+  };
+  const itineraryNodes = Array.from(document.querySelectorAll(
+    '[data-testid*="itinerary-departure-station"], [data-testid*="itinerary-stop"], [data-testid*="station"], [data-testid*="itinerary-arrival-station"]'
+  ));
   const itineraryStops = [];
-  [
-    '[data-testid*="itinerary-departure-station"]',
-    '[data-testid*="itinerary-arrival-station"]',
-    '[data-testid*="itinerary-stop"]',
-    '[data-testid*="station"]'
-  ].forEach((selector) => {
-    Array.from(document.querySelectorAll(selector)).forEach((node) => {
-      const value = clean(node.innerText);
-      if (value && !itineraryStops.includes(value)) itineraryStops.push(value);
-    });
+  itineraryNodes.forEach((node) => {
+    const value = clean(node.innerText);
+    if (value && itineraryStops[itineraryStops.length - 1] !== value) itineraryStops.push(value);
   });
+  const observedOrigin = first(['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']);
+  const observedDestination = first(['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']);
+  const itineraryAuthoritative = itineraryStops.length >= 2 &&
+    samePlace(itineraryStops[0], observedOrigin) &&
+    samePlace(itineraryStops[itineraryStops.length - 1], observedDestination);
   const pageText = clean(document.body && document.body.innerText);
   const viewsMatch = pageText.match(/(\d{1,9})\s+visualiza(?:ç|c)[õo]es/i);
   const views = viewsMatch ? parseInt(viewsMatch[1], 10) : null;
@@ -213,6 +222,7 @@ const html = clone.outerHTML || '';
     editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
     publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
+    itineraryAuthoritative: itineraryAuthoritative,
     views: Number.isFinite(views) ? views : null,
     domHtml: html.slice(0, 350000)
   });

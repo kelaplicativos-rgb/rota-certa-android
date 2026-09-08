@@ -96,6 +96,37 @@ class CanonicalPassengerSegments0491Test {
         assertEquals(listOf(2, 2, 1), available(trip, listOf(base, changed)))
     }
 
+
+    @Test
+    fun fiveStopOverlapProofIsContinuousAndIdempotent() {
+        val proofStops = listOf(
+            TripStop(id = "0", order = 0, name = "A"),
+            TripStop(id = "1", order = 1, name = "B"),
+            TripStop(id = "2", order = 2, name = "C"),
+            TripStop(id = "3", order = 3, name = "D"),
+            TripStop(id = "4", order = 4, name = "E"),
+        )
+        val proofTrip = Trip(
+            id = "proof-trip",
+            title = "A → E",
+            departureAtMillis = 2_000_000_000_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = proofStops,
+        )
+        val bookings = listOf(
+            Booking(id = "r1", tripId = proofTrip.id, passengerId = "r1", passengerName = "R1", boardingStopId = "0", dropoffStopId = "2", seats = 3, status = BookingStatus.CONFIRMED),
+            Booking(id = "r2", tripId = proofTrip.id, passengerId = "r2", passengerName = "R2", boardingStopId = "1", dropoffStopId = "4", seats = 1, status = BookingStatus.CONFIRMED),
+            Booking(id = "r3", tripId = proofTrip.id, passengerId = "r3", passengerName = "R3", boardingStopId = "2", dropoffStopId = "4", seats = 1, status = BookingStatus.CONFIRMED),
+        )
+
+        val first = SeatAvailabilityEngine.segmentLoads(proofTrip, bookings)
+        val replay = SeatAvailabilityEngine.segmentLoads(proofTrip, bookings)
+        assertEquals(listOf(3, 4, 2, 2), first.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(1, 0, 2, 2), first.map(SegmentLoad::availableSeats))
+        assertEquals(first, replay)
+    }
+
     @Test
     fun manualAndExternalTripsUseTheSamePassengerBookingIdentityWithoutCreatingAnotherTrip() {
         val local = trip()

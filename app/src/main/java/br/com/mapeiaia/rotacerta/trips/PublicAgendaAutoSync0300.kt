@@ -2039,7 +2039,9 @@ internal object PublicAgendaAutoSync0300 {
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),
             blablaPublicHref = projectedTrip.blablaPublicUrl.orEmpty(),
-            sourceComplete = verifiedPublishedSeats != null && source.passenger_roster_complete,
+            sourceComplete = verifiedPublishedSeats != null &&
+                source.passenger_roster_complete &&
+                externalPassengerSegmentsResolved(source, projectedTrip),
             snapshotRevision = canonical.externalSnapshotFingerprint.ifBlank {
                 externalCapacitySnapshotRevision(source, allocation)
             },
@@ -2137,7 +2139,9 @@ internal object PublicAgendaAutoSync0300 {
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),
             blablaPublicHref = trip.blablaPublicUrl.orEmpty(),
-            sourceComplete = verifiedPublishedSeats != null && source.passenger_roster_complete,
+            sourceComplete = verifiedPublishedSeats != null &&
+                source.passenger_roster_complete &&
+                externalPassengerSegmentsResolved(source, trip),
             snapshotRevision = externalCapacitySnapshotRevision(source, rotaCertaSeatAllocation),
             realAvailableSeats = (safeCapacity - booked).coerceAtLeast(0),
         )
@@ -2149,23 +2153,55 @@ internal object PublicAgendaAutoSync0300 {
         itineraryStops: List<String>,
     ): List<String> {
         val result = mutableListOf<String>()
+
+        fun equivalentBoundaryObservation(left: String, right: String): Boolean {
+            if (normalizeStopEvidence(left) == normalizeStopEvidence(right)) return true
+            val sameShortPlace = normalizePlace(left).isNotBlank() && normalizePlace(left) == normalizePlace(right)
+            val oneSideIsDetailed = left.contains(',') xor right.contains(',')
+            return sameShortPlace && oneSideIsDetailed
+        }
+
         fun addObserved(raw: String) {
             val value = raw.trim().takeIf(String::isNotBlank) ?: return
-            val key = normalizePlace(value)
-            if (key.isBlank() || result.any { normalizePlace(it) == key }) return
+            if (result.lastOrNull()?.let { equivalentBoundaryObservation(it, value) } == true) return
             result += value
         }
+
         addObserved(origin)
         itineraryStops.forEach(::addObserved)
         addObserved(destination)
+        return result
+    }
 
-        val originKey = normalizePlace(origin)
-        val destinationKey = normalizePlace(destination)
-        val middle = result.filter {
-            val key = normalizePlace(it)
-            key != originKey && key != destinationKey
+    private fun externalStopFor(stops: List<TripStop>, label: String?): TripStop? {
+        val raw = label?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val exactKey = normalizeStopEvidence(raw)
+        val exact = stops.filter { stop ->
+            normalizeStopEvidence(stop.name) == exactKey || normalizeStopEvidence(stop.address) == exactKey
         }
-        return listOf(origin) + middle + listOf(destination)
+        if (exact.size == 1) return exact.single()
+
+        val shortKey = normalizePlace(raw)
+        if (shortKey.isBlank()) return null
+        val short = stops.filter { stop ->
+            normalizePlace(stop.name) == shortKey || normalizePlace(stop.address) == shortKey
+        }
+        return short.singleOrNull()
+    }
+
+    internal fun externalPassengerSegmentsResolved(
+        source: BlaBlaCollectorTrip,
+        trip: Trip,
+    ): Boolean {
+        val stops = trip.stops.sortedBy(TripStop::order)
+        if (stops.size < 2) return false
+        return source.passengers.all { passenger ->
+            val from = externalStopFor(stops, passenger.boarding)
+            val to = externalStopFor(stops, passenger.dropoff)
+            val fromIndex = from?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            val toIndex = to?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
+            fromIndex >= 0 && toIndex > fromIndex
+        }
     }
 
     internal fun externalCapacityClaims(
@@ -2178,11 +2214,6 @@ internal object PublicAgendaAutoSync0300 {
         if (stops.size < 2 || bookedSeats <= 0) return emptyList()
         val first = stops.first()
         val last = stops.last()
-        fun stopFor(label: String?): TripStop? {
-            val key = label?.takeIf(String::isNotBlank)?.let(::normalizePlace).orEmpty()
-            if (key.isBlank()) return null
-            return stops.firstOrNull { normalizePlace(it.name) == key || normalizePlace(it.address) == key }
-        }
 
         val claims = mutableListOf<Booking>()
         var representedSeats = 0
@@ -2190,8 +2221,8 @@ internal object PublicAgendaAutoSync0300 {
             val seats = passenger.seats.coerceAtLeast(1)
             if (representedSeats >= bookedSeats) return@forEachIndexed
             val effectiveSeats = seats.coerceAtMost(bookedSeats - representedSeats)
-            val from = stopFor(passenger.boarding)
-            val to = stopFor(passenger.dropoff)
+            val from = externalStopFor(stops, passenger.boarding)
+            val to = externalStopFor(stops, passenger.dropoff)
             val fromIndex = from?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
             val toIndex = to?.let { stop -> stops.indexOfFirst { it.id == stop.id } } ?: -1
             val boarding = if (fromIndex >= 0 && toIndex > fromIndex) from!! else first
@@ -2302,6 +2333,13 @@ internal object PublicAgendaAutoSync0300 {
 
     private fun normalizePlace(value: String): String = java.text.Normalizer
         .normalize(shortPlace(value), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    private fun normalizeStopEvidence(value: String): String = java.text.Normalizer
+        .normalize(value.trim(), java.text.Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")
         .lowercase()
         .replace(Regex("[^a-z0-9]+"), " ")

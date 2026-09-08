@@ -1928,21 +1928,20 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 )
             }
             val sourceBackedResult = (networkResolution?.let { resolution ->
+                // The trip-bound network response is high-quality passenger enrichment, but its
+                // bookings/waypoints arrays are not proof that the whole roster or itinerary was
+                // returned. Preserve the structural DOM evidence and merge identities monotonically.
+                val mergedPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+                    result.detail.passengers + resolution.passengers,
+                )
                 result.copy(
-                    detail = result.detail.copy(
-                        passengers = resolution.passengers,
-                        passengerRosterComplete = true,
-                    ),
-                    passengerHrefs = resolution.passengers.mapNotNull { passenger -> passenger.booking_href },
-                    explicitEmptyRoster = resolution.explicitEmpty,
-                    rosterHasMore = false,
-                    rosterTerminalEvidence = true,
-                    itineraryStops = if (resolution.itineraryAuthoritative) {
-                        resolution.itineraryStops
-                    } else {
-                        result.itineraryStops
-                    },
-                    itineraryAuthoritative = resolution.itineraryAuthoritative,
+                    detail = result.detail.copy(passengers = mergedPassengers),
+                    passengerHrefs = (
+                        result.passengerHrefs +
+                            resolution.passengers.mapNotNull { passenger -> passenger.booking_href }
+                        ).distinct(),
+                    itineraryStops = result.itineraryStops,
+                    itineraryAuthoritative = result.itineraryAuthoritative,
                 )
             } ?: result).let { source ->
                 source.copy(
@@ -1973,8 +1972,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     readAttempts = tripRosterReadAttempts,
                     maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
                 )
-                val confirmedRosterComplete = networkResolution != null ||
-                    (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                val confirmedRosterComplete =
+                    !awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
                         passengerCount = sourceBackedResult.detail.passengers.size,
                         structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
                         explicitEmpty = sourceBackedResult.explicitEmptyRoster,
@@ -3095,7 +3094,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             itinerary_stops = result.itineraryStops
                 .map(String::trim)
                 .filter(String::isNotBlank)
-                .distinct(),
+                .fold(mutableListOf<String>()) { ordered, stop ->
+                    if (ordered.lastOrNull() != stop) ordered += stop
+                    ordered
+                }
+                .toList(),
             itinerary_authoritative = result.itineraryAuthoritative,
             public_trip_href = BlaBlaCollectorUrlModule.publicTripForCollectorState(
                 result.publicTripHref,
