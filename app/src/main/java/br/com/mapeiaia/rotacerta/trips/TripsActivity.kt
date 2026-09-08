@@ -167,6 +167,31 @@ private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this
 private fun TripScreen.hasContextualDebugReport0507(): Boolean =
     diagnosticModule0507() != DiagnosticModule0507.UNKNOWN
 
+private fun recordModuleObservation0507(
+    activity: ComponentActivity,
+    module: DiagnosticModule0507,
+    operation: String,
+    result: String = "OBSERVED",
+) {
+    val traceId0507 = AgendaTrace.currentTraceId()
+    UnifiedDebugEventStore.recordAlways(
+        "MODULE_OPERATION_0507",
+        activity.packageName,
+        "operation=$operation result=$result",
+        diagnosticContext = DiagnosticEventContext0507(
+            parentModule = module,
+            originModule = module,
+            executorModule = module,
+            component = "TripsActivity",
+            operation = operation,
+            severity = DiagnosticSeverity0507.INFO,
+            correlationId = traceId0507,
+            traceId = traceId0507,
+            result = result,
+        ),
+    )
+}
+
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.TIMELINE -> "Todas as viagens"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
@@ -905,12 +930,19 @@ private fun TripApp(
                 }
                 TripScreen.PUBLIC_SEARCH -> AgendaPublicSearchRoot0396(
                     trips = trips,
-                    onChanged = { text -> message = text },
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PUBLIC_QUERY, "PUBLIC_QUERY_UI_UPDATE")
+                        message = text
+                    },
                 )
                 TripScreen.PASSENGERS -> PassengerAdminScreen(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
-                    onChanged = { text -> refresh(); message = text },
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "PASSENGER_ADMIN_UPDATE")
+                        refresh()
+                        message = text
+                    },
                     showHeader = false,
                     externalBackToken = passengerExternalBackToken0396,
                     onHierarchyChanged = { passengerSubscreenOpen0396 = it },
@@ -918,10 +950,16 @@ private fun TripApp(
                 TripScreen.AUTO_SYNC -> AgendaAutomaticSyncScreen0397(
                     trips = trips,
                     store = store,
-                    onChanged = { text -> message = text },
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.BLABLACAR, "BLABLACAR_SYNC_UI_UPDATE")
+                        message = text
+                    },
                 )
                 TripScreen.SCRIPTS -> BlaBlaScriptsScreen0486(
-                    onChanged = { text -> message = text },
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.SCRIPTS, "SCRIPT_WORKSPACE_UPDATE")
+                        message = text
+                    },
                     uiCommand0488 = scriptsUiCommand0488,
                     uiCommandToken0488 = scriptsUiCommandToken0488,
                 )
@@ -929,6 +967,7 @@ private fun TripApp(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
                         store.saveOnlineSettings(saved)
+                        recordModuleObservation0507(activity, DiagnosticModule0507.SETTINGS, "APP_SETTINGS_SAVE", "COMMITTED")
                         message = "Configurações salvas."
                     },
                 )
@@ -945,6 +984,7 @@ private fun TripApp(
                     initial = store.onlineSettings(),
                     onSave = { saved ->
                         store.saveOnlineSettings(saved)
+                        recordModuleObservation0507(activity, DiagnosticModule0507.INTEGRATIONS, "INTEGRATION_SETTINGS_SAVE", "COMMITTED_LOCAL")
                         screen = parentRootScreen0396
                         if (saved.configured) {
                             message = "Salvando Integração online…"

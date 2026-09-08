@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.506 contextual diagnostics validation
+name: Rota Certa 0.1.507 contextual diagnostics and Agenda parity
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 65
+    timeout-minutes: 90
     env:
       GOOGLE_MAPS_API_KEY: contextual_debug_0507_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -24,8 +24,9 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
-      EXPECTED_VERSION_CODE: '5798'
-      EXPECTED_VERSION_NAME: '0.1.506'
+      FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
+      EXPECTED_VERSION_CODE: '5799'
+      EXPECTED_VERSION_NAME: '0.1.507'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -33,7 +34,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove lineage and FAROL
+      - name: Prove lineage source tree and FAROL before
         shell: bash
         run: |
           set -euo pipefail
@@ -43,23 +44,25 @@ jobs:
           echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
           echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
-          test "$(sha256sum "$FAROL" | awk '{print $1}')" = "cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f"
-          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
-          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          sha256sum "$FAROL" | tee /tmp/farol-before.sha256
+          test "$(awk '{print $1}' /tmp/farol-before.sha256)" = "$FAROL_SHA256"
+          git diff --check "$BASE_AUTHORITY_SHA"...HEAD
           git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee /tmp/changed-files.txt
           ! grep -Fxq "$FAROL" /tmp/changed-files.txt
+          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
+          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate unchanged web contracts
+      - name: Validate backend public Agenda canonical contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/app.js
-          node --test             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/canonical-invalidation-0495.test.js             | tee /tmp/node-tests.log
+          node --test             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-online-toggle-0471.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             trip-platform/functions/test/agenda-readback-forensics-0421.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/canonical-invalidation-0495.test.js             trip-platform/functions/test/canonical-trips-passenger-area-0491.test.js             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             | tee /tmp/node-tests.log
 
       - name: Configure Firebase Android app for build only
         shell: bash
@@ -101,27 +104,104 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Compile contextual diagnostics
+      - name: Run contextual observability and Agenda parity regression suite
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
 
-      - name: Assemble exact-head debug APK
+      - name: Verify structural constraints and sanitization markers
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'MAX_EVENTS = 6_000' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
+          test "$(find app/src/main/java -type f -name '*Contextual*Debug*0507*' | wc -l)" -le 3
+          ! grep -R -n --include='*.kt' -E 'if[[:space:]]*\([^)]*message\.contains\(|screenName[[:space:]]*==' app/src/main/java/br/com/mapeiaia/rotacerta/ContextualDiagnostics0507.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/ContextualDebugReportUi0507.kt
+          ! grep -R -n --include='*.kt' -E 'passengerName=.*PUBLIC_PROJECTION|passengerContact=.*PUBLIC_PROJECTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PENDING_IDENTITY_ENRICHMENT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt
+          grep -Fq 'IDENTITY_CONFLICT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt
+          grep -Fq 'PUBLIC_PROJECTION_ATTEMPTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'PUBLIC_PROJECTION_COMMITTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'AGENDA_PARITY_MISSING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+
+      - name: Assemble exact-head final debug APK
         shell: bash
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --quiet
           APK='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
+          unzip -t "$APK" | tee /tmp/zip-integrity.txt
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
-          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" /tmp/aapt.txt
-          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           grep -Fq 'Verified' /tmp/apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Verify FAROL after build and live backend health
+        shell: bash
+        run: |
+          set -euo pipefail
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          sha256sum "$FAROL" | tee /tmp/farol-after.sha256
+          test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
+          diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0507.json
+          grep -Fq '"ok":true' /tmp/live-health-0507.json
+
+      - name: Materialize final APK and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/0507
+          mkdir -p "$OUT"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-contextual-debug-agenda-parity.apk"
+          cp "$APK" "$FINAL_APK"
+          sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
+          cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
+          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
+          cp /tmp/live-health-0507.json "$OUT/"
+          cat > "$OUT/final-status.txt" <<EOF
+          package=br.com.mapeiaia.rotacerta
+          version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
+          source_head=$GITHUB_SHA
+          source_branch=$GITHUB_REF_NAME
+          contextual_debug_single_store=PASS
+          contextual_parent_module_filter=PASS
+          contextual_cross_module_correlation=PASS
+          sanitization_copy_export=PASS
+          retention_bounded=PASS
+          public_identity_name_only_claim=PROHIBITED
+          public_identity_profile_uuid_enrichment=IMPLEMENTED
+          canonical_external_projection_silent_identity_drop=REMOVED
+          canonical_distinct_trip_guard=PASS
+          timeline_direct_collector_dependency=UNCHANGED_PROHIBITED
+          segment_capacity_logic=UNCHANGED
+          farol_untouched=PASS
+          backend_health=PASS
+          merge=false
+          release=false
+          latest=false
+          public_real_parity_coverage=PHYSICAL_VALIDATION_PENDING
+          physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
+          EOF
+          cat "$OUT/final-status.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.507-contextual-debug-agenda-parity-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0507
