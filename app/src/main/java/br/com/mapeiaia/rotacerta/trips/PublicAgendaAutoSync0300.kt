@@ -131,6 +131,15 @@ internal fun externalIncrementalCanonicalIdentityMatches0452(
     accountIdentityConfirmed = true,
 )
 
+internal fun fullSyncEntityRevision0502(
+    explicitEntityRevision: Long,
+    remotePublicationRevision: Long,
+): Long = if (explicitEntityRevision > 0L) {
+    explicitEntityRevision
+} else {
+    remotePublicationRevision.coerceAtLeast(0L)
+}
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -644,13 +653,17 @@ internal object PublicAgendaAutoSync0300 {
         var remoteTripId = publicTrip.remoteId?.takeIf(String::isNotBlank) ?: publicTrip.publicToken
         var created = false
         val startedAt = System.nanoTime()
+        var effectiveEntityRevision0502 = fullSyncEntityRevision0502(
+            explicitEntityRevision = entityRevision,
+            remotePublicationRevision = 0L,
+        )
 
         fun expectedPublicProjectionHash0425(): String =
             canonicalPublicProjectionHash0411(
                 canonicalPublicProjectionPayload0411(
                     trip = publicTrip,
                     bookings = localBookings,
-                    publicationRevision = entityRevision.takeIf { it > 0L } ?: publicTrip.publicationRevision,
+                    publicationRevision = effectiveEntityRevision0502.takeIf { it > 0L } ?: publicTrip.publicationRevision,
                     nowMillis = nowMillis,
                     canonicalTripId = original.id,
                     operationalSnapshot = canonicalOperational0434,
@@ -668,7 +681,7 @@ internal object PublicAgendaAutoSync0300 {
             },
             claimNamespace = LOCAL_MIRROR_PREFIX,
             snapshotRevision = revision,
-            entityRevision = entityRevision,
+            entityRevision = effectiveEntityRevision0502,
             canonicalTripId = original.id,
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
@@ -678,7 +691,7 @@ internal object PublicAgendaAutoSync0300 {
                 canonicalPublicProjectionPayload0411(
                     trip = publicTrip,
                     bookings = localBookings,
-                    publicationRevision = entityRevision.takeIf { it > 0L } ?: publicTrip.publicationRevision,
+                    publicationRevision = effectiveEntityRevision0502.takeIf { it > 0L } ?: publicTrip.publicationRevision,
                     nowMillis = nowMillis,
                     canonicalTripId = original.id,
                     operationalSnapshot = canonicalOperational0434,
@@ -686,7 +699,7 @@ internal object PublicAgendaAutoSync0300 {
             ),
         )
 
-        val response = try {
+        var response = try {
             try {
                 reconcile()
             } catch (error: Throwable) {
@@ -729,6 +742,21 @@ internal object PublicAgendaAutoSync0300 {
             )
             throw error
         }
+        if (
+            response.stale &&
+            entityRevision <= 0L &&
+            outboxEventId.isBlank() &&
+            response.entityRevision > effectiveEntityRevision0502
+        ) {
+            val previousRevision0502 = effectiveEntityRevision0502
+            effectiveEntityRevision0502 = response.entityRevision
+            UnifiedDebugEventStore.record(
+                "PUBLIC_CAPACITY_FULL_SYNC_REBASED_0502",
+                context.packageName,
+                "scope=LOCAL fromRevision=$previousRevision0502 toRevision=$effectiveEntityRevision0502 canonicalTripId=${sha256(original.id).take(12)}",
+            )
+            response = reconcile()
+        }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000L
         if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
@@ -736,7 +764,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} entityRevision=$entityRevision mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
+            "tripKey=${sha256(original.id).take(12)} revision=${revision.takeLast(12)} entityRevision=$effectiveEntityRevision0502 mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} rotaCertaSeats=$allocation confirmedOccupiedSeats=${operationalSeatSummary(publicTrip, localBookings).confirmedPassengerSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} createdPlaceholder=$created durationMs=$elapsedMs fullSyncRequested=false",
         )
         response.changed
     }
@@ -1284,6 +1312,11 @@ internal object PublicAgendaAutoSync0300 {
             ?: store.publicExternalBindingForStrongIdentity(synthesized.profileUuid, synthesized.blablaTripId)
             ?: store.publicExternalBindings().firstOrNull { it.publicToken == publicTrip.publicToken }
 
+        var effectiveEntityRevision0502 = fullSyncEntityRevision0502(
+            explicitEntityRevision = entityRevision,
+            remotePublicationRevision = remoteStateHint0402?.publicationRevision ?: 0L,
+        )
+
         if (!synthesized.sourceComplete) {
             if (serverCanonicalAuthority0468 && existingBinding == null) {
                 error("SERVER_CANONICAL_INGESTION_REQUIRES_COMPLETE_INITIAL_SNAPSHOT")
@@ -1331,7 +1364,7 @@ internal object PublicAgendaAutoSync0300 {
                     synthesized = synthesized,
                     effectiveTrip = publicTrip,
                     canonicalTripId = canonicalTripId,
-                    entityRevision = entityRevision,
+                    entityRevision = effectiveEntityRevision0502,
                     seatAllocationVersion = 0L,
                 )
                 UnifiedDebugEventStore.record(
@@ -1382,8 +1415,7 @@ internal object PublicAgendaAutoSync0300 {
             return canonicalPublicProjectionPayload0411(
                     trip = effectiveTrip,
                     bookings = expectedBookings,
-                    publicationRevision = entityRevision.takeIf { it > 0L }
-                        ?: remoteStateHint0402?.publicationRevision
+                    publicationRevision = effectiveEntityRevision0502.takeIf { it > 0L }
                         ?: effectiveTrip.publicationRevision,
                     nowMillis = synthesized.trip.updatedAtMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
                     canonicalTripId = canonicalTripId.ifBlank { effectiveTrip.tripKey }.ifBlank { effectiveTrip.id },
@@ -1447,7 +1479,7 @@ internal object PublicAgendaAutoSync0300 {
             claims = effectiveClaims,
             claimNamespace = EXTERNAL_MIRROR_PREFIX,
             snapshotRevision = synthesized.snapshotRevision,
-            entityRevision = entityRevision,
+            entityRevision = effectiveEntityRevision0502,
             canonicalTripId = canonicalTripId,
             outboxEventId = outboxEventId,
             mutationId0421 = mutationId0421,
@@ -1462,7 +1494,7 @@ internal object PublicAgendaAutoSync0300 {
             serverCanonicalAuthority0468 = serverCanonicalAuthority0468,
         )
 
-        val response = try {
+        var response = try {
             reconcile()
         } catch (firstError: Throwable) {
             if (firstError is CancellationException) throw firstError
@@ -1497,6 +1529,21 @@ internal object PublicAgendaAutoSync0300 {
             }
         }
 
+        if (
+            response.stale &&
+            entityRevision <= 0L &&
+            outboxEventId.isBlank() &&
+            response.entityRevision > effectiveEntityRevision0502
+        ) {
+            val previousRevision0502 = effectiveEntityRevision0502
+            effectiveEntityRevision0502 = response.entityRevision
+            UnifiedDebugEventStore.record(
+                "PUBLIC_CAPACITY_FULL_SYNC_REBASED_0502",
+                context.packageName,
+                "scope=EXTERNAL fromRevision=$previousRevision0502 toRevision=$effectiveEntityRevision0502 tripKey=$diagnosticTripKey",
+            )
+            response = reconcile()
+        }
         if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
@@ -1505,7 +1552,7 @@ internal object PublicAgendaAutoSync0300 {
                 "PUBLIC_CAPACITY_CANONICAL_SHAPE_MIGRATED_0440",
                 context.packageName,
                 "tripKey=$diagnosticTripKey migratedBookings=${response.stopShapeMigrationCount0439} " +
-                    "canonicalStops=${effectiveTrip.stops.size} transportRevision=$entityRevision " +
+                    "canonicalStops=${effectiveTrip.stops.size} transportRevision=$effectiveEntityRevision0502 " +
                     "logicalRevision=${effectiveTrip.canonicalRevision} strongIdentity=true",
             )
         }
@@ -1516,7 +1563,7 @@ internal object PublicAgendaAutoSync0300 {
             synthesized = synthesized,
             effectiveTrip = effectiveTrip,
             canonicalTripId = canonicalTripId,
-            entityRevision = entityRevision,
+            entityRevision = effectiveEntityRevision0502,
             seatAllocationVersion = seatAllocationVersion,
             serverCanonicalRevision0468 = response.canonicalRevision,
             serverCanonicalStateHash0468 = response.canonicalStateHash,
@@ -1524,7 +1571,7 @@ internal object PublicAgendaAutoSync0300 {
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,
-            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} entityRevision=$entityRevision mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
+            "tripKey=$diagnosticTripKey revision=${synthesized.snapshotRevision.takeLast(12)} entityRevision=$effectiveEntityRevision0502 mutationId=${mutationId0421.take(56)} idempotencyKey=${idempotencyKey0421.take(56)} outboxEventId=${outboxEventId.take(56)} occupancyRevision=${response.occupancyRevision} sourceBlaBlaSeats=${synthesized.publishedSeats ?: -1} rotaCertaSeats=${effectiveTrip.rotaCertaSeatAllocation ?: 0} confirmedOccupiedSeats=${synthesized.bookedSeats} availableMin=${response.availableSeatsMinimum} availableMax=${response.availableSeatsMaximum} changed=${response.changed} stale=${response.stale} shapePreserved=$shapePreserved createdPlaceholder=$createdPlaceholder fullSyncRequested=false",
         )
         AgendaTrace.event(
             context,

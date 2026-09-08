@@ -110,19 +110,21 @@ test("0494 missing trusted coordinates fails closed instead of inventing telepor
   assert.equal(trips[1].canonicalIssues.includes("PROFILE_CONTINUITY"), false);
 });
 
-test("0494 endpoint is an authenticated canonical projection and embeds canonical bookings", () => {
+test("0503 Timeline endpoint reads canonical Agenda and authenticated private mirror without collector fallback", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
-
   assert.match(fn, /requireDriver\(req, res\)/);
   assert.match(fn, /timelineProjection0494/);
-  assert.match(fn, /doc\.ref\.collection\("bookings"\)/);
-  assert.match(fn, /canonicalTripId:/);
-  assert.match(fn, /canonicalRevision:/);
-  assert.match(fn, /segmentAvailableSeats:/);
-  assert.match(fn, /applyCanonicalTimelinePhysicalIssues0494/);
-  assert.match(fn, /source: "CANONICAL_BACKEND"/);
-  assert.doesNotMatch(fn, /BlaBlaCollector/);
-  assert.doesNotMatch(fn, /timeline-ext-/);
+  assert.match(fn, /db\.collection\("trips"\)/);
+  assert.match(fn, /tripPrivateMirrors0434/);
+  assert.match(fn, /privateMirrorCurrent0499/);
+  assert.match(fn, /bookings0494/);
+  assert.match(fn, /blablaTripId:/);
+  assert.match(fn, /notes0499:/);
+  assert.match(fn, /AGENDA_CANONICAL_ONLY_0503/);
+  assert.match(fn, /collectorRead: false/);
+  assert.match(fn, /collectorFallback: false/);
+  assert.match(fn, /collectorDerivedData: false/);
+  assert.doesNotMatch(fn, /BlaBlaTimelineAdapter|BlaBlaCollector|AUTOMATIC_COLLECTOR/);
 });
 
 test("0494 operational mutations update canonical server projection atomically", () => {
@@ -318,4 +320,29 @@ test("0495 legacy convergence migrates bookings and passenger indexes without ro
   assert.match(migration, /canonicalCapacityPersistence/);
   assert.match(migration, /LEGACY_TRIP_SUPERSEDED/);
   assert.doesNotMatch(migration, /origin.*destination|departureAtMillis.*winner|date.*route/i);
+});
+
+
+test("0503 Timeline canonical payload may retain BlaBla-origin fields after Agenda materialization", () => {
+  const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+  assert.match(fn, /selectCanonicalTripDocuments0495/);
+  assert.match(fn, /blablaProfileUuid:/);
+  assert.match(fn, /blablaTripId:/);
+  assert.match(fn, /blablaPublicUrl:/);
+  assert.match(fn, /publishedSeats:/);
+  assert.match(fn, /bookings: bookings0494/);
+  assert.doesNotMatch(fn, /timelineTripHasCollectorProvenance0500/);
+  assert.doesNotMatch(fn, /timelineBookingHasCollectorProvenance0500/);
+});
+
+test("0503 same transport revision collision returns stale so Android outbox can rebase", () => {
+  const start = api.indexOf("if (deterministicRequest && entityRevision === currentEntityRevision");
+  assert.notEqual(start, -1);
+  const end = api.indexOf("const capacityNoOpProven0425", start);
+  assert.ok(end > start);
+  const sameRevision = api.slice(start, end);
+  assert.match(sameRevision, /currentEventId !== outboxEventId/);
+  assert.match(sameRevision, /stale: true/);
+  assert.match(sameRevision, /entityRevision: currentEntityRevision/);
+  assert.doesNotMatch(sameRevision, /publication_revision_conflict/);
 });

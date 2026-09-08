@@ -237,9 +237,13 @@ internal fun canonicalTimelineProjection0494(
     existingLocalBookings: List<Booking> = emptyList(),
 ): CanonicalTimelineProjection0494 {
     if (response == null) return CanonicalTimelineProjection0494(emptyList(), emptyList(), emptyList(), 0L)
-    require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
-        "Timeline recusou datasource não canônico: ${response.source}"
-    }
+    require(
+        response.source == "CANONICAL_NATIVE_FIREWALL" &&
+            response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
+            !response.collectorRead &&
+            !response.collectorFallback &&
+            !response.collectorDerivedData,
+    ) { "Timeline recusou datasource fora da Agenda canônica: ${response.source}" }
 
     val winners = response.trips
         .filter { state -> state.canonicalTripId.isNotBlank() || state.remoteTripId.isNotBlank() }
@@ -290,6 +294,8 @@ internal fun canonicalTimelineProjection0494(
             blablaPublicUrl = state.blablaPublicUrl.takeIf(String::isNotBlank),
             publicBookingEnabled = state.publicBookingEnabled,
             itineraryAuthoritative = state.itineraryAuthoritative,
+            notes = state.notes0499,
+            publicTimezoneId0411 = state.timezoneId0499,
             publishedSeats = state.publishedSeats,
             capacityReliable = state.capacityReliable,
             rotaCertaSeatAllocation = state.rotaCertaSeatAllocation,

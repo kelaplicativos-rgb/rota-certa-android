@@ -268,6 +268,8 @@ private fun TripApp(
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
     var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
     var message by remember { mutableStateOf<String?>(null) }
+    var timelinePullRefreshToken0499 by remember { mutableStateOf(0) }
+    var timelinePullRefreshing0499 by remember { mutableStateOf(false) }
     val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
     val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
     val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
@@ -384,14 +386,17 @@ private fun TripApp(
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
-    val requestTimelineVisualReload = {
-        refresh()
-        message = null
-        UnifiedDebugEventStore.record(
-            "AGENDA_TIMELINE_VISUAL_RELOAD_0398",
-            activity.packageName,
-            "networkSync=false automaticSyncOnly=true",
-        )
+    val requestTimelineCanonicalPullRefresh0499 = {
+        if (!timelinePullRefreshing0499) {
+            timelinePullRefreshing0499 = true
+            timelinePullRefreshToken0499 += 1
+            message = "Atualizando Timeline pelo domínio permitido do Rota Certa..."
+            UnifiedDebugEventStore.record(
+                "AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499",
+                activity.packageName,
+                "networkSync=true source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorFallback=false collectorDerivedData=false",
+            )
+        }
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -667,9 +672,9 @@ private fun TripApp(
                 )
                 TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    refreshing = false,
+                    refreshing = timelinePullRefreshing0499,
                     canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
-                    onRefresh = requestTimelineVisualReload,
+                    onRefresh = requestTimelineCanonicalPullRefresh0499,
                     onPointerDown = { position, canRefreshAtStart, refreshRunningAtStart ->
                         UnifiedDebugEventStore.record(
                             "AGENDA_PULL_GESTURE_DOWN_0390",
@@ -734,6 +739,18 @@ private fun TripApp(
                     reservationPendingOnly = reservationPendingOnly,
                     listState = timelineListState,
                     listModifier = Modifier.weight(1f),
+                    manualRefreshToken0499 = timelinePullRefreshToken0499,
+                    onCanonicalRefreshState0499 = { refreshing0499, error0499 ->
+                        timelinePullRefreshing0499 = refreshing0499
+                        if (!refreshing0499) {
+                            if (error0499.isNullOrBlank()) {
+                                refresh()
+                                message = "Timeline atualizada pelo domínio permitido do Rota Certa. O coletor BlaBlaCar não participa deste fluxo."
+                            } else {
+                                message = "Não foi possível atualizar a Timeline pelo domínio permitido: $error0499"
+                            }
+                        }
+                    },
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
                             activity = activity,

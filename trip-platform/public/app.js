@@ -174,14 +174,13 @@ function isFullTrip(item) {
 
 function exactAvailabilityLabel(available) {
   const count = Math.max(0, Number(available || 0));
-  if (count === 0) return "LOTADO";
   return count === 1 ? "1 vaga disponível" : count + " vagas disponíveis";
 }
 
 function publicAvailabilityLabel(item) {
   if (item?.capacityReliable !== true) return "Disponibilidade sendo atualizada";
   const range = seatRange(item);
-  if (range.minimum === 0 && range.maximum === 0) return "LOTADO";
+  if (range.minimum === 0 && range.maximum === 0) return exactAvailabilityLabel(0);
   if (range.minimum === range.maximum) return exactAvailabilityLabel(range.maximum);
   return range.minimum + "–" + range.maximum + " vagas disponíveis por trecho";
 }
@@ -207,7 +206,6 @@ function publicSegmentRows0484(item) {
 
 function segmentAvailabilityLabel0484(availableSeats) {
   const count = Math.max(0, Math.floor(Number(availableSeats || 0)));
-  if (count === 0) return "LOTADO";
   if (count === 1) return "1 vaga";
   return count + " vagas";
 }

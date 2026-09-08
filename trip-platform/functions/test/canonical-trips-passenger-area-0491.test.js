@@ -85,10 +85,30 @@ test("0491 public Agenda stays anonymous, read-only and free of internal trip id
   assert.match(publicApp, /setInterval\([\s\S]*15000/);
 
   const sanitizer = between(api, "function publicTripProjection0491", "function canonicalPublicStop0411");
-  for (const field of ["tripId", "publicToken", "canonicalTripId", "blablaTripId", "driverUsername", "notes"]) {
-    assert.match(sanitizer, new RegExp("delete out\\." + field));
+  const { publicTripProjection0491 } = Function(
+    sanitizer + "\nreturn { publicTripProjection0491 };",
+  )();
+  const projected = publicTripProjection0491({
+    title: "A → B",
+    tripId: "private-trip",
+    publicToken: "private-token",
+    canonicalTripId: "private-canonical",
+    blablaTripId: "private-provider-id",
+    driverUsername: "private-driver",
+    notes: "private-notes",
+    passengerName: "private-passenger",
+    passengerContact: "+5511999999999",
+    sourceReference: "BLABLACAR_SYNC:private",
+    stops: [{ id: "private-stop-id", order: 0, name: "A" }, { id: "private-stop-id-2", order: 1, name: "B" }],
+  });
+  assert.equal(projected.title, "A → B");
+  for (const field of [
+    "tripId", "publicToken", "canonicalTripId", "blablaTripId", "driverUsername",
+    "notes", "passengerName", "passengerContact", "sourceReference",
+  ]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(projected, field), false, field);
   }
-  assert.match(sanitizer, /delete safe\.id/);
+  assert.equal(Object.prototype.hasOwnProperty.call(projected.stops[0], "id"), false);
 
   const agenda = between(api, "async function getPublicDriverAgenda", "function buildAdminHomeTrip0471");
   assert.match(agenda, /publicTripProjection0491/);
@@ -116,6 +136,36 @@ test("0491 Minha Area is a separate passenger-only surface using existing authen
   assert.match(privateApp, /sessionStorage/);
   assert.doesNotMatch(privateApp, /localStorage|sessionToken.*searchParams|\/v1\/admin\//i);
   assert.match(privateApp, /setInterval\([\s\S]*10000/);
+  assert.match(privateApp, /Alterar reserva/);
+  assert.match(privateApp, /Salvar alterações/);
+  assert.match(privateApp, /Cancelar reserva/);
+  assert.match(privateApp, /method: "PUT"/);
+  assert.match(privateApp, /method: "POST"/);
+  assert.match(privateApp, /passengerMutationPath0498/);
+  assert.match(privateHtml, /minha-area\.js\?v=0\.1\.498/);
+});
+
+test("0498 Minha Area receives only authenticated mutation context and reuses canonical passenger commands", () => {
+  const context = between(api, "function passengerBookingMutationContext0498", "function passengerPrivateBooking0491");
+  for (const field of ["tripToken", "bookingId", "passengerName", "boardingStopId", "dropoffStopId", "stops"]) {
+    assert.match(context, new RegExp(field));
+  }
+  assert.doesNotMatch(context, /passengerContact|passengerId|sourceReference|cancellationHash/);
+
+  const list = between(api, "async function listPassengerBookings", "async function createBooking");
+  assert.match(list, /mutation: passengerBookingMutationContext0498\(tripToken, bookingId, booking, tripData\)/);
+
+  const update = between(api, "async function updatePassengerBooking", "async function cancelPassengerBooking");
+  assert.match(update, /PASSENGER_MY_TRIPS_EDIT/);
+  assert.match(update, /canonicalServerProjectionPatch0468/);
+  assert.match(update, /canonicalCapacityPersistence/);
+  assert.match(update, /passenger_edit_locked_after_boarding/);
+  assert.match(update, /operationalStatus === "IN_CAR" \|\| operationalStatus === "COMPLETED"/);
+
+  const cancel = between(api, "async function cancelPassengerBooking", "function managedCapacityClaim");
+  assert.match(cancel, /PASSENGER_MY_TRIPS_CANCEL/);
+  assert.match(cancel, /canonicalServerProjectionPatch0468/);
+  assert.match(cancel, /passenger_cancel_locked_after_boarding/);
 });
 
 test("0491 passenger history is keyed by stable passengerId while contact index remains legacy-compatible", () => {

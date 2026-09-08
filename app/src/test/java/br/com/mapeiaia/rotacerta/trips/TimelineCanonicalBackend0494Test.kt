@@ -66,7 +66,11 @@ class TimelineCanonicalBackend0494Test {
     fun testA_collectorOffCanonicalBackendSnapshotStillBuildsTimeline() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 snapshotAtMillis = 9_000L,
                 trips = listOf(state("canonical-a", 7L)),
             ),
@@ -81,7 +85,11 @@ class TimelineCanonicalBackend0494Test {
     fun testB_and_G_sameCanonicalRevisionOwnsIdentityAndSharedCapacity() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 snapshotAtMillis = 9_000L,
                 trips = listOf(state("canonical-g", 11L)),
             ),
@@ -102,7 +110,11 @@ class TimelineCanonicalBackend0494Test {
     fun testD_manualTripNeedsNoBlaBlaIdentity() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(state("manual-canonical", 1L, blablaTripId = "")),
             ),
         )
@@ -116,7 +128,11 @@ class TimelineCanonicalBackend0494Test {
     fun testH_duplicateTransportRowsCollapseToNewestCanonicalRevision() {
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(
                     state("same-canonical", 3L, remoteId = "old"),
                     state("same-canonical", 8L, remoteId = "new"),
@@ -161,8 +177,11 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(canonicalLoaderStart >= 0 && canonicalLoaderEnd > canonicalLoaderStart)
         val canonicalLoader = remoteApi.substring(canonicalLoaderStart, canonicalLoaderEnd)
         assertTrue(canonicalLoader.contains("timelineProjection0494 = true"))
-        assertTrue(canonicalLoader.contains("CANONICAL_BACKEND"))
-        assertFalse(canonicalLoader.contains("collector", ignoreCase = true))
+        assertTrue(canonicalLoader.contains("CANONICAL_NATIVE_FIREWALL"))
+        assertTrue(canonicalLoader.contains("AGENDA_CANONICAL_ONLY_0503"))
+        assertTrue(canonicalLoader.contains("!response.collectorRead"))
+        assertTrue(canonicalLoader.contains("!response.collectorFallback"))
+        assertTrue(canonicalLoader.contains("!response.collectorDerivedData"))
         assertFalse(canonicalLoader.contains("BlaBlaCollector"))
 
         assertTrue(passenger.contains("TIMELINE_CANONICAL_PASSENGER_MUTATION_0494"))
@@ -172,7 +191,8 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(quick.contains("collectorWrite=false"))
 
         assertTrue(backend.contains("timelineProjection0494"))
-        assertTrue(backend.contains("source: \"CANONICAL_BACKEND\""))
+        assertTrue(backend.contains("source: timelineProjection0494 ? \"CANONICAL_NATIVE_FIREWALL\" : \"CANONICAL_BACKEND\""))
+        assertTrue(backend.contains("provenancePolicy0500: timelineProjection0494 ? \"AGENDA_CANONICAL_ONLY_0503\" : \"\""))
         assertTrue(backend.contains("applyCanonicalTimelinePhysicalIssues0494"))
     }
 
@@ -183,7 +203,13 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(store.contains("last backend-canonical Timeline snapshot"))
         assertTrue(store.contains("TIMELINE_CANONICAL_STALE_REJECTED_0494"))
         assertTrue(store.contains("old.canonicalRevision > state.canonicalRevision"))
-        assertFalse(store.substringAfter("fun saveTimelineCanonicalCache0494").substringBefore("fun getTrip").contains("collector", ignoreCase = true))
+        val cacheWriter = store.substringAfter("fun saveTimelineCanonicalCache0494").substringBefore("fun getTrip")
+        assertTrue(cacheWriter.contains("CANONICAL_NATIVE_FIREWALL"))
+        assertTrue(cacheWriter.contains("AGENDA_CANONICAL_ONLY_0503"))
+        assertTrue(cacheWriter.contains("!incoming.collectorRead"))
+        assertTrue(cacheWriter.contains("!incoming.collectorFallback"))
+        assertTrue(cacheWriter.contains("!incoming.collectorDerivedData"))
+        assertFalse(cacheWriter.contains("BlaBlaCollector"))
     }
 
     @Test
@@ -191,8 +217,10 @@ class TimelineCanonicalBackend0494Test {
         val download = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt").readText()
 
         assertTrue(download.contains("put(\"schemaVersion\", \"3.0\")"))
-        assertTrue(download.contains("put(\"source\", \"CANONICAL_BACKEND\")"))
+        assertTrue(download.contains("put(\"source\", \"CANONICAL_NATIVE_FIREWALL\")"))
+        assertTrue(download.contains("put(\"collectorRead\", false)"))
         assertTrue(download.contains("put(\"collectorFallback\", false)"))
+        assertTrue(download.contains("put(\"collectorDerivedData\", false)"))
         assertTrue(download.contains("DriverTripSyncState0402.serializer()"))
         assertTrue(download.contains("put(\"localMetadata\""))
         assertFalse(download.contains("automaticSyncLastTrigger"))
@@ -220,7 +248,11 @@ class TimelineCanonicalBackend0494Test {
         )
         val projection = canonicalTimelineProjection0494(
             DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(state("canonical-booking", 4L, bookings = listOf(remoteBooking))),
             ),
         )
@@ -265,7 +297,11 @@ class TimelineCanonicalBackend0494Test {
         )
         val projection = canonicalTimelineProjection0494(
             response = DriverTripSyncStateResponse0402(
-                source = "CANONICAL_BACKEND",
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
                 trips = listOf(state("canonical-local-meta", 5L, bookings = listOf(remoteBooking))),
             ),
             existingLocalBookings = listOf(local),
@@ -297,7 +333,11 @@ class TimelineCanonicalBackend0494Test {
             source = BookingSource.ROTA_CERTA,
         )
         val response = DriverTripSyncStateResponse0402(
-            source = "CANONICAL_BACKEND",
+            source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
             snapshotAtMillis = 55_000L,
             trips = listOf(state("canonical-export", 6L, bookings = listOf(remoteBooking))),
         )
@@ -344,6 +384,86 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(timelineUi.contains("sourcePassengerSeats[BookingSource.BLABLACAR]"))
         assertTrue(passengerUi.contains("if (entry.canonicalBackendAuthoritative0494) emptyList() else entry.blablaPassengers"))
         assertTrue(passengerUi.contains("canonicalBookings0494"))
+    }
+
+
+    @Test
+    fun testO_pullToRefreshIsCanonicalNetworkRefreshNotLocalVisualReload() {
+        val activity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+
+        assertTrue(activity.contains("AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499"))
+        assertTrue(activity.contains("networkSync=true source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorFallback=false collectorDerivedData=false"))
+        assertTrue(activity.contains("manualRefreshToken0499 = timelinePullRefreshToken0499"))
+        assertFalse(activity.contains("requestTimelineVisualReload"))
+        assertTrue(timelineUi.contains("USER_PULL_REFRESH"))
+        assertTrue(timelineUi.contains("loadCanonicalTimelineState0494"))
+        assertFalse(timelineUi.contains("BlaBlaTimelineAdapter.merge("))
+    }
+
+    @Test
+    fun testP_driverPrivateAgendaMirrorHydratesTimelineWithoutCollectorAuthority() {
+        val remote = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt").readText()
+
+        assertTrue(remote.contains("privateMirrorCurrent0499"))
+        assertTrue(remote.contains("fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits"))
+        assertTrue(remote.contains("boardingAddress = boardingAddress.ifBlank"))
+        assertTrue(remote.contains("dropoffAddress = dropoffAddress.ifBlank"))
+        assertTrue(timeline.contains("notes = state.notes0499"))
+        assertTrue(timeline.contains("publicTimezoneId0411 = state.timezoneId0499"))
+    }
+
+    @Test
+    fun testQ_canonicalAgendaSnapshotKeepsBlaBlaTripAndPassengerDataWithoutDirectCollectorRead() {
+        val remoteBooking = RemoteBooking(
+            id = "booking-bla-canonical",
+            tripId = "remote-bla",
+            passengerId = "passenger-bla",
+            passengerName = "Passageiro Canônico",
+            passengerContact = "contact-canonical",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            operationalStatus = PassengerOperationalStatus.CONFIRMED,
+            paymentStatus = PassengerPaymentStatus.UNPAID,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+            sourceReference = "BLABLACAR_SYNC:canonical-fixture",
+        )
+        val projection = canonicalTimelineProjection0494(
+            DriverTripSyncStateResponse0402(
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
+                trips = listOf(
+                    state(
+                        canonicalId = "canonical-bla",
+                        revision = 9L,
+                        blablaTripId = "provider-trip-9",
+                        bookings = listOf(remoteBooking),
+                    ),
+                ),
+            ),
+        )
+
+        assertEquals(1, projection.trips.size)
+        assertEquals("provider-trip-9", projection.trips.single().blablaTripId)
+        assertEquals(1, projection.bookings.size)
+        assertEquals(BookingSource.BLABLACAR, projection.bookings.single().source)
+        assertEquals("booking-bla-canonical", projection.bookings.single().id)
+    }
+    @Test
+    fun testQ_timelineZeroAvailabilityIsNumericWithoutLotadoSuffix() {
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+
+        assertFalse(timeline.contains("\"LOTADO\""))
+        assertEquals(3, timeline.lines().count { it.contains("val availabilityLabel = statusMark(entry)") })
+        assertTrue(timeline.contains("🪑 Vagas disponíveis: \${free ?: 0} \$availabilityLabel"))
+        assertTrue(timeline.contains("🪑 Vagas disponíveis: \$emptyFree \$availabilityLabel"))
     }
 
 }

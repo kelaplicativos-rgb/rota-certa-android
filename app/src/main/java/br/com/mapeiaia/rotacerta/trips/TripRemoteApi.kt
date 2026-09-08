@@ -151,6 +151,11 @@ data class RemoteBooking(
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    /** Driver-authenticated private Agenda metadata; never exposed by the public Agenda projection. */
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
     val holdExpiresAtMillis: Long? = null,
 )
 
@@ -602,6 +607,13 @@ data class DriverTripSyncState0402(
     val segmentAvailableSeats: List<Int> = emptyList(),
     val sourceSeatCounts: Map<String, Int> = emptyMap(),
     val canonicalIssues: List<String> = emptyList(),
+    /** Driver-only canonical fields hydrated from the private Agenda mirror when its revision is current. */
+    val notes0499: String = "",
+    val timezoneId0499: String = "",
+    val privateMirrorAvailable0499: Boolean = false,
+    val privateMirrorCurrent0499: Boolean = false,
+    val privateMirrorRevision0499: Long = 0L,
+    val privateStateHash0499: String = "",
     /** Exact canonical bookings for the Timeline projection. No collector snapshot is embedded. */
     val bookings: List<RemoteBooking> = emptyList(),
     val occupancyRevision: Long? = null,
@@ -613,7 +625,11 @@ data class DriverTripSyncState0402(
 @Serializable
 data class DriverTripSyncStateResponse0402(
     val trips: List<DriverTripSyncState0402> = emptyList(),
-    val source: String = "CANONICAL_BACKEND",
+    val source: String = "",
+    val provenancePolicy0500: String = "",
+    val collectorRead: Boolean = true,
+    val collectorFallback: Boolean = true,
+    val collectorDerivedData: Boolean = true,
     val snapshotAtMillis: Long = 0L,
 )
 
@@ -848,33 +864,24 @@ class TripRemoteApi(
      */
     suspend fun loadCanonicalTimelineState0494(
         includePastForVerification0429: Boolean = true,
-    ): DriverTripSyncStateResponse0402 = coroutineScope {
+    ): DriverTripSyncStateResponse0402 {
         val response = listDriverTripSyncStates0402(
             includePastForVerification0429 = includePastForVerification0429,
             timelineProjection0494 = true,
         )
-        require(response.source.isBlank() || response.source == "CANONICAL_BACKEND") {
-            "Fonte inesperada para a Timeline: ${response.source}"
-        }
-        val semaphore = Semaphore(4)
-        val enriched = response.trips.map { state ->
-            async {
-                if (state.bookings.isNotEmpty() || state.bookingsCount <= 0) {
-                    state
-                } else {
-                    semaphore.withPermit {
-                        val remote = listBookings(state.remoteTripId)
-                        state.copy(
-                            bookings = remote.bookings,
-                            publicationRevision = maxOf(state.publicationRevision, remote.entityRevision),
-                        )
-                    }
-                }
-            }
-        }.awaitAll()
-        response.copy(
-            trips = enriched,
-            source = "CANONICAL_BACKEND",
+        require(
+            response.source == "CANONICAL_NATIVE_FIREWALL" &&
+                response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
+                !response.collectorRead &&
+                !response.collectorFallback &&
+                !response.collectorDerivedData,
+        ) { "Timeline recusou payload fora da Agenda canônica autenticada." }
+        return response.copy(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
             snapshotAtMillis = response.snapshotAtMillis.takeIf { it > 0L } ?: System.currentTimeMillis(),
         )
     }
@@ -1749,10 +1756,10 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
     passengerId = existingLocal?.passengerId?.takeIf(String::isNotBlank) ?: passengerId,
-    fareMinorUnits = existingLocal?.fareMinorUnits,
-    fareCurrencyCode = existingLocal?.fareCurrencyCode.orEmpty(),
-    boardingAddress = existingLocal?.boardingAddress.orEmpty(),
-    dropoffAddress = existingLocal?.dropoffAddress.orEmpty(),
+    fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits,
+    fareCurrencyCode = fareCurrencyCode.ifBlank { existingLocal?.fareCurrencyCode.orEmpty() },
+    boardingAddress = boardingAddress.ifBlank { existingLocal?.boardingAddress.orEmpty() },
+    dropoffAddress = dropoffAddress.ifBlank { existingLocal?.dropoffAddress.orEmpty() },
     cancellationToken = existingLocal?.cancellationToken,
     localMetadataTouched = existingLocal?.localMetadataTouched == true,
 )

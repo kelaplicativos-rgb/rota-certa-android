@@ -102,6 +102,8 @@ fun TripTimelineScreen(
     listState: LazyListState,
     listModifier: Modifier = Modifier,
     onFirstUsableFrame: (Int) -> Unit = {},
+    manualRefreshToken0499: Int = 0,
+    onCanonicalRefreshState0499: (Boolean, String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
     val incrementalPublishScope = rememberCoroutineScope()
@@ -171,28 +173,38 @@ fun TripTimelineScreen(
         mutableStateOf(canonicalResponse0494 != null)
     }
     var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
+    val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
 
     fun invalidateCanonicalTimeline0495(reason: String) {
         val accepted = canonicalRefreshSignals0495.tryEmit(reason)
         UnifiedDebugEventStore.record(
             if (accepted) "TIMELINE_INVALIDATED" else "TIMELINE_REFRESH_COALESCED",
             context.packageName,
-            "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+            "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
         )
+    }
+
+    LaunchedEffect(manualRefreshToken0499) {
+        if (manualRefreshToken0499 > 0) {
+            invalidateCanonicalTimeline0495("USER_PULL_REFRESH")
+        }
     }
 
     LaunchedEffect(onlineSettings0494.apiBaseUrl, onlineSettings0494.driverUsername) {
         canonicalRefreshSignals0495.collect { reason ->
             canonicalRefreshMutex0495.withLock {
+                val manualPull0499 = reason == "USER_PULL_REFRESH"
                 if (!onlineSettings0494.configured) {
                     canonicalBackendStale0494 = canonicalResponse0494 != null
                     canonicalBackendFailure0494 = "Integração online não configurada."
+                    if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     return@withLock
                 }
+                if (manualPull0499) canonicalRefreshStateCallback0499.value(true, null)
                 UnifiedDebugEventStore.record(
                     "TIMELINE_REFRESH_STARTED",
                     context.packageName,
-                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_BACKEND collectorRead=false",
+                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                 )
                 runCatching {
                     TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
@@ -205,11 +217,12 @@ fun TripTimelineScreen(
                     canonicalResponse0494 = cached
                     canonicalBackendStale0494 = false
                     canonicalBackendFailure0494 = null
+                    if (manualPull0499) canonicalRefreshStateCallback0499.value(false, null)
                     val revisions = cached.trips.map(DriverTripSyncState0402::canonicalRevision)
                     UnifiedDebugEventStore.record(
                         "TIMELINE_REFRESH_APPLIED",
                         context.packageName,
-                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_BACKEND collectorRead=false",
+                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                     )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_READ_0494",
@@ -219,6 +232,7 @@ fun TripTimelineScreen(
                 }.onFailure { error ->
                     canonicalBackendStale0494 = true
                     canonicalBackendFailure0494 = error.message ?: error.javaClass.simpleName
+                    if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_OFFLINE_0494",
                         context.packageName,
@@ -1615,19 +1629,19 @@ private fun TimelineEntryCard(
             val operationalInventory = publicCapacity.operationalInventory
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
                     if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
                     Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED -> {
-                    val availabilityLabel = if (free == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
                 }
                 TimelineOccupancyReadState.COMPLETE_EMPTY -> {
                     val emptyFree = free ?: operationalInventory ?: 0
-                    val availabilityLabel = if (emptyFree == 0) "LOTADO" else statusMark(entry)
+                    val availabilityLabel = statusMark(entry)
                     Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: $emptyFree $availabilityLabel")
                 }
                 TimelineOccupancyReadState.PENDING ->
