@@ -499,10 +499,14 @@ internal object PublicAgendaAutoSync0300 {
                 )
                 CanonicalExternalProjection0507(canonical, projected)
             }
-            .distinctBy { it.projected.trip.tripKey.ifBlank { it.projected.trip.id } }
-            .take(100)
             .toList()
-        val externalTrips = externalProjections0507.map(CanonicalExternalProjection0507::projected)
+        val projectionByCanonicalIdentity0507 = externalProjections0507.associateBy {
+            it.projected.trip.tripKey.ifBlank { it.projected.trip.id }
+        }
+        val externalTrips = externalProjections0507
+            .map(CanonicalExternalProjection0507::projected)
+            .distinctBy { it.trip.tripKey.ifBlank { it.trip.id } }
+            .take(100)
         AgendaTrace.operationEnd(context, externalDiscoveryOperation, processedCount = externalTrips.size)
 
         val existingExternalBindings = store.publicExternalBindings()
@@ -542,8 +546,10 @@ internal object PublicAgendaAutoSync0300 {
             context.packageName,
             "requested=${externalTrips.size} serverStates=${remoteSyncStates0402.size} strongIdentities=${remoteByStrongIdentity0408.size} oneBatch=true",
         )
-        externalProjections0507.forEachIndexed { index, projection0507 ->
-            val synthesized = projection0507.projected
+        externalTrips.forEachIndexed { index, synthesized ->
+            val projection0507 = projectionByCanonicalIdentity0507[
+                synthesized.trip.tripKey.ifBlank { synthesized.trip.id }
+            ] ?: return@forEachIndexed
             val diagnosticTripKey = sha256(synthesized.trip.publicToken).take(12)
             val existingBindingHint = existingExternalBindings.firstOrNull { binding ->
                 (binding.profileUuid.equals(synthesized.profileUuid, ignoreCase = true) && binding.blablaTripId == synthesized.blablaTripId) ||
