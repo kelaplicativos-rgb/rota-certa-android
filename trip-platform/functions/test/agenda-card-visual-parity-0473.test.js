@@ -53,7 +53,7 @@ test("0475 public HTML has canonical mobile CSS and no administrative surface", 
   assert.match(html, /\.agendaJourneyRail0473/);
   assert.match(html, /\.agendaPassengerDot0473/);
   assert.match(html, /@media\(max-width:480px\).*agendaJourney0473/s);
-  assert.match(html, /app\.js\?v=0\.1\.504/);
+  assert.match(html, /app\.js\?v=0\.1\.506/);
   assert.doesNotMatch(html, /admin-0417\.js|agendaVisibilityToggle0471|Administrar esta viagem/i);
   assert.match(html, /Minha Área/);
 });
@@ -92,8 +92,11 @@ test("0480 expanded card date is complete and includes the four-digit year", () 
   assert.match(longDate, /agendaDateParts0496\(ms, timezoneId\)/);
   assert.match(longDate, /months\[date\.month\] \+ " de " \+ date\.year/);
 
+  const state = between(app, "function applyAgendaTripExpansionState0506", "function toggleAgendaTripDetails0480");
+  assert.match(state, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+
   const toggle = between(app, "function toggleAgendaTripDetails0480", "function renderAgendaCards");
-  assert.match(toggle, /expanded \? dateNode\.dataset\.expandedLabel : dateNode\.dataset\.compactLabel/);
+  assert.match(toggle, /applyAgendaTripExpansionState0506\(card, dateNode, detailsNode, hintNode, expanded\)/);
 });
 
 

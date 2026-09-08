@@ -1415,9 +1415,21 @@ function safePublicTrip(token, data) {
   };
 }
 
+function publicAgendaUiTripKey0506(value) {
+  const input = value && typeof value === "object" ? value : {};
+  const canonicalIdentity = cleanText(
+    input.canonicalTripId || input.tripId || input.publicToken,
+    180,
+  );
+  if (!canonicalIdentity) return "";
+  return "agenda-trip-" + sha256Hex("public-agenda-ui:" + canonicalIdentity).slice(0, 40);
+}
+
 function publicTripProjection0491(value) {
   const input = value && typeof value === "object" ? value : {};
   const out = {};
+  const publicTripKey0506 = publicAgendaUiTripKey0506(input);
+  if (publicTripKey0506) out.publicTripKey0506 = publicTripKey0506;
   const allowed = [
     "title", "departureAtMillis", "timezoneId", "capacity", "status",
     "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads",
