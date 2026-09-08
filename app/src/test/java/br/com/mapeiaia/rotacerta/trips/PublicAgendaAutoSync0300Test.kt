@@ -441,6 +441,7 @@ class PublicAgendaAutoSync0300Test {
         )
         val trip = Trip(
             id = "canonical-private",
+            title = "São Paulo → São Tomé das Letras",
             publicToken = "canonical-private",
             departureAtMillis = 4_000_000_000_000L,
             capacity = 4,
