@@ -127,7 +127,7 @@ test("0506 telemetry proves user collapse, restored-open data updates and true r
 });
 
 test("0506 build and cache identity are exact", () => {
-  assert.match(gradle, /versionCode = 5802/);
-  assert.match(gradle, /versionName = "0\.1\.510"/);
+  assert.match(gradle, /versionCode = 5803/);
+  assert.match(gradle, /versionName = "0\.1\.511"/);
   assert.match(html, /app\.js\?v=0\.1\.506/);
 });
