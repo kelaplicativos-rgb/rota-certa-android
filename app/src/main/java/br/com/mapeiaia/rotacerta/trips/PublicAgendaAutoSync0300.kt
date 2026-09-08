@@ -434,7 +434,7 @@ internal object PublicAgendaAutoSync0300 {
                     UnifiedDebugEventStore.recordAlways(
                         "AGENDA_PARITY_MISSING",
                         context.packageName,
-                        "reasonCode=${resolution0507.reasonCode} state=${resolution0507.state} candidates=${resolution0507.candidateCount} sourceProfileUuidPresent=${source.profile_uuid.isNotBlank()} sourceTripIdPresent=${source.trip_id.isNotBlank()}",
+                        "reasonCode=${resolution0507.reasonCode} state=${resolution0507.state} candidates=${resolution0507.candidateCount} sourceProfileUuidPresent=${source.profile_uuid.isNotBlank()} sourceTripIdPresent=${!source.trip_id.isNullOrBlank()}",
                         diagnosticContext = DiagnosticEventContext0507(
                             parentModule = DiagnosticModule0507.BLABLACAR,
                             originModule = DiagnosticModule0507.BLABLACAR,
@@ -1421,7 +1421,7 @@ internal object PublicAgendaAutoSync0300 {
                 candidateCount = 0,
             )
         }
-        val sourceTripId = source.trip_id.trim().takeIf(String::isNotBlank)
+        val sourceTripId = source.trip_id?.trim()?.takeIf(String::isNotBlank)
         val sourcePublicHref = source.public_trip_href
             ?.let(BlaBlaCollectorUrlModule::canonical)
             ?.takeIf(String::isNotBlank)
@@ -1435,7 +1435,7 @@ internal object PublicAgendaAutoSync0300 {
         val matches = profileCandidates.filter { canonical ->
             val snapshot = canonical.externalSnapshot ?: return@filter false
             if (!snapshot.profile_uuid.equals(sourceProfile, ignoreCase = true)) return@filter false
-            val snapshotTripId = snapshot.trip_id.trim().takeIf(String::isNotBlank)
+            val snapshotTripId = snapshot.trip_id?.trim()?.takeIf(String::isNotBlank)
             val snapshotPublicHref = snapshot.public_trip_href
                 ?.let(BlaBlaCollectorUrlModule::canonical)
                 ?.takeIf(String::isNotBlank)
