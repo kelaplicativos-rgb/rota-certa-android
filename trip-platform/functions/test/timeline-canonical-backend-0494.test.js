@@ -110,6 +110,120 @@ test("0494 missing trusted coordinates fails closed instead of inventing telepor
   assert.equal(trips[1].canonicalIssues.includes("PROFILE_CONTINUITY"), false);
 });
 
+
+function timelineFallbackHelpers0523() {
+  const production = between(
+    api,
+    "function canonicalTimelinePrivateMirrorCompatible0523",
+    "async function listDriverTripSyncState0402",
+  );
+  const sandbox = {};
+  vm.runInNewContext(
+    `
+      function cleanText(value, maxLength = 1000) {
+        return String(value == null ? "" : value).trim().slice(0, maxLength);
+      }
+      function canonicalTimelinePrivateStop0513(raw, index) {
+        const source = raw && typeof raw === "object" ? raw : {};
+        const latitude = Number(source.latitude);
+        const longitude = Number(source.longitude);
+        return {
+          id: cleanText(source.id, 180),
+          order: Number.isFinite(Number(source.order)) ? Number(source.order) : index,
+          name: cleanText(source.name, 300),
+          address: cleanText(source.address, 300),
+          latitude: Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 ? latitude : null,
+          longitude: Number.isFinite(longitude) && longitude >= -180 && longitude <= 180 ? longitude : null,
+          plannedArrivalMillis: source.plannedArrivalMillis == null ? null : Number(source.plannedArrivalMillis),
+          plannedDepartureMillis: source.plannedDepartureMillis == null ? null : Number(source.plannedDepartureMillis),
+          priceToNextCents: Math.max(0, Number(source.priceToNextCents || 0)),
+        };
+      }
+      ${production}
+      this.compatible0523 = canonicalTimelinePrivateMirrorCompatible0523;
+      this.identity0523 = canonicalTimelineExternalIdentity0523;
+      this.stops0523 = canonicalTimelinePrivateStops0523;
+    `,
+    sandbox,
+  );
+  return sandbox;
+}
+
+test("0523 compatible private mirror is fallback-only and never accepts future/conflicting trip state", () => {
+  const { compatible0523 } = timelineFallbackHelpers0523();
+  const data = { canonicalRevision: 12, tripKey: "trip-key-a" };
+  const payload = {
+    schemaVersion: "private-agenda-mirror-v1",
+    canonicalTripId: "canonical-a",
+    canonicalRevision: 11,
+    tripKey: "trip-key-a",
+  };
+  assert.equal(compatible0523(data, "canonical-a", { canonicalRevision: 11 }, payload), true);
+  assert.equal(compatible0523(data, "canonical-a", { canonicalRevision: 13 }, { ...payload, canonicalRevision: 13 }), false);
+  assert.equal(compatible0523(data, "canonical-b", { canonicalRevision: 11 }, payload), false);
+  assert.equal(compatible0523(data, "canonical-a", { canonicalRevision: 11 }, { ...payload, tripKey: "trip-key-b" }), false);
+});
+
+test("0523 strong identity is recovered only from compatible canonical evidence", () => {
+  const { identity0523 } = timelineFallbackHelpers0523();
+  const root = {
+    canonicalTripId: "canonical-a",
+    canonicalRevision: 12,
+    blablaProfileUuid: "profile-a",
+    blablaTripId: "",
+  };
+  const currentProjection = {
+    canonicalTripId: "canonical-a",
+    canonicalRevision: 12,
+    blablaProfileUuid: "profile-a",
+    blablaTripId: "trip-a",
+  };
+  assert.deepEqual(
+    { ...identity0523(root, currentProjection, null, false) },
+    { blablaProfileUuid: "profile-a", blablaTripId: "trip-a", source: "CURRENT_CANONICAL_PROJECTION" },
+  );
+
+  const staleProjection = { ...currentProjection, canonicalRevision: 11, blablaTripId: "stale-trip" };
+  const privatePayload = { blablaProfileUuid: "profile-a", blablaTripId: "trip-a" };
+  assert.equal(identity0523(root, staleProjection, privatePayload, true).blablaTripId, "trip-a");
+
+  const conflicting = { blablaProfileUuid: "profile-other", blablaTripId: "trip-other" };
+  assert.equal(identity0523(root, staleProjection, conflicting, true).blablaTripId, "");
+
+  const manualRoot = {
+    canonicalTripId: "manual-a",
+    canonicalRevision: 5,
+    blablaProfileUuid: "",
+    blablaTripId: "",
+  };
+  assert.deepEqual(
+    { ...identity0523(manualRoot, { canonicalTripId: "manual-a", canonicalRevision: 4 }, privatePayload, true) },
+    { blablaProfileUuid: "", blablaTripId: "", source: "ROOT_INCOMPLETE" },
+  );
+});
+
+test("0523 stale-compatible private stop enriches only the exact authoritative stop id", () => {
+  const { stops0523 } = timelineFallbackHelpers0523();
+  const roots = [
+    { id: "s0", order: 0, name: "São Paulo", address: "São Paulo", latitude: null, longitude: null },
+    { id: "s1", order: 1, name: "Destino", address: "Destino", latitude: null, longitude: null },
+  ];
+  const payload = {
+    stops: [
+      { id: "s0", order: 0, name: "old", address: "Terminal Tietê", latitude: -23.516419, longitude: -46.624395 },
+      { id: "other", order: 1, name: "wrong", address: "Não usar", latitude: -1, longitude: -1 },
+    ],
+  };
+  const enriched = stops0523(roots, payload, true);
+  assert.equal(enriched.length, 2);
+  assert.equal(enriched[0].id, "s0");
+  assert.equal(enriched[0].address, "Terminal Tietê");
+  assert.equal(enriched[0].latitude, -23.516419);
+  assert.equal(enriched[0].longitude, -46.624395);
+  assert.equal(enriched[1].address, "Destino");
+  assert.equal(enriched[1].latitude, null);
+});
+
 test("0503 Timeline endpoint reads canonical Agenda and authenticated private mirror without collector fallback", () => {
   const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
   assert.match(fn, /requireDriver\(req, res\)/);
@@ -117,6 +231,9 @@ test("0503 Timeline endpoint reads canonical Agenda and authenticated private mi
   assert.match(fn, /db\.collection\("trips"\)/);
   assert.match(fn, /tripPrivateMirrors0434/);
   assert.match(fn, /privateMirrorCurrent0499/);
+  assert.match(fn, /privateMirrorCompatible0523/);
+  assert.match(fn, /canonicalTimelinePrivateStops0523/);
+  assert.match(fn, /externalIdentity0523/);
   assert.match(fn, /bookings0494/);
   assert.match(fn, /blablaTripId:/);
   assert.match(fn, /notes0499:/);

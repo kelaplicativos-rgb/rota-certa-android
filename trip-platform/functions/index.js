@@ -8893,6 +8893,119 @@ function applyCanonicalTimelinePhysicalIssues0494(trips) {
   });
 }
 
+
+/**
+ * 0.1.523: a private Agenda mirror may lag the public/canonical revision when the
+ * changed field was not private. It is safe only as a missing-field fallback:
+ * same canonical trip, never from the future, and no trip-key conflict.
+ */
+function canonicalTimelinePrivateMirrorCompatible0523(data, canonicalTripId, privateMirror, privatePayload) {
+  if (!privatePayload || typeof privatePayload !== "object" ||
+      privatePayload.schemaVersion !== "private-agenda-mirror-v1") return false;
+  if (cleanText(privatePayload.canonicalTripId, 180) !== cleanText(canonicalTripId, 180)) return false;
+
+  const currentRevision = Math.max(0, Number(data && data.canonicalRevision || 0));
+  const mirrorRevision = Math.max(
+    0,
+    Number(privateMirror && privateMirror.canonicalRevision != null
+      ? privateMirror.canonicalRevision
+      : privatePayload.canonicalRevision || 0),
+  );
+  if (mirrorRevision > currentRevision) return false;
+
+  const rootTripKey = cleanText(data && data.tripKey, 180);
+  const mirrorTripKey = cleanText(privatePayload.tripKey, 180);
+  if (rootTripKey && mirrorTripKey && rootTripKey !== mirrorTripKey) return false;
+  return true;
+}
+
+function canonicalTimelineExternalIdentity0523(data, canonicalProjection, privatePayload, privateMirrorCompatible) {
+  const rootProfile = cleanText(data && data.blablaProfileUuid, 180).toLowerCase();
+  const rootTrip = cleanText(data && data.blablaTripId, 180);
+  if (rootProfile && rootTrip) {
+    return { blablaProfileUuid: rootProfile, blablaTripId: rootTrip, source: "ROOT" };
+  }
+
+  const canonicalId = cleanText(data && (data.canonicalTripId || data.localTripId), 180);
+  const canonicalRevision = Math.max(0, Number(data && data.canonicalRevision || 0));
+  const projectionId = cleanText(canonicalProjection && canonicalProjection.canonicalTripId, 180);
+  const projectionRevision = Math.max(0, Number(canonicalProjection && canonicalProjection.canonicalRevision || 0));
+  const projectionProfile = cleanText(canonicalProjection && canonicalProjection.blablaProfileUuid, 180).toLowerCase();
+  const projectionTrip = cleanText(canonicalProjection && canonicalProjection.blablaTripId, 180);
+  const projectionMatches =
+    projectionProfile && projectionTrip &&
+    canonicalId && projectionId === canonicalId &&
+    projectionRevision === canonicalRevision &&
+    (!rootProfile || rootProfile === projectionProfile) &&
+    (!rootTrip || rootTrip === projectionTrip);
+  if (projectionMatches) {
+    return {
+      blablaProfileUuid: projectionProfile,
+      blablaTripId: projectionTrip,
+      source: "CURRENT_CANONICAL_PROJECTION",
+    };
+  }
+
+  // A lagging private mirror can complete a one-sided root identity, but it must
+  // never resurrect an identity after both root fields were deliberately cleared.
+  const rootOneSided = Boolean(rootProfile) !== Boolean(rootTrip);
+  const privateProfile = privateMirrorCompatible
+    ? cleanText(privatePayload && privatePayload.blablaProfileUuid, 180).toLowerCase()
+    : "";
+  const privateTrip = privateMirrorCompatible
+    ? cleanText(privatePayload && privatePayload.blablaTripId, 180)
+    : "";
+  const privateMatches =
+    rootOneSided && privateProfile && privateTrip &&
+    (!rootProfile || rootProfile === privateProfile) &&
+    (!rootTrip || rootTrip === privateTrip);
+  if (privateMatches) {
+    return {
+      blablaProfileUuid: privateProfile,
+      blablaTripId: privateTrip,
+      source: "COMPATIBLE_PRIVATE_MIRROR",
+    };
+  }
+
+  return { blablaProfileUuid: rootProfile, blablaTripId: rootTrip, source: "ROOT_INCOMPLETE" };
+}
+
+function canonicalTimelinePrivateStops0523(rawStops, privatePayload, privateMirrorCompatible) {
+  const roots = Array.isArray(rawStops) ? rawStops : [];
+  const privateStopsById = new Map(
+    privateMirrorCompatible && privatePayload && Array.isArray(privatePayload.stops)
+      ? privatePayload.stops
+          .filter((stop) => stop && typeof stop === "object" && cleanText(stop.id, 180))
+          .map((stop) => [cleanText(stop.id, 180), stop])
+      : [],
+  );
+  return roots.map((raw, index) => {
+    const authoritative = canonicalTimelinePrivateStop0513(raw, index);
+    const mirrorRaw = privateStopsById.get(cleanText(raw && raw.id, 180));
+    if (!mirrorRaw) return authoritative;
+    const fallback = canonicalTimelinePrivateStop0513(mirrorRaw, index);
+
+    const rootAddress = cleanText(authoritative.address, 300);
+    const rootName = cleanText(authoritative.name, 300);
+    const fallbackAddress = cleanText(fallback.address, 300);
+    const addressIsGeneric = !rootAddress ||
+      (rootName && rootAddress.toLocaleLowerCase("pt-BR") === rootName.toLocaleLowerCase("pt-BR"));
+
+    return {
+      ...authoritative,
+      address: addressIsGeneric && fallbackAddress ? fallbackAddress : rootAddress,
+      latitude: authoritative.latitude == null ? fallback.latitude : authoritative.latitude,
+      longitude: authoritative.longitude == null ? fallback.longitude : authoritative.longitude,
+      plannedArrivalMillis: authoritative.plannedArrivalMillis == null
+        ? fallback.plannedArrivalMillis
+        : authoritative.plannedArrivalMillis,
+      plannedDepartureMillis: authoritative.plannedDepartureMillis == null
+        ? fallback.plannedDepartureMillis
+        : authoritative.plannedDepartureMillis,
+    };
+  });
+}
+
 async function listDriverTripSyncState0402(req, res) {
   const driver = await requireDriver(req, res);
   if (!driver) return;
@@ -8964,6 +9077,12 @@ async function listDriverTripSyncState0402(req, res) {
       cleanText(privatePayload0499.canonicalTripId, 180) === canonicalTripId0499 &&
       privateMirrorRevision0499 === canonicalRevision0499
     );
+    const privateMirrorCompatible0523 = canonicalTimelinePrivateMirrorCompatible0523(
+      data,
+      canonicalTripId0499,
+      privateMirror0499,
+      privatePayload0499,
+    );
     if (data.deleted === true) return null;
     if (timelineProjection0494) {
       if (!DRIVER_MUTABLE_STATUSES.has(status)) return null;
@@ -8976,7 +9095,7 @@ async function listDriverTripSyncState0402(req, res) {
     const currentPublicProjectionHash0497 = canonicalPublicTripHash0411(canonicalProjection0494);
     const stops0494 = canonicalDepartureStops0495(
       timelineProjection0494 && Array.isArray(data.stops)
-        ? data.stops.map(canonicalTimelinePrivateStop0513)
+        ? canonicalTimelinePrivateStops0523(data.stops, privatePayload0499, privateMirrorCompatible0523)
         : (Array.isArray(canonicalProjection0494.stops)
             ? canonicalProjection0494.stops
             : (Array.isArray(data.stops) ? data.stops.map(canonicalTimelinePrivateStop0513) : [])),
@@ -8995,7 +9114,7 @@ async function listDriverTripSyncState0402(req, res) {
     let bookings0494 = [];
     if (timelineProjection0494) {
       const privateBookingsById0499 = new Map(
-        privateMirrorCurrent0499 && Array.isArray(privatePayload0499.bookings)
+        privateMirrorCompatible0523 && Array.isArray(privatePayload0499.bookings)
           ? privatePayload0499.bookings
               .filter((booking) => booking && typeof booking === "object" && cleanText(booking.id, 180))
               .map((booking) => [cleanText(booking.id, 180), booking])
@@ -9073,10 +9192,24 @@ async function listDriverTripSyncState0402(req, res) {
     const expectedBookingsCount0512 = Number.isFinite(persistedBookingsCount0512)
       ? Math.max(0, persistedBookingsCount0512)
       : projectedBookingsCount0512;
-    const hasExternalProfile0512 = Boolean(cleanText(data.blablaProfileUuid, 180));
-    const hasExternalTrip0512 = Boolean(cleanText(data.blablaTripId, 180));
-    if (hasExternalProfile0512 !== hasExternalTrip0512 && !canonicalIssues0494.includes("EXTERNAL_IDENTITY_INCOMPLETE")) {
-      canonicalIssues0494.push("EXTERNAL_IDENTITY_INCOMPLETE");
+    const externalIdentity0523 = canonicalTimelineExternalIdentity0523(
+      data,
+      canonicalProjection0494,
+      privatePayload0499,
+      privateMirrorCompatible0523,
+    );
+    const hasExternalProfile0512 = Boolean(externalIdentity0523.blablaProfileUuid);
+    const hasExternalTrip0512 = Boolean(externalIdentity0523.blablaTripId);
+    if (hasExternalProfile0512 !== hasExternalTrip0512) {
+      if (!canonicalIssues0494.includes("EXTERNAL_IDENTITY_INCOMPLETE")) {
+        canonicalIssues0494.push("EXTERNAL_IDENTITY_INCOMPLETE");
+      }
+    } else {
+      for (let index = canonicalIssues0494.length - 1; index >= 0; index--) {
+        if (canonicalIssues0494[index] === "EXTERNAL_IDENTITY_INCOMPLETE") {
+          canonicalIssues0494.splice(index, 1);
+        }
+      }
     }
     if (
       timelineProjection0494 &&
@@ -9116,8 +9249,8 @@ async function listDriverTripSyncState0402(req, res) {
       publicProjectionHash: currentPublicProjectionHash0497,
       bookingsCount: expectedBookingsCount0512,
       tripKey: cleanText(data.tripKey, 180),
-      blablaProfileUuid: cleanText(data.blablaProfileUuid, 180),
-      blablaTripId: cleanText(data.blablaTripId, 180),
+      blablaProfileUuid: externalIdentity0523.blablaProfileUuid,
+      blablaTripId: externalIdentity0523.blablaTripId,
       blablaPublicUrl: cleanText(canonicalProjection0494.blablaPublicUrl || data.blablaPublicUrl, 1200),
       driverDisplayName: cleanText(data.driverDisplayName, 160),
       title: cleanText(canonicalProjection0494.title || data.title, 220),
