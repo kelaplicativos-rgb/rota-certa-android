@@ -712,6 +712,159 @@ internal class TripRemoteApiException(
     cause,
 )
 
+internal class CanonicalTimelineProjectionException0512(
+    val reasonCode: String,
+    message: String,
+) : IllegalStateException(message)
+
+internal fun canonicalTimelineFailureCode0512(error: Throwable): String {
+    if (error is kotlinx.coroutines.CancellationException) return "CANCELLED"
+    if (error is CanonicalTimelineProjectionException0512) return error.reasonCode
+    if (error is TripRemoteApiException) {
+        if (error.transportPhase == "decode_json") {
+            return if (error.responseBytes <= 0) "EMPTY_RESPONSE" else "PARSING_FAILED"
+        }
+        return when {
+            error.httpStatus == 401 -> "AUTH_FAILED"
+            error.httpStatus == 403 -> "FORBIDDEN"
+            error.httpStatus == 404 -> "NOT_FOUND"
+            error.httpStatus == 409 -> "HTTP_CONFLICT"
+            error.httpStatus >= 500 -> "SERVER_ERROR"
+            error.httpStatus > 0 -> "HTTP_" + error.httpStatus
+            error.message.orEmpty().contains("timed out", ignoreCase = true) ||
+                error.message.orEmpty().contains("timeout", ignoreCase = true) -> "TIMEOUT"
+            else -> "NETWORK_UNREACHABLE"
+        }
+    }
+    return "UNKNOWN"
+}
+
+internal fun canonicalTimelineFailureDiagnostic0512(error: Throwable): String = when (error) {
+    is TripRemoteApiException -> buildString {
+        append("code=").append(canonicalTimelineFailureCode0512(error))
+        append(" httpStatus=").append(error.httpStatus)
+        append(" phase=").append(error.transportPhase.ifBlank { "unknown" })
+        append(" endpoint=").append(error.endpoint.take(160))
+        append(" networkCallId=").append(error.networkCallId.take(120))
+        append(" requestId=").append(error.requestId.take(120))
+        append(" correlationId=").append(error.correlationId.take(120))
+        append(" responseBytes=").append(error.responseBytes)
+        append(" elapsedMs=").append(error.elapsedMs)
+    }
+    is CanonicalTimelineProjectionException0512 ->
+        "code=" + error.reasonCode + " projectionRejected=true"
+    else ->
+        "code=" + canonicalTimelineFailureCode0512(error) + " type=" + error.javaClass.simpleName.take(80)
+}
+
+internal fun validateCanonicalTimelineResponse0512(
+    response: DriverTripSyncStateResponse0402,
+): DriverTripSyncStateResponse0402 {
+    if (
+        response.source != "CANONICAL_NATIVE_FIREWALL" ||
+        response.provenancePolicy0500 != "AGENDA_CANONICAL_ONLY_0503" ||
+        response.collectorRead ||
+        response.collectorFallback ||
+        response.collectorDerivedData
+    ) {
+        throw CanonicalTimelineProjectionException0512(
+            "SCHEMA_INVALID",
+            "Timeline recusou payload fora da Agenda canônica autenticada.",
+        )
+    }
+    val seenCanonicalIds = mutableSetOf<String>()
+    response.trips.forEach { state ->
+        val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }.trim()
+        if (canonicalId.isBlank() || !seenCanonicalIds.add(canonicalId)) {
+            throw CanonicalTimelineProjectionException0512(
+                "IDENTITY_INVALID",
+                "Identidade canônica ausente ou duplicada na projeção da Timeline.",
+            )
+        }
+        if (state.canonicalRevision < 0L || state.publicationRevision < 0L) {
+            throw CanonicalTimelineProjectionException0512(
+                "REVISION_INVALID",
+                "Revisão inválida na projeção canônica da Timeline.",
+            )
+        }
+        if (state.canonicalIssues.any { it.equals("REVISION_INCOMPATIBLE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "REVISION_INVALID",
+                "A projeção canônica mudou durante a hidratação e foi rejeitada.",
+            )
+        }
+        if (state.canonicalIssues.any { it.equals("PASSENGER_PROJECTION_INCOMPLETE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PASSENGER_PROJECTION_FAILED",
+                "A projeção canônica de passageiros está incompleta.",
+            )
+        }
+        if (state.stops.size < 2) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Itinerário canônico incompleto na projeção da Timeline.",
+            )
+        }
+        val segmentCount = state.stops.size - 1
+        val segmentVectors = listOf(
+            state.segmentLoads,
+            state.segmentPassengerLoads,
+            state.segmentBlockedLoads,
+            state.segmentAvailableSeats,
+        )
+        if (segmentVectors.any { values -> values.isNotEmpty() && values.size != segmentCount }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Vetores de segmento incompatíveis com o itinerário canônico.",
+            )
+        }
+        if (
+            segmentVectors.flatten().any { it < 0 } ||
+            state.capacity < 0 ||
+            state.minimumOccupiedSeats < 0 ||
+            state.maximumOccupiedSeats < 0 ||
+            state.operationalBlockedSeats < 0 ||
+            state.operationalOverbookingSeats < 0 ||
+            listOfNotNull(
+                state.operationalAvailableSeats,
+                state.availableSeatsMinimum,
+                state.availableSeatsMaximum,
+            ).any { it < 0 }
+        ) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Capacidade ou ocupação negativa na projeção canônica.",
+            )
+        }
+        if (state.bookingsCount != state.bookings.size) {
+            throw CanonicalTimelineProjectionException0512(
+                "PASSENGER_PROJECTION_FAILED",
+                "Quantidade de passageiros projetados diverge do estado canônico.",
+            )
+        }
+        state.bookings.forEach { booking ->
+            if (booking.id.isBlank()) {
+                throw CanonicalTimelineProjectionException0512(
+                    "IDENTITY_INVALID",
+                    "Reserva canônica sem identidade.",
+                )
+            }
+            val bookingTripId = booking.tripId.trim()
+            if (
+                bookingTripId.isNotBlank() &&
+                bookingTripId != canonicalId &&
+                bookingTripId != state.remoteTripId
+            ) {
+                throw CanonicalTimelineProjectionException0512(
+                    "IDENTITY_INVALID",
+                    "Reserva associada a outra viagem canônica.",
+                )
+            }
+        }
+    }
+    return response
+}
+
 @Serializable
 data class DriverOperationalStatusRequest(
     val selection: String,
@@ -869,14 +1022,8 @@ class TripRemoteApi(
             includePastForVerification0429 = includePastForVerification0429,
             timelineProjection0494 = true,
         )
-        require(
-            response.source == "CANONICAL_NATIVE_FIREWALL" &&
-                response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
-                !response.collectorRead &&
-                !response.collectorFallback &&
-                !response.collectorDerivedData,
-        ) { "Timeline recusou payload fora da Agenda canônica autenticada." }
-        return response.copy(
+        val validated = validateCanonicalTimelineResponse0512(response)
+        return validated.copy(
             source = "CANONICAL_NATIVE_FIREWALL",
             provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
             collectorRead = false,
