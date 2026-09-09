@@ -374,6 +374,7 @@ test("0513 Timeline uses authenticated canonical private stops while public stop
   const publicStop = between(api, "function canonicalPublicStop0411", "function canonicalTimelinePrivateStop0513");
   const timeline = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
 
+  assert.match(privateStop, /address: cleanText\(source\.address, 300\)/);
   assert.match(privateStop, /latitude/);
   assert.match(privateStop, /longitude/);
   assert.match(privateStop, /priceToNextCents/);
