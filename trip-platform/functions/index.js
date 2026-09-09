@@ -314,6 +314,33 @@ function changedField(field, before, after) {
   return JSON.stringify(a) === JSON.stringify(b) ? null : { field, before: a, after: b };
 }
 
+function canonicalPrivateBookingMetadata0513(raw, previous = null) {
+  const input = raw && typeof raw === "object" ? raw : {};
+  const prior = previous && typeof previous === "object" ? previous : {};
+  let fareMinorUnits = prior.fareMinorUnits == null ? null : Math.max(0, Math.floor(Number(prior.fareMinorUnits || 0)));
+  if (input.fareMinorUnits != null) {
+    const fare = Number(input.fareMinorUnits);
+    if (!Number.isSafeInteger(fare) || fare < 0) {
+      throw Object.assign(new Error("Valor privado do passageiro inválido."), { httpStatus: 400, code: "invalid_passenger_private_fare" });
+    }
+    fareMinorUnits = fare;
+  }
+  return {
+    fareMinorUnits,
+    fareCurrencyCode: cleanText(input.fareCurrencyCode, 12) || cleanText(prior.fareCurrencyCode, 12),
+    boardingAddress: cleanText(input.boardingAddress, 240) || cleanText(prior.boardingAddress, 240),
+    dropoffAddress: cleanText(input.dropoffAddress, 240) || cleanText(prior.dropoffAddress, 240),
+  };
+}
+
+function privateBookingMetadataChange0513(previous, updated) {
+  const a = canonicalPrivateBookingMetadata0513({}, previous);
+  const b = canonicalPrivateBookingMetadata0513({}, updated);
+  return JSON.stringify(a) === JSON.stringify(b)
+    ? null
+    : { field: "privateOperationalMetadata", before: "REDACTED", after: "UPDATED" };
+}
+
 function bookingRelevantChanges(previous, updated) {
   return [
     changedField("boardingStopId", previous && previous.boardingStopId, updated && updated.boardingStopId),
@@ -325,6 +352,7 @@ function bookingRelevantChanges(previous, updated) {
     changedField("lastDriverSelection", previous && previous.lastDriverSelection, updated && updated.lastDriverSelection),
     changedField("farePerSeatCents", Number(previous && previous.farePerSeatCents || 0), Number(updated && updated.farePerSeatCents || 0)),
     changedField("totalFareCents", Number(previous && previous.totalFareCents || 0), Number(updated && updated.totalFareCents || 0)),
+    privateBookingMetadataChange0513(previous, updated),
   ].filter(Boolean);
 }
 
@@ -1490,6 +1518,22 @@ function canonicalPublicStop0411(raw, index) {
   };
 }
 
+function canonicalTimelinePrivateStop0513(raw, index) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const safe = canonicalPublicStop0411(source, index);
+  const latitude = Number(source.latitude);
+  const longitude = Number(source.longitude);
+  const trustedCoordinate =
+    Number.isFinite(latitude) && latitude >= -90 && latitude <= 90 &&
+    Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
+  return {
+    ...safe,
+    latitude: trustedCoordinate ? latitude : null,
+    longitude: trustedCoordinate ? longitude : null,
+    priceToNextCents: Math.max(0, Math.floor(Number(source.priceToNextCents || 0))),
+  };
+}
+
 function canonicalPublicTripPayloadFromStored0434(raw) {
   const payload = raw && typeof raw === "object" ? raw : {};
   const departureAtMillis = Math.max(0, Number(payload.departureAtMillis || 0));
@@ -2539,6 +2583,7 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
   if (!PROTECTED_PAYMENT_STATUSES.has(paymentStatus)) {
     throw Object.assign(new Error("Estado de pagamento inválido."), { httpStatus: 409, code: "invalid_payment_status" });
   }
+  const privateMetadata0513 = canonicalPrivateBookingMetadata0513(raw, previous);
   const now = Date.now();
   return {
     id: bookingId,
@@ -2558,6 +2603,7 @@ function normalizeDriverCapacityBooking(raw, trip, bookingId, previous = null) {
     capacityClaimType,
     sourceReference: cleanText(raw.sourceReference, 240),
     occupancyGroupId: cleanText(raw.occupancyGroupId, 120) || null,
+    ...privateMetadata0513,
     createdAtMillis: Number(previous && previous.createdAtMillis) || now,
     updatedAtMillis: now,
   };
@@ -2610,6 +2656,7 @@ function normalizeProtectedSnapshotBooking(raw, trip, previous) {
   const holdExpiresAtMillis = Number.isFinite(Number(raw && raw.holdExpiresAtMillis)) && Number(raw.holdExpiresAtMillis) > 0
     ? Number(raw.holdExpiresAtMillis)
     : (Number.isFinite(Number(previous.holdExpiresAtMillis)) && Number(previous.holdExpiresAtMillis) > 0 ? Number(previous.holdExpiresAtMillis) : null);
+  const privateMetadata0513 = canonicalPrivateBookingMetadata0513(raw, previous);
 
   return {
     ...previous,
@@ -2623,6 +2670,7 @@ function normalizeProtectedSnapshotBooking(raw, trip, previous) {
     paymentStatus,
     lastDriverSelection: cleanText(raw && raw.lastDriverSelection, 32) || cleanText(previous.lastDriverSelection, 32),
     holdExpiresAtMillis,
+    ...privateMetadata0513,
     source: "ROTA_CERTA",
     capacityClaimType: "PASSENGER",
   };
@@ -7525,6 +7573,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         if (!Number.isInteger(seats) || seats < 1 || seats > 999) throw Object.assign(new Error("Quantidade de lugares inválida."), { httpStatus: 400, code: "invalid_seats" });
         ({ fromIndex, toIndex } = bookingSegmentRange(trip, boardingStopId, dropoffStopId));
         const farePerSeatCents = (trip.stops || []).slice(fromIndex, toIndex).reduce((sum, stop) => sum + Math.max(0, Number(stop.priceToNextCents || 0)), 0);
+        const privateMetadata0513 = canonicalPrivateBookingMetadata0513(req.body || {}, previous);
         updated = {
           ...previous,
           passengerName,
@@ -7534,6 +7583,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
           seats,
           farePerSeatCents,
           totalFareCents: farePerSeatCents * seats,
+          ...privateMetadata0513,
         };
       }
 
@@ -7572,6 +7622,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         changedField("passengerName", previous.passengerName, updated.passengerName),
         changedField("passengerContact", previous.passengerContact, updated.passengerContact),
       ].filter(Boolean);
+      const passengerVisibleChange0513 = eventChanges.some((change) => change.field !== "privateOperationalMetadata");
       const eventId = writeChangeEventAndNotifications(tx, {
         eventType,
         tripToken: token,
@@ -7582,12 +7633,12 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         source: adminActor0468 ? "ADMIN_WEB" : (cancelOnly ? "TIMELINE_BOOKING_CANCEL" : "TIMELINE_BOOKING_EDIT"),
         passengerId: cleanText(updated.passengerId, 120),
         changes: eventChanges,
-        passengerRecipients: [{
+        passengerRecipients: passengerVisibleChange0513 ? [{
           passengerId: cleanText(updated.passengerId, 120),
           passengerContact: cleanText(updated.passengerContact, 40),
           bookingId,
           tripTitle: cleanText(trip.title, 180),
-        }],
+        }] : [],
       });
       const entityRevision = Math.max(0, Number(trip.publicationRevision || 0)) + 1;
       writeDeliveredTripPublicationOutbox(tx, {
@@ -7613,7 +7664,7 @@ async function mutateProtectedBooking(req, res, token, bookingIdRaw, cancelOnly 
         booking: safeBooking,
         ...canonicalCapacityPersistence(trip, candidateRecords, capacityState, now),
         availableSeats: fromIndex >= 0 ? availableForBooking(trip, candidateRecords, loads, fromIndex, toIndex, now) : null,
-        notified: relevantChanges.length > 0,
+        notified: passengerVisibleChange0513,
         changed: true,
         entityRevision,
       };
@@ -8897,9 +8948,11 @@ async function listDriverTripSyncState0402(req, res) {
     const canonicalProjection0494 = canonicalPublicTripPayload0411(doc.id, data);
     const currentPublicProjectionHash0497 = canonicalPublicTripHash0411(canonicalProjection0494);
     const stops0494 = canonicalDepartureStops0495(
-      Array.isArray(canonicalProjection0494.stops)
-        ? canonicalProjection0494.stops
-        : (Array.isArray(data.stops) ? data.stops : []),
+      timelineProjection0494 && Array.isArray(data.stops)
+        ? data.stops.map(canonicalTimelinePrivateStop0513)
+        : (Array.isArray(canonicalProjection0494.stops)
+            ? canonicalProjection0494.stops
+            : (Array.isArray(data.stops) ? data.stops.map(canonicalTimelinePrivateStop0513) : [])),
       canonicalProjection0494.departureAtMillis || data.departureAtMillis,
     );
     const segmentLoads0494 = Array.isArray(canonicalProjection0494.segmentLoads)
@@ -8996,14 +9049,9 @@ async function listDriverTripSyncState0402(req, res) {
     if (timelineProjection0494 && !revisionStable0512 && !canonicalIssues0494.includes("REVISION_INCOMPATIBLE")) {
       canonicalIssues0494.push("REVISION_INCOMPATIBLE");
     }
-    if (
-      timelineProjection0494 &&
-      privatePayload0499 &&
-      !privateMirrorCurrent0499 &&
-      !canonicalIssues0494.includes("PRIVATE_PROJECTION_STALE")
-    ) {
-      canonicalIssues0494.push("PRIVATE_PROJECTION_STALE");
-    }
+    // 0513: private mirror revision is diagnostic/fallback evidence only. Timeline fields above
+    // are read from the current canonical trip + booking documents, so a stale mirror cannot
+    // veto a complete newer canonical revision.
     if (operationalOverbookingSeats0494 > 0 && !canonicalIssues0494.includes("OVERBOOKING")) {
       canonicalIssues0494.push("OVERBOOKING");
     }
