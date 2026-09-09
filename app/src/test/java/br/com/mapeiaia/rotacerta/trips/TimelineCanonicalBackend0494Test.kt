@@ -733,6 +733,10 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(protectedMutation.contains("fareCurrencyCode = booking.fareCurrencyCode"))
         assertTrue(protectedMutation.contains("boardingAddress = booking.boardingAddress"))
         assertTrue(protectedMutation.contains("dropoffAddress = booking.dropoffAddress"))
+        assertTrue(protectedMutation.contains("boardingLatitude = booking.boardingLatitude"))
+        assertTrue(protectedMutation.contains("boardingLongitude = booking.boardingLongitude"))
+        assertTrue(protectedMutation.contains("dropoffLatitude = booking.dropoffLatitude"))
+        assertTrue(protectedMutation.contains("dropoffLongitude = booking.dropoffLongitude"))
 
         val row = EnhancedPassengerCardRow(
             name = "Passageiro",
@@ -751,10 +755,10 @@ class TimelineCanonicalBackend0494Test {
         val pickup = passengerPickupMapTarget(row)
         val dropoff = passengerDropoffMapTarget(row)
 
-        assertNull(pickup?.latitude)
-        assertNull(pickup?.longitude)
-        assertNull(dropoff?.latitude)
-        assertNull(dropoff?.longitude)
+        assertEquals(-23.6639, pickup?.latitude)
+        assertEquals(-46.5383, pickup?.longitude)
+        assertEquals(-21.7218, dropoff?.latitude)
+        assertEquals(-44.9849, dropoff?.longitude)
         assertEquals("Embarque privado", pickup?.query)
         assertEquals("Destino privado", dropoff?.query)
 
