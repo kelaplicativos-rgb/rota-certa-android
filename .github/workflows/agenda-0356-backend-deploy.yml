@@ -89,9 +89,9 @@ jobs:
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:tripApi --non-interactive --force --token "$FIREBASE_TOKEN"
           else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:tripApi --non-interactive --force
           fi
 
       - name: Smoke live canonical endpoint
