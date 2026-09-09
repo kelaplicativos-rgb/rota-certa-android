@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.517 immediate canonical passenger Timeline
-# 0.1.517: render canonical Agenda passenger rows on first paint; enrich identity/history asynchronously without blocking the card.
+name: Rota Certa 0.1.516 immediate canonical passenger Timeline
+# 0.1.516 hotfix: render canonical Agenda passenger rows on first paint; enrich identity/history asynchronously without blocking the card.
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5809'
-      EXPECTED_VERSION_NAME: '0.1.517'
+      EXPECTED_VERSION_CODE: '5808'
+      EXPECTED_VERSION_NAME: '0.1.516'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -226,7 +226,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.517-immediate-canonical-passengers-${{ github.sha }}
+          name: rota-certa-0.1.516-immediate-canonical-passengers-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0517
