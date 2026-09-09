@@ -69,6 +69,10 @@ internal data class EnhancedPassengerCardRow(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
     val boardingStopIndex: Int? = null,
     val matchedByPhone: Boolean = false,
     val probableMatch: Boolean = false,
@@ -1173,8 +1177,10 @@ internal fun enhancedPassengerRows(
             val privateMetadata0494 = externalMetadataSnapshot0394?.get(privateMetadataKey0494)
                 ?: passengerStore.externalMetadata(privateMetadataKey0494)
             val phone = booking.passengerContact.trim().takeIf(String::isNotEmpty)
-            val boarding = stops[booking.boardingStopId]?.name
-            val dropoff = stops[booking.dropoffStopId]?.name
+            val boardingStop = stops[booking.boardingStopId]
+            val dropoffStop = stops[booking.dropoffStopId]
+            val boarding = boardingStop?.name
+            val dropoff = dropoffStop?.name
             val phoneKey = passengerContactKey(phone)
             val candidateIndex = rows.indexOfFirst { current ->
                 val currentPhone = passengerContactKey(current.phone)
@@ -1207,16 +1213,20 @@ internal fun enhancedPassengerRows(
                     operationalStatus = booking.operationalStatus,
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
-                    fareMinorUnits = privateMetadata0494?.fareMinorUnits ?: booking.fareMinorUnits ?: current.fareMinorUnits,
-                    fareCurrencyCode = privateMetadata0494?.fareCurrencyCode?.takeIf(String::isNotBlank)
-                        ?: booking.fareCurrencyCode.takeIf(String::isNotBlank)
+                    fareMinorUnits = booking.fareMinorUnits ?: privateMetadata0494?.fareMinorUnits ?: current.fareMinorUnits,
+                    fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.fareCurrencyCode?.takeIf(String::isNotBlank)
                         ?: current.fareCurrencyCode,
-                    boardingAddress = privateMetadata0494?.boardingAddress?.takeIf(String::isNotBlank)
-                        ?: booking.boardingAddress.takeIf(String::isNotBlank)
+                    boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.boardingAddress?.takeIf(String::isNotBlank)
                         ?: current.boardingAddress,
-                    dropoffAddress = privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
-                        ?: booking.dropoffAddress.takeIf(String::isNotBlank)
+                    dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
                         ?: current.dropoffAddress,
+                    boardingLatitude = boardingStop?.latitude ?: current.boardingLatitude,
+                    boardingLongitude = boardingStop?.longitude ?: current.boardingLongitude,
+                    dropoffLatitude = dropoffStop?.latitude ?: current.dropoffLatitude,
+                    dropoffLongitude = dropoffStop?.longitude ?: current.dropoffLongitude,
                     boardingStopIndex = stopIndex ?: current.boardingStopIndex,
                     matchedByPhone = candidateIndex >= 0,
                     probableMatch = candidateIndex < 0,
@@ -1235,13 +1245,17 @@ internal fun enhancedPassengerRows(
                     operationalStatus = booking.operationalStatus,
                     paymentStatus = booking.paymentStatus,
                     lastDriverSelection = booking.lastDriverSelection,
-                    fareMinorUnits = privateMetadata0494?.fareMinorUnits ?: booking.fareMinorUnits,
-                    fareCurrencyCode = privateMetadata0494?.fareCurrencyCode?.takeIf(String::isNotBlank)
-                        ?: booking.fareCurrencyCode,
-                    boardingAddress = privateMetadata0494?.boardingAddress?.takeIf(String::isNotBlank)
-                        ?: booking.boardingAddress,
-                    dropoffAddress = privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
-                        ?: booking.dropoffAddress,
+                    fareMinorUnits = booking.fareMinorUnits ?: privateMetadata0494?.fareMinorUnits,
+                    fareCurrencyCode = booking.fareCurrencyCode.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.fareCurrencyCode.orEmpty(),
+                    boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.boardingAddress.orEmpty(),
+                    dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
+                        ?: privateMetadata0494?.dropoffAddress.orEmpty(),
+                    boardingLatitude = boardingStop?.latitude,
+                    boardingLongitude = boardingStop?.longitude,
+                    dropoffLatitude = dropoffStop?.latitude,
+                    dropoffLongitude = dropoffStop?.longitude,
                     boardingStopIndex = stopIndex,
                 )
             }
@@ -1491,21 +1505,15 @@ private fun PassengerFareEditorDialog(
 private fun canonicalBookingPrivateMetadataKey0494(bookingId: String): String =
     "canonical-booking-private:" + bookingId.trim()
 
-/**
- * Private driver annotation only. It never changes canonical trip/booking capacity,
- * status, identity or public projection.
- */
-private fun savePassengerAddress(
+/** Legacy-only cache for rows that genuinely have no canonical booking identity. */
+private fun savePassengerAddressLegacy0494(
     row: EnhancedPassengerCardRow,
     addressRaw: String,
     boarding: Boolean,
-    @Suppress("UNUSED_PARAMETER") store: TripStore,
     passengerStore: PassengerIdentityStore,
 ): Boolean {
     val address = addressRaw.trim().takeIf(String::isNotEmpty) ?: return false
-    val key = row.localBookingId?.takeIf(String::isNotBlank)?.let(::canonicalBookingPrivateMetadataKey0494)
-        ?: row.externalReservationKey
-        ?: return false
+    val key = row.externalReservationKey ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(
         if (boarding) current.copy(boardingAddress = address) else current.copy(dropoffAddress = address),
@@ -1513,20 +1521,49 @@ private fun savePassengerAddress(
     return true
 }
 
-/** Private driver annotation; fare is not used as Timeline capacity/identity authority. */
-private fun savePassengerFare(
+/** Legacy-only fare cache; canonical rows persist through the backend booking mutation. */
+private fun savePassengerFareLegacy0494(
     row: EnhancedPassengerCardRow,
     amount: Long,
     currency: String,
-    @Suppress("UNUSED_PARAMETER") store: TripStore,
     passengerStore: PassengerIdentityStore,
 ): Boolean {
-    val key = row.localBookingId?.takeIf(String::isNotBlank)?.let(::canonicalBookingPrivateMetadataKey0494)
-        ?: row.externalReservationKey
-        ?: return false
+    val key = row.externalReservationKey ?: return false
     val current = passengerStore.externalMetadata(key) ?: ExternalPassengerMetadata(reservationKey = key)
     passengerStore.saveExternalMetadata(current.copy(fareMinorUnits = amount, fareCurrencyCode = currency))
     return true
+}
+
+private suspend fun persistCanonicalPassengerPrivateMetadata0513(
+    context: Context,
+    trip: Trip,
+    previous: Booking,
+    updated: Booking,
+    store: TripStore,
+): DriverBookingUpsertResponse {
+    val remoteTripId = trip.remoteId?.trim()?.takeIf(String::isNotEmpty)
+        ?: throw IllegalStateException("Viagem canônica sem identidade remota para mutação.")
+    val settings = store.onlineSettings()
+    if (!settings.configured) throw IllegalStateException("Backend canônico não configurado.")
+    val ack = if (previous.source == BookingSource.ROTA_CERTA) {
+        TripRemoteApi(settings).updateProtectedDriverBooking(remoteTripId, updated)
+    } else {
+        TripRemoteApi(settings).upsertDriverBooking(remoteTripId, updated)
+    }
+    UnifiedDebugEventStore.record(
+        "TIMELINE_CANONICAL_PASSENGER_PRIVATE_MUTATION_0513",
+        context.packageName,
+        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+            " bookingId=" + passengerCancellationHash(previous.id) +
+            " entityRevision=" + ack.entityRevision +
+            " fareChanged=" + (previous.fareMinorUnits != updated.fareMinorUnits ||
+                previous.fareCurrencyCode != updated.fareCurrencyCode) +
+            " boardingAddressChanged=" + (previous.boardingAddress != updated.boardingAddress) +
+            " dropoffAddressChanged=" + (previous.dropoffAddress != updated.dropoffAddress) +
+            " source=CANONICAL_BACKEND privateValuesLogged=false",
+    )
+    BookingRealtimeEvents0356.notifyChanged()
+    return ack
 }
 
 /** Legacy-only metadata link for rows that genuinely have no canonical booking id. */
@@ -1699,20 +1736,42 @@ private fun TripBlaBlaTripActionRow(
     }
 }
 
-internal data class PassengerPickupMapTarget(val query: String)
+internal data class PassengerPickupMapTarget(
+    val query: String,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+)
+
+private fun trustedPassengerCoordinate0513(latitude: Double?, longitude: Double?): Boolean =
+    latitude != null && longitude != null &&
+        latitude.isFinite() && latitude in -90.0..90.0 &&
+        longitude.isFinite() && longitude in -180.0..180.0
 
 internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    return PassengerPickupMapTarget(query)
+    val trusted = trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
+    return PassengerPickupMapTarget(query, row.boardingLatitude.takeIf { trusted }, row.boardingLongitude.takeIf { trusted })
 }
 
 internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): PassengerPickupMapTarget? {
     val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    return PassengerPickupMapTarget(query)
+    val trusted = trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
+    return PassengerPickupMapTarget(query, row.dropoffLatitude.takeIf { trusted }, row.dropoffLongitude.takeIf { trusted })
+}
+
+private fun passengerMapUri0513(target: PassengerPickupMapTarget): Uri {
+    val latitude = target.latitude
+    val longitude = target.longitude
+    return if (trustedPassengerCoordinate0513(latitude, longitude)) {
+        val coordinateQuery = "$latitude,$longitude (" + target.query + ")"
+        Uri.parse("geo:$latitude,$longitude?q=" + Uri.encode(coordinateQuery))
+    } else {
+        Uri.parse("geo:0,0?q=" + Uri.encode(target.query))
+    }
 }
 
 internal data class ExternalPassengerTarget(val profileUuid: String, val href: String)
@@ -1757,7 +1816,7 @@ private fun openExternalTripBlaBla(context: Context, profileUuid: String?, href:
 }
 
 private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapTarget) {
-    val uri = Uri.parse("geo:0,0?q=${Uri.encode(target.query)}")
+    val uri = passengerMapUri0513(target)
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
     val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
         .setPackage("com.google.android.apps.maps")
@@ -1766,7 +1825,8 @@ private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapT
     UnifiedDebugEventStore.record(
         "PASSENGER_PICKUP_MAP_OPEN",
         context.packageName,
-        "timeline=true exact_or_collected_pickup=true",
+        "timeline=true exact_or_collected_pickup=true coordinate=" +
+            trustedPassengerCoordinate0513(target.latitude, target.longitude),
     )
     runCatching { context.startActivity(mapsIntent) }
         .recoverCatching { context.startActivity(fallbackIntent) }
@@ -1776,7 +1836,7 @@ private fun openPassengerPickupMap(context: Context, target: PassengerPickupMapT
 }
 
 private fun openPassengerDropoffMap(context: Context, target: PassengerPickupMapTarget) {
-    val uri = Uri.parse("geo:0,0?q=${Uri.encode(target.query)}")
+    val uri = passengerMapUri0513(target)
     val flags = Intent.FLAG_ACTIVITY_NEW_TASK
     val mapsIntent = Intent(Intent.ACTION_VIEW, uri)
         .setPackage("com.google.android.apps.maps")
@@ -1785,7 +1845,8 @@ private fun openPassengerDropoffMap(context: Context, target: PassengerPickupMap
     UnifiedDebugEventStore.record(
         "PASSENGER_DROPOFF_MAP_OPEN",
         context.packageName,
-        "timeline=true exact_or_collected_dropoff=true",
+        "timeline=true exact_or_collected_dropoff=true coordinate=" +
+            trustedPassengerCoordinate0513(target.latitude, target.longitude),
     )
     runCatching { context.startActivity(mapsIntent) }
         .recoverCatching { context.startActivity(fallbackIntent) }
