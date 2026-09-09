@@ -47,7 +47,7 @@ jobs:
           grep -Fq 'versionCode = 5806' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.514"' app/build.gradle.kts
           node --check trip-platform/public/app.js
-          node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
           grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
           grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' trip-platform/public/app.js
           grep -Fq 'bodyLogged: false' trip-platform/public/app.js
