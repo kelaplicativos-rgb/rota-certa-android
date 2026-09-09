@@ -9,6 +9,7 @@ on:
       - 'trip-platform/public/**'
       - 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
       - 'trip-platform/functions/test/agenda-card-expansion-state-0506.test.js'
+      - 'trip-platform/functions/test/agenda-public-segment-availability-0484.test.js'
       - 'app/build.gradle.kts'
   workflow_dispatch:
 
