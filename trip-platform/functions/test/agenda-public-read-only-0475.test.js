@@ -74,7 +74,7 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
   assert.match(gradle, /versionCode = 5809/);
-  assert.match(gradle, /versionName = "0\.1\.516"/);
+  assert.match(gradle, /versionName = "0\.1\.517"/);
 });
 
 
