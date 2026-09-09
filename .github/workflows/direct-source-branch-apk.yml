@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.516 canonical Agenda → Timeline private parity
-# 0.1.516: hydrate Android Timeline from canonical Agenda private passenger data when backend is unavailable; preserve public sanitization.
+name: Rota Certa 0.1.517 immediate canonical passenger Timeline
+# 0.1.517: render canonical Agenda passenger rows on first paint; enrich identity/history asynchronously without blocking the card.
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: timeline-canonical-agenda-private-0516-${{ github.ref }}
+  group: timeline-canonical-passenger-first-paint-0517-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: timeline_canonical_agenda_private_0516_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: timeline_canonical_passenger_first_paint_0517_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5808'
-      EXPECTED_VERSION_NAME: '0.1.516'
+      EXPECTED_VERSION_CODE: '5809'
+      EXPECTED_VERSION_NAME: '0.1.517'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -171,10 +171,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0516
+          OUT=/tmp/0517
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-agenda-timeline-private-parity.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-immediate-canonical-passengers.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
@@ -193,6 +193,7 @@ jobs:
           canonical_booking_revision_binding=PASS
           canonical_booking_trip_identity_binding=PASS
           passenger_loading_terminal_state=PASS
+          canonical_passenger_first_paint_immediate=PASS
           private_projection_revision_guard=PASS
           canonical_private_passenger_metadata=PASS
           canonical_private_booking_ack_required=PASS
@@ -225,7 +226,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.516-canonical-agenda-timeline-private-parity-${{ github.sha }}
+          name: rota-certa-0.1.517-immediate-canonical-passengers-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0516
+          path: /tmp/0517
