@@ -1865,7 +1865,11 @@ private fun TimelineEntryCard(
                 TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros confirmados + vagas bloqueadas ultrapassam o inventário operacional da viagem.")
                 TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> Text("❌ Conflito real de horário/local.")
                 TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
+                TripTimelineIssue.REVISION_INCOMPATIBLE in entry.issues -> Text("⚠️ Revisão canônica incompatível; o snapshot íntegro anterior deve ser preservado.")
+                TripTimelineIssue.PASSENGER_PROJECTION_INCOMPLETE in entry.issues -> Text("⚠️ Projeção canônica de passageiros incompleta.")
+                TripTimelineIssue.PRIVATE_PROJECTION_STALE in entry.issues -> Text("⚠️ Dados privados operacionais ainda não alcançaram a revisão canônica atual.")
                 TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
+                TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE in entry.issues -> Text("⚠️ Identidade externa incompleta; a viagem continua operacional pela identidade canônica. Ações BlaBlaCar podem ficar limitadas.")
                 TripTimelineIssue.VALIDATION_PENDING in entry.issues -> Text("⏳ Falta confirmar a origem dos dados.")
             }
 
