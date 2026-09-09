@@ -90,7 +90,7 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("val targetedRetryable = false"))
     }
     @Test
-    fun timelineCardTargetCollectorRefreshIsExactAndCanonicalOnly0517() {
+    fun timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518() {
         assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_collector_refresh"))
         assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_collector_refresh"))
 
@@ -114,9 +114,20 @@ class AgendaBackgroundSync0392Test {
 
         val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertTrue(timeline.contains("enqueueTripCollectorRefresh0517("))
+        assertTrue(timeline.contains("origin = BlaBlaCommandOrigin0407.CARD"))
         assertTrue(timeline.contains("Text(\"📡\")"))
+        assertFalse(timeline.contains("origin = \"TIMELINE_CARD_TARGET_REFRESH_0517\""))
         assertFalse(timeline.contains("BlaBlaCollectorStateStore("))
         assertFalse(timeline.contains("reverifyTripHeadless0407("))
+        assertFalse(timeline.contains("BlaBlaDynamicSessionIntents.syncExact("))
+
+        val agendaCollectorUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt").readText()
+        assertTrue(agendaCollectorUi.contains("AGENDA_EXACT_CARD_INTERNAL_SYNC_0518"))
+        assertTrue(agendaCollectorUi.contains("AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517("))
+        assertTrue(agendaCollectorUi.contains("activityLaunch=false"))
+        assertTrue(agendaCollectorUi.contains("sessionLauncher=false"))
+        assertTrue(agendaCollectorUi.contains("visualNavigation=false"))
+        assertFalse(agendaCollectorUi.contains("sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact("))
     }
 
     @Test
