@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.513 canonical Timeline backend deploy
+name: Rota Certa 0.1.514 canonical Timeline backend deploy
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: canonical-timeline-backend-0513
+  group: canonical-timeline-backend-0514
   cancel-in-progress: true
 
 jobs:
@@ -37,8 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'versionCode = 5805' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.513"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5806' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.514"' app/build.gradle.kts
           grep -Fq 'PASSENGER_PROJECTION_INCOMPLETE' trip-platform/functions/index.js
           grep -Fq 'REVISION_INCOMPATIBLE' trip-platform/functions/index.js
           grep -Fq 'canonicalTimelinePrivateStop0513' trip-platform/functions/index.js
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
-          node --test             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             | tee /tmp/backend-tests-0513.log
+          node --test             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             | tee /tmp/backend-tests-0514.log
 
       - name: Configure Firebase authentication
         shell: bash
@@ -106,9 +106,9 @@ jobs:
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0513.json
-          grep -Fq '"ok":true' /tmp/live-health-0513.json
-          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0513.json
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0514.json
+          grep -Fq '"ok":true' /tmp/live-health-0514.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0514.json
           CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/canonical-unauth.json -w '%{http_code}'             "$BASE/v1/driver/trips/sync-state?includePastForVerification=1&timelineProjection=1")"
           test "$CODE" = "401"
           echo "backend_source_head=$GITHUB_SHA"
