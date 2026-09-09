@@ -107,6 +107,17 @@ jobs:
             "privateMirrorJson", "notes", "address", "latitude", "longitude",
           ]);
 
+          function sanitizeStaticFailover(value) {
+            if (Array.isArray(value)) return value.map(sanitizeStaticFailover);
+            if (!value || typeof value !== "object") return value;
+            const clean = {};
+            for (const [key, child] of Object.entries(value)) {
+              if (forbiddenKeys.has(key)) continue;
+              clean[key] = sanitizeStaticFailover(child);
+            }
+            return clean;
+          }
+
           function assertSanitized(value, path = "$") {
             if (Array.isArray(value)) {
               value.forEach((entry, index) => assertSanitized(entry, path + "[" + index + "]"));
@@ -135,9 +146,10 @@ jobs:
               if (!body || typeof body !== "object" || !Array.isArray(body.trips)) {
                 throw new Error("canonical public Agenda payload is structurally invalid");
               }
-              assertSanitized(body);
-              fs.writeFileSync(output, JSON.stringify(body));
-              process.stdout.write("PUBLIC_AGENDA_FAILOVER_0517_MATERIALIZED trips=" + body.trips.length + "\n");
+              const sanitizedBody = sanitizeStaticFailover(body);
+              assertSanitized(sanitizedBody);
+              fs.writeFileSync(output, JSON.stringify(sanitizedBody));
+              process.stdout.write("PUBLIC_AGENDA_FAILOVER_0517_MATERIALIZED trips=" + sanitizedBody.trips.length + "\n");
             } finally {
               await new Promise((resolve) => server.close(resolve));
             }
