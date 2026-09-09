@@ -514,4 +514,149 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(timeline.contains("🪑 Vagas disponíveis: \$emptyFree \$availabilityLabel"))
     }
 
+
+    @Test
+    fun testR_0512ManualCanonicalIdentityRemainsOperationalWithoutExternalIdentity() {
+        val booking = RemoteBooking(
+            id = "manual-booking",
+            tripId = "manual-canonical-0512",
+            passengerId = "passenger-internal",
+            passengerName = "Passageiro interno",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            source = BookingSource.PRIVATE,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+        val response = DriverTripSyncStateResponse0402(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
+            trips = listOf(
+                state(
+                    canonicalId = "manual-canonical-0512",
+                    revision = 21L,
+                    blablaTripId = "",
+                    bookings = listOf(booking),
+                ).copy(
+                    bookingsCount = 1,
+                    blablaProfileUuid = "",
+                ),
+            ),
+        )
+
+        val validated = validateCanonicalTimelineResponse0512(response)
+        val projection = canonicalTimelineProjection0494(validated)
+
+        assertEquals("manual-canonical-0512", projection.entries.single().tripId)
+        assertEquals(1, projection.bookings.size)
+        assertNull(projection.entries.single().blablaTripId)
+        assertFalse(TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE in projection.entries.single().issues)
+    }
+
+    @Test
+    fun testS_0512PassengerProjectionMismatchRejectsNewSnapshotBeforeCacheReplacement() {
+        val booking = RemoteBooking(
+            id = "booking-one",
+            tripId = "canonical-mismatch",
+            passengerName = "Passageiro",
+            boardingStopId = "stop-origin",
+            dropoffStopId = "stop-destination",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            source = BookingSource.PRIVATE,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+        val response = DriverTripSyncStateResponse0402(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
+            trips = listOf(
+                state("canonical-mismatch", 22L, bookings = listOf(booking))
+                    .copy(bookingsCount = 2),
+            ),
+        )
+
+        val error = assertFailsWith<CanonicalTimelineProjectionException0512> {
+            validateCanonicalTimelineResponse0512(response)
+        }
+        assertEquals("PASSENGER_PROJECTION_FAILED", error.reasonCode)
+    }
+
+    @Test
+    fun testT_0512RevisionRaceIsProjectionFailureNotBackendOffline() {
+        val response = DriverTripSyncStateResponse0402(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
+            trips = listOf(
+                state("canonical-race", 23L).copy(
+                    canonicalIssues = listOf("REVISION_INCOMPATIBLE"),
+                ),
+            ),
+        )
+
+        val error = assertFailsWith<CanonicalTimelineProjectionException0512> {
+            validateCanonicalTimelineResponse0512(response)
+        }
+        assertEquals("REVISION_INVALID", error.reasonCode)
+        assertEquals("REVISION_INVALID", canonicalTimelineFailureCode0512(error))
+    }
+
+    @Test
+    fun testU_0512CompositionCancellationNeverBecomesBackendUnavailable() {
+        val cancellation = kotlinx.coroutines.CancellationException("The coroutine scope left the composition")
+        assertEquals("CANCELLED", canonicalTimelineFailureCode0512(cancellation))
+
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(timelineUi.contains("catch (cancelled: kotlinx.coroutines.CancellationException)"))
+        assertTrue(timelineUi.contains("throw cancelled"))
+        assertTrue(timelineUi.contains("TIMELINE_CANONICAL_PROJECTION_REJECTED_0512"))
+        assertTrue(timelineUi.contains("TIMELINE_REFRESH_FAILED"))
+    }
+
+    @Test
+    fun testV_0512PassengerLoadingHasTerminalFailureAndRefreshesWithCanonicalBookings() {
+        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(passengerUi.contains("LaunchedEffect(entry, trip, canonicalBookings0494, identityRevision, completionRevision)"))
+        assertTrue(passengerUi.contains("PASSENGER_PROJECTION_FAILED"))
+        assertTrue(passengerUi.contains("renderFailure0512"))
+        assertTrue(passengerUi.contains("catch (cancelled: kotlinx.coroutines.CancellationException)"))
+        assertTrue(passengerUi.contains("Não foi possível resolver os passageiros desta viagem"))
+    }
+
+    @Test
+    fun testW_0512ExternalIdentityIncompleteOnlyLimitsExternalActions() {
+        val projection = canonicalTimelineProjection0494(
+            DriverTripSyncStateResponse0402(
+                source = "CANONICAL_NATIVE_FIREWALL",
+                provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+                collectorRead = false,
+                collectorFallback = false,
+                collectorDerivedData = false,
+                trips = listOf(
+                    state("canonical-partial-external", 24L).copy(
+                        blablaProfileUuid = "profile-only",
+                        blablaTripId = "",
+                        canonicalIssues = listOf("EXTERNAL_IDENTITY_INCOMPLETE"),
+                    ),
+                ),
+            ),
+        )
+
+        val entry = projection.entries.single()
+        assertEquals("canonical-partial-external", entry.tripId)
+        assertTrue(TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE in entry.issues)
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(timelineUi.contains("a viagem continua operacional pela identidade canônica"))
+    }
+
 }
