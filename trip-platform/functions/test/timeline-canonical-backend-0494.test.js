@@ -127,6 +127,27 @@ test("0503 Timeline endpoint reads canonical Agenda and authenticated private mi
   assert.doesNotMatch(fn, /BlaBlaTimelineAdapter|BlaBlaCollector|AUTOMATIC_COLLECTOR/);
 });
 
+test("0512 Timeline passenger projection is revision-bound and complete before Android accepts it", () => {
+  const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+  assert.match(fn, /bookingSnapshot0512/);
+  assert.match(fn, /doc\.ref\.get\(\)/);
+  assert.match(fn, /expectedCanonicalRevision0512/);
+  assert.match(fn, /expectedOccupancyRevision0512/);
+  assert.match(fn, /REVISION_INCOMPATIBLE/);
+  assert.match(fn, /PASSENGER_PROJECTION_INCOMPLETE/);
+  assert.match(fn, /tripId: canonicalTripId0499/);
+  assert.match(fn, /expectedBookingsCount0512/);
+  assert.doesNotMatch(fn, /orderBy\("createdAtMillis"/);
+});
+
+test("0512 incomplete external identity is diagnostic only and manual canonical trips remain valid", () => {
+  const fn = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+  assert.match(fn, /hasExternalProfile0512 !== hasExternalTrip0512/);
+  assert.match(fn, /EXTERNAL_IDENTITY_INCOMPLETE/);
+  assert.match(fn, /canonicalTripId0499/);
+  assert.doesNotMatch(fn, /if \(!hasExternalProfile0512 \|\| !hasExternalTrip0512\) return null/);
+});
+
 test("0494 operational mutations update canonical server projection atomically", () => {
   for (const name of [
     "async function mutateDriverBookingDecision",
