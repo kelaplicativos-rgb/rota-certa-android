@@ -689,4 +689,76 @@ class TimelineCanonicalBackend0494Test {
         assertEquals("PROJECTION_INCOMPLETE", error.reasonCode)
     }
 
+    @Test
+    fun testW_0513CanonicalPassengerPrivateFieldsBeatLegacyCacheAndUseTrustedCoordinates() {
+        val source = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt",
+        ).readText()
+        assertTrue(source.contains("fareMinorUnits = booking.fareMinorUnits ?: privateMetadata0494?.fareMinorUnits"))
+        assertTrue(source.contains("boardingAddress = booking.boardingAddress.takeIf(String::isNotBlank)"))
+        assertTrue(source.contains("dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)"))
+        assertTrue(source.contains("persistCanonicalPassengerPrivateMetadata0513"))
+        assertTrue(source.contains("updateProtectedDriverBooking(remoteTripId, updated)"))
+        assertTrue(source.contains("upsertDriverBooking(remoteTripId, updated)"))
+        assertTrue(source.contains("TIMELINE_CANONICAL_PASSENGER_PRIVATE_MUTATION_0513"))
+        assertFalse(source.contains("@Suppress(\"UNUSED_PARAMETER\") store: TripStore"))
+
+        val row = EnhancedPassengerCardRow(
+            name = "Passageiro",
+            phone = null,
+            seats = 1,
+            boarding = "Origem",
+            dropoff = "Destino",
+            sources = setOf(BookingSource.PRIVATE),
+            boardingAddress = "Embarque privado",
+            dropoffAddress = "Destino privado",
+            boardingLatitude = -23.6639,
+            boardingLongitude = -46.5383,
+            dropoffLatitude = -21.7218,
+            dropoffLongitude = -44.9849,
+        )
+        val pickup = passengerPickupMapTarget(row)
+        val dropoff = passengerDropoffMapTarget(row)
+
+        assertEquals(-23.6639, pickup?.latitude)
+        assertEquals(-46.5383, pickup?.longitude)
+        assertEquals(-21.7218, dropoff?.latitude)
+        assertEquals(-44.9849, dropoff?.longitude)
+        assertEquals("Embarque privado", pickup?.query)
+        assertEquals("Destino privado", dropoff?.query)
+    }
+
+    @Test
+    fun testX_0513CanonicalPassengerIdentityWinsOverStaleLocalIdentity() {
+        val remote = RemoteBooking(
+            id = "booking-0513",
+            tripId = "remote-0513",
+            passengerId = "canonical-passenger-0513",
+            passengerName = "Passageiro",
+            boardingStopId = "a",
+            dropoffStopId = "b",
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            source = BookingSource.PRIVATE,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+        val staleLocal = Booking(
+            id = "booking-0513",
+            tripId = "local-0513",
+            passengerId = "stale-local-passenger",
+            passengerName = "Passageiro",
+            boardingStopId = "a",
+            dropoffStopId = "b",
+            seats = 1,
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.PRIVATE,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+        )
+
+        assertEquals(
+            "canonical-passenger-0513",
+            remote.toLocalBooking("canonical-trip-0513", staleLocal).passengerId,
+        )
+    }
+
 }
