@@ -30,9 +30,9 @@ data class AppSettings(
     val diagnosticsEnabled: Boolean = false,
     val multiCardFocusLockEnabled: Boolean = true,
     val proximityPopupAutoCloseEnabled: Boolean = true,
-    /** Legacy tenant fallback kept only to migrate trips that predate per-trip Vagas extra. */
+    /** Global extra seats added to the BlaBlaCar quota for every current and future trip. */
     val rotaCertaSeatAllocation: Int = 0,
-    /** Monotonic legacy migration version owned by SettingsRepository. */
+    /** Monotonic global extra-seat configuration version owned by SettingsRepository. */
     val rotaCertaSeatAllocationVersion: Long = 0L,
 )
 

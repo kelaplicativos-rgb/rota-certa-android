@@ -102,7 +102,7 @@ data class Trip(
     val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
-    /** Seats allocated to the Rota Certa channel for this trip. Explicit zero is valid. */
+    /** Materialized global extra seats for this trip. They are added to the BlaBlaCar quota; explicit zero is valid. */
     val rotaCertaSeatAllocation: Int? = null,
     /** Canonical persisted origin. Old 0.1.372 external backings are resolved by strong-identity migration. */
     val recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL,

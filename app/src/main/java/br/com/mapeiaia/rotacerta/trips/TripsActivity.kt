@@ -720,7 +720,7 @@ private fun TripApp(
                 TripScreen.DEBUG_REPORT -> ContextualDebugReportScreen0507(activeDebugModule0507)
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
-                    defaultRotaCertaSeatAllocation = 0,
+                    defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
                     onCancel = {
                         pendingCreateForPassengerId = ""
                         screen = parentRootScreen0396
@@ -973,8 +973,8 @@ private fun TripApp(
                 )
                 TripScreen.EXTRA_SEATS -> TripExtraSeatsScreen0416(
                     activity = activity,
-                    store = store,
-                    trips = trips,
+                    settingsRepository = settingsRepository,
+                    appSettings = appSettings,
                     onChanged = { text ->
                         refresh()
                         message = text
@@ -1074,93 +1074,61 @@ private fun TripApp(
 @Composable
 private fun TripExtraSeatsScreen0416(
     activity: ComponentActivity,
-    store: TripStore,
-    trips: List<Trip>,
+    settingsRepository: SettingsRepository,
+    appSettings: AppSettings,
     onChanged: (String) -> Unit,
 ) {
-    val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     val scope = rememberCoroutineScope()
-    val candidates = trips
-        .filterNot { it.deleted || it.status == TripStatus.CANCELLED || it.status == TripStatus.COMPLETED }
-        .sortedBy { it.departureAtMillis }
+    var value by remember(appSettings.rotaCertaSeatAllocation) {
+        mutableStateOf(appSettings.rotaCertaSeatAllocation.coerceIn(0, 999).toString())
+    }
+    var localError by remember { mutableStateOf<String?>(null) }
 
     Text("Vagas extra", style = MaterialTheme.typography.titleLarge)
     Text(
-        "Cota manual por viagem. Alterar uma viagem não modifica as demais.",
+        "Um único valor para todas as viagens atuais e futuras. Ele é somado às vagas do BlaBlaCar.",
         style = MaterialTheme.typography.bodySmall,
     )
-    if (candidates.isEmpty()) {
-        Text("Nenhuma viagem ativa disponível.", style = MaterialTheme.typography.bodySmall)
-    }
-    candidates.forEach { trip ->
-        var value by remember(trip.id, trip.rotaCertaSeatAllocation) {
-            mutableStateOf((trip.rotaCertaSeatAllocation ?: 0).coerceIn(0, 999).toString())
-        }
-        var localError by remember(trip.id) { mutableStateOf<String?>(null) }
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { value = it.filter(Char::isDigit).take(3) },
+                label = { Text("Vagas extra em todas as viagens") },
+                supportingText = {
+                    Text("Exemplo: 4 vagas BlaBlaCar + 2 extras = 6 vagas no Rota Certa. O valor 0 é válido.")
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = {
+                    val parsed = value.toIntOrNull()
+                    if (parsed == null || parsed !in 0..999) {
+                        localError = "Informe um valor entre 0 e 999."
+                        return@Button
+                    }
+                    localError = null
+                    scope.launch {
+                        try {
+                            settingsRepository.saveSettings(
+                                appSettings.copy(rotaCertaSeatAllocation = parsed),
+                            )
+                            AgendaBackgroundSync0392.enqueueImmediate(activity, "global_extra_seats_changed_0519")
+                            onChanged("Vagas extra atualizadas para todas as viagens atuais e futuras.")
+                        } catch (error: Throwable) {
+                            localError = error.message ?: "Não foi possível atualizar as vagas extra."
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(trip.title, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
-                        .format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault())),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                OutlinedTextField(
-                    value = value,
-                    onValueChange = { value = it.filter(Char::isDigit).take(3) },
-                    label = { Text("Vagas extra") },
-                    supportingText = { Text("Única cota manual desta viagem. O valor 0 é válido.") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = {
-                        val parsed = value.toIntOrNull()
-                        if (parsed == null || parsed !in 0..999) {
-                            localError = "Informe um valor entre 0 e 999."
-                            return@Button
-                        }
-                        localError = null
-                        scope.launch {
-                            val bookingsForTrip = store.bookingsFor(trip.id)
-                            val allocated = trip.copy(
-                                rotaCertaSeatAllocation = parsed,
-                                updatedAtMillis = System.currentTimeMillis(),
-                            )
-                            val saved = store.saveTrip(
-                                allocated.copy(
-                                    capacity = operationalInventoryCapacity(allocated, bookingsForTrip),
-                                ),
-                            )
-                            if (resolvedTripRecordOrigin(saved) == TripRecordOrigin.EXTERNAL_BACKING) {
-                                saved.externalSnapshot?.let { external ->
-                                    mutationCoordinator.recordExternalManualMutation(
-                                        sourceTrip = external,
-                                        configuredRotaCertaSeatAllocation = parsed,
-                                        mutationType = "ROTA_CERTA_EXTRA_SEATS_CHANGED",
-                                    )
-                                }
-                            } else {
-                                mutationCoordinator.recordLocalMutation(
-                                    canonicalTripId = saved.id,
-                                    mutationType = "ROTA_CERTA_EXTRA_SEATS_CHANGED",
-                                    source = "EXTRA_SEATS_SCREEN",
-                                    configuredRotaCertaSeatAllocation = parsed,
-                                )
-                            }
-                            AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
-                            onChanged("Vagas extra atualizadas para esta viagem.")
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text("Salvar nesta viagem")
-                }
-                localError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                Text("Salvar para todas as viagens")
             }
+            localError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
     }
 }
