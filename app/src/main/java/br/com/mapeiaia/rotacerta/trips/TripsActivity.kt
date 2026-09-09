@@ -1083,6 +1083,7 @@ private fun TripExtraSeatsScreen0416(
         mutableStateOf(appSettings.rotaCertaSeatAllocation.coerceIn(0, 999).toString())
     }
     var localError by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
 
     Text("Vagas extra", style = MaterialTheme.typography.titleLarge)
     Text(
@@ -1111,22 +1112,26 @@ private fun TripExtraSeatsScreen0416(
                         localError = "Informe um valor entre 0 e 999."
                         return@Button
                     }
+                    if (saving) return@Button
                     localError = null
+                    saving = true
                     scope.launch {
                         try {
                             settingsRepository.saveSettings(
                                 appSettings.copy(rotaCertaSeatAllocation = parsed),
                             )
-                            AgendaBackgroundSync0392.enqueueImmediate(activity, "global_extra_seats_changed_0519")
-                            onChanged("Vagas extra atualizadas para todas as viagens atuais e futuras.")
+                            onChanged("Vagas extra atualizadas e enviadas imediatamente para a Agenda.")
                         } catch (error: Throwable) {
                             localError = error.message ?: "Não foi possível atualizar as vagas extra."
+                        } finally {
+                            saving = false
                         }
                     }
                 },
+                enabled = !saving,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Salvar para todas as viagens")
+                Text(if (saving) "Salvando e atualizando Agenda…" else "Salvar para todas as viagens")
             }
             localError?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }

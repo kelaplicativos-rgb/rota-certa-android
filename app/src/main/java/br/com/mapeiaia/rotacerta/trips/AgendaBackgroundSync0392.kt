@@ -92,6 +92,7 @@ internal data class TenantSeatAllocationFanOut0395(
     val localPublicationQueued: Int = 0,
     val externalPublicationQueued: Int = 0,
     val externalRetryPending: Int = 0,
+    val publicationCanonicalTripIds: Set<String> = emptySet(),
 )
 
 internal enum class AgendaBackgroundSyncMode0392 {
@@ -1611,13 +1612,21 @@ internal object AgendaBackgroundSync0392 {
             nowMillis = nowMillis,
         )
         val coordinator = TripMutationCoordinator0387(appContext, store)
-        val changedTrips = store.trips().filter { it.id in changedTripIds }
+        val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val currentPublicationTrips = store.trips().filter { trip ->
+            !trip.deleted &&
+                trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) &&
+                (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE)) &&
+                trip.rotaCertaSeatAllocation == rotaCertaSeatAllocation &&
+                trip.seatAllocationVersionUsed >= seatAllocationVersion
+        }
+        val publicationCanonicalTripIds = linkedSetOf<String>()
 
         var localQueued = 0
-        changedTrips
+        currentPublicationTrips
             .filter(Trip::isCanonicalLocalPublishSource)
-            .filter { it.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL, TripStatus.STARTING, TripStatus.ACTIVE) }
             .forEach { trip ->
+                publicationCanonicalTripIds += trip.id
                 if (coordinator.recordLocalMutation(
                         canonicalTripId = trip.id,
                         mutationType = "GLOBAL_EXTRA_SEATS_CHANGED_0519",
@@ -1632,10 +1641,19 @@ internal object AgendaBackgroundSync0392 {
 
         var externalQueued = 0
         var externalRetryPending = 0
-        changedTrips
+        currentPublicationTrips
             .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
             .forEach { trip ->
                 val source = trip.externalSnapshot
+                val canonicalPublicationId = trip.tripKey.takeIf(String::isNotBlank)
+                    ?: source?.let { external ->
+                        canonicalBlaBlaTripKey0406(
+                            tenantId = tenantId,
+                            profileUuid = external.profile_uuid,
+                            providerTripId = external.trip_id,
+                        )
+                    }
+                canonicalPublicationId?.takeIf(String::isNotBlank)?.let(publicationCanonicalTripIds::add)
                 if (source == null || source.identity_conflict) {
                     externalRetryPending++
                 } else if (coordinator.recordExternalTenantMutation(
@@ -1656,6 +1674,7 @@ internal object AgendaBackgroundSync0392 {
             localPublicationQueued = localQueued,
             externalPublicationQueued = externalQueued,
             externalRetryPending = externalRetryPending,
+            publicationCanonicalTripIds = publicationCanonicalTripIds,
         )
         UnifiedDebugEventStore.record(
             "TENANT_SEAT_ALLOCATION_FANOUT_0395",
@@ -1668,6 +1687,7 @@ internal object AgendaBackgroundSync0392 {
                 " localPublicationQueued=" + result.localPublicationQueued +
                 " externalPublicationQueued=" + result.externalPublicationQueued +
                 " externalRetryPending=" + result.externalRetryPending +
+                " publicationCandidates=" + result.publicationCanonicalTripIds.size +
                 " result=" + if (changedTripIds.isEmpty()) "SKIP_ALREADY_CURRENT" else "UPDATED" +
                 " fullSyncRequested=false",
         )

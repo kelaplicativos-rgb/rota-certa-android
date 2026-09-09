@@ -124,6 +124,15 @@ internal fun durableExternalCanonicalSnapshotNeedsRebase0456(
         persisted.capacity != currentCanonical.capacity
 }
 
+internal fun staleRejectedExternalIdentityMustSupersede0520(
+    attempts: Int,
+    snapshotIdentityAccepted: Boolean,
+    accountIdentityConfirmed: Boolean,
+): Boolean =
+    attempts >= 3 &&
+        !snapshotIdentityAccepted &&
+        !accountIdentityConfirmed
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -674,15 +683,22 @@ internal class TripMutationCoordinator0387(
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list().filter {
             it.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
         }
-        if (accounts.size != 1) {
+        if (accounts.size > 1) {
             UnifiedDebugEventStore.record(
                 "TRIP_MUTATION_EXTERNAL_ACCOUNT_BLOCKED",
                 appContext.packageName,
-                "tenantId=${outbox.tenantId} mutationType=$mutationType profileUuidPresent=true tripIdPresent=true accountMatches=${accounts.size}",
+                "tenantId=${outbox.tenantId} mutationType=$mutationType profileUuidPresent=true tripIdPresent=true accountMatches=${accounts.size} reason=ambiguous_profile_account",
             )
             return null
         }
-        val accountId = accounts.single().id
+        val accountId = accounts.singleOrNull()?.id.orEmpty()
+        if (accountId.isBlank()) {
+            UnifiedDebugEventStore.record(
+                "TRIP_MUTATION_EXTERNAL_ACCOUNT_OPTIONAL_0520",
+                appContext.packageName,
+                "tenantId=${outbox.tenantId} mutationType=$mutationType profileUuidPresent=true tripIdPresent=true strongSnapshotAuthority=true accountMatches=0",
+            )
+        }
         val existingBinding = store.publicExternalBindingForStrongIdentity(profileUuid, tripId)
         if (seatAllocationVersion != null && existingBinding != null && existingBinding.seatAllocationVersionUsed > seatAllocationVersion) {
             UnifiedDebugEventStore.record(
@@ -1005,6 +1021,32 @@ internal class TripMutationCoordinator0387(
                                 " tripIdPresent=" + !sourceTrip.trip_id.isNullOrBlank() +
                                 " previousStage=OUTBOX_DEQUEUE nextStage=CANONICAL_REBASE_GUARD",
                         )
+                        if (
+                            !externalIdentityAccepted0455 &&
+                            staleRejectedExternalIdentityMustSupersede0520(
+                                attempts = event.attempts,
+                                snapshotIdentityAccepted = canonicalSnapshotIdentityAccepted0455,
+                                accountIdentityConfirmed = effectiveExternalAccountId0454.isNotBlank(),
+                            )
+                        ) {
+                            outbox.markSuperseded(
+                                event.id,
+                                "stale_external_identity_rejected_after_${event.attempts}_attempts",
+                            )
+                            recordEvidence0421(
+                                stage = "OUTBOX_IDENTITY_STALE_GUARD_0520",
+                                status = "SUPERSEDED",
+                                reason = "STALE_EXTERNAL_IDENTITY_SNAPSHOT",
+                                event = event,
+                                extra = "retryCount=${event.attempts} snapshotIdentity=false accountIdentity=false previousStage=OUTBOX_IDENTITY_GUARD nextStage=OUTBOX_DEQUEUE",
+                            )
+                            recordEvent(
+                                "TRIP_MUTATION_OUTBOX_IDENTITY_SUPERSEDED_0520",
+                                event,
+                                "publicationResult=superseded retryCount=${event.attempts} staleSnapshot=true",
+                            )
+                            return@eventLoop
+                        }
                         require(externalIdentityAccepted0455) {
                             "Identidade externa forte divergiu do snapshot persistido."
                         }

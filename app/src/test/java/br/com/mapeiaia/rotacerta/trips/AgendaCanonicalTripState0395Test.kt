@@ -240,7 +240,11 @@ class AgendaCanonicalTripState0395Test {
         assertTrue(repository.contains("rota_certa_seat_allocation_version"))
         assertTrue(repository.contains("previousSeatAllocationVersion + 1L"))
         assertTrue(repository.contains("reconcileTenantSeatAllocation0395("))
+        assertTrue(repository.contains("GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520"))
+        assertTrue(repository.contains("canonicalTripIds = immediateTargets"))
         assertTrue(background.contains("globalFanOut=true currentAndFuture=true"))
+        assertTrue(background.contains("currentPublicationTrips"))
+        assertTrue(background.contains("publicationCanonicalTripIds"))
         assertTrue(background.contains("GLOBAL_EXTRA_SEATS_CHANGED_0519"))
         assertTrue(background.contains("recordExternalTenantMutation("))
         assertTrue(store.contains("trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation"))
@@ -249,6 +253,8 @@ class AgendaCanonicalTripState0395Test {
         assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
         assertTrue(outbox.contains("FAILED_RETRYABLE"))
         assertTrue(outbox.contains("SUPERSEDED"))
+        assertTrue(activity.contains("Salvando e atualizando Agenda…"))
+        assertFalse(activity.contains("AgendaBackgroundSync0392.enqueueImmediate(activity, \"global_extra_seats_changed_0519\")"))
     }
 
     @Test
