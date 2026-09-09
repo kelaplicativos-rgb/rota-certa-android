@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.516 canonical Timeline backend deploy
+name: Rota Certa 0.1.519 canonical backend + driver WhatsApp
 
 on:
   push:
@@ -37,8 +37,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'versionCode = 5808' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.516"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5811' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.519"' app/build.gradle.kts
           grep -Fq 'PASSENGER_PROJECTION_INCOMPLETE' trip-platform/functions/index.js
           grep -Fq 'REVISION_INCOMPATIBLE' trip-platform/functions/index.js
           grep -Fq 'canonicalTimelinePrivateStop0513' trip-platform/functions/index.js
