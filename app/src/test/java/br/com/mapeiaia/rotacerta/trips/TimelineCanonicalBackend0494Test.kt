@@ -806,4 +806,20 @@ class TimelineCanonicalBackend0494Test {
         )
     }
 
+    @Test
+    fun testK_canonicalPassengerFirstPaintDoesNotWaitForAsyncIdentityEnrichment0517() {
+        val passenger = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(passenger.contains("buildImmediateCanonicalPassengerTimelineRenderSnapshot0517"))
+        assertTrue(passenger.contains("val renderSnapshot = renderSnapshot0394 ?: immediateCanonicalSnapshot0517"))
+        val immediateStart = passenger.indexOf("internal fun buildImmediateCanonicalPassengerTimelineRenderSnapshot0517")
+        val immediateEnd = passenger.indexOf("@Composable", immediateStart)
+        assertTrue(immediateStart >= 0 && immediateEnd > immediateStart)
+        val immediate = passenger.substring(immediateStart, immediateEnd)
+        assertTrue(immediate.contains("entry.canonicalBackendAuthoritative0494"))
+        assertTrue(immediate.contains("externalMetadataSnapshot0394 = emptyMap()"))
+        assertTrue(immediate.contains("localBookingsSnapshot0394 = localBookings"))
+        assertTrue(passenger.contains("renderSnapshot0394 = immediateCanonicalSnapshot0517"))
+    }
+
 }
