@@ -125,8 +125,8 @@ function timelineFallbackHelpers0523() {
       }
       function canonicalTimelinePrivateStop0513(raw, index) {
         const source = raw && typeof raw === "object" ? raw : {};
-        const latitude = Number(source.latitude);
-        const longitude = Number(source.longitude);
+        const latitude = source.latitude == null ? Number.NaN : Number(source.latitude);
+        const longitude = source.longitude == null ? Number.NaN : Number(source.longitude);
         return {
           id: cleanText(source.id, 180),
           order: Number.isFinite(Number(source.order)) ? Number(source.order) : index,
