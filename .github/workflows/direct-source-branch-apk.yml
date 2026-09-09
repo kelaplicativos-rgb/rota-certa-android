@@ -216,4 +216,4 @@ jobs:
           name: rota-certa-0.1.512-canonical-timeline-integrity-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0511
+          path: /tmp/0512
