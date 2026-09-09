@@ -1650,7 +1650,7 @@ internal object AgendaBackgroundSync0392 {
                         canonicalBlaBlaTripKey0406(
                             tenantId = tenantId,
                             profileUuid = external.profile_uuid,
-                            providerTripId = external.trip_id,
+                            providerTripId = external.trip_id.orEmpty(),
                         )
                     }
                 canonicalPublicationId?.takeIf(String::isNotBlank)?.let(publicationCanonicalTripIds::add)
