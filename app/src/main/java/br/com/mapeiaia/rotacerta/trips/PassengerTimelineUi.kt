@@ -157,15 +157,43 @@ internal fun EnhancedPassengerTimelineSection(
     var renderSnapshot0394 by remember(entry.tripId, trip?.id) {
         mutableStateOf<PassengerTimelineRenderSnapshot0394?>(null)
     }
-    LaunchedEffect(entry, trip, identityRevision, completionRevision) {
-        renderSnapshot0394 = withContext(Dispatchers.IO) {
-            buildPassengerTimelineRenderSnapshot0394(
-                entry = entry,
-                trip = trip,
-                store = store,
-                passengerStore = passengerStore,
-                completionService = completionService,
-                canonicalBookings0494 = canonicalBookings0494,
+    var renderFailure0512 by remember(entry.tripId, trip?.id) {
+        mutableStateOf<String?>(null)
+    }
+    LaunchedEffect(entry, trip, canonicalBookings0494, identityRevision, completionRevision) {
+        renderSnapshot0394 = null
+        renderFailure0512 = null
+        try {
+            val resolved0512 = withContext(Dispatchers.IO) {
+                buildPassengerTimelineRenderSnapshot0394(
+                    entry = entry,
+                    trip = trip,
+                    store = store,
+                    passengerStore = passengerStore,
+                    completionService = completionService,
+                    canonicalBookings0494 = canonicalBookings0494,
+                )
+            }
+            renderSnapshot0394 = resolved0512
+            UnifiedDebugEventStore.record(
+                "PASSENGER_PROJECTION_RESOLVED",
+                context.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(entry.tripId) +
+                    " canonicalRevision=" + entry.canonicalRevision0494 +
+                    " rows=" + resolved0512.rows.size +
+                    " source=" + if (entry.canonicalBackendAuthoritative0494) "CANONICAL_BACKEND" else "LOCAL_LEGACY",
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            renderFailure0512 = "PASSENGER_PROJECTION_FAILED"
+            UnifiedDebugEventStore.record(
+                "PASSENGER_PROJECTION_FAILED",
+                context.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(entry.tripId) +
+                    " canonicalRevision=" + entry.canonicalRevision0494 +
+                    " reasonType=" + error.javaClass.simpleName.take(80) +
+                    " canonicalBackend=" + entry.canonicalBackendAuthoritative0494,
             )
         }
     }
@@ -203,7 +231,14 @@ internal fun EnhancedPassengerTimelineSection(
         TripBlaBlaTripActionRow(entry, onAddManualPassenger)
     }
     if (renderSnapshot == null) {
-        Text("Carregando passageiros…", style = MaterialTheme.typography.bodySmall)
+        if (renderFailure0512 == null) {
+            Text("Carregando passageiros…", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Text(
+                "⚠️ Não foi possível resolver os passageiros desta viagem. O card canônico foi preservado; atualize novamente.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         return
     }
     if (rawRows.isEmpty()) return
