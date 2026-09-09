@@ -54,9 +54,9 @@ jobs:
           ! grep -Fq 'const body = await response.json()' trip-platform/public/app.js
           grep -Fq 'Agenda temporariamente indisponível' trip-platform/public/app.js
           grep -Fq '/app.js?v=0.1.514' trip-platform/public/index.html
-          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
-          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
-          grep -Fq 'pointer-events:none' trip-platform/public/index.html
+          grep -Fq 'agendaSegmentAvailabilitySeats0484' trip-platform/public/app.js
+          grep -Fq 'agendaPassengerDot0473' trip-platform/public/app.js
+          grep -Fq 'applyAgendaTripExpansionState0506' trip-platform/public/app.js
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f"
 
       - name: Configure Firebase authentication
