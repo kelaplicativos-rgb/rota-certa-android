@@ -674,6 +674,43 @@ function renderAgenda(trips) {
 
 let agendaLoadInFlight0491 = false;
 
+function publicAgendaSafeMessage0514(raw) {
+  const value = String(raw || "").replace(/[\r\n\t]+/g, " ").trim();
+  if (!value || /<html|<!doctype|<head|<body/i.test(value)) return "";
+  return value.slice(0, 220);
+}
+
+async function readPublicAgendaJson0514(response, fallbackMessage) {
+  const status = Number(response?.status || 0);
+  const contentType = String(response?.headers?.get?.("content-type") || "").toLowerCase();
+  const raw = await response.text();
+  let body = null;
+  if (contentType.includes("json") || /^[\s]*[\[{]/.test(raw)) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") body = parsed;
+    } catch (_) {
+      body = null;
+    }
+  }
+  if (!response.ok) {
+    const backendMessage = publicAgendaSafeMessage0514(body?.message);
+    const http = status > 0 ? " (HTTP " + status + ")" : "";
+    throw new Error(backendMessage || fallbackMessage + http + ".");
+  }
+  if (!body) {
+    console.warn("[RotaCertaPublicAgenda0514]", {
+      event: "PUBLIC_AGENDA_NON_JSON_RESPONSE",
+      status,
+      contentType: contentType.slice(0, 80),
+      bodyLogged: false,
+    });
+    const http = status > 0 ? " (HTTP " + status + ")" : "";
+    throw new Error(fallbackMessage + http + ": resposta inválida do serviço.");
+  }
+  return body;
+}
+
 async function watchPublicAgendaChanges0495() {
   if (agendaChangeWatchRunning0495 || navigator.onLine === false || driverUsername.length < 3) return;
   agendaChangeWatchRunning0495 = true;
@@ -689,8 +726,7 @@ async function watchPublicAgendaChanges0495() {
         headers: { Accept: "application/json" },
         cache: "no-store",
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.message || "Invalidação da Agenda indisponível.");
+      const body = await readPublicAgendaJson0514(response, "Invalidação da Agenda temporariamente indisponível");
       agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.cursor || 0));
       if (body?.degraded === true) break;
       if (body?.changed === true) {
@@ -725,8 +761,7 @@ async function loadAgenda(silent0491 = false) {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
+    const body = await readPublicAgendaJson0514(response, "Agenda temporariamente indisponível");
     const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
     $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
     agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
