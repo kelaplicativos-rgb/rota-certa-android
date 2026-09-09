@@ -235,6 +235,7 @@ class AgendaCanonicalTripState0395Test {
         val background = source("AgendaBackgroundSync0392.kt")
         val store = source("TripStore.kt")
         val outbox = source("TripPublicationOutbox0387.kt")
+        val activity = source("TripsActivity.kt")
 
         assertTrue(models.contains("rotaCertaSeatAllocationVersion"))
         assertTrue(repository.contains("rota_certa_seat_allocation_version"))
