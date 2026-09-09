@@ -1017,12 +1017,67 @@ class TripRemoteApi(
      */
     suspend fun loadCanonicalTimelineState0494(
         includePastForVerification0429: Boolean = true,
+        correlationId0512: String = "",
     ): DriverTripSyncStateResponse0402 {
+        val correlationId = correlationId0512.trim().take(120).ifBlank {
+            "tl-" + System.nanoTime().toString(36)
+        }
+        UnifiedDebugEventStore.record(
+            "CANONICAL_REQUEST_START",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " endpoint=/v1/driver/trips/sync-state timelineProjection=true collectorRead=false",
+        )
         val response = listDriverTripSyncStates0402(
             includePastForVerification0429 = includePastForVerification0429,
             timelineProjection0494 = true,
         )
-        val validated = validateCanonicalTimelineResponse0512(response)
+        UnifiedDebugEventStore.record(
+            "CANONICAL_RESPONSE_RECEIVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " trips=" + response.trips.size +
+                " bookings=" + response.trips.sumOf { it.bookings.size } +
+                " source=" + UnifiedDebugEventStore.sanitizeForExport(response.source).take(80),
+        )
+        val validated = try {
+            validateCanonicalTimelineResponse0512(response)
+        } catch (error: CanonicalTimelineProjectionException0512) {
+            UnifiedDebugEventStore.record(
+                "CANONICAL_PROJECTION_REJECTED",
+                "br.com.mapeiaia.rotacerta.trips",
+                "correlationId=" + correlationId +
+                    " reason=" + error.reasonCode +
+                    " trips=" + response.trips.size,
+            )
+            throw error
+        }
+        val revisions = validated.trips.map(DriverTripSyncState0402::canonicalRevision)
+        UnifiedDebugEventStore.record(
+            "CANONICAL_IDENTITY_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " canonicalTrips=" + validated.trips.size +
+                " uniqueCanonicalTrips=" + validated.trips.map { it.canonicalTripId.ifBlank { it.remoteTripId } }.distinct().size,
+        )
+        UnifiedDebugEventStore.record(
+            "CANONICAL_REVISION_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " minRevision=" + (revisions.minOrNull() ?: 0L) +
+                " maxRevision=" + (revisions.maxOrNull() ?: 0L),
+        )
+        UnifiedDebugEventStore.record(
+            "PASSENGER_PROJECTION_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " bookings=" + validated.trips.sumOf { it.bookings.size },
+        )
+        UnifiedDebugEventStore.record(
+            "CANONICAL_VALIDATION_OK",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId + " trips=" + validated.trips.size,
+        )
         return validated.copy(
             source = "CANONICAL_NATIVE_FIREWALL",
             provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
