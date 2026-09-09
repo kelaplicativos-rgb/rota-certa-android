@@ -235,4 +235,4 @@ jobs:
           name: rota-certa-0.1.519-global-extra-seats-whatsapp-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0517
+          path: /tmp/0519
