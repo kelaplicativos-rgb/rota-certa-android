@@ -1,44 +1,63 @@
-name: Agenda 0.1.303 hosting full-card state
+name: Rota Certa 0.1.514 public Agenda hosting recovery
 
 on:
   push:
     branches:
-      - agent/agenda-public-capacity-fidelity-0.1.303
+      - agent/canonical-segment-root-cause-0.1.509
     paths:
       - '.github/workflows/agenda-0303-hosting-full-card.yml'
+      - 'trip-platform/public/**'
+      - 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
+      - 'trip-platform/functions/test/agenda-card-expansion-state-0506.test.js'
+      - 'app/build.gradle.kts'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: public-agenda-hosting-0514-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hosting:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-capacity-fidelity-0.1.303
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate disabled full-trip UI
+      - name: Validate public Agenda recovery and preserved UI contracts
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'versionCode = 5806' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.514"' app/build.gradle.kts
           node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
-          grep -Fq 'document.createElement(isFull ? "article" : "a")' trip-platform/public/app.js
+          node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/public-capacity-fidelity-0303.test.js
+          grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
+          grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' trip-platform/public/app.js
+          grep -Fq 'bodyLogged: false' trip-platform/public/app.js
+          ! grep -Fq 'const body = await response.json()' trip-platform/public/app.js
+          grep -Fq 'Agenda temporariamente indisponível' trip-platform/public/app.js
+          grep -Fq '/app.js?v=0.1.514' trip-platform/public/index.html
           grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
           grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
           grep -Fq 'pointer-events:none' trip-platform/public/index.html
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f"
 
       - name: Configure Firebase authentication
         shell: bash
@@ -49,26 +68,23 @@ jobs:
           elif [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
-            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
-            echo "Firebase service account: $CLIENT_EMAIL"
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
             echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
           elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
-            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
-            echo "Firebase service account: $CLIENT_EMAIL"
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
             echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
           else
-            echo "Firebase credential is missing."
+            echo "Firebase credential is missing." >&2
             exit 3
           fi
 
-      - name: Deploy Hosting
+      - name: Deploy exact HEAD Hosting only
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
@@ -77,13 +93,17 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
           fi
 
-      - name: Smoke published files
+      - name: Smoke published 0.1.514 assets
         shell: bash
         run: |
           set -euo pipefail
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/app.js > /tmp/live-app.js
-          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' /tmp/live-app.js
-          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' /tmp/live-app.js
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/ > /tmp/live-index.html
-          grep -Fq 'pointer-events:none' /tmp/live-index.html
-          echo "HOSTING_FULL_CARD_STATE=PASS"
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?sha=$GITHUB_SHA" > /tmp/live-app.js
+          grep -Fq 'async function readPublicAgendaJson0514' /tmp/live-app.js
+          grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' /tmp/live-app.js
+          ! grep -Fq 'const body = await response.json()' /tmp/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
+          grep -Fq '/app.js?v=0.1.514' /tmp/live-index.html
+          echo "PUBLIC_AGENDA_HOSTING_0514=PASS"
+          echo "source_head=$GITHUB_SHA"
+          echo "functions_deploy=NOT_PERFORMED"
