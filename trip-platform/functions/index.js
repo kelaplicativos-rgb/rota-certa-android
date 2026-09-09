@@ -8833,7 +8833,30 @@ async function listDriverTripSyncState0402(req, res) {
   }
   const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
   let trips = (await Promise.all(canonicalDocs0495.map(async (doc) => {
-    const data = doc.data();
+    let data = doc.data();
+    let bookingSnapshot0512 = null;
+    let revisionStable0512 = true;
+    if (timelineProjection0494) {
+      revisionStable0512 = false;
+      for (let attempt0512 = 0; attempt0512 < 2; attempt0512++) {
+        const expectedCanonicalRevision0512 = Math.max(0, Number(data.canonicalRevision || 0));
+        const expectedOccupancyRevision0512 = Math.max(0, Number(data.occupancyRevision || 0));
+        bookingSnapshot0512 = await doc.ref.collection("bookings").limit(200).get();
+        const tripReadback0512 = await doc.ref.get();
+        if (!tripReadback0512.exists) return null;
+        const readbackData0512 = tripReadback0512.data() || {};
+        const readbackCanonicalRevision0512 = Math.max(0, Number(readbackData0512.canonicalRevision || 0));
+        const readbackOccupancyRevision0512 = Math.max(0, Number(readbackData0512.occupancyRevision || 0));
+        data = readbackData0512;
+        if (
+          expectedCanonicalRevision0512 === readbackCanonicalRevision0512 &&
+          expectedOccupancyRevision0512 === readbackOccupancyRevision0512
+        ) {
+          revisionStable0512 = true;
+          break;
+        }
+      }
+    }
     const status = cleanText(data.status, 32).toUpperCase();
     const canonicalTripId0499 = cleanText(data.canonicalTripId || data.localTripId, 180) || doc.id;
     const privateMirror0499 = timelineProjection0494 ? privateMirrorByCanonicalId0499.get(canonicalTripId0499) : null;
@@ -8886,17 +8909,15 @@ async function listDriverTripSyncState0402(req, res) {
               .map((booking) => [cleanText(booking.id, 180), booking])
           : []
       );
-      const bookingSnapshot0494 = await doc.ref.collection("bookings")
-        .orderBy("createdAtMillis", "desc")
-        .limit(200)
-        .get();
-      bookings0494 = bookingSnapshot0494.docs.map((bookingDoc) => {
+      const bookingDocs0512 = bookingSnapshot0512 ? bookingSnapshot0512.docs : [];
+      bookings0494 = bookingDocs0512.map((bookingDoc) => {
         const raw = bookingDoc.data() || {};
         const privateBooking0499 = privateBookingsById0499.get(bookingDoc.id) || {};
         const fareRaw0499 = raw.fareMinorUnits != null ? raw.fareMinorUnits : privateBooking0499.fareMinorUnits;
         return {
           id: bookingDoc.id,
           ...raw,
+          tripId: canonicalTripId0499,
           passengerId: cleanText(raw.passengerId, 120) || cleanText(privateBooking0499.passengerId, 120),
           passengerName: cleanText(raw.passengerName, 160) || cleanText(privateBooking0499.passengerName, 160),
           passengerContact: cleanText(raw.passengerContact, 180) || cleanText(privateBooking0499.passengerContact, 180),
@@ -8906,7 +8927,9 @@ async function listDriverTripSyncState0402(req, res) {
           dropoffAddress: cleanText(raw.dropoffAddress, 240) || cleanText(privateBooking0499.dropoffAddress, 240),
           cancellationHash: undefined,
         };
-      });
+      }).sort((left, right) =>
+        Math.max(0, Number(right.createdAtMillis || 0)) - Math.max(0, Number(left.createdAtMillis || 0))
+      );
     }
 
     const activeSeatBookings0494 = bookings0494.filter((booking) => {
@@ -8941,6 +8964,34 @@ async function listDriverTripSyncState0402(req, res) {
     const canonicalIssues0494 = Array.isArray(data.canonicalIssues)
       ? data.canonicalIssues.map((item) => cleanText(item, 48).toUpperCase()).filter(Boolean)
       : [];
+    const projectedBookingsCount0512 = bookings0494.length;
+    const expectedBookingsCount0512 = Math.max(
+      0,
+      Number(data.bookingsCount || projectedBookingsCount0512 || 0),
+    );
+    const hasExternalProfile0512 = Boolean(cleanText(data.blablaProfileUuid, 180));
+    const hasExternalTrip0512 = Boolean(cleanText(data.blablaTripId, 180));
+    if (hasExternalProfile0512 !== hasExternalTrip0512 && !canonicalIssues0494.includes("EXTERNAL_IDENTITY_INCOMPLETE")) {
+      canonicalIssues0494.push("EXTERNAL_IDENTITY_INCOMPLETE");
+    }
+    if (
+      timelineProjection0494 &&
+      expectedBookingsCount0512 !== projectedBookingsCount0512 &&
+      !canonicalIssues0494.includes("PASSENGER_PROJECTION_INCOMPLETE")
+    ) {
+      canonicalIssues0494.push("PASSENGER_PROJECTION_INCOMPLETE");
+    }
+    if (timelineProjection0494 && !revisionStable0512 && !canonicalIssues0494.includes("REVISION_INCOMPATIBLE")) {
+      canonicalIssues0494.push("REVISION_INCOMPATIBLE");
+    }
+    if (
+      timelineProjection0494 &&
+      privatePayload0499 &&
+      !privateMirrorCurrent0499 &&
+      !canonicalIssues0494.includes("PRIVATE_PROJECTION_STALE")
+    ) {
+      canonicalIssues0494.push("PRIVATE_PROJECTION_STALE");
+    }
     if (operationalOverbookingSeats0494 > 0 && !canonicalIssues0494.includes("OVERBOOKING")) {
       canonicalIssues0494.push("OVERBOOKING");
     }
@@ -8964,7 +9015,7 @@ async function listDriverTripSyncState0402(req, res) {
       canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180) || doc.id,
       canonicalStateHash: cleanText(data.canonicalStateHash, 160),
       publicProjectionHash: currentPublicProjectionHash0497,
-      bookingsCount: Math.max(0, Number(data.bookingsCount || bookings0494.length || 0)),
+      bookingsCount: expectedBookingsCount0512,
       tripKey: cleanText(data.tripKey, 180),
       blablaProfileUuid: cleanText(data.blablaProfileUuid, 180),
       blablaTripId: cleanText(data.blablaTripId, 180),
