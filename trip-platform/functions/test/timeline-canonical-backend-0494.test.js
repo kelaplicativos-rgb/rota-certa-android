@@ -367,3 +367,45 @@ test("0503 same transport revision collision returns stale so Android outbox can
   assert.match(sameRevision, /entityRevision: currentEntityRevision/);
   assert.doesNotMatch(sameRevision, /publication_revision_conflict/);
 });
+
+
+test("0513 Timeline uses authenticated canonical private stops while public stop projection stays sanitized", () => {
+  const privateStop = between(api, "function canonicalTimelinePrivateStop0513", "function canonicalPublicTripPayloadFromStored0434");
+  const publicStop = between(api, "function canonicalPublicStop0411", "function canonicalTimelinePrivateStop0513");
+  const timeline = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+
+  assert.match(privateStop, /latitude/);
+  assert.match(privateStop, /longitude/);
+  assert.match(privateStop, /priceToNextCents/);
+  assert.doesNotMatch(publicStop, /latitude:/);
+  assert.doesNotMatch(publicStop, /longitude:/);
+  assert.match(timeline, /data\.stops\.map\(canonicalTimelinePrivateStop0513\)/);
+  assert.doesNotMatch(timeline, /canonicalIssues0494\.push\("PRIVATE_PROJECTION_STALE"\)/);
+});
+
+test("0513 canonical booking mutations persist private driver metadata without logging its values", () => {
+  const privateMetadata = between(api, "function canonicalPrivateBookingMetadata0513", "function tripRelevantChanges");
+  const protectedMutation = between(api, "async function mutateProtectedBooking", "async function updatePassengerBooking");
+  const capacityMutation = between(api, "function normalizeDriverCapacityBooking", "function protectedSnapshotEventType");
+
+  for (const field of ["fareMinorUnits", "fareCurrencyCode", "boardingAddress", "dropoffAddress"]) {
+    assert.match(privateMetadata, new RegExp(field));
+    assert.match(capacityMutation, new RegExp(field));
+  }
+  assert.match(privateMetadata, /privateOperationalMetadata/);
+  assert.match(privateMetadata, /before: "REDACTED", after: "UPDATED"/);
+  assert.match(protectedMutation, /canonicalPrivateBookingMetadata0513\(req\.body \|\| \{\}, previous\)/);
+  assert.match(protectedMutation, /passengerVisibleChange0513/);
+  assert.match(protectedMutation, /passengerRecipients: passengerVisibleChange0513 \?/);
+});
+
+test("0513 Timeline booking payload remains direct-canonical with mirror only as fallback evidence", () => {
+  const timeline = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
+  assert.match(timeline, /raw\.fareMinorUnits != null \? raw\.fareMinorUnits : privateBooking0499\.fareMinorUnits/);
+  assert.match(timeline, /cleanText\(raw\.boardingAddress, 240\) \|\| cleanText\(privateBooking0499\.boardingAddress, 240\)/);
+  assert.match(timeline, /privateMirrorAvailable0499: Boolean\(privatePayload0499\)/);
+  assert.match(timeline, /privateMirrorCurrent0499/);
+  assert.match(timeline, /collectorRead: false/);
+  assert.match(timeline, /collectorFallback: false/);
+  assert.match(timeline, /collectorDerivedData: false/);
+});
