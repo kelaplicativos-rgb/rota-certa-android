@@ -3823,6 +3823,8 @@ function safePublicDriverProfile(data, username = "") {
   const profile = {
     username: normalizeUsername(username || driver.username || ""),
   };
+  const driverWhatsapp0519 = cleanText(driver.driverWhatsapp, 24);
+  if (driverWhatsapp0519) profile.whatsapp = driverWhatsapp0519;
   if (visibility.name) profile.displayName = cleanText(driver.displayName, 120);
   if (visibility.photo) {
     const photo = cleanText(driver.driverPhotoUrl, 500);

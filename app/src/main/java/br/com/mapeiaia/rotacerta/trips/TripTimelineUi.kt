@@ -1027,7 +1027,7 @@ internal fun TripDriverDefaultsCard(
     onReferenceChanged: (TripReferenceOrigin) -> Unit,
     onChanged: (String) -> Unit,
 ) {
-    // settings/repository remain intentionally unused: manual seat allocation is trip-scoped now.
+    // Compatibility surface only. Global extra-seat editing lives in the dedicated Vagas extra screen.
     TripReferenceOriginSettingsCard0416(
         referenceOrigin = referenceOrigin,
         onReferenceChanged = onReferenceChanged,

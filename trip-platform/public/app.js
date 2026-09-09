@@ -31,6 +31,25 @@ const queryDriverUsername = normalizePublicSlug(params.get("motorista") || "");
 const driverUsername = queryDriverUsername || publicSlug;
 let agendaChangeCursor0495 = 0;
 let agendaChangeWatchRunning0495 = false;
+let publicDriverWhatsapp0519 = "";
+
+function whatsappDigits0519(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+}
+
+function driverWhatsappHref0519(item, from, to) {
+  const digits = whatsappDigits0519(publicDriverWhatsapp0519);
+  if (!digits) return "";
+  const when = [
+    agendaDateLabel0473(item?.departureAtMillis, item?.timezoneId),
+    agendaTripTime0496(item?.departureAtMillis, item?.timezoneId),
+  ].filter(Boolean).join(" às ");
+  const message = "Olá! Vi a viagem " + from + " → " + to +
+    (when ? " (" + when + ")" : "") +
+    " na Agenda Rota Certa e gostaria de reservar uma vaga.";
+  return "https://wa.me/" + digits + "?text=" + encodeURIComponent(message);
+}
 
 function agendaExpansionStorageKey0506() {
   const scope = publicSlug || driverUsername || agendaToken || "public";
@@ -236,6 +255,7 @@ function seatRange(item) {
 
 function isFullTrip(item) {
   const range = seatRange(item);
+  if (item?.capacityReliable === true) return range.minimum === 0 && range.maximum === 0;
   return item?.isFull === true || item?.status === "FULL" || (range.minimum === 0 && range.maximum === 0);
 }
 
@@ -591,6 +611,21 @@ function renderAgendaCards(entries, container) {
     canonicalVisual0473.append(date, journey0473, expandedItinerary0480, bottom, expandHint0480);
     card.appendChild(canonicalVisual0473);
 
+    const whatsappHref0519 = driverWhatsappHref0519(item, from, to);
+    if (whatsappHref0519) {
+      const actions0519 = document.createElement("div");
+      actions0519.className = "agendaDriverActions0519";
+      const whatsapp0519 = document.createElement("a");
+      whatsapp0519.className = "agendaWhatsapp0519";
+      whatsapp0519.href = whatsappHref0519;
+      whatsapp0519.target = "_blank";
+      whatsapp0519.rel = "noopener noreferrer";
+      whatsapp0519.textContent = "💬 Fazer reserva com o motorista";
+      whatsapp0519.setAttribute("aria-label", "Fazer reserva com o motorista pelo WhatsApp");
+      actions0519.appendChild(whatsapp0519);
+      card.appendChild(actions0519);
+    }
+
     if (full) {
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
@@ -776,6 +811,7 @@ async function readPublicAgendaFallback0517() {
 
 function applyPublicAgendaBody0517(body, fromStaticFailover0517 = false) {
   const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
+  publicDriverWhatsapp0519 = String(body?.driver?.whatsapp || "").trim();
   $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
   agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
   renderAgenda(Array.isArray(body.trips) ? body.trips : []);

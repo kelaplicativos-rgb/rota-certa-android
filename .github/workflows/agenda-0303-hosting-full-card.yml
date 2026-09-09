@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.516 public Agenda 503 failover
+name: Rota Certa 0.1.519 global extra seats + driver WhatsApp
 
 on:
   push:
@@ -45,8 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'versionCode = 5808' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.516"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5811' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.519"' app/build.gradle.kts
           node --check trip-platform/public/app.js
           node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
           grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
@@ -56,7 +56,7 @@ jobs:
           grep -Fq 'bodyLogged: false' trip-platform/public/app.js
           ! grep -Fq 'const body = await response.json()' trip-platform/public/app.js
           grep -Fq 'Agenda temporariamente indisponível' trip-platform/public/app.js
-          grep -Fq '/app.js?v=0.1.516-failover0517' trip-platform/public/index.html
+          grep -Fq '/app.js?v=0.1.519-global-extra-seats-whatsapp0519' trip-platform/public/index.html
           grep -Fq 'agendaSegmentAvailabilitySeats0484' trip-platform/public/app.js
           grep -Fq 'agendaPassengerDot0473' trip-platform/public/app.js
           grep -Fq 'applyAgendaTripExpansionState0506' trip-platform/public/app.js
@@ -107,13 +107,19 @@ jobs:
             "privateMirrorJson", "notes", "address", "latitude", "longitude",
           ]);
 
-          function sanitizeStaticFailover(value) {
-            if (Array.isArray(value)) return value.map(sanitizeStaticFailover);
+          function allowPublicDriverWhatsapp0519(path, key) {
+            return path === "$.driver" && key === "whatsapp";
+          }
+
+          function sanitizeStaticFailover(value, path = "$") {
+            if (Array.isArray(value)) {
+              return value.map((entry, index) => sanitizeStaticFailover(entry, path + "[" + index + "]"));
+            }
             if (!value || typeof value !== "object") return value;
             const clean = {};
             for (const [key, child] of Object.entries(value)) {
-              if (forbiddenKeys.has(key)) continue;
-              clean[key] = sanitizeStaticFailover(child);
+              if (forbiddenKeys.has(key) && !allowPublicDriverWhatsapp0519(path, key)) continue;
+              clean[key] = sanitizeStaticFailover(child, path + "." + key);
             }
             return clean;
           }
@@ -125,7 +131,9 @@ jobs:
             }
             if (!value || typeof value !== "object") return;
             for (const [key, child] of Object.entries(value)) {
-              if (forbiddenKeys.has(key)) throw new Error("private field in failover snapshot: " + path + "." + key);
+              if (forbiddenKeys.has(key) && !allowPublicDriverWhatsapp0519(path, key)) {
+                throw new Error("private field in failover snapshot: " + path + "." + key);
+              }
               assertSanitized(child, path + "." + key);
             }
           }
@@ -185,7 +193,7 @@ jobs:
           grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' /tmp/live-app.js
           ! grep -Fq 'const body = await response.json()' /tmp/live-app.js
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
-          grep -Fq '/app.js?v=0.1.516-failover0517' /tmp/live-index.html
+          grep -Fq '/app.js?v=0.1.519-global-extra-seats-whatsapp0519' /tmp/live-index.html
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/__agenda_fallback/ezequiel.json?sha=$GITHUB_SHA" > /tmp/live-agenda-failover.json
           node -e 'const fs=require("fs");const b=JSON.parse(fs.readFileSync("/tmp/live-agenda-failover.json","utf8"));if(!b||!Array.isArray(b.trips))process.exit(2);console.log("PUBLIC_AGENDA_FAILOVER_0517_LIVE trips="+b.trips.length)'
           echo "PUBLIC_AGENDA_HOSTING_FAILOVER_0517=PASS"
