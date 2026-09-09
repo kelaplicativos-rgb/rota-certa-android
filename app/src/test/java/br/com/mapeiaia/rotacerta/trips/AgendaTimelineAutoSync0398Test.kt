@@ -78,4 +78,72 @@ class AgendaTimelineAutoSync0398Test {
         assertTrue(backend.contains("/v1/driver/agenda/seat-allocation"))
         assertTrue(background.contains("trip.rotaCertaSeatAllocation"))
     }
+    @Test
+    fun offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516() {
+        val trip = Trip(
+            id = "canonical-local-0516",
+            title = "Santo André → São Thomé das Letras",
+            departureAtMillis = 1_000L,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = listOf(
+                TripStop(
+                    id = "origin-0516",
+                    order = 0,
+                    name = "Santo André",
+                    plannedDepartureMillis = 1_000L,
+                ),
+                TripStop(
+                    id = "destination-0516",
+                    order = 1,
+                    name = "São Thomé das Letras",
+                    plannedArrivalMillis = 2_000L,
+                ),
+            ),
+            canonicalRevision = 12L,
+            canonicalStateHash = "canonical-state-0516",
+        )
+        val booking = Booking(
+            id = "booking-local-0516",
+            tripId = trip.id,
+            passengerName = "Passageiro canônico",
+            passengerContact = "+55 11 99999-0000",
+            boardingStopId = "origin-0516",
+            dropoffStopId = "destination-0516",
+            status = BookingStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+            capacityClaimType = CapacityClaimType.EXTERNAL_OCCUPANCY,
+            fareMinorUnits = 9_300L,
+            fareCurrencyCode = "BRL",
+            boardingAddress = "Embarque privado",
+            dropoffAddress = "Desembarque privado",
+            boardingLatitude = -23.6639,
+            boardingLongitude = -46.5383,
+            dropoffLatitude = -21.7218,
+            dropoffLongitude = -44.9849,
+        )
+        val projection = localAgendaTimelineProjection0515(
+            trips = listOf(trip),
+            bookings = listOf(booking),
+            nowMillis = 3_000L,
+        )
+        val localResponse = localAgendaTimelineDownloadResponse0516(projection)
+        val payload = agendaTimelineDownloadJson0398(
+            response = localResponse,
+            projectedBookings = projection.bookings,
+            selectedCanonicalTripIds = setOf(trip.id),
+            generatedAtMillis = 4_000L,
+        )
+
+        assertTrue(payload.contains("\"source\":\"CANONICAL_AGENDA_LOCAL_0516\""))
+        assertTrue(payload.contains("\"provenancePolicy\":\"AGENDA_CANONICAL_LOCAL_FALLBACK_0516\""))
+        assertTrue(payload.contains("\"canonicalTripId\":\"canonical-local-0516\""))
+        assertTrue(payload.contains("\"passengerContact\":\"+55 11 99999-0000\""))
+        assertTrue(payload.contains("\"boardingLatitude\":-23.6639"))
+        assertFalse(payload.contains("\"trips\":[]"))
+        assertTrue(timeline.contains("effectiveTimelineDownloadResponse0516"))
+        assertTrue(timeline.contains("localAgendaTimelineDownloadResponse0516(canonicalProjection0494)"))
+    }
+
+
 }
