@@ -1816,7 +1816,7 @@ internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerP
     val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    val trusted = trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
+    val trusted = exact == null && trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
     return PassengerPickupMapTarget(query, row.boardingLatitude.takeIf { trusted }, row.boardingLongitude.takeIf { trusted })
 }
 
@@ -1824,7 +1824,7 @@ internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): Passenger
     val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    val trusted = trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
+    val trusted = exact == null && trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
     return PassengerPickupMapTarget(query, row.dropoffLatitude.takeIf { trusted }, row.dropoffLongitude.takeIf { trusted })
 }
 
