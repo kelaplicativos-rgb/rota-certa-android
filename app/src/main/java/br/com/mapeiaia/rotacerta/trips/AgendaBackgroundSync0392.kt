@@ -1633,6 +1633,7 @@ internal object AgendaBackgroundSync0392 {
                         source = "GLOBAL_EXTRA_SEATS",
                         configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
                         reconcileBookingInventory = false,
+                        remoteProjectionDivergenceObserved = true,
                     ) != null
                 ) {
                     localQueued++
@@ -1661,6 +1662,7 @@ internal object AgendaBackgroundSync0392 {
                         configuredRotaCertaSeatAllocation = rotaCertaSeatAllocation,
                         seatAllocationVersion = trip.seatAllocationVersionUsed,
                         mutationType = "GLOBAL_EXTRA_SEATS_CHANGED_0519",
+                        remoteProjectionDivergenceObserved = true,
                     ) != null
                 ) {
                     externalQueued++
