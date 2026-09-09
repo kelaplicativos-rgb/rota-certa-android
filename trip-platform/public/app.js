@@ -746,6 +746,51 @@ function configurePassengerAreaLink0491() {
   link.href = "/minha-area.html?motorista=" + encodeURIComponent(driverUsername);
 }
 
+let agendaStaticFailoverActive0517 = false;
+
+function publicAgendaStaticFailoverUrl0517() {
+  const slug = normalizePublicSlug(publicSlug || driverUsername);
+  if (slug.length < 3 || RESERVED_PUBLIC_SLUGS.has(slug)) return "";
+  return "/__agenda_fallback/" + encodeURIComponent(slug) + ".json";
+}
+
+async function readPublicAgendaFallback0517() {
+  const path = publicAgendaStaticFailoverUrl0517();
+  if (!path) return null;
+  const response = await fetch(path + "?ts=" + Date.now(), {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) return null;
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  const raw = await response.text();
+  if (!contentType.includes("json") && !/^[\s]*[\[{]/.test(raw)) return null;
+  try {
+    const body = JSON.parse(raw);
+    if (!body || typeof body !== "object" || !Array.isArray(body.trips)) return null;
+    return body;
+  } catch (_) {
+    return null;
+  }
+}
+
+function applyPublicAgendaBody0517(body, fromStaticFailover0517 = false) {
+  const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
+  $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
+  agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
+  renderAgenda(Array.isArray(body.trips) ? body.trips : []);
+  agendaStaticFailoverActive0517 = fromStaticFailover0517;
+  if (fromStaticFailover0517) {
+    console.warn("[RotaCertaPublicAgenda0517]", {
+      event: "PUBLIC_AGENDA_STATIC_FAILOVER_0517",
+      source: "HOSTING_SANITIZED_SNAPSHOT",
+      bodyLogged: false,
+    });
+  } else {
+    watchPublicAgendaChanges0495();
+  }
+}
+
 async function loadAgenda(silent0491 = false) {
   if (agendaLoadInFlight0491) return;
   if (driverUsername.length < 3 || (!publicSlug && agendaToken.length < 16)) {
@@ -762,12 +807,15 @@ async function loadAgenda(silent0491 = false) {
       cache: "no-store",
     });
     const body = await readPublicAgendaJson0514(response, "Agenda temporariamente indisponível");
-    const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
-    $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
-    agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
-    renderAgenda(Array.isArray(body.trips) ? body.trips : []);
-    watchPublicAgendaChanges0495();
+    applyPublicAgendaBody0517(body, false);
   } catch (error) {
+    if (!silent0491 || agendaStaticFailoverActive0517) {
+      const fallbackBody0517 = await readPublicAgendaFallback0517().catch(() => null);
+      if (fallbackBody0517) {
+        applyPublicAgendaBody0517(fallbackBody0517, true);
+        return;
+      }
+    }
     if (!silent0491) setError(error.message || "Não foi possível carregar a Agenda de Viagens.");
   } finally {
     agendaLoadInFlight0491 = false;
