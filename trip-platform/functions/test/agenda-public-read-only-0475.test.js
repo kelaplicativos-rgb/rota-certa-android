@@ -73,6 +73,18 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5805/);
-  assert.match(gradle, /versionName = "0\.1\.513"/);
+  assert.match(gradle, /versionCode = 5806/);
+  assert.match(gradle, /versionName = "0\.1\.514"/);
+});
+
+
+test("0514 public Agenda never exposes non-JSON backend HTML as a parser error", () => {
+  assert.match(app, /async function readPublicAgendaJson0514/);
+  assert.match(app, /const raw = await response\.text\(\)/);
+  assert.match(app, /contentType\.includes\("json"\)/);
+  assert.match(app, /PUBLIC_AGENDA_NON_JSON_RESPONSE/);
+  assert.match(app, /bodyLogged: false/);
+  assert.match(app, /Agenda temporariamente indisponível/);
+  assert.doesNotMatch(app, /const body = await response\.json\(\)/);
+  assert.match(app, /readPublicAgendaJson0514\(response, "Agenda temporariamente indisponível"\)/);
 });
