@@ -3600,16 +3600,21 @@ async function regenerateDriverPublicAgenda(req, res) {
   if (currentToken.length < 16 || rotationId.length < 16) {
     return fail(res, 400, "rotation_context_required", "Contexto seguro da rotação ausente.");
   }
-  const rotationSecret = driverTokenSecret.value() || "";
-  if (!rotationSecret) return fail(res, 503, "rotation_secret_unavailable", "Serviço de rotação temporariamente indisponível.");
-
   const driverRef = db.collection("tripDrivers").doc(driver.username);
   const linkRef = publicAgendaLinkRef(driver.username);
   const rotationIdHash = sha256Hex(rotationId);
-  const publicAgendaToken = deriveRotationToken(rotationSecret, driver.username, rotationId);
-  const nextTokenHash = sha256Hex(publicAgendaToken);
 
   try {
+    const rotationDriverSnap0512 = await driverRef.get();
+    if (!rotationDriverSnap0512.exists) {
+      return fail(res, 404, "driver_not_found", "Motorista não encontrado.");
+    }
+    const rotationSecret0512 = cleanText(rotationDriverSnap0512.data().driverTokenHash, 160);
+    if (!rotationSecret0512) {
+      return fail(res, 503, "rotation_secret_unavailable", "Serviço de rotação temporariamente indisponível.");
+    }
+    const publicAgendaToken = deriveRotationToken(rotationSecret0512, driver.username, rotationId);
+    const nextTokenHash = sha256Hex(publicAgendaToken);
     const result = await db.runTransaction(async (tx) => {
       const driverSnap = await tx.get(driverRef);
       const linkSnap = await tx.get(linkRef);
@@ -4892,8 +4897,8 @@ function publicBookingFingerprint(payload) {
   return sha256Hex(JSON.stringify(payload));
 }
 
-function publicCancellationToken(token, idempotencyKey) {
-  const secret = driverTokenSecret.value() || "";
+function publicCancellationToken(token, idempotencyKey, driverSecretHash) {
+  const secret = cleanText(driverSecretHash, 160);
   if (!secret) throw Object.assign(new Error("Servidor de reservas não está ativado."), { httpStatus: 503, code: "booking_secret_unavailable" });
   return crypto.createHmac("sha256", secret).update(`${token}:${idempotencyKey}:cancel`).digest("base64url");
 }
@@ -6522,8 +6527,6 @@ async function createBooking(req, res, token) {
   const passengerContact = session.passengerContact;
 
   const bookingId = publicBookingId(token, idempotencyKey);
-  const cancellationToken = publicCancellationToken(token, idempotencyKey);
-  const cancellationHash = sha256Hex(cancellationToken);
   const tripRef = db.collection("trips").doc(token);
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   const authTrip = await tripRef.get();
@@ -6531,6 +6534,15 @@ async function createBooking(req, res, token) {
   debugDriverUsername = normalizeUsername(authTrip.data().driverUsername || "");
   const authorized = await requirePassengerDriverAccess(req, res, debugDriverUsername, session);
   if (!authorized) return;
+  const driverAuth0512 = await resolveDriverUsername(debugDriverUsername);
+  const driverSecretHash0512 = cleanText(
+    driverAuth0512 && driverAuth0512.driverSnap && driverAuth0512.driverSnap.exists
+      ? driverAuth0512.driverSnap.data().driverTokenHash
+      : "",
+    160,
+  );
+  const cancellationToken = publicCancellationToken(token, idempotencyKey, driverSecretHash0512);
+  const cancellationHash = sha256Hex(cancellationToken);
   const passengerId = cleanText(session.passengerId || authorized.access.passengerId, 120);
   if (!passengerId) return fail(res, 409, "passenger_identity_unavailable", "Seu cadastro ainda está sendo vinculado. Tente novamente após a sincronização da agenda.");
   const passengerName = cleanText(authorized.access && authorized.access.displayName, 120) || requestedPassengerName;
@@ -9484,7 +9496,7 @@ exports.assistantApi = onRequest(
   },
 );
 
-exports.tripApi = onRequest({ secrets: [driverTokenSecret], region: "southamerica-east1" }, async (req, res) => {
+exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) => {
   if (req.method === "OPTIONS") return res.status(204).send("");
   const path = (req.path || req.url || "/").split("?")[0].replace(/\/+$/, "") || "/";
   const parts = path.split("/").filter(Boolean);
