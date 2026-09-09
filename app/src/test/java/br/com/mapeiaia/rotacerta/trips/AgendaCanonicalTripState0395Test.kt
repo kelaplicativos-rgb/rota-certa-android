@@ -261,7 +261,7 @@ class AgendaCanonicalTripState0395Test {
         assertTrue(autoSync.contains("existing?.bookingTripId"))
         assertTrue(autoSync.contains("canonicalTripId.takeIf(String::isNotBlank)"))
         assertTrue(store.contains("publicExternalBindingForStrongIdentity"))
-        assertTrue(outbox.contains("existingBinding?.bookingTripId"))
+        assertTrue(outbox.contains("existingBinding.bookingTripId"))
         assertTrue(outbox.contains("strongExternalCanonicalTripId0387"))
     }
 
