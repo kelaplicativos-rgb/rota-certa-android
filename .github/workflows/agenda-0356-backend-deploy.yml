@@ -93,6 +93,58 @@ jobs:
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - name: Diagnose Cloud Billing write gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          PROJECT_JSON="$(gcloud billing projects describe "$PROJECT" --format=json 2>/tmp/billing-project.err || true)"
+          BILLING_ACCOUNT="$(printf '%s' "$PROJECT_JSON" | jq -r '.billingAccountName // empty')"
+          BILLING_ENABLED="$(printf '%s' "$PROJECT_JSON" | jq -r '.billingEnabled // false')"
+          OPEN_ACCOUNTS="$(gcloud billing accounts list --filter='open=true' --format='value(name)' 2>/tmp/billing-list.err || true)"
+          OPEN_COUNT="$(printf '%s\n' "$OPEN_ACCOUNTS" | sed '/^$/d' | wc -l | tr -d ' ')"
+          LINKED_OPEN="unknown"
+          if [ -n "$BILLING_ACCOUNT" ]; then
+            LINKED_OPEN="$(gcloud billing accounts list --filter="name=$BILLING_ACCOUNT" --format='value(open)' 2>/tmp/billing-linked.err | head -1 || true)"
+            [ -n "$LINKED_OPEN" ] || LINKED_OPEN="unknown"
+          fi
+          echo "billing_diagnostic_project=$PROJECT"
+          echo "billing_account_linked=$([ -n "$BILLING_ACCOUNT" ] && echo true || echo false)"
+          echo "billing_enabled=$BILLING_ENABLED"
+          echo "linked_billing_account_open=$LINKED_OPEN"
+          echo "accessible_open_billing_accounts=$OPEN_COUNT"
+
+          PROJECT_PERMISSION=false
+          TOKEN="$(gcloud auth print-access-token)"
+          if curl --fail --silent --show-error             -H "Authorization: Bearer $TOKEN"             -H 'Content-Type: application/json'             -d '{"permissions":["resourcemanager.projects.createBillingAssignment"]}'             "https://cloudresourcemanager.googleapis.com/v1/projects/$PROJECT:testIamPermissions"             | jq -e '.permissions | index("resourcemanager.projects.createBillingAssignment") != null' >/dev/null 2>&1; then
+            PROJECT_PERMISSION=true
+          fi
+          echo "project_can_create_billing_assignment=$PROJECT_PERMISSION"
+
+          BILLING_PERMISSION=false
+          PERMISSION_ACCOUNT="$BILLING_ACCOUNT"
+          if [ -z "$PERMISSION_ACCOUNT" ] && [ "$OPEN_COUNT" = "1" ]; then
+            PERMISSION_ACCOUNT="$(printf '%s\n' "$OPEN_ACCOUNTS" | sed '/^$/d' | head -1)"
+          fi
+          if [ -n "$PERMISSION_ACCOUNT" ]; then
+            if curl --fail --silent --show-error               -H "Authorization: Bearer $TOKEN"               -H 'Content-Type: application/json'               -d '{"permissions":["billing.resourceAssociations.create"]}'               "https://cloudbilling.googleapis.com/v1/$PERMISSION_ACCOUNT:testIamPermissions"               | jq -e '.permissions | index("billing.resourceAssociations.create") != null' >/dev/null 2>&1; then
+              BILLING_PERMISSION=true
+            fi
+          fi
+          echo "billing_account_can_create_resource_association=$BILLING_PERMISSION"
+
+          if [ "$BILLING_ENABLED" = "true" ] && [ "$LINKED_OPEN" = "True" -o "$LINKED_OPEN" = "true" ]; then
+            echo "billing_gate=ENABLED_OPEN"
+          elif [ -n "$BILLING_ACCOUNT" ]; then
+            echo "billing_gate=LINKED_BUT_DISABLED_OR_CLOSED"
+          elif [ "$OPEN_COUNT" = "1" ]; then
+            echo "billing_gate=UNLINKED_SINGLE_OPEN_ACCOUNT_AVAILABLE"
+          elif [ "$OPEN_COUNT" -gt 1 ]; then
+            echo "billing_gate=UNLINKED_MULTIPLE_OPEN_ACCOUNTS"
+          else
+            echo "billing_gate=NO_OPEN_BILLING_ACCOUNT_VISIBLE"
+          fi
+
       - name: Deploy exact HEAD tripApi without Secret Manager dependency
         shell: bash
         run: |
