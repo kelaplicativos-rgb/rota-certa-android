@@ -1053,19 +1053,40 @@ internal fun EnhancedPassengerTimelineSection(
             row = row,
             onDismiss = { fareEditRow = null },
             onSave = { amount, currency ->
-                if (savePassengerFare(row, amount, currency, store, passengerStore)) {
-                    copyPassengerFareValue(
-                        context,
-                        row.copy(
+                val canonicalBooking0513 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
+                val canonicalTrip0513 = trip?.takeIf { entry.canonicalBackendAuthoritative0494 }
+                fareEditRow = null
+                if (canonicalBooking0513 != null && canonicalTrip0513 != null) {
+                    scope.launch {
+                        val updated0513 = canonicalBooking0513.copy(
                             fareMinorUnits = amount,
                             fareCurrencyCode = currency,
-                        ),
-                    )
-                    onChanged("Valor salvo e copiado.")
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                        runCatching {
+                            persistCanonicalPassengerPrivateMetadata0513(
+                                context = context,
+                                trip = canonicalTrip0513,
+                                previous = canonicalBooking0513,
+                                updated = updated0513,
+                                store = store,
+                            )
+                        }.onSuccess {
+                            copyPassengerFareValue(
+                                context,
+                                row.copy(fareMinorUnits = amount, fareCurrencyCode = currency),
+                            )
+                            onChanged("Valor salvo no estado canônico e copiado.")
+                        }.onFailure { error ->
+                            onChanged("Valor não salvo: " + (error.message ?: error.javaClass.simpleName))
+                        }
+                    }
+                } else if (savePassengerFareLegacy0494(row, amount, currency, passengerStore)) {
+                    copyPassengerFareValue(context, row.copy(fareMinorUnits = amount, fareCurrencyCode = currency))
+                    onChanged("Valor salvo na ocorrência legada e copiado.")
                 } else {
                     Toast.makeText(context, "Reserva sem referência estável; valor não foi salvo.", Toast.LENGTH_LONG).show()
                 }
-                fareEditRow = null
             },
         )
     }
@@ -1076,12 +1097,34 @@ internal fun EnhancedPassengerTimelineSection(
             initialValue = passengerAddressEditorInitialValue(row.boardingAddress, row.boarding),
             onDismiss = { boardingAddressEditRow = null },
             onSave = { address ->
-                if (savePassengerAddress(row, address, true, store, passengerStore)) {
-                    onChanged("Endereço de embarque salvo.")
+                val canonicalBooking0513 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
+                val canonicalTrip0513 = trip?.takeIf { entry.canonicalBackendAuthoritative0494 }
+                boardingAddressEditRow = null
+                if (canonicalBooking0513 != null && canonicalTrip0513 != null) {
+                    scope.launch {
+                        val updated0513 = canonicalBooking0513.copy(
+                            boardingAddress = address,
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                        runCatching {
+                            persistCanonicalPassengerPrivateMetadata0513(
+                                context = context,
+                                trip = canonicalTrip0513,
+                                previous = canonicalBooking0513,
+                                updated = updated0513,
+                                store = store,
+                            )
+                        }.onSuccess {
+                            onChanged("Endereço de embarque salvo no estado canônico.")
+                        }.onFailure { error ->
+                            onChanged("Endereço de embarque não salvo: " + (error.message ?: error.javaClass.simpleName))
+                        }
+                    }
+                } else if (savePassengerAddressLegacy0494(row, address, true, passengerStore)) {
+                    onChanged("Endereço de embarque salvo na ocorrência legada.")
                 } else {
                     Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
                 }
-                boardingAddressEditRow = null
             },
         )
     }
@@ -1092,12 +1135,34 @@ internal fun EnhancedPassengerTimelineSection(
             initialValue = passengerAddressEditorInitialValue(row.dropoffAddress, row.dropoff),
             onDismiss = { dropoffAddressEditRow = null },
             onSave = { address ->
-                if (savePassengerAddress(row, address, false, store, passengerStore)) {
-                    onChanged("Endereço de destino salvo.")
+                val canonicalBooking0513 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
+                val canonicalTrip0513 = trip?.takeIf { entry.canonicalBackendAuthoritative0494 }
+                dropoffAddressEditRow = null
+                if (canonicalBooking0513 != null && canonicalTrip0513 != null) {
+                    scope.launch {
+                        val updated0513 = canonicalBooking0513.copy(
+                            dropoffAddress = address,
+                            updatedAtMillis = System.currentTimeMillis(),
+                        )
+                        runCatching {
+                            persistCanonicalPassengerPrivateMetadata0513(
+                                context = context,
+                                trip = canonicalTrip0513,
+                                previous = canonicalBooking0513,
+                                updated = updated0513,
+                                store = store,
+                            )
+                        }.onSuccess {
+                            onChanged("Endereço de destino salvo no estado canônico.")
+                        }.onFailure { error ->
+                            onChanged("Endereço de destino não salvo: " + (error.message ?: error.javaClass.simpleName))
+                        }
+                    }
+                } else if (savePassengerAddressLegacy0494(row, address, false, passengerStore)) {
+                    onChanged("Endereço de destino salvo na ocorrência legada.")
                 } else {
                     Toast.makeText(context, "Reserva sem referência estável; endereço não foi salvo.", Toast.LENGTH_LONG).show()
                 }
-                dropoffAddressEditRow = null
             },
         )
     }
