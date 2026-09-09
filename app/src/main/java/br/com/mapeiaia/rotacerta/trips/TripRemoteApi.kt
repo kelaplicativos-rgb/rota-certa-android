@@ -799,6 +799,12 @@ internal fun validateCanonicalTimelineResponse0512(
                 "A projeção canônica de passageiros está incompleta.",
             )
         }
+        if (state.canonicalIssues.any { it.equals("PRIVATE_PROJECTION_STALE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "A projeção privada operacional não corresponde à revisão canônica atual.",
+            )
+        }
         if (state.stops.size < 2) {
             throw CanonicalTimelineProjectionException0512(
                 "PROJECTION_INCOMPLETE",
