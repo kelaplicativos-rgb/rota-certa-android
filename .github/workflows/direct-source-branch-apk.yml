@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.520 immediate global extra seats publication
-# 0.1.520: global extra-seat saves publish current/future canonical trips immediately and stale identity outbox events can no longer block the queue.
+name: Rota Certa 0.1.521 immediate Timeline to Agenda readback
+# 0.1.521: Timeline mutations and global extra-seat saves use the existing canonical outbox for immediate targeted delivery plus public Agenda readback; background work is retry-only.
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5812'
-      EXPECTED_VERSION_NAME: '0.1.520'
+      EXPECTED_VERSION_CODE: '5813'
+      EXPECTED_VERSION_NAME: '0.1.521'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -125,6 +125,10 @@ jobs:
           grep -Fq 'PUBLIC_PROJECTION_ATTEMPTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PUBLIC_PROJECTION_COMMITTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'AGENDA_PARITY_MISSING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_CONFIRMED_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_PENDING_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'remoteProjectionDivergenceObserved = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'Agenda não confirmou todas as alterações imediatamente' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
 
       - name: Assemble exact-head final debug APK
         shell: bash
@@ -174,7 +178,7 @@ jobs:
           OUT=/tmp/0520
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-global-extra-seats-immediate.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-agenda-immediate.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
@@ -197,6 +201,11 @@ jobs:
           global_extra_seats_current_future=PASS
           global_extra_seats_additive_capacity=PASS
           global_extra_seats_immediate_publication=PASS
+          global_extra_seats_forced_republication=PASS
+          timeline_mutation_immediate_targeted_drain=PASS
+          timeline_mutation_public_readback_required=PASS
+          timeline_mutation_background_retry_only=PASS
+          immediate_success_requires_agenda_confirmation=PASS
           stale_external_identity_outbox_bounded=PASS
           driver_whatsapp_public_action=PASS
           agenda_owned_exact_card_refresh=PASS
@@ -234,7 +243,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.520-global-extra-seats-immediate-${{ github.sha }}
+          name: rota-certa-0.1.521-timeline-agenda-immediate-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0520
