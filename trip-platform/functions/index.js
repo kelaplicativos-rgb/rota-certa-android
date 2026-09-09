@@ -9676,7 +9676,12 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
       return await cancelPassengerBooking(req, res, parts[4], parts[5]);
     }
-    if (path === "/v1/health" && req.method === "GET") return json(res, 200, { ok: true, service: "rota-certa-trips", version: "stage47" });
+    if (path === "/v1/health" && req.method === "GET") return json(res, 200, {
+      ok: true,
+      service: "rota-certa-trips",
+      version: "stage47",
+      backendGitSha: cleanText(process.env.ROTA_CERTA_BACKEND_GIT_SHA, 80),
+    });
     return fail(res, 404, "not_found", "Endpoint não encontrado.");
   } catch (error) {
     console.error("tripApi", error);
