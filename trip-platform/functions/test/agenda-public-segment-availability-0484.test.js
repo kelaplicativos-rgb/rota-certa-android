@@ -200,7 +200,7 @@ test("0504 public labels keep canonical availability numeric and privacy-safe", 
   assert.equal(segmentAvailabilityLabel0484(2), "2 vagas");
   assert.match(html, /agendaSegmentAvailability0484/);
   assert.match(html, /agendaSegmentPassengers0489/);
-  assert.match(html, /app\.js\?v=0\.1\.506/);
+  assert.match(html, /app\.js\?v=0\.1\.514/);
 });
 
 test("0504 card summary remains numeric for zero, exact and segment ranges", () => {
