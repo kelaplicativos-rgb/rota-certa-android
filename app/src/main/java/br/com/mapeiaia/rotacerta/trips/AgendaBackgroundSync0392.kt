@@ -166,6 +166,7 @@ internal fun agendaBackgroundSyncMode0392(reason: String): AgendaBackgroundSyncM
     reason.startsWith("booking_push:") -> AgendaBackgroundSyncMode0392.BOOKING_EVENT
     reason == "blablacar_collection_result" -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason == "trip_reverify" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
+    reason == "trip_collector_refresh" -> AgendaBackgroundSyncMode0392.DELTA_ONLY
     reason.startsWith("admin_update_now:") -> AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
     reason.startsWith("admin_full_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
     reason.startsWith("outbox_semantic_reconcile:") -> AgendaBackgroundSyncMode0392.FULL_RECONCILE
@@ -180,6 +181,7 @@ internal fun agendaBackgroundSyncTrigger0397(reason: String): String = when {
     reason.startsWith("booking_push:") -> "EVENT_DELTA"
     reason == "blablacar_collection_result" -> "AUTOMATIC_COLLECTOR"
     reason == "trip_reverify" -> "TRIP_REVERIFY"
+    reason == "trip_collector_refresh" -> "TRIP_COLLECTOR_REFRESH"
     reason.startsWith("admin_update_now:") -> "ADMIN_UPDATE_NOW"
     reason.startsWith("admin_full_reconcile:") -> "ADMIN_FULL_RECONCILE"
     reason.startsWith("outbox_semantic_reconcile:") -> "SEMANTIC_RECONCILE"
@@ -1027,6 +1029,7 @@ internal object AgendaBackgroundSync0392 {
     private const val IMMEDIATE_WORK = "agenda-background-sync-0392-immediate"
     private const val CARD_DELTA_WORK_0431 = "agenda-background-sync-0431-card-delta"
     private const val TRIP_REVERIFY_WORK_0407 = "agenda-background-sync-0407-trip-reverify"
+    private const val TRIP_COLLECTOR_REFRESH_WORK_0517 = "agenda-background-sync-0517-trip-collector-refresh"
     private const val INPUT_REASON = "reason"
     private const val INPUT_TENANT_ID = "tenant_id_0397"
     private const val INPUT_COMMAND_ID_0407 = "command_id_0407"
@@ -1088,6 +1091,59 @@ internal object AgendaBackgroundSync0392 {
         val target: BlaBlaTripTarget0407,
     )
 
+    fun enqueueTripCollectorRefresh0517(
+        context: Context,
+        target: BlaBlaTripTarget0407,
+        commandId: String,
+        requestedAtMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val appContext = context.applicationContext
+        val activeTenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        if (activeTenantId != target.tenantId || commandId.isBlank()) return false
+        if (BlaBlaCollectorUrlModule.tripId(target.tripHref) != target.tripId) return false
+
+        val commandStore = BlaBlaTripCommandStatusStore0407(appContext)
+        if (!commandStore.tryMarkQueued(target, commandId, requestedAtMillis)) {
+            UnifiedDebugEventStore.record(
+                "NO_OP",
+                appContext.packageName,
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending requestedAction=TARGET_COLLECTOR_REFRESH_0517",
+            )
+            return true
+        }
+
+        val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
+            .setConstraints(networkConstraints())
+            .setInputData(workDataOf(
+                INPUT_REASON to "trip_collector_refresh",
+                INPUT_TENANT_ID to target.tenantId,
+                INPUT_COMMAND_ID_0407 to commandId,
+                INPUT_ACCOUNT_ID_0407 to target.accountId,
+                INPUT_PROFILE_UUID_0407 to target.profileUuid,
+                INPUT_TRIP_ID_0407 to target.tripId,
+                INPUT_TRIP_HREF_0407 to target.tripHref,
+                INPUT_REQUESTED_AT_0435 to requestedAtMillis,
+            ))
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+            .build()
+        val workName = tenantScopedWorkName(
+            target.tenantId,
+            TRIP_COLLECTOR_REFRESH_WORK_0517 + "-" + sha256TripPublication0387(target.strongIdentityKey).take(16),
+        )
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.KEEP,
+            request,
+        )
+        UnifiedDebugEventStore.record(
+            "COMMAND_REQUESTED",
+            appContext.packageName,
+            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true uniqueTargetWork=true requestedAction=TARGET_COLLECTOR_REFRESH_0517",
+        )
+        return true
+    }
+
     fun enqueueTripReverify0407(
         context: Context,
         target: BlaBlaTripTarget0407,
@@ -1142,7 +1198,7 @@ internal object AgendaBackgroundSync0392 {
     }
 
     internal fun targetedTripWork0407(workerParameters: WorkerParameters): TargetedTripWork0407? {
-        if (reason(workerParameters) != "trip_reverify") return null
+        if (reason(workerParameters) !in setOf("trip_reverify", "trip_collector_refresh")) return null
         val tenantId = scheduledTenantId(workerParameters)
         val commandId = workerParameters.inputData.getString(INPUT_COMMAND_ID_0407)?.trim().orEmpty()
         val accountId = workerParameters.inputData.getString(INPUT_ACCOUNT_ID_0407)?.trim().orEmpty()
@@ -1322,6 +1378,108 @@ internal object AgendaBackgroundSync0392 {
             )
         }
     }
+    internal suspend fun refreshCanonicalTripFromCollector0517(
+        context: Context,
+        work: TargetedTripWork0407,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): BlaBlaCommandResult0407 {
+        val appContext = context.applicationContext
+        val startedAt = nowMillis
+        val target = work.target
+        val store = TripStore(appContext)
+        val canonicalBefore = store.trips().filter { trip ->
+            !trip.deleted &&
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == target.tripId
+        }.singleOrNull()
+            ?: return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                errorCode = "CANONICAL_TRIP_NOT_FOUND_OR_AMBIGUOUS",
+                verification = "targeted_collector_requires_unique_canonical_trip",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+
+        val collectorResult = BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+            context = appContext,
+            target = target,
+            commandId = work.commandId,
+            origin = "TIMELINE_CARD_TARGET_REFRESH_0517",
+        )
+        if (collectorResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
+            return collectorResult
+        }
+
+        val exactResponse = targetedCollectorResponse0407(
+            response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
+            target = target,
+        )
+        val exactSource = exactResponse?.trips.orEmpty().singleOrNull()
+        if (exactSource == null) {
+            return collectorResult.copy(
+                status = BlaBlaCommandStatus0407.UNVERIFIED,
+                errorCode = "TARGETED_COLLECTOR_READBACK_MISSING",
+                verification = "targeted_collector_exact_trip_missing_after_headless_read",
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+
+        val tenantSettings = SettingsRepository(appContext).settings.first()
+        val batch = reconcileCollectedExternalTrips0403(
+            context = appContext,
+            store = store,
+            response = exactResponse,
+            rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
+            seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
+            collectionRunId = "timeline-card-target-refresh-0517",
+            collectionGeneration = 0L,
+            completeProfileUuids = emptySet(),
+        )
+        val refreshed = store.trips().filter { trip ->
+            !trip.deleted &&
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                trip.blablaProfileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true &&
+                trip.blablaTripId?.trim() == target.tripId
+        }.singleOrNull()
+        if (refreshed == null) {
+            return collectorResult.copy(
+                status = BlaBlaCommandStatus0407.UNVERIFIED,
+                errorCode = "CANONICAL_TARGET_MISSING_AFTER_RECONCILE",
+                verification = "targeted_collector_canonical_reconcile_missing",
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+
+        val targetPublicationIds = batch.publicationCanonicalTripIds0431
+            .ifEmpty { setOf(refreshed.tripKey.ifBlank { refreshed.id }) }
+        val delivered = TripMutationCoordinator0387(appContext, store).drainPending(
+            canonicalTripIds = targetPublicationIds,
+        )
+        BookingRealtimeEvents0356.notifyChanged()
+        TripWidgetProvider.updateAll(appContext)
+        UnifiedDebugEventStore.record(
+            "TIMELINE_CARD_TARGET_COLLECTOR_REFRESH_0517",
+            appContext.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(refreshed.tripKey.ifBlank { refreshed.id }) +
+                " profileUuidPresent=true tripIdPresent=true changed=${batch.changedTrips}" +
+                " skipped=${batch.skippedTrips} blocked=${batch.blockedTrips}" +
+                " publicationQueued=${batch.publicationQueued} outboxDelivered=$delivered" +
+                " exactTargetOnly=true collectorDirectTimelineRead=false fullAccountCollection=false",
+        )
+        return collectorResult.copy(
+            before = "CANONICAL_REVISION_${canonicalBefore.canonicalRevision}",
+            after = "CANONICAL_REVISION_${refreshed.canonicalRevision}",
+            verification = "targeted_collector_exact_trip_canonicalized",
+            status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
+            errorCode = "",
+            finishedAtMillis = System.currentTimeMillis(),
+        )
+    }
+
     fun enqueueRecoveryIfNeeded(context: Context) {
         val appContext = context.applicationContext
         val status = AgendaBackgroundSyncConfig0392.status(appContext)
@@ -3121,7 +3279,7 @@ internal object AgendaBackgroundSync0392 {
         requestedAtMillis: Long,
         nowMillis: Long = System.currentTimeMillis(),
     ): Boolean {
-        val oneShot = reason == "trip_reverify" || reason.startsWith("admin_update_now:")
+        val oneShot = reason in setOf("trip_reverify", "trip_collector_refresh") || reason.startsWith("admin_update_now:")
         if (!oneShot) return false
         if (requestedAtMillis <= 0L) return true
         val age = nowMillis - requestedAtMillis
@@ -3224,7 +3382,7 @@ class AgendaBackgroundSyncWorker0392(
         return try {
             val targetedWork = AgendaBackgroundSync0392.targetedTripWork0407(parameters)
             val bookingTargetRemoteTripId0431 = AgendaBackgroundSync0392.targetedBookingRemoteTripId0431(parameters)
-            if (reason == "trip_reverify" && targetedWork == null) {
+            if (reason in setOf("trip_reverify", "trip_collector_refresh") && targetedWork == null) {
                 UnifiedDebugEventStore.record(
                     "FAILED",
                     applicationContext.packageName,
@@ -3242,10 +3400,17 @@ class AgendaBackgroundSyncWorker0392(
                 return Result.success()
             }
             val targetedResult = targetedWork?.let { work ->
-                AgendaBackgroundSync0392.reverifyCanonicalMirror0435(
-                    context = applicationContext,
-                    work = work,
-                )
+                if (reason == "trip_collector_refresh") {
+                    AgendaBackgroundSync0392.refreshCanonicalTripFromCollector0517(
+                        context = applicationContext,
+                        work = work,
+                    )
+                } else {
+                    AgendaBackgroundSync0392.reverifyCanonicalMirror0435(
+                        context = applicationContext,
+                        work = work,
+                    )
+                }
             }
             val cycle = if (targetedWork != null) {
                 AgendaBackgroundSyncRun0392(
