@@ -1689,6 +1689,32 @@ private fun TimelineEntryCard(
             }
         }
     }
+    val queueTargetCollectorRefresh0517: () -> Unit = {
+        val target = tripTarget0407
+        if (target == null) {
+            onChanged("Atualização BlaBlaCar indisponível: este card não tem identidade forte suficiente.")
+        } else if (reverifyPending0407) {
+            onChanged("Esta viagem já está sendo atualizada em segundo plano.")
+        } else {
+            val command = BlaBlaCommand0407.forTarget(
+                target = target,
+                operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                origin = "TIMELINE_CARD_TARGET_REFRESH_0517",
+            )
+            if (
+                AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
+                    context = context,
+                    target = target,
+                    commandId = command.commandId,
+                    requestedAtMillis = command.requestedAtMillis,
+                )
+            ) {
+                onChanged("📡 Atualizando somente esta viagem pela BlaBlaCar.")
+            } else {
+                onChanged("Atualização bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
+            }
+        }
+    }
 
     if (showMirrorDiagnostic0417) {
         AlertDialog(
@@ -1827,6 +1853,10 @@ private fun TimelineEntryCard(
                 )
                 Text(verificationLabel0407, style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        enabled = tripTarget0407 != null && !reverifyPending0407,
+                        onClick = queueTargetCollectorRefresh0517,
+                    ) { Text("📡") }
                     if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.primary) {
                         TextButton(
                             enabled = !reverifyPending0407,
