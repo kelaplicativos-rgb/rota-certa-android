@@ -222,7 +222,9 @@ class TimelineCanonicalBackend0494Test {
         val download = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt").readText()
 
         assertTrue(download.contains("put(\"schemaVersion\", \"3.0\")"))
-        assertTrue(download.contains("put(\"source\", \"CANONICAL_NATIVE_FIREWALL\")"))
+        assertTrue(download.contains("response?.source?.takeIf(String::isNotBlank) ?: \"CANONICAL_NATIVE_FIREWALL\""))
+        assertTrue(download.contains("CANONICAL_AGENDA_LOCAL_0516"))
+        assertTrue(download.contains("AGENDA_CANONICAL_LOCAL_FALLBACK_0516"))
         assertTrue(download.contains("put(\"collectorRead\", false)"))
         assertTrue(download.contains("put(\"collectorFallback\", false)"))
         assertTrue(download.contains("put(\"collectorDerivedData\", false)"))
