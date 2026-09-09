@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.519 global extra seats + driver WhatsApp
+name: Rota Certa 0.1.521 public Agenda current snapshot
 
 on:
   push:
@@ -45,8 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'versionCode = 5811' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.519"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5813' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.521"' app/build.gradle.kts
           node --check trip-platform/public/app.js
           node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
           grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
