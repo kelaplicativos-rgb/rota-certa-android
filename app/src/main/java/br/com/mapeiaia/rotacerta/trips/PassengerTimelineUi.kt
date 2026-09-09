@@ -140,6 +140,32 @@ internal fun buildPassengerTimelineRenderSnapshot0394(
     )
 }
 
+internal fun buildImmediateCanonicalPassengerTimelineRenderSnapshot0517(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+    store: TripStore,
+    passengerStore: PassengerIdentityStore,
+    canonicalBookings0494: List<Booking>?,
+): PassengerTimelineRenderSnapshot0394? {
+    if (!entry.canonicalBackendAuthoritative0494 || trip == null || canonicalBookings0494 == null) return null
+    val localBookings = canonicalBookings0494.filter { it.tripId == trip.id }
+    val rows = enhancedPassengerRows(
+        entry = entry,
+        trip = trip,
+        store = store,
+        passengerStore = passengerStore,
+        externalMetadataSnapshot0394 = emptyMap(),
+        localBookingsSnapshot0394 = localBookings,
+    )
+    return PassengerTimelineRenderSnapshot0394(
+        rows = rows,
+        profilesByRowKey = emptyMap(),
+        bookingsById = localBookings.associateBy(Booking::id),
+        historiesByProfileId = emptyMap(),
+        completedRowKeys = emptySet(),
+    )
+}
+
 @Composable
 internal fun EnhancedPassengerTimelineSection(
     entry: TripTimelineEntry,
@@ -158,14 +184,23 @@ internal fun EnhancedPassengerTimelineSection(
     val scope = rememberCoroutineScope()
     var identityRevision by remember { mutableIntStateOf(0) }
     var completionRevision by remember { mutableIntStateOf(0) }
+    val immediateCanonicalSnapshot0517 = remember(entry, trip, canonicalBookings0494) {
+        buildImmediateCanonicalPassengerTimelineRenderSnapshot0517(
+            entry = entry,
+            trip = trip,
+            store = store,
+            passengerStore = passengerStore,
+            canonicalBookings0494 = canonicalBookings0494,
+        )
+    }
     var renderSnapshot0394 by remember(entry.tripId, trip?.id) {
-        mutableStateOf<PassengerTimelineRenderSnapshot0394?>(null)
+        mutableStateOf<PassengerTimelineRenderSnapshot0394?>(immediateCanonicalSnapshot0517)
     }
     var renderFailure0512 by remember(entry.tripId, trip?.id) {
         mutableStateOf<String?>(null)
     }
     LaunchedEffect(entry, trip, canonicalBookings0494, identityRevision, completionRevision) {
-        renderSnapshot0394 = null
+        renderSnapshot0394 = immediateCanonicalSnapshot0517
         renderFailure0512 = null
         try {
             val resolved0512 = withContext(Dispatchers.IO) {
@@ -201,7 +236,7 @@ internal fun EnhancedPassengerTimelineSection(
             )
         }
     }
-    val renderSnapshot = renderSnapshot0394
+    val renderSnapshot = renderSnapshot0394 ?: immediateCanonicalSnapshot0517
     val rawRows = renderSnapshot?.rows.orEmpty()
     val externalObservationKey = rawRows
         .filter { BookingSource.BLABLACAR in it.sources }
@@ -1198,7 +1233,11 @@ internal fun enhancedPassengerRows(
     val legacyPassengers = if (entry.canonicalBackendAuthoritative0494) emptyList() else entry.blablaPassengers
     val rows = legacyPassengers.map { passenger ->
         val metadataKey = externalPassengerReservationKey(entry.blablaProfileUuid, passenger.booking_href)
-        val metadata = externalMetadataSnapshot0394?.get(metadataKey) ?: passengerStore.externalMetadata(metadataKey)
+        val metadata = if (externalMetadataSnapshot0394 != null) {
+            externalMetadataSnapshot0394[metadataKey]
+        } else {
+            passengerStore.externalMetadata(metadataKey)
+        }
         val hrefExternalId = stableExternalPassengerId(BlaBlaCollectorUrlModule.passengerIdentityKey(passenger.booking_href))
         val externalId = metadata?.externalPassengerId?.takeIf(String::isNotBlank) ?: hrefExternalId
         val boarding = passengerTimelinePlaceLabel(passenger.name, passenger.boarding)
@@ -1243,8 +1282,11 @@ internal fun enhancedPassengerRows(
 
         local.forEach { booking ->
             val privateMetadataKey0494 = canonicalBookingPrivateMetadataKey0494(booking.id)
-            val privateMetadata0494 = externalMetadataSnapshot0394?.get(privateMetadataKey0494)
-                ?: passengerStore.externalMetadata(privateMetadataKey0494)
+            val privateMetadata0494 = if (externalMetadataSnapshot0394 != null) {
+                externalMetadataSnapshot0394[privateMetadataKey0494]
+            } else {
+                passengerStore.externalMetadata(privateMetadataKey0494)
+            }
             val phone = booking.passengerContact.trim().takeIf(String::isNotEmpty)
             val boardingStop = stops[booking.boardingStopId]
             val dropoffStop = stops[booking.dropoffStopId]
