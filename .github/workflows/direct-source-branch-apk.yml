@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.513 canonical Timeline parity
-# 0.1.513: persist private passenger operations canonically, expose authenticated stop coordinates, and preserve public sanitization.
+name: Rota Certa 0.1.514 canonical Timeline + public Agenda recovery
+# 0.1.514: preserve canonical Timeline parity and handle public Agenda non-JSON backend failures without exposing parser internals.
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: timeline-canonical-integrity-0513-${{ github.ref }}
+  group: timeline-canonical-integrity-0514-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: timeline_canonical_integrity_0513_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: timeline_canonical_integrity_0514_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5805'
-      EXPECTED_VERSION_NAME: '0.1.513'
+      EXPECTED_VERSION_CODE: '5806'
+      EXPECTED_VERSION_NAME: '0.1.514'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -157,12 +157,12 @@ jobs:
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
           LIVE_BACKEND_HEALTH=DEGRADED
-          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0513.json; then
-            if grep -Fq '"ok":true' /tmp/live-health-0513.json; then
+          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0514.json; then
+            if grep -Fq '"ok":true' /tmp/live-health-0514.json; then
               LIVE_BACKEND_HEALTH=PASS
             fi
           else
-            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0513.json
+            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0514.json
           fi
           echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
           echo "backend_health=$LIVE_BACKEND_HEALTH"
@@ -171,7 +171,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0513
+          OUT=/tmp/0514
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-timeline-parity.apk"
@@ -181,7 +181,7 @@ jobs:
           cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0513.json "$OUT/"
+          cp /tmp/live-health-0514.json "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
@@ -205,6 +205,8 @@ jobs:
           timeline_collector_fallback=PROHIBITED
           public_agenda_private_data_leak=PROHIBITED
           public_agenda_contract_regressions=PASS
+          public_agenda_non_json_error_boundary=PASS
+          public_agenda_cache_buster=PASS
           pull_refresh_canonical_source=PASS
           snapshot_atomic_replace_after_validation=PASS
           unified_sanitized_diagnostics=PASS
@@ -219,7 +221,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.513-canonical-timeline-parity-${{ github.sha }}
+          name: rota-certa-0.1.514-canonical-timeline-public-agenda-recovery-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0513
+          path: /tmp/0514
