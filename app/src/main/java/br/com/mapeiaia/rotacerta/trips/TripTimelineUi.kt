@@ -631,9 +631,22 @@ fun TripTimelineScreen(
         )
     }
 
+    val effectiveTimelineDownloadResponse0516 = remember(
+        canonicalResponse0494,
+        canonicalBackendStale0494,
+        canonicalProjection0494,
+    ) {
+        if ((canonicalBackendStale0494 || canonicalResponse0494 == null) &&
+            canonicalProjection0494.entries.isNotEmpty()
+        ) {
+            localAgendaTimelineDownloadResponse0516(canonicalProjection0494)
+        } else {
+            canonicalResponse0494
+        }
+    }
     AgendaTimelineDownloadAction0399(
         entries = visibleEntries,
-        canonicalResponse0494 = canonicalResponse0494,
+        canonicalResponse0494 = effectiveTimelineDownloadResponse0516,
         canonicalBookings0494 = canonicalBookings0494,
         triggerToken = downloadRequestToken0399,
         onChanged = onCanonicalChanged0495,
