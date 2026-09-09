@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.514 public Agenda hosting recovery
+name: Rota Certa 0.1.516 public Agenda 503 failover
 
 on:
   push:
@@ -44,16 +44,18 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'versionCode = 5806' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.514"' app/build.gradle.kts
+          grep -Fq 'versionCode = 5808' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.516"' app/build.gradle.kts
           node --check trip-platform/public/app.js
           node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
           grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
+          grep -Fq 'async function readPublicAgendaFallback0517' trip-platform/public/app.js
+          grep -Fq 'PUBLIC_AGENDA_STATIC_FAILOVER_0517' trip-platform/public/app.js
           grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' trip-platform/public/app.js
           grep -Fq 'bodyLogged: false' trip-platform/public/app.js
           ! grep -Fq 'const body = await response.json()' trip-platform/public/app.js
           grep -Fq 'Agenda temporariamente indisponível' trip-platform/public/app.js
-          grep -Fq '/app.js?v=0.1.514' trip-platform/public/index.html
+          grep -Fq '/app.js?v=0.1.516-failover0517' trip-platform/public/index.html
           grep -Fq 'agendaSegmentAvailabilitySeats0484' trip-platform/public/app.js
           grep -Fq 'agendaPassengerDot0473' trip-platform/public/app.js
           grep -Fq 'applyAgendaTripExpansionState0506' trip-platform/public/app.js
@@ -63,9 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${FIREBASE_TOKEN:-}" ]; then
-            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
-          elif [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
@@ -75,10 +75,79 @@ jobs:
             chmod 600 /tmp/firebase-sa.json
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
             echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
           else
             echo "Firebase credential is missing." >&2
             exit 3
           fi
+
+      - name: Materialize sanitized public Agenda failover snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${FIREBASE_AUTH_MODE:-}" != "service-account" ]; then
+            echo "A service-account credential is required to materialize the sanitized failover snapshot." >&2
+            exit 4
+          fi
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          mkdir -p trip-platform/public/__agenda_fallback
+          node <<'NODE'
+          "use strict";
+          const fs = require("node:fs");
+          const express = require("./trip-platform/functions/node_modules/express");
+          const { tripApi } = require("./trip-platform/functions/index.js");
+
+          const slug = "ezequiel";
+          const output = "./trip-platform/public/__agenda_fallback/" + slug + ".json";
+          const forbiddenKeys = new Set([
+            "passengerContact", "passengerName", "phone", "whatsapp",
+            "driverTokenHash", "agendaTokenHash", "bookingId", "canonicalTripId",
+            "privateMirrorJson", "notes", "address", "latitude", "longitude",
+          ]);
+
+          function assertSanitized(value, path = "$") {
+            if (Array.isArray(value)) {
+              value.forEach((entry, index) => assertSanitized(entry, path + "[" + index + "]"));
+              return;
+            }
+            if (!value || typeof value !== "object") return;
+            for (const [key, child] of Object.entries(value)) {
+              if (forbiddenKeys.has(key)) throw new Error("private field in failover snapshot: " + path + "." + key);
+              assertSanitized(child, path + "." + key);
+            }
+          }
+
+          async function main() {
+            const app = express();
+            app.use((req, res) => tripApi(req, res));
+            const server = await new Promise((resolve) => {
+              const listener = app.listen(8787, "127.0.0.1", () => resolve(listener));
+            });
+            try {
+              const response = await fetch("http://127.0.0.1:8787/v1/public/agenda/" + encodeURIComponent(slug), {
+                headers: { Accept: "application/json" },
+              });
+              const raw = await response.text();
+              if (!response.ok) throw new Error("local canonical public Agenda returned HTTP " + response.status + ": " + raw.slice(0, 180));
+              const body = JSON.parse(raw);
+              if (!body || typeof body !== "object" || !Array.isArray(body.trips)) {
+                throw new Error("canonical public Agenda payload is structurally invalid");
+              }
+              assertSanitized(body);
+              fs.writeFileSync(output, JSON.stringify(body));
+              process.stdout.write("PUBLIC_AGENDA_FAILOVER_0517_MATERIALIZED trips=" + body.trips.length + "\n");
+            } finally {
+              await new Promise((resolve) => server.close(resolve));
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          test -s trip-platform/public/__agenda_fallback/ezequiel.json
 
       - name: Deploy exact HEAD Hosting only
         shell: bash
@@ -93,7 +162,7 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
           fi
 
-      - name: Smoke published 0.1.514 assets
+      - name: Smoke published 0.1.516 failover assets
         shell: bash
         run: |
           set -euo pipefail
@@ -103,7 +172,9 @@ jobs:
           grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' /tmp/live-app.js
           ! grep -Fq 'const body = await response.json()' /tmp/live-app.js
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
-          grep -Fq '/app.js?v=0.1.514' /tmp/live-index.html
-          echo "PUBLIC_AGENDA_HOSTING_0514=PASS"
+          grep -Fq '/app.js?v=0.1.516-failover0517' /tmp/live-index.html
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/__agenda_fallback/ezequiel.json?sha=$GITHUB_SHA" > /tmp/live-agenda-failover.json
+          node -e 'const fs=require("fs");const b=JSON.parse(fs.readFileSync("/tmp/live-agenda-failover.json","utf8"));if(!b||!Array.isArray(b.trips))process.exit(2);console.log("PUBLIC_AGENDA_FAILOVER_0517_LIVE trips="+b.trips.length)'
+          echo "PUBLIC_AGENDA_HOSTING_FAILOVER_0517=PASS"
           echo "source_head=$GITHUB_SHA"
           echo "functions_deploy=NOT_PERFORMED"
