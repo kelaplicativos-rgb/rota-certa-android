@@ -8965,10 +8965,10 @@ async function listDriverTripSyncState0402(req, res) {
       ? data.canonicalIssues.map((item) => cleanText(item, 48).toUpperCase()).filter(Boolean)
       : [];
     const projectedBookingsCount0512 = bookings0494.length;
-    const expectedBookingsCount0512 = Math.max(
-      0,
-      Number(data.bookingsCount || projectedBookingsCount0512 || 0),
-    );
+    const persistedBookingsCount0512 = Number(data.bookingsCount);
+    const expectedBookingsCount0512 = Number.isFinite(persistedBookingsCount0512)
+      ? Math.max(0, persistedBookingsCount0512)
+      : projectedBookingsCount0512;
     const hasExternalProfile0512 = Boolean(cleanText(data.blablaProfileUuid, 180));
     const hasExternalTrip0512 = Boolean(cleanText(data.blablaTripId, 180));
     if (hasExternalProfile0512 !== hasExternalTrip0512 && !canonicalIssues0494.includes("EXTERNAL_IDENTITY_INCOMPLETE")) {
