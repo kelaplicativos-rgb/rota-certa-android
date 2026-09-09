@@ -180,28 +180,51 @@ class SettingsRepository(private val context: Context) {
             settings.alternativeCoordinate?.let { prefs[alternativeCoordinate] = json.encodeToString(it) } ?: prefs.remove(alternativeCoordinate)
         }
         if (seatAllocationChanged) {
-            val appContext = context.applicationContext
-            val fanOut = AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
-                context = appContext,
+            publishGlobalExtraSeatsNow0520(
                 rotaCertaSeatAllocation = committedSeatAllocation,
                 seatAllocationVersion = committedSeatAllocationVersion,
             )
-            val immediateTargets = fanOut.publicationCanonicalTripIds
-            val immediateDelivered = if (immediateTargets.isEmpty()) {
-                0
-            } else {
-                TripMutationCoordinator0387(appContext, TripStore(appContext)).drainPending(
-                    limit = 128,
-                    canonicalTripIds = immediateTargets,
-                )
-            }
-            UnifiedDebugEventStore.record(
-                "GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520",
-                appContext.packageName,
-                "configVersion=$committedSeatAllocationVersion allocation=$committedSeatAllocation targets=${immediateTargets.size} delivered=$immediateDelivered fallbackScheduled=true",
-            )
-            AgendaBackgroundSync0392.enqueueImmediate(appContext, "global_extra_seats_changed_0520")
         }
+    }
+
+    suspend fun saveGlobalExtraSeats0520(rotaCertaSeatAllocation: Int) {
+        require(rotaCertaSeatAllocation in 0..999)
+        val current = settings.first()
+        if (current.rotaCertaSeatAllocation != rotaCertaSeatAllocation) {
+            saveSettings(current.copy(rotaCertaSeatAllocation = rotaCertaSeatAllocation))
+            return
+        }
+        publishGlobalExtraSeatsNow0520(
+            rotaCertaSeatAllocation = current.rotaCertaSeatAllocation,
+            seatAllocationVersion = current.rotaCertaSeatAllocationVersion,
+        )
+    }
+
+    private suspend fun publishGlobalExtraSeatsNow0520(
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
+    ) {
+        val appContext = context.applicationContext
+        val fanOut = AgendaBackgroundSync0392.reconcileTenantSeatAllocation0395(
+            context = appContext,
+            rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+            seatAllocationVersion = seatAllocationVersion,
+        )
+        val immediateTargets = fanOut.publicationCanonicalTripIds
+        val immediateDelivered = if (immediateTargets.isEmpty()) {
+            0
+        } else {
+            TripMutationCoordinator0387(appContext, TripStore(appContext)).drainPending(
+                limit = 128,
+                canonicalTripIds = immediateTargets,
+            )
+        }
+        UnifiedDebugEventStore.record(
+            "GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520",
+            appContext.packageName,
+            "configVersion=$seatAllocationVersion allocation=$rotaCertaSeatAllocation targets=${immediateTargets.size} delivered=$immediateDelivered fallbackScheduled=true",
+        )
+        AgendaBackgroundSync0392.enqueueImmediate(appContext, "global_extra_seats_changed_0520")
     }
 
     suspend fun addAnalysis(result: AnalysisResult) {

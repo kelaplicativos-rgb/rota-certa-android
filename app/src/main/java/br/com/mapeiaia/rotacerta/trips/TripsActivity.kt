@@ -1117,9 +1117,7 @@ private fun TripExtraSeatsScreen0416(
                     saving = true
                     scope.launch {
                         try {
-                            settingsRepository.saveSettings(
-                                appSettings.copy(rotaCertaSeatAllocation = parsed),
-                            )
+                            settingsRepository.saveGlobalExtraSeats0520(parsed)
                             onChanged("Vagas extra atualizadas e enviadas imediatamente para a Agenda.")
                         } catch (error: Throwable) {
                             localError = error.message ?: "Não foi possível atualizar as vagas extra."
