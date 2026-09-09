@@ -1,26 +1,25 @@
-name: Rota Certa 0.1.375 live incremental capacity backend deploy
+name: Rota Certa 0.1.512 canonical Timeline backend deploy
 
 on:
   push:
     branches:
-      - agent/fix-public-sync-single-flight-0.1.373
+      - agent/canonical-segment-root-cause-0.1.509
     paths:
       - '.github/workflows/agenda-0356-backend-deploy.yml'
       - 'trip-platform/functions/**'
-      - 'trip-platform/public/**'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: agenda-0375-live-capacity-deploy
+  group: canonical-timeline-backend-0512
   cancel-in-progress: true
 
 jobs:
   validate-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -28,42 +27,34 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
 
-      - name: Prove exact source and live-capacity contract
+      - name: Prove exact canonical source
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="${{ github.sha }}"
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          test -f trip-platform/functions/index.js
-          test -f trip-platform/public/app.js
-          grep -Fq 'async function reconcileDriverCapacitySnapshot' trip-platform/functions/index.js
-          grep -Fq 'parts[4] === "capacity-snapshot"' trip-platform/functions/index.js
-          grep -Fq 'capacity < 0' trip-platform/functions/index.js
-          grep -Fq 'capacitySnapshotRevision' trip-platform/functions/index.js
-          grep -Fq 'capacityReliable: true' trip-platform/functions/index.js
-          grep -Fq 'function publicAvailabilityLabel' trip-platform/public/app.js
-          grep -Fq '🪑 LOTADO' trip-platform/public/app.js
-          grep -Fq 'Disponibilidade sendo atualizada' trip-platform/public/app.js
-          echo "SOURCE_HEAD=$SOURCE_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'versionCode = 5804' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.512"' app/build.gradle.kts
+          grep -Fq 'PASSENGER_PROJECTION_INCOMPLETE' trip-platform/functions/index.js
+          grep -Fq 'REVISION_INCOMPATIBLE' trip-platform/functions/index.js
+          grep -Fq 'PRIVATE_PROJECTION_STALE' trip-platform/functions/index.js
+          grep -Fq 'tripId: canonicalTripId0499' trip-platform/functions/index.js
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/backend-source-head.txt
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate public capacity contracts
+      - name: Validate canonical backend and public privacy contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
-          node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
-          node --test trip-platform/functions/test/public-incremental-capacity-0375.test.js
-          node --test trip-platform/functions/test/public-combined-capacity-0369.test.js
+          node --test             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             | tee /tmp/backend-tests-0512.log
 
       - name: Configure Firebase authentication
         shell: bash
@@ -82,7 +73,7 @@ jobs:
           elif [ -n "${FIREBASE_TOKEN:-}" ]; then
             echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
           else
-            echo "Firebase credential is missing."
+            echo "Firebase deployment credential is missing." >&2
             exit 3
           fi
 
@@ -90,34 +81,28 @@ jobs:
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
-      - name: Deploy exact HEAD Agenda backend and hosting
+      - name: Deploy exact HEAD trip-api only
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force --token "$FIREBASE_TOKEN"
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force --token "$FIREBASE_TOKEN"
           else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api,hosting --non-interactive --force
+            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api --non-interactive --force
           fi
 
-      - name: Smoke live incremental capacity contract
+      - name: Smoke live canonical endpoint
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/health.json
-          grep -Fq '"ok":true' /tmp/health.json
-
-          CODE="$(curl --retry 4 --retry-delay 2 --silent --show-error -o /tmp/capacity-probe.json -w "%{http_code}"             -X PUT "$BASE/v1/driver/trips/ci-route-probe/capacity-snapshot"             -H 'Content-Type: application/json'             --data '{"trip":{},"claims":[],"claimNamespace":"BLABLACAR_SYNC:","snapshotRevision":"ci-probe","sourceComplete":true}')"
+          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0512.json
+          grep -Fq '"ok":true' /tmp/live-health-0512.json
+          CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/canonical-unauth.json -w '%{http_code}'             "$BASE/v1/driver/trips/sync-state?includePastForVerification=1&timelineProjection=1")"
           test "$CODE" = "401"
-
-          BUST="$(date +%s%N)"
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?v=$BUST" -o /tmp/live-app.js
-          grep -Fq 'function publicAvailabilityLabel' /tmp/live-app.js
-          grep -Fq '🪑 LOTADO' /tmp/live-app.js
-          grep -Fq 'Disponibilidade sendo atualizada' /tmp/live-app.js
-
-          echo "LIVE_INCREMENTAL_CAPACITY_CONTRACT=PASS"
-          echo "SOURCE_HEAD=${{ github.sha }}"
+          echo "backend_source_head=$GITHUB_SHA"
+          echo "canonical_endpoint_auth_guard=PASS"
+          echo "hosting_deploy=NOT_PERFORMED"
