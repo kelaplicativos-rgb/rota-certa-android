@@ -390,8 +390,9 @@ test("0513 canonical booking mutations persist private driver metadata without l
 
   for (const field of ["fareMinorUnits", "fareCurrencyCode", "boardingAddress", "dropoffAddress"]) {
     assert.match(privateMetadata, new RegExp(field));
-    assert.match(capacityMutation, new RegExp(field));
   }
+  assert.match(capacityMutation, /canonicalPrivateBookingMetadata0513\(raw, previous\)/);
+  assert.match(capacityMutation, /\.\.\.privateMetadata0513/);
   assert.match(privateMetadata, /privateOperationalMetadata/);
   assert.match(privateMetadata, /before: "REDACTED", after: "UPDATED"/);
   assert.match(protectedMutation, /canonicalPrivateBookingMetadata0513\(req\.body \|\| \{\}, previous\)/);
