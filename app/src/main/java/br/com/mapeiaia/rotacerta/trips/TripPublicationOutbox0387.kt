@@ -653,14 +653,12 @@ internal class TripMutationCoordinator0387(
         configuredRotaCertaSeatAllocation: Int,
         seatAllocationVersion: Long = 0L,
         mutationType: String = "TENANT_SEAT_ALLOCATION_CHANGED",
-        remoteProjectionDivergenceObserved: Boolean = false,
     ): TripPublicationOutboxEvent0387? = recordExternalMutation(
         sourceTrip = sourceTrip,
         configuredRotaCertaSeatAllocation = configuredRotaCertaSeatAllocation,
         seatAllocationVersion = seatAllocationVersion,
         mutationType = mutationType,
         eventSource = "ROTA_CERTA_SETTINGS",
-        remoteProjectionDivergenceObserved = remoteProjectionDivergenceObserved,
     )
 
     private fun recordExternalMutation(

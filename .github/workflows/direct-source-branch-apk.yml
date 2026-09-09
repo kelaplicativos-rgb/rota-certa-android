@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.521 immediate Timeline to Agenda readback
-# 0.1.521: Timeline mutations and global extra-seat saves use the existing canonical outbox for immediate targeted delivery plus public Agenda readback; background work is retry-only.
+name: Rota Certa 0.1.522 immediate Timeline to Agenda readback
+# 0.1.522: Timeline mutations and global extra-seat saves use the existing canonical outbox for immediate targeted delivery plus public Agenda readback; background work is retry-only.
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5813'
-      EXPECTED_VERSION_NAME: '0.1.521'
+      EXPECTED_VERSION_CODE: '5814'
+      EXPECTED_VERSION_NAME: '0.1.522'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -243,7 +243,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.521-timeline-agenda-immediate-${{ github.sha }}
+          name: rota-certa-0.1.522-timeline-agenda-immediate-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0520

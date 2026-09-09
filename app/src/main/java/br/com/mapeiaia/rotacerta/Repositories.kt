@@ -225,11 +225,6 @@ class SettingsRepository(private val context: Context) {
             "configVersion=$seatAllocationVersion allocation=$rotaCertaSeatAllocation targets=${immediateTargets.size} delivered=$immediateDelivered fallbackScheduled=true",
         )
         AgendaBackgroundSync0392.enqueueImmediate(appContext, "global_extra_seats_changed_0520")
-        if (immediateTargets.isNotEmpty() && immediateDelivered < immediateTargets.size) {
-            throw IllegalStateException(
-                "Valor salvo no Android, mas a Agenda não confirmou todas as alterações imediatamente. O reenvio já foi agendado.",
-            )
-        }
     }
 
     suspend fun addAnalysis(result: AnalysisResult) {

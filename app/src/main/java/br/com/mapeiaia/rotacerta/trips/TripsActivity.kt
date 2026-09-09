@@ -413,7 +413,7 @@ private fun TripApp(
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
     }
-    // Timeline mutations use the canonical outbox and attempt exact-card delivery/readback immediately; WorkManager remains retry fallback.
+    // Records durable per-trip mutations only; delivery belongs to AgendaBackgroundSync0392.
     val tripMutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         BookingRealtimeEvents0356.changes.collect {
@@ -484,34 +484,13 @@ private fun TripApp(
                     )
                 }
                 runCatching {
-                    val queued = tripMutationCoordinator.recordLocalMutation(
+                    tripMutationCoordinator.recordLocalMutation(
                         canonicalTripId = tripId,
                         mutationType = "LOCAL_TRIP_SEMANTIC_CHANGE",
                         source = "TIMELINE_STORE_OBSERVER",
                         configuredRotaCertaSeatAllocation = failureTrip?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0,
                     )
-                    val delivered = if (queued == null) {
-                        0
-                    } else {
-                        tripMutationCoordinator.drainPending(
-                            limit = 8,
-                            canonicalTripIds = setOf(tripId),
-                        )
-                    }
-                    if (queued != null && delivered <= 0) {
-                        AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation_retry_0521")
-                        UnifiedDebugEventStore.record(
-                            "TIMELINE_AGENDA_IMMEDIATE_DELIVERY_PENDING_0521",
-                            activity.packageName,
-                            "tripKey=${seatSyncDiagnosticKey(tripId)} delivered=$delivered fallbackScheduled=true",
-                        )
-                    } else if (delivered > 0) {
-                        UnifiedDebugEventStore.record(
-                            "TIMELINE_AGENDA_IMMEDIATE_DELIVERY_CONFIRMED_0521",
-                            activity.packageName,
-                            "tripKey=${seatSyncDiagnosticKey(tripId)} delivered=$delivered readbackRequired=true",
-                        )
-                    }
+                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                 }.onFailure { error ->
                     UnifiedDebugEventStore.record(
                         "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_FAILED",
@@ -1425,23 +1404,15 @@ private fun TripCard(
                         if (settings.configured && next.remoteId != null) {
                             scope.launch {
                                 runCatching {
-                                    val queued = mutationCoordinator.recordLocalMutation(
+                                    mutationCoordinator.recordLocalMutation(
                                         canonicalTripId = next.id,
                                         mutationType = "PUBLIC_BOOKING_TOGGLE",
                                         source = "TIMELINE_CARD",
-                                        remoteProjectionDivergenceObserved = true,
-                                    ) ?: error("A mutação canônica não foi enfileirada.")
-                                    val delivered = mutationCoordinator.drainPending(
-                                        limit = 8,
-                                        canonicalTripIds = setOf(queued.canonicalTripId),
                                     )
-                                    if (delivered <= 0) {
-                                        AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation_retry_0521")
-                                        error("Agenda ainda não confirmou a nova revisão.")
-                                    }
+                                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
                                 }
-                                    .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link atualizadas imediatamente na Agenda." else "Reservas pelo link desativadas imediatamente na Agenda.") }
-                                    .onFailure { onChanged("Estado salvo no Rota Certa; a Agenda ainda não confirmou a alteração: ${it.message}") }
+                                    .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
+                                    .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
                             onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. A sincronização automática publicará a alteração quando a integração online estiver disponível." else "Reservas pelo link desativadas.")
