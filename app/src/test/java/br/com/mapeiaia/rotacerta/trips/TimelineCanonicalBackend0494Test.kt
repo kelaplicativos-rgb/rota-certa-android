@@ -703,6 +703,18 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(source.contains("TIMELINE_CANONICAL_PASSENGER_PRIVATE_MUTATION_0513"))
         assertFalse(source.contains("@Suppress(\"UNUSED_PARAMETER\") store: TripStore"))
 
+        val remoteApiSource = java.io.File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt",
+        ).readText()
+        val protectedStart = remoteApiSource.indexOf("suspend fun updateProtectedDriverBooking")
+        val protectedEnd = remoteApiSource.indexOf("suspend fun cancelProtectedDriverBooking", protectedStart)
+        assertTrue(protectedStart >= 0 && protectedEnd > protectedStart)
+        val protectedMutation = remoteApiSource.substring(protectedStart, protectedEnd)
+        assertTrue(protectedMutation.contains("fareMinorUnits = booking.fareMinorUnits"))
+        assertTrue(protectedMutation.contains("fareCurrencyCode = booking.fareCurrencyCode"))
+        assertTrue(protectedMutation.contains("boardingAddress = booking.boardingAddress"))
+        assertTrue(protectedMutation.contains("dropoffAddress = booking.dropoffAddress"))
+
         val row = EnhancedPassengerCardRow(
             name = "Passageiro",
             phone = null,
