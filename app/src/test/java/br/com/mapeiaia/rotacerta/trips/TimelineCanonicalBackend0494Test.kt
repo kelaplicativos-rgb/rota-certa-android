@@ -720,12 +720,20 @@ class TimelineCanonicalBackend0494Test {
         val pickup = passengerPickupMapTarget(row)
         val dropoff = passengerDropoffMapTarget(row)
 
-        assertEquals(-23.6639, pickup?.latitude)
-        assertEquals(-46.5383, pickup?.longitude)
-        assertEquals(-21.7218, dropoff?.latitude)
-        assertEquals(-44.9849, dropoff?.longitude)
+        assertNull(pickup?.latitude)
+        assertNull(pickup?.longitude)
+        assertNull(dropoff?.latitude)
+        assertNull(dropoff?.longitude)
         assertEquals("Embarque privado", pickup?.query)
         assertEquals("Destino privado", dropoff?.query)
+
+        val stopOnly = row.copy(boardingAddress = "", dropoffAddress = "")
+        val stopPickup = passengerPickupMapTarget(stopOnly)
+        val stopDropoff = passengerDropoffMapTarget(stopOnly)
+        assertEquals(-23.6639, stopPickup?.latitude)
+        assertEquals(-46.5383, stopPickup?.longitude)
+        assertEquals(-21.7218, stopDropoff?.latitude)
+        assertEquals(-44.9849, stopDropoff?.longitude)
     }
 
     @Test
