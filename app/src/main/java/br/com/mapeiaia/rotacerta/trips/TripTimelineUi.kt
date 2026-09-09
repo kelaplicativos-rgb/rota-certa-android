@@ -173,6 +173,7 @@ fun TripTimelineScreen(
         mutableStateOf(canonicalResponse0494 != null)
     }
     var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
+    var canonicalBackendFailureCode0512 by remember { mutableStateOf<String?>(null) }
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
 
     fun invalidateCanonicalTimeline0495(reason: String) {
@@ -194,9 +195,15 @@ fun TripTimelineScreen(
         canonicalRefreshSignals0495.collect { reason ->
             canonicalRefreshMutex0495.withLock {
                 val manualPull0499 = reason == "USER_PULL_REFRESH"
+                val correlationId0512 = "tl-" + System.nanoTime().toString(36)
                 if (!onlineSettings0494.configured) {
-                    canonicalBackendStale0494 = canonicalResponse0494 != null
-                    canonicalBackendFailure0494 = "Integração online não configurada."
+                    canonicalBackendStale0494 = true
+                    canonicalBackendFailureCode0512 = "CONFIGURATION_MISSING"
+                    canonicalBackendFailure0494 = if (canonicalResponse0494 != null) {
+                        "Integração canônica não configurada: mantendo o último snapshot íntegro. O coletor não será usado como fallback."
+                    } else {
+                        "Integração canônica não configurada. O coletor não será usado como fallback."
+                    }
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     return@withLock
                 }
@@ -204,40 +211,127 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_REFRESH_STARTED",
                     context.packageName,
-                    "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
+                    "correlationId=" + correlationId0512 +
+                        " reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
+                        " source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                 )
-                runCatching {
-                    TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
+                try {
+                    val response = TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
                         includePastForVerification0429 = true,
+                        correlationId0512 = correlationId0512,
                     )
-                }.onSuccess { response ->
+                    val previousRevisions0512 = canonicalResponse0494
+                        ?.trips
+                        .orEmpty()
+                        .associate { state ->
+                            state.canonicalTripId.ifBlank { state.remoteTripId } to state.canonicalRevision
+                        }
                     val cached = withContext(Dispatchers.IO) {
                         store.saveTimelineCanonicalCache0494(response)
                     }
                     canonicalResponse0494 = cached
                     canonicalBackendStale0494 = false
                     canonicalBackendFailure0494 = null
+                    canonicalBackendFailureCode0512 = null
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, null)
                     val revisions = cached.trips.map(DriverTripSyncState0402::canonicalRevision)
+                    val replacedCount0512 = cached.trips.count { state ->
+                        val id = state.canonicalTripId.ifBlank { state.remoteTripId }
+                        previousRevisions0512[id] != state.canonicalRevision
+                    }
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_SNAPSHOT_REPLACED",
+                        context.packageName,
+                        "correlationId=" + correlationId0512 +
+                            " replacedTrips=" + replacedCount0512 +
+                            " trips=" + cached.trips.size +
+                            " minRevision=" + (revisions.minOrNull() ?: 0L) +
+                            " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
+                            " collectorFallback=false",
+                    )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_REFRESH_APPLIED",
                         context.packageName,
-                        "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
+                        "correlationId=" + correlationId0512 +
+                            " reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
+                            " trips=" + cached.trips.size +
+                            " minRevision=" + (revisions.minOrNull() ?: 0L) +
+                            " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
+                            " source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                     )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_READ_0494",
                         context.packageName,
-                        "source=CANONICAL_BACKEND trips=${cached.trips.size} minRevision=${revisions.minOrNull() ?: 0L} maxRevision=${revisions.maxOrNull() ?: 0L} collectorRead=false",
+                        "correlationId=" + correlationId0512 +
+                            " source=CANONICAL_BACKEND trips=" + cached.trips.size +
+                            " minRevision=" + (revisions.minOrNull() ?: 0L) +
+                            " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
+                            " collectorRead=false",
                     )
-                }.onFailure { error ->
-                    canonicalBackendStale0494 = true
-                    canonicalBackendFailure0494 = error.message ?: error.javaClass.simpleName
-                    if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     UnifiedDebugEventStore.record(
-                        "TIMELINE_CANONICAL_BACKEND_OFFLINE_0494",
+                        "TIMELINE_REFRESH_SUCCESS",
                         context.packageName,
-                        "cachePresent=${canonicalResponse0494 != null} collectorFallback=false reason=" +
-                            UnifiedDebugEventStore.sanitizeForExport(canonicalBackendFailure0494.orEmpty()).take(160),
+                        "correlationId=" + correlationId0512 +
+                            " source=CANONICAL_NATIVE_FIREWALL collectorFallback=false",
+                    )
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Throwable) {
+                    val failureCode0512 = canonicalTimelineFailureCode0512(error)
+                    canonicalBackendStale0494 = true
+                    canonicalBackendFailureCode0512 = failureCode0512
+                    val cachePresent0512 = canonicalResponse0494 != null
+                    canonicalBackendFailure0494 = when (failureCode0512) {
+                        "NETWORK_UNREACHABLE", "TIMEOUT", "SERVER_ERROR" -> if (cachePresent0512) {
+                            "Backend canônico inacessível (" + failureCode0512 + "): exibindo o último snapshot canônico íntegro. O coletor não será usado como fallback."
+                        } else {
+                            "Backend canônico inacessível (" + failureCode0512 + "). O coletor não será usado como fallback."
+                        }
+                        "AUTH_FAILED", "FORBIDDEN" -> if (cachePresent0512) {
+                            "A autenticação do backend canônico falhou (" + failureCode0512 + "): mantendo o último snapshot íntegro."
+                        } else {
+                            "A autenticação do backend canônico falhou (" + failureCode0512 + ")."
+                        }
+                        "EMPTY_RESPONSE", "PARSING_FAILED", "SCHEMA_INVALID",
+                        "IDENTITY_INVALID", "REVISION_INVALID", "PROJECTION_INCOMPLETE",
+                        "PASSENGER_PROJECTION_FAILED" -> if (cachePresent0512) {
+                            "Backend respondeu, mas a projeção canônica foi rejeitada (" + failureCode0512 + "). O último snapshot íntegro foi mantido."
+                        } else {
+                            "Backend respondeu, mas a projeção canônica foi rejeitada (" + failureCode0512 + ")."
+                        }
+                        else -> if (cachePresent0512) {
+                            "Falha canônica classificada como " + failureCode0512 + ": mantendo o último snapshot íntegro."
+                        } else {
+                            "Falha canônica classificada como " + failureCode0512 + "."
+                        }
+                    }
+                    if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
+                    val projectionFailure0512 = failureCode0512 in setOf(
+                        "EMPTY_RESPONSE",
+                        "PARSING_FAILED",
+                        "SCHEMA_INVALID",
+                        "IDENTITY_INVALID",
+                        "REVISION_INVALID",
+                        "PROJECTION_INCOMPLETE",
+                        "PASSENGER_PROJECTION_FAILED",
+                    )
+                    UnifiedDebugEventStore.record(
+                        if (projectionFailure0512) "TIMELINE_CANONICAL_PROJECTION_REJECTED_0512"
+                        else "TIMELINE_CANONICAL_BACKEND_OFFLINE_0494",
+                        context.packageName,
+                        "correlationId=" + correlationId0512 +
+                            " cachePresent=" + cachePresent0512 +
+                            " collectorFallback=false " +
+                            canonicalTimelineFailureDiagnostic0512(error),
+                    )
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_REFRESH_FAILED",
+                        context.packageName,
+                        "correlationId=" + correlationId0512 +
+                            " reasonCode=" + failureCode0512 +
+                            " projectionRejected=" + projectionFailure0512 +
+                            " cachePresent=" + cachePresent0512 +
+                            " collectorFallback=false",
                     )
                 }
             }
@@ -512,11 +606,14 @@ fun TripTimelineScreen(
 
     if (canonicalBackendStale0494) {
         Text(
-            if (canonicalResponse0494 != null) {
-                "⚠️ Backend canônico indisponível: exibindo o último snapshot canônico conhecido. O coletor não será usado como fallback."
-            } else {
-                "⚠️ Backend canônico indisponível. A Timeline não consultará o coletor como fallback."
-            },
+            "⚠️ " + (
+                canonicalBackendFailure0494
+                    ?: if (canonicalResponse0494 != null) {
+                        "Atualização canônica pendente: exibindo o último snapshot íntegro. O coletor não será usado como fallback."
+                    } else {
+                        "Atualização canônica pendente. O coletor não será usado como fallback."
+                    }
+            ),
             style = MaterialTheme.typography.bodySmall,
         )
     }
