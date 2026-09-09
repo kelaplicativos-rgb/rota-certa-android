@@ -22,7 +22,7 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.516-failover0517/);
+  assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
   assert.match(html, /id="passengerAreaLink0491"/);
   assert.match(html, /href="\/minha-area\.html"/);
   for (const forbidden of [
@@ -41,6 +41,10 @@ test("0475 browser bundle is read-only and keeps the canonical 0473 card hierarc
   assert.match(app, /publicAvailabilityLabel/);
   assert.match(app, /fullFareFor/);
   assert.match(app, /PUBLIC_AGENDA_CARD_STATUSES_0469/);
+  assert.match(app, /agendaWhatsapp0519/);
+  assert.match(app, /Fazer reserva com o motorista/);
+  assert.match(app, /https:\/\/wa\.me\//);
+  assert.doesNotMatch(app, /method:\s*["']POST["']/);
   for (const forbidden of [
     "/v1/admin/", "passengerSession", "privateAuth", "requestPublicAgendaAccess",
     "agendaAdminCardCapabilities", "public-visibility", "Administrar esta viagem",
@@ -67,14 +71,17 @@ test("0475 public backend lists every future committed canonical profile without
   assert.match(agenda, /publicAgendaTripVisibility0466/);
   assert.match(agenda, /authenticationRequired: false/);
   assert.match(agenda, /readOnly: true/);
+  const profile = between(api, "function safePublicDriverProfile", "function publicProjectionAttestedCurrent0429");
+  assert.match(profile, /driverWhatsapp0519/);
+  assert.match(profile, /profile\.whatsapp/);
 });
 
 test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5810/);
-  assert.match(gradle, /versionName = "0\.1\.518"/);
+  assert.match(gradle, /versionCode = 5811/);
+  assert.match(gradle, /versionName = "0\.1\.519"/);
 });
 
 
@@ -91,7 +98,7 @@ test("0514 public Agenda never exposes non-JSON backend HTML as a parser error",
 
 
 test("0517 public Agenda falls back to the sanitized Hosting snapshot during backend 503", () => {
-  assert.match(html, /app\.js\?v=0\.1\.516-failover0517/);
+  assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
   assert.match(app, /function publicAgendaStaticFailoverUrl0517/);
   assert.match(app, /async function readPublicAgendaFallback0517/);
   assert.match(app, /\/__agenda_fallback\//);

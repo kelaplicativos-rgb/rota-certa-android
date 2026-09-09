@@ -205,7 +205,31 @@ class AgendaCanonicalTripState0395Test {
     }
 
     @Test
-    fun tenantSeatConfigurationIsVersionedAndFanoutRetriesOnlyPendingExternalTrips() {
+    fun globalExtraSeatsAddToBlaBlaQuotaAndFanOutCurrentFuture0519() {
+        val globalTrip = trip(capacity = 6).copy(
+            publishedSeats = 4,
+            rotaCertaSeatAllocation = 2,
+            capacity = 6,
+        )
+        val occupied = (1..4).map { index ->
+            booking("occupied-$index", globalTrip, "a", "c")
+        }
+
+        assertEquals(6, operationalInventoryCapacity(globalTrip, occupied))
+        assertEquals(
+            listOf(2, 2),
+            SeatAvailabilityEngine.segmentLoads(globalTrip, occupied).map(SegmentLoad::availableSeats),
+        )
+
+        val activity = source("TripsActivity.kt")
+        assertTrue(activity.contains("Vagas extra em todas as viagens"))
+        assertTrue(activity.contains("Salvar para todas as viagens"))
+        assertFalse(activity.contains("Salvar nesta viagem"))
+        assertTrue(activity.contains("defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation"))
+    }
+
+    @Test
+    fun globalSeatConfigurationIsVersionedAndFanoutRetriesOnlyPendingExternalTrips0519() {
         val models = rootSource("Models.kt")
         val repository = rootSource("Repositories.kt")
         val background = source("AgendaBackgroundSync0392.kt")
@@ -216,10 +240,11 @@ class AgendaCanonicalTripState0395Test {
         assertTrue(repository.contains("rota_certa_seat_allocation_version"))
         assertTrue(repository.contains("previousSeatAllocationVersion + 1L"))
         assertTrue(repository.contains("reconcileTenantSeatAllocation0395("))
-        assertTrue(background.contains("migratedOnly=true explicitPerTripPreserved=true"))
-        assertTrue(background.contains("LEGACY_TENANT_SEAT_ALLOCATION_MIGRATED"))
+        assertTrue(background.contains("globalFanOut=true currentAndFuture=true"))
+        assertTrue(background.contains("GLOBAL_EXTRA_SEATS_CHANGED_0519"))
         assertTrue(background.contains("recordExternalTenantMutation("))
-        assertTrue(store.contains("trip.rotaCertaSeatAllocation != null"))
+        assertTrue(store.contains("trip.rotaCertaSeatAllocation != rotaCertaSeatAllocation"))
+        assertTrue(store.contains("GLOBAL_EXTRA_SEATS_CHANGED_0519"))
         assertTrue(outbox.contains("latest.snapshot.seatAllocationVersion != snapshot.seatAllocationVersion"))
         assertTrue(outbox.contains("shouldDeduplicatePublicationEvent0410"))
         assertTrue(outbox.contains("FAILED_RETRYABLE"))
