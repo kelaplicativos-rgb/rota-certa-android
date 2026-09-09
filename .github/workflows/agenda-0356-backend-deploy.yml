@@ -81,28 +81,33 @@ jobs:
         shell: bash
         run: npm --prefix trip-platform/functions install --no-audit --no-fund
 
-      - name: Deploy exact HEAD trip-api only
+      - name: Authenticate Google Cloud for direct tripApi deployment
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy exact HEAD tripApi without Secret Manager dependency
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          cd trip-platform
-          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api:tripApi --non-interactive --force --token "$FIREBASE_TOKEN"
-          else
-            npx --yes firebase-tools@latest deploy --project "$PROJECT" --only functions:trip-api:tripApi --non-interactive --force
-          fi
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$GITHUB_SHA"             --quiet
 
       - name: Smoke live canonical endpoint
         shell: bash
         run: |
           set -euo pipefail
           BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 12 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0512.json
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health-0512.json
           grep -Fq '"ok":true' /tmp/live-health-0512.json
+          grep -Fq "\"backendGitSha\":\"$GITHUB_SHA\"" /tmp/live-health-0512.json
           CODE="$(curl --retry 5 --retry-delay 2 --silent --show-error -o /tmp/canonical-unauth.json -w '%{http_code}'             "$BASE/v1/driver/trips/sync-state?includePastForVerification=1&timelineProjection=1")"
           test "$CODE" = "401"
           echo "backend_source_head=$GITHUB_SHA"
           echo "canonical_endpoint_auth_guard=PASS"
+          echo "secret_manager_dependency=REMOVED_FROM_TRIP_API"
           echo "hosting_deploy=NOT_PERFORMED"
