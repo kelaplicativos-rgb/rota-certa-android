@@ -1699,7 +1699,7 @@ private fun TimelineEntryCard(
             val command = BlaBlaCommand0407.forTarget(
                 target = target,
                 operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
-                origin = "TIMELINE_CARD_TARGET_REFRESH_0517",
+                origin = BlaBlaCommandOrigin0407.CARD,
             )
             if (
                 AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
@@ -1709,7 +1709,7 @@ private fun TimelineEntryCard(
                     requestedAtMillis = command.requestedAtMillis,
                 )
             ) {
-                onChanged("📡 Atualizando somente esta viagem pela BlaBlaCar.")
+                onChanged("📡 Agenda buscando somente esta viagem na BlaBlaCar em segundo plano.")
             } else {
                 onChanged("Atualização bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
             }
