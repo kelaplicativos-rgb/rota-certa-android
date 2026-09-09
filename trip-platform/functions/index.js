@@ -1528,6 +1528,7 @@ function canonicalTimelinePrivateStop0513(raw, index) {
     Number.isFinite(longitude) && longitude >= -180 && longitude <= 180;
   return {
     ...safe,
+    address: cleanText(source.address, 300),
     latitude: trustedCoordinate ? latitude : null,
     longitude: trustedCoordinate ? longitude : null,
     priceToNextCents: Math.max(0, Math.floor(Number(source.priceToNextCents || 0))),
