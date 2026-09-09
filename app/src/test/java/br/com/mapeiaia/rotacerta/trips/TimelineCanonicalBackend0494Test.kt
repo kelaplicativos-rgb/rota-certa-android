@@ -616,6 +616,25 @@ class TimelineCanonicalBackend0494Test {
     }
 
     @Test
+    fun testU_0515OfflineTimelineHydratesCanonicalAgendaPrivatePassengersWithoutDirectCollectorRead() {
+        val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        val sync = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt").readText()
+        val passengerUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(timelineUi.contains("materializeCanonicalExternalPrivateBookings0515"))
+        assertTrue(timelineUi.contains("TIMELINE_LOCAL_AGENDA_HYDRATED_0515"))
+        assertTrue(timelineUi.contains("Timeline abastecida pela Agenda canônica local"))
+        assertTrue(timelineUi.contains("collectorDirectRead=false"))
+        assertTrue(sync.contains("AGENDA_PRIVATE_PASSENGERS_MATERIALIZED_0515"))
+        assertTrue(sync.contains("externalPrivateMirrorBookings0511"))
+        assertTrue(passengerUi.contains("passengerWhatsAppDigits0515"))
+        assertEquals("5511999990000", passengerWhatsAppDigits0515("(11) 99999-0000"))
+        assertEquals("5511999990000", passengerWhatsAppDigits0515("+55 11 99999-0000"))
+        assertTrue(passengerUi.contains("booking.boardingLatitude"))
+        assertTrue(passengerUi.contains("booking.dropoffLatitude"))
+    }
+
+    @Test
     fun testU_0512CompositionCancellationNeverBecomesBackendUnavailable() {
         val cancellation = kotlinx.coroutines.CancellationException("The coroutine scope left the composition")
         assertEquals("CANCELLED", canonicalTimelineFailureCode0512(cancellation))

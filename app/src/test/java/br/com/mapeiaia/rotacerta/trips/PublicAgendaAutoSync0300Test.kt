@@ -463,6 +463,10 @@ class PublicAgendaAutoSync0300Test {
                         fareCurrencyCode = "BRL",
                         boardingAddress = "Terminal Rodoviário do Tietê, São Paulo",
                         dropoffAddress = "Rodoviária de São Thomé das Letras",
+                        boardingLatitude = -23.5166,
+                        boardingLongitude = -46.6250,
+                        dropoffLatitude = -21.7218,
+                        dropoffLongitude = -44.9849,
                     )
                 } else {
                     null
@@ -475,6 +479,10 @@ class PublicAgendaAutoSync0300Test {
         assertEquals("BRL", enriched.fareCurrencyCode)
         assertTrue(enriched.boardingAddress.contains("Tietê"))
         assertTrue(enriched.dropoffAddress.contains("São Thomé"))
+        assertEquals(-23.5166, enriched.boardingLatitude)
+        assertEquals(-46.6250, enriched.boardingLongitude)
+        assertEquals(-21.7218, enriched.dropoffLatitude)
+        assertEquals(-44.9849, enriched.dropoffLongitude)
         assertEquals(CapacityClaimType.EXTERNAL_OCCUPANCY, enriched.capacityClaimType)
         assertEquals(1, enriched.seats)
     }

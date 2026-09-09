@@ -156,6 +156,10 @@ data class RemoteBooking(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
     val holdExpiresAtMillis: Long? = null,
 )
 
@@ -356,6 +360,10 @@ data class DriverBookingUpsertRequest(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
 )
 
 @Serializable
@@ -404,6 +412,10 @@ data class DriverProtectedBookingSnapshot(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
 )
 
 @Serializable
@@ -1295,6 +1307,10 @@ class TripRemoteApi(
                             fareCurrencyCode = booking.fareCurrencyCode,
                             boardingAddress = booking.boardingAddress,
                             dropoffAddress = booking.dropoffAddress,
+                            boardingLatitude = booking.boardingLatitude,
+                            boardingLongitude = booking.boardingLongitude,
+                            dropoffLatitude = booking.dropoffLatitude,
+                            dropoffLongitude = booking.dropoffLongitude,
                         )
                     },
                     claimNamespace = claimNamespace,
@@ -1512,6 +1528,10 @@ class TripRemoteApi(
                 fareCurrencyCode = booking.fareCurrencyCode,
                 boardingAddress = booking.boardingAddress,
                 dropoffAddress = booking.dropoffAddress,
+                boardingLatitude = booking.boardingLatitude,
+                boardingLongitude = booking.boardingLongitude,
+                dropoffLatitude = booking.dropoffLatitude,
+                dropoffLongitude = booking.dropoffLongitude,
             ),
         ),
         requireDriverToken = true,
@@ -1544,6 +1564,10 @@ class TripRemoteApi(
                 fareCurrencyCode = booking.fareCurrencyCode,
                 boardingAddress = booking.boardingAddress,
                 dropoffAddress = booking.dropoffAddress,
+                boardingLatitude = booking.boardingLatitude,
+                boardingLongitude = booking.boardingLongitude,
+                dropoffLatitude = booking.dropoffLatitude,
+                dropoffLongitude = booking.dropoffLongitude,
             ),
         ),
         requireDriverToken = true,
@@ -1990,6 +2014,10 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     fareCurrencyCode = fareCurrencyCode.ifBlank { existingLocal?.fareCurrencyCode.orEmpty() },
     boardingAddress = boardingAddress.ifBlank { existingLocal?.boardingAddress.orEmpty() },
     dropoffAddress = dropoffAddress.ifBlank { existingLocal?.dropoffAddress.orEmpty() },
+    boardingLatitude = boardingLatitude ?: existingLocal?.boardingLatitude,
+    boardingLongitude = boardingLongitude ?: existingLocal?.boardingLongitude,
+    dropoffLatitude = dropoffLatitude ?: existingLocal?.dropoffLatitude,
+    dropoffLongitude = dropoffLongitude ?: existingLocal?.dropoffLongitude,
     cancellationToken = existingLocal?.cancellationToken,
     localMetadataTouched = existingLocal?.localMetadataTouched == true,
 )

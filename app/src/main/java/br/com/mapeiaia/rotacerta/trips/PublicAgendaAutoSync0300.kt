@@ -897,6 +897,10 @@ internal object PublicAgendaAutoSync0300 {
                 append(booking.passengerName.trim()).append('~').append(booking.passengerContact.trim()).append('~')
                 append(booking.boardingStopId).append('~').append(booking.dropoffStopId).append('~')
                 append(normalizePlace(booking.boardingAddress)).append('~').append(normalizePlace(booking.dropoffAddress)).append('~')
+                append(booking.boardingLatitude?.toString().orEmpty()).append('~')
+                append(booking.boardingLongitude?.toString().orEmpty()).append('~')
+                append(booking.dropoffLatitude?.toString().orEmpty()).append('~')
+                append(booking.dropoffLongitude?.toString().orEmpty()).append('~')
                 append(booking.seats).append('~').append(booking.status.name).append('~')
                 append(booking.operationalStatus.name).append('~').append(booking.paymentStatus.name).append('~')
                 append(booking.lastDriverSelection.trim()).append('~').append(booking.source.name).append('~')
@@ -2288,6 +2292,10 @@ internal object PublicAgendaAutoSync0300 {
                 fareCurrencyCode = booking.fareCurrencyCode.ifBlank { metadata?.fareCurrencyCode.orEmpty() },
                 boardingAddress = booking.boardingAddress.ifBlank { metadata?.boardingAddress.orEmpty() },
                 dropoffAddress = booking.dropoffAddress.ifBlank { metadata?.dropoffAddress.orEmpty() },
+                boardingLatitude = booking.boardingLatitude ?: metadata?.boardingLatitude,
+                boardingLongitude = booking.boardingLongitude ?: metadata?.boardingLongitude,
+                dropoffLatitude = booking.dropoffLatitude ?: metadata?.dropoffLatitude,
+                dropoffLongitude = booking.dropoffLongitude ?: metadata?.dropoffLongitude,
             )
         }
     }

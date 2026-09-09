@@ -314,6 +314,12 @@ function changedField(field, before, after) {
   return JSON.stringify(a) === JSON.stringify(b) ? null : { field, before: a, after: b };
 }
 
+function canonicalPrivateCoordinate0515(value, min, max) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
 function canonicalPrivateBookingMetadata0513(raw, previous = null) {
   const input = raw && typeof raw === "object" ? raw : {};
   const prior = previous && typeof previous === "object" ? previous : {};
@@ -325,11 +331,29 @@ function canonicalPrivateBookingMetadata0513(raw, previous = null) {
     }
     fareMinorUnits = fare;
   }
+  const boardingLatitude = canonicalPrivateCoordinate0515(
+    input.boardingLatitude != null ? input.boardingLatitude : prior.boardingLatitude, -90, 90,
+  );
+  const boardingLongitude = canonicalPrivateCoordinate0515(
+    input.boardingLongitude != null ? input.boardingLongitude : prior.boardingLongitude, -180, 180,
+  );
+  const dropoffLatitude = canonicalPrivateCoordinate0515(
+    input.dropoffLatitude != null ? input.dropoffLatitude : prior.dropoffLatitude, -90, 90,
+  );
+  const dropoffLongitude = canonicalPrivateCoordinate0515(
+    input.dropoffLongitude != null ? input.dropoffLongitude : prior.dropoffLongitude, -180, 180,
+  );
+  const hasBoardingCoordinates = boardingLatitude != null && boardingLongitude != null;
+  const hasDropoffCoordinates = dropoffLatitude != null && dropoffLongitude != null;
   return {
     fareMinorUnits,
     fareCurrencyCode: cleanText(input.fareCurrencyCode, 12) || cleanText(prior.fareCurrencyCode, 12),
     boardingAddress: cleanText(input.boardingAddress, 240) || cleanText(prior.boardingAddress, 240),
     dropoffAddress: cleanText(input.dropoffAddress, 240) || cleanText(prior.dropoffAddress, 240),
+    boardingLatitude: hasBoardingCoordinates ? boardingLatitude : null,
+    boardingLongitude: hasBoardingCoordinates ? boardingLongitude : null,
+    dropoffLatitude: hasDropoffCoordinates ? dropoffLatitude : null,
+    dropoffLongitude: hasDropoffCoordinates ? dropoffLongitude : null,
   };
 }
 
@@ -8991,6 +9015,18 @@ async function listDriverTripSyncState0402(req, res) {
           fareCurrencyCode: cleanText(raw.fareCurrencyCode, 12) || cleanText(privateBooking0499.fareCurrencyCode, 12),
           boardingAddress: cleanText(raw.boardingAddress, 240) || cleanText(privateBooking0499.boardingAddress, 240),
           dropoffAddress: cleanText(raw.dropoffAddress, 240) || cleanText(privateBooking0499.dropoffAddress, 240),
+          boardingLatitude: canonicalPrivateCoordinate0515(
+            raw.boardingLatitude != null ? raw.boardingLatitude : privateBooking0499.boardingLatitude, -90, 90,
+          ),
+          boardingLongitude: canonicalPrivateCoordinate0515(
+            raw.boardingLongitude != null ? raw.boardingLongitude : privateBooking0499.boardingLongitude, -180, 180,
+          ),
+          dropoffLatitude: canonicalPrivateCoordinate0515(
+            raw.dropoffLatitude != null ? raw.dropoffLatitude : privateBooking0499.dropoffLatitude, -90, 90,
+          ),
+          dropoffLongitude: canonicalPrivateCoordinate0515(
+            raw.dropoffLongitude != null ? raw.dropoffLongitude : privateBooking0499.dropoffLongitude, -180, 180,
+          ),
           cancellationHash: undefined,
         };
       }).sort((left, right) =>

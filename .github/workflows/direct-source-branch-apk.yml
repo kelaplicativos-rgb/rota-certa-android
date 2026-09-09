@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.514 canonical Timeline + public Agenda recovery
-# 0.1.514: preserve canonical Timeline parity and handle public Agenda non-JSON backend failures without exposing parser internals.
+name: Rota Certa 0.1.515 canonical Agenda → Timeline private parity
+# 0.1.515: hydrate Android Timeline from canonical Agenda private passenger data when backend is unavailable; preserve public sanitization.
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: timeline-canonical-integrity-0514-${{ github.ref }}
+  group: timeline-canonical-agenda-private-0515-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,15 +19,15 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: timeline_canonical_integrity_0514_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: timeline_canonical_agenda_private_0515_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5806'
-      EXPECTED_VERSION_NAME: '0.1.514'
+      EXPECTED_VERSION_CODE: '5807'
+      EXPECTED_VERSION_NAME: '0.1.515'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -157,12 +157,12 @@ jobs:
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
           LIVE_BACKEND_HEALTH=DEGRADED
-          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0514.json; then
-            if grep -Fq '"ok":true' /tmp/live-health-0514.json; then
+          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0515.json; then
+            if grep -Fq '"ok":true' /tmp/live-health-0515.json; then
               LIVE_BACKEND_HEALTH=PASS
             fi
           else
-            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0514.json
+            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0515.json
           fi
           echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
           echo "backend_health=$LIVE_BACKEND_HEALTH"
@@ -171,17 +171,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0514
+          OUT=/tmp/0515
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-timeline-parity.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-canonical-agenda-timeline-private-parity.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
           cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0514.json "$OUT/"
+          cp /tmp/live-health-0515.json "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
@@ -198,6 +198,10 @@ jobs:
           canonical_private_booking_ack_required=PASS
           canonical_passenger_identity_precedence=PASS
           canonical_private_stop_coordinates=PASS
+          canonical_agenda_private_passenger_materialization=PASS
+          timeline_local_agenda_fallback=PASS
+          whatsapp_private_contact_shortcut=PASS
+          exact_passenger_booking_coordinates=PASS
           exact_passenger_address_priority=PASS
           stale_private_mirror_non_authoritative=PASS
           external_identity_internal_block=PROHIBITED
@@ -221,7 +225,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.514-canonical-timeline-public-agenda-recovery-${{ github.sha }}
+          name: rota-certa-0.1.515-canonical-agenda-timeline-private-parity-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0514

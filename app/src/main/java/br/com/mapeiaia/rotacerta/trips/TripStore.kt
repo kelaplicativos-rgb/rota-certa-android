@@ -956,6 +956,10 @@ class TripStore(context: Context) {
                 fareCurrencyCode = existing.fareCurrencyCode,
                 boardingAddress = existing.boardingAddress,
                 dropoffAddress = existing.dropoffAddress,
+                boardingLatitude = existing.boardingLatitude,
+                boardingLongitude = existing.boardingLongitude,
+                dropoffLatitude = existing.dropoffLatitude,
+                dropoffLongitude = existing.dropoffLongitude,
                 localMetadataTouched = true,
             )
         } else {

@@ -68,6 +68,9 @@ data class ExternalPassengerMetadata(
     /** Exact pickup coordinate captured from stable external reservation evidence, never inferred from city/name text. */
     val boardingLatitude: Double? = null,
     val boardingLongitude: Double? = null,
+    /** Exact dropoff coordinate captured from stable external reservation evidence. */
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
     /** Optional source accuracy when the external evidence exposes it. */
     val boardingAccuracyMeters: Double? = null,
     /** Short provenance marker, for example blablacar_booking_structured_pickup. */
@@ -78,6 +81,9 @@ data class ExternalPassengerMetadata(
 ) {
     val hasBoardingCoordinates: Boolean
         get() = validLatitude(boardingLatitude) != null && validLongitude(boardingLongitude) != null
+
+    val hasDropoffCoordinates: Boolean
+        get() = validLatitude(dropoffLatitude) != null && validLongitude(dropoffLongitude) != null
 }
 
 data class PassengerRideHistory(
@@ -808,6 +814,9 @@ class PassengerIdentityStore(context: Context) {
         val latitude = validLatitude(metadata.boardingLatitude)
         val longitude = validLongitude(metadata.boardingLongitude)
         val hasCoordinatePair = latitude != null && longitude != null
+        val dropoffLatitude = validLatitude(metadata.dropoffLatitude)
+        val dropoffLongitude = validLongitude(metadata.dropoffLongitude)
+        val hasDropoffCoordinatePair = dropoffLatitude != null && dropoffLongitude != null
         val requested = metadata.copy(
             passengerId = metadata.passengerId.trim(),
             externalPassengerId = stableExternalPassengerId(metadata.externalPassengerId).orEmpty(),
@@ -819,6 +828,8 @@ class PassengerIdentityStore(context: Context) {
             dropoffAddress = metadata.dropoffAddress.trim().take(500),
             boardingLatitude = latitude.takeIf { hasCoordinatePair },
             boardingLongitude = longitude.takeIf { hasCoordinatePair },
+            dropoffLatitude = dropoffLatitude.takeIf { hasDropoffCoordinatePair },
+            dropoffLongitude = dropoffLongitude.takeIf { hasDropoffCoordinatePair },
             boardingAccuracyMeters = metadata.boardingAccuracyMeters
                 ?.takeIf { hasCoordinatePair && it.isFinite() && it >= 0.0 && it <= 100_000.0 },
             boardingLocationSource = metadata.boardingLocationSource.trim().take(80).takeIf { hasCoordinatePair }.orEmpty(),

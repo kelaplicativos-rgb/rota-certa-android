@@ -1518,6 +1518,74 @@ internal object AgendaBackgroundSync0392 {
         result
     }
 
+    internal fun materializeCanonicalExternalPrivateBookings0515(
+        context: Context,
+        store: TripStore,
+        canonicalTrip: Trip? = null,
+    ): Int {
+        val identityStore = PassengerIdentityStore(context.applicationContext)
+        val candidates = if (canonicalTrip != null) {
+            listOf(canonicalTrip)
+        } else {
+            store.trips().filter { trip ->
+                !trip.deleted &&
+                    resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+                    trip.externalSnapshot != null
+            }
+        }
+        var materialized = 0
+        var removedStale = 0
+        candidates.forEach { trip ->
+            val source = trip.externalSnapshot ?: return@forEach
+            val projected = PublicAgendaAutoSync0300.toCanonicalExternalProjection0406(
+                canonical = trip,
+                source = source,
+                nowMillis = Long.MIN_VALUE,
+            ) ?: return@forEach
+            val existingById = store.bookingsFor(trip.id).associateBy(Booking::id)
+            val desired = PublicAgendaAutoSync0300.externalPrivateMirrorBookings0511(
+                source = source,
+                bookings = projected.capacityClaims,
+                metadataLookup = identityStore::externalMetadata,
+            ).map { booking ->
+                val existing = existingById[booking.id]
+                booking.copy(
+                    tripId = trip.id,
+                    createdAtMillis = existing?.createdAtMillis ?: booking.createdAtMillis,
+                    updatedAtMillis = existing?.updatedAtMillis ?: booking.updatedAtMillis,
+                )
+            }
+            if (desired.isNotEmpty()) {
+                store.saveBookingsBatch(bookingsToSave = desired, preserveSourceUpdatedAt = true)
+                materialized += desired.size
+            }
+            if (source.passenger_roster_complete) {
+                val desiredIds = desired.map(Booking::id).toSet()
+                store.bookingsFor(trip.id)
+                    .filter { booking ->
+                        booking.source == BookingSource.BLABLACAR &&
+                            booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY &&
+                            booking.id !in desiredIds
+                    }
+                    .forEach { stale ->
+                        store.deleteBooking(stale.id)
+                        removedStale++
+                    }
+            }
+        }
+        if (materialized > 0 || removedStale > 0) {
+            UnifiedDebugEventStore.record(
+                "AGENDA_PRIVATE_PASSENGERS_MATERIALIZED_0515",
+                context.packageName,
+                "trips=" + candidates.size +
+                    " bookings=" + materialized +
+                    " staleRemoved=" + removedStale +
+                    " source=CANONICAL_AGENDA_PERSISTED_INPUT collectorDirectRead=false privateValuesLogged=false",
+            )
+        }
+        return materialized
+    }
+
     internal fun reconcileCollectedExternalTrips0403(
         context: Context,
         store: TripStore,
@@ -1729,6 +1797,14 @@ internal object AgendaBackgroundSync0392 {
                     "EXTERNAL_CANONICAL_BOOKING_ID_MIGRATED_0403",
                     context.packageName,
                     "oldInternalTripId=${seatSyncDiagnosticKey(previousBookingTripId)} newInternalTripId=${seatSyncDiagnosticKey(canonicalTripId)} migratedBookings=${migratedBookings.size} profileUuidPresent=true tripIdPresent=true",
+                )
+            }
+
+            if (canonicalTrip != null) {
+                materializeCanonicalExternalPrivateBookings0515(
+                    context = context,
+                    store = store,
+                    canonicalTrip = canonicalTrip,
                 )
             }
 

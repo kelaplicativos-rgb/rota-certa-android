@@ -54,6 +54,11 @@ class BlaBlaCollectorNetworkSource0266Test {
         assertEquals(8_900L, row.fareMinorUnits)
         assertEquals("BRL", row.fareCurrencyCode)
         assertEquals("Terminal de origem", row.boardingAddress)
+        assertEquals("Terminal de destino", row.dropoffAddress)
+        assertEquals(-23.55, row.boardingLatitude)
+        assertEquals(-46.63, row.boardingLongitude)
+        assertEquals(-22.90, row.dropoffLatitude)
+        assertEquals(-47.06, row.dropoffLongitude)
         assertEquals(
             "https://www.blablacar.com.br/rides/offer/passenger/707f1140-541a-11ea-a000-008600cf444c/0?id=$tripId",
             row.passenger.booking_href,

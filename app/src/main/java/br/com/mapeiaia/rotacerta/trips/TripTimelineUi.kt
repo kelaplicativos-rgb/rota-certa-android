@@ -174,7 +174,28 @@ fun TripTimelineScreen(
     }
     var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
     var canonicalBackendFailureCode0512 by remember { mutableStateOf<String?>(null) }
+    var localAgendaProjection0515 by remember(store) {
+        mutableStateOf<CanonicalTimelineProjection0494?>(null)
+    }
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
+
+    LaunchedEffect(store, trips, bookings, onlineSettings0494.driverDisplayName) {
+        localAgendaProjection0515 = withContext(Dispatchers.IO) {
+            AgendaBackgroundSync0392.materializeCanonicalExternalPrivateBookings0515(context, store)
+            localAgendaTimelineProjection0515(
+                trips = store.trips(),
+                bookings = store.bookings(),
+                localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+            )
+        }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_LOCAL_AGENDA_HYDRATED_0515",
+            context.packageName,
+            "trips=" + localAgendaProjection0515?.trips.orEmpty().size +
+                " bookings=" + localAgendaProjection0515?.bookings.orEmpty().size +
+                " source=CANONICAL_AGENDA collectorDirectRead=false privateValuesLogged=false",
+        )
+    }
 
     fun invalidateCanonicalTimeline0495(reason: String) {
         val accepted = canonicalRefreshSignals0495.tryEmit(reason)
@@ -197,12 +218,22 @@ fun TripTimelineScreen(
                 val manualPull0499 = reason == "USER_PULL_REFRESH"
                 val correlationId0512 = "tl-" + System.nanoTime().toString(36)
                 if (!onlineSettings0494.configured) {
+                    localAgendaProjection0515 = withContext(Dispatchers.IO) {
+                        AgendaBackgroundSync0392.materializeCanonicalExternalPrivateBookings0515(context, store)
+                        localAgendaTimelineProjection0515(
+                            trips = store.trips(),
+                            bookings = store.bookings(),
+                            localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+                        )
+                    }
                     canonicalBackendStale0494 = true
                     canonicalBackendFailureCode0512 = "CONFIGURATION_MISSING"
-                    canonicalBackendFailure0494 = if (canonicalResponse0494 != null) {
-                        "Integração canônica não configurada: mantendo o último snapshot íntegro. O coletor não será usado como fallback."
+                    canonicalBackendFailure0494 = if (localAgendaProjection0515?.entries.orEmpty().isNotEmpty()) {
+                        "Integração canônica não configurada: exibindo a Agenda canônica local com os dados operacionais privados disponíveis."
+                    } else if (canonicalResponse0494 != null) {
+                        "Integração canônica não configurada: mantendo o último snapshot íntegro."
                     } else {
-                        "Integração canônica não configurada. O coletor não será usado como fallback."
+                        "Integração canônica não configurada."
                     }
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     return@withLock
@@ -230,6 +261,7 @@ fun TripTimelineScreen(
                         store.saveTimelineCanonicalCache0494(response)
                     }
                     canonicalResponse0494 = cached
+                    localAgendaProjection0515 = null
                     canonicalBackendStale0494 = false
                     canonicalBackendFailure0494 = null
                     canonicalBackendFailureCode0512 = null
@@ -278,15 +310,26 @@ fun TripTimelineScreen(
                     throw cancelled
                 } catch (error: Throwable) {
                     val failureCode0512 = canonicalTimelineFailureCode0512(error)
+                    localAgendaProjection0515 = withContext(Dispatchers.IO) {
+                        AgendaBackgroundSync0392.materializeCanonicalExternalPrivateBookings0515(context, store)
+                        localAgendaTimelineProjection0515(
+                            trips = store.trips(),
+                            bookings = store.bookings(),
+                            localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+                        )
+                    }
                     canonicalBackendStale0494 = true
                     canonicalBackendFailureCode0512 = failureCode0512
                     val cachePresent0512 = canonicalResponse0494 != null
                     canonicalBackendFailure0494 = when (failureCode0512) {
-                        "NETWORK_UNREACHABLE", "TIMEOUT", "SERVER_ERROR" -> if (cachePresent0512) {
-                            "Backend canônico inacessível (" + failureCode0512 + "): exibindo o último snapshot canônico íntegro. O coletor não será usado como fallback."
-                        } else {
-                            "Backend canônico inacessível (" + failureCode0512 + "). O coletor não será usado como fallback."
-                        }
+                        "NETWORK_UNREACHABLE", "TIMEOUT", "SERVER_ERROR" ->
+                            if (localAgendaProjection0515?.entries.orEmpty().isNotEmpty()) {
+                                "Backend canônico inacessível (" + failureCode0512 + "): Timeline abastecida pela Agenda canônica local. O coletor não foi acessado diretamente pela Timeline."
+                            } else if (cachePresent0512) {
+                                "Backend canônico inacessível (" + failureCode0512 + "): mantendo o último snapshot canônico íntegro."
+                            } else {
+                                "Backend canônico inacessível (" + failureCode0512 + ")."
+                            }
                         "AUTH_FAILED", "FORBIDDEN" -> if (cachePresent0512) {
                             "A autenticação do backend canônico falhou (" + failureCode0512 + "): mantendo o último snapshot íntegro."
                         } else {
@@ -376,12 +419,26 @@ fun TripTimelineScreen(
     }
 
     val traceId = AgendaTrace.currentTraceId()
-    val canonicalProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName, bookings) {
+    val canonicalBackendProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName, bookings) {
         canonicalTimelineProjection0494(
             response = canonicalResponse0494,
             fallbackProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Rota Certa" },
             existingLocalBookings = bookings,
         )
+    }
+    val canonicalProjection0494 = remember(
+        canonicalBackendProjection0494,
+        canonicalBackendStale0494,
+        canonicalResponse0494,
+        localAgendaProjection0515,
+    ) {
+        if ((canonicalBackendStale0494 || canonicalResponse0494 == null) &&
+            localAgendaProjection0515?.entries.orEmpty().isNotEmpty()
+        ) {
+            localAgendaProjection0515!!
+        } else {
+            canonicalBackendProjection0494
+        }
     }
     val canonicalTrips0494 = canonicalProjection0494.trips
     val canonicalBookings0494 = canonicalProjection0494.bookings

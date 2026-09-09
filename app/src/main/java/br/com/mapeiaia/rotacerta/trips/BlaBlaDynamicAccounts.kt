@@ -3542,6 +3542,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val latitude = validLatitude(booking.boardingLatitude)
             val longitude = validLongitude(booking.boardingLongitude)
             val hasCoordinates = latitude != null && longitude != null
+            val dropoffLatitude = validLatitude(booking.dropoffLatitude)
+            val dropoffLongitude = validLongitude(booking.dropoffLongitude)
+            val hasDropoffCoordinates = dropoffLatitude != null && dropoffLongitude != null
             passengerIdentityStore.saveExternalMetadata(
             current.copy(
                 externalPassengerId = booking.passengerId,
@@ -3553,6 +3556,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     dropoffAddress = dropoffAddress.ifBlank { current.dropoffAddress },
                     boardingLatitude = if (hasCoordinates) latitude else current.boardingLatitude,
                     boardingLongitude = if (hasCoordinates) longitude else current.boardingLongitude,
+                    dropoffLatitude = if (hasDropoffCoordinates) dropoffLatitude else current.dropoffLatitude,
+                    dropoffLongitude = if (hasDropoffCoordinates) dropoffLongitude else current.dropoffLongitude,
                     boardingLocationSource = if (hasCoordinates) {
                         "blablacar_network_booking_pickup"
                     } else {

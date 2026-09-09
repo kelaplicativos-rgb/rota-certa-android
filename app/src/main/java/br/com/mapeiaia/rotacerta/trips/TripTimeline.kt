@@ -395,6 +395,28 @@ internal fun canonicalTimelineProjection0494(
     )
 }
 
+internal fun localAgendaTimelineProjection0515(
+    trips: List<Trip>,
+    bookings: List<Booking>,
+    localProfileLabel: String = "Agenda",
+    nowMillis: Long = System.currentTimeMillis(),
+): CanonicalTimelineProjection0494 {
+    val activeTrips = trips.filterNot(Trip::deleted)
+    val activeTripIds = activeTrips.map(Trip::id).toSet()
+    val activeBookings = bookings.filter { it.tripId in activeTripIds }
+    return CanonicalTimelineProjection0494(
+        trips = activeTrips,
+        bookings = activeBookings,
+        entries = TripTimelineEngine.fromLocalAgenda(
+            trips = activeTrips,
+            bookings = activeBookings,
+            localProfileLabel = localProfileLabel,
+            nowMillis = nowMillis,
+        ),
+        snapshotAtMillis = nowMillis,
+    )
+}
+
 object TripTimelineEngine {
     fun fromLocalAgenda(
         trips: List<Trip>,
@@ -431,6 +453,8 @@ object TripTimelineEngine {
                     blablaTripHref = trip.blablaManageUrl,
                     blablaPublicHref = trip.blablaPublicUrl,
                     blablaProfileUuid = trip.blablaProfileUuid,
+                    blablaItineraryStops = stops.map(TripStop::name),
+                    blablaPublishedSeats = trip.publishedSeats,
                 )
             }
             .sortedBy(TripTimelineEntry::departureAtMillis)

@@ -292,7 +292,13 @@ data class Booking(
     val boardingAddress: String = "",
     /** Exact reservation dropoff address; the shared TripStop remains the route-order authority. */
     val dropoffAddress: String = "",
-    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address metadata. */
+    /** Exact pickup coordinate for this passenger occurrence; never inferred from city/name text. */
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    /** Exact dropoff coordinate for this passenger occurrence; never inferred from city/name text. */
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
+    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address/coordinate metadata. */
     val localMetadataTouched: Boolean = false,
 )
 

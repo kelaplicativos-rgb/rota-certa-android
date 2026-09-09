@@ -1222,6 +1222,10 @@ internal fun enhancedPassengerRows(
             boardingAddress = metadata?.boardingAddress.orEmpty(),
             externalPassengerId = externalId,
             dropoffAddress = metadata?.dropoffAddress.orEmpty(),
+            boardingLatitude = metadata?.boardingLatitude,
+            boardingLongitude = metadata?.boardingLongitude,
+            dropoffLatitude = metadata?.dropoffLatitude,
+            dropoffLongitude = metadata?.dropoffLongitude,
             boardingStopIndex = trip?.let { TripPassengerRouteOrder.stopIndexForLabel(it, boarding) },
         )
     }.toMutableList()
@@ -1288,10 +1292,22 @@ internal fun enhancedPassengerRows(
                     dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
                         ?: privateMetadata0494?.dropoffAddress?.takeIf(String::isNotBlank)
                         ?: current.dropoffAddress,
-                    boardingLatitude = boardingStop?.latitude ?: current.boardingLatitude,
-                    boardingLongitude = boardingStop?.longitude ?: current.boardingLongitude,
-                    dropoffLatitude = dropoffStop?.latitude ?: current.dropoffLatitude,
-                    dropoffLongitude = dropoffStop?.longitude ?: current.dropoffLongitude,
+                    boardingLatitude = booking.boardingLatitude
+                        ?: privateMetadata0494?.boardingLatitude
+                        ?: boardingStop?.latitude
+                        ?: current.boardingLatitude,
+                    boardingLongitude = booking.boardingLongitude
+                        ?: privateMetadata0494?.boardingLongitude
+                        ?: boardingStop?.longitude
+                        ?: current.boardingLongitude,
+                    dropoffLatitude = booking.dropoffLatitude
+                        ?: privateMetadata0494?.dropoffLatitude
+                        ?: dropoffStop?.latitude
+                        ?: current.dropoffLatitude,
+                    dropoffLongitude = booking.dropoffLongitude
+                        ?: privateMetadata0494?.dropoffLongitude
+                        ?: dropoffStop?.longitude
+                        ?: current.dropoffLongitude,
                     boardingStopIndex = stopIndex ?: current.boardingStopIndex,
                     matchedByPhone = candidateIndex >= 0,
                     probableMatch = candidateIndex < 0,
@@ -1317,10 +1333,18 @@ internal fun enhancedPassengerRows(
                         ?: privateMetadata0494?.boardingAddress.orEmpty(),
                     dropoffAddress = booking.dropoffAddress.takeIf(String::isNotBlank)
                         ?: privateMetadata0494?.dropoffAddress.orEmpty(),
-                    boardingLatitude = boardingStop?.latitude,
-                    boardingLongitude = boardingStop?.longitude,
-                    dropoffLatitude = dropoffStop?.latitude,
-                    dropoffLongitude = dropoffStop?.longitude,
+                    boardingLatitude = booking.boardingLatitude
+                        ?: privateMetadata0494?.boardingLatitude
+                        ?: boardingStop?.latitude,
+                    boardingLongitude = booking.boardingLongitude
+                        ?: privateMetadata0494?.boardingLongitude
+                        ?: boardingStop?.longitude,
+                    dropoffLatitude = booking.dropoffLatitude
+                        ?: privateMetadata0494?.dropoffLatitude
+                        ?: dropoffStop?.latitude,
+                    dropoffLongitude = booking.dropoffLongitude
+                        ?: privateMetadata0494?.dropoffLongitude
+                        ?: dropoffStop?.longitude,
                     boardingStopIndex = stopIndex,
                 )
             }
@@ -1816,7 +1840,7 @@ internal fun passengerPickupMapTarget(row: EnhancedPassengerCardRow): PassengerP
     val exact = row.boardingAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.boarding?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    val trusted = exact == null && trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
+    val trusted = trustedPassengerCoordinate0513(row.boardingLatitude, row.boardingLongitude)
     return PassengerPickupMapTarget(query, row.boardingLatitude.takeIf { trusted }, row.boardingLongitude.takeIf { trusted })
 }
 
@@ -1824,7 +1848,7 @@ internal fun passengerDropoffMapTarget(row: EnhancedPassengerCardRow): Passenger
     val exact = row.dropoffAddress.trim().takeIf(String::isNotEmpty)
     val collected = row.dropoff?.trim()?.takeIf(String::isNotEmpty)
     val query = exact ?: collected ?: return null
-    val trusted = exact == null && trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
+    val trusted = trustedPassengerCoordinate0513(row.dropoffLatitude, row.dropoffLongitude)
     return PassengerPickupMapTarget(query, row.dropoffLatitude.takeIf { trusted }, row.dropoffLongitude.takeIf { trusted })
 }
 
@@ -1932,9 +1956,15 @@ private fun openExternalPassengerBlaBla(context: Context, row: EnhancedPassenger
     return true
 }
 
-internal fun openPassengerWhatsApp(context: Context, raw: String) {
+internal fun passengerWhatsAppDigits0515(raw: String): String? {
     val digits = raw.filter(Char::isDigit)
-    if (digits.length !in 8..15) return
+    if (digits.length !in 8..15) return null
+    val normalized = if (!digits.startsWith("55") && digits.length in 10..11) "55$digits" else digits
+    return normalized.takeIf { it.length in 8..15 }
+}
+
+internal fun openPassengerWhatsApp(context: Context, raw: String) {
+    val digits = passengerWhatsAppDigits0515(raw) ?: return
     runCatching {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/$digits")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),

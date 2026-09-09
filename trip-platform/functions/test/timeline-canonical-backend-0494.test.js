@@ -389,7 +389,10 @@ test("0513 canonical booking mutations persist private driver metadata without l
   const protectedMutation = between(api, "async function mutateProtectedBooking", "async function updatePassengerBooking");
   const capacityMutation = between(api, "function normalizeDriverCapacityBooking", "function protectedSnapshotEventType");
 
-  for (const field of ["fareMinorUnits", "fareCurrencyCode", "boardingAddress", "dropoffAddress"]) {
+  for (const field of [
+    "fareMinorUnits", "fareCurrencyCode", "boardingAddress", "dropoffAddress",
+    "boardingLatitude", "boardingLongitude", "dropoffLatitude", "dropoffLongitude",
+  ]) {
     assert.match(privateMetadata, new RegExp(field));
   }
   assert.match(capacityMutation, /canonicalPrivateBookingMetadata0513\(raw, previous\)/);
@@ -405,6 +408,8 @@ test("0513 Timeline booking payload remains direct-canonical with mirror only as
   const timeline = between(api, "async function listDriverTripSyncState0402", "async function reconcileDriverAgendaSeatAllocation");
   assert.match(timeline, /raw\.fareMinorUnits != null \? raw\.fareMinorUnits : privateBooking0499\.fareMinorUnits/);
   assert.match(timeline, /cleanText\(raw\.boardingAddress, 240\) \|\| cleanText\(privateBooking0499\.boardingAddress, 240\)/);
+  assert.match(timeline, /raw\.boardingLatitude != null \? raw\.boardingLatitude : privateBooking0499\.boardingLatitude/);
+  assert.match(timeline, /raw\.dropoffLongitude != null \? raw\.dropoffLongitude : privateBooking0499\.dropoffLongitude/);
   assert.match(timeline, /privateMirrorAvailable0499: Boolean\(privatePayload0499\)/);
   assert.match(timeline, /privateMirrorCurrent0499/);
   assert.match(timeline, /collectorRead: false/);

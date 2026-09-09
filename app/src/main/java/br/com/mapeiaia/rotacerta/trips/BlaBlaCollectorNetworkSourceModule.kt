@@ -59,6 +59,8 @@ internal data class BlaBlaNetworkResolvedBooking(
     val dropoffAddress: String,
     val boardingLatitude: Double?,
     val boardingLongitude: Double?,
+    val dropoffLatitude: Double?,
+    val dropoffLongitude: Double?,
 )
 
 internal data class BlaBlaNetworkTripResolution(
@@ -202,6 +204,8 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
             dropoffAddress = evidence.dropoff.address.trim().take(500),
             boardingLatitude = validLatitude(evidence.pickup.latitude),
             boardingLongitude = validLongitude(evidence.pickup.longitude),
+            dropoffLatitude = validLatitude(evidence.dropoff.latitude),
+            dropoffLongitude = validLongitude(evidence.dropoff.longitude),
         )
     }
 
