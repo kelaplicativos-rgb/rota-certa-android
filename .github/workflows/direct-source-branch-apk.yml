@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.522 immediate Timeline to Agenda readback
-# 0.1.522: Timeline mutations and global extra-seat saves use the existing canonical outbox for immediate targeted delivery plus public Agenda readback; background work is retry-only.
+name: Rota Certa 0.1.522 stable Timeline recovery
+# 0.1.522: restore the last proven 0.1.520 Timeline mutation path; generic Timeline changes enqueue canonical outbox delivery through AgendaBackgroundSync while global extra-seat publication keeps its dedicated immediate 0.1.520 path.
 
 on:
   push:
@@ -125,10 +125,12 @@ jobs:
           grep -Fq 'PUBLIC_PROJECTION_ATTEMPTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'PUBLIC_PROJECTION_COMMITTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
           grep -Fq 'AGENDA_PARITY_MISSING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_CONFIRMED_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_PENDING_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          grep -Fq 'remoteProjectionDivergenceObserved = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          grep -Fq 'Agenda não confirmou todas as alterações imediatamente' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
+          grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_CONFIRMED_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_PENDING_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'remoteProjectionDivergenceObserved = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          ! grep -Fq 'Agenda não confirmou todas as alterações imediatamente' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
+          grep -Fq 'GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
 
       - name: Assemble exact-head final debug APK
         shell: bash
@@ -178,7 +180,7 @@ jobs:
           OUT=/tmp/0520
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-agenda-immediate.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-stable-restore.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
@@ -202,10 +204,10 @@ jobs:
           global_extra_seats_additive_capacity=PASS
           global_extra_seats_immediate_publication=PASS
           global_extra_seats_forced_republication=PASS
-          timeline_mutation_immediate_targeted_drain=PASS
-          timeline_mutation_public_readback_required=PASS
-          timeline_mutation_background_retry_only=PASS
-          immediate_success_requires_agenda_confirmation=PASS
+          timeline_mutation_0520_stable_path_restored=PASS
+          timeline_generic_mutation_outbox_enqueue=PASS
+          timeline_generic_mutation_background_delivery=PASS
+          timeline_0521_forced_readback_removed=PASS
           stale_external_identity_outbox_bounded=PASS
           driver_whatsapp_public_action=PASS
           agenda_owned_exact_card_refresh=PASS
@@ -243,7 +245,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.522-timeline-agenda-immediate-${{ github.sha }}
+          name: rota-certa-0.1.522-timeline-stable-restore-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0520
