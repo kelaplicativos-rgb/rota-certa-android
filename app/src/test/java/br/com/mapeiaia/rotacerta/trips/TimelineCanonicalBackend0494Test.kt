@@ -177,11 +177,16 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(canonicalLoaderStart >= 0 && canonicalLoaderEnd > canonicalLoaderStart)
         val canonicalLoader = remoteApi.substring(canonicalLoaderStart, canonicalLoaderEnd)
         assertTrue(canonicalLoader.contains("timelineProjection0494 = true"))
+        assertTrue(canonicalLoader.contains("validateCanonicalTimelineResponse0512"))
         assertTrue(canonicalLoader.contains("CANONICAL_NATIVE_FIREWALL"))
         assertTrue(canonicalLoader.contains("AGENDA_CANONICAL_ONLY_0503"))
-        assertTrue(canonicalLoader.contains("!response.collectorRead"))
-        assertTrue(canonicalLoader.contains("!response.collectorFallback"))
-        assertTrue(canonicalLoader.contains("!response.collectorDerivedData"))
+        val canonicalValidationStart = remoteApi.indexOf("internal fun validateCanonicalTimelineResponse0512")
+        val canonicalValidationEnd = remoteApi.indexOf("@Serializable\ndata class DriverOperationalStatusRequest", canonicalValidationStart)
+        assertTrue(canonicalValidationStart >= 0 && canonicalValidationEnd > canonicalValidationStart)
+        val canonicalValidation = remoteApi.substring(canonicalValidationStart, canonicalValidationEnd)
+        assertTrue(canonicalValidation.contains("response.collectorRead"))
+        assertTrue(canonicalValidation.contains("response.collectorFallback"))
+        assertTrue(canonicalValidation.contains("response.collectorDerivedData"))
         assertFalse(canonicalLoader.contains("BlaBlaCollector"))
 
         assertTrue(passenger.contains("TIMELINE_CANONICAL_PASSENGER_MUTATION_0494"))
@@ -657,6 +662,31 @@ class TimelineCanonicalBackend0494Test {
         assertTrue(TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE in entry.issues)
         val timelineUi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
         assertTrue(timelineUi.contains("a viagem continua operacional pela identidade canônica"))
+    }
+
+
+    @Test
+    fun testX_0512StalePrivateMirrorRejectsNewSnapshotAsProjectionIncomplete() {
+        val response = DriverTripSyncStateResponse0402(
+            source = "CANONICAL_NATIVE_FIREWALL",
+            provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
+            collectorRead = false,
+            collectorFallback = false,
+            collectorDerivedData = false,
+            trips = listOf(
+                state("canonical-private-stale", 25L).copy(
+                    canonicalIssues = listOf("PRIVATE_PROJECTION_STALE"),
+                    privateMirrorAvailable0499 = true,
+                    privateMirrorCurrent0499 = false,
+                    privateMirrorRevision0499 = 24L,
+                ),
+            ),
+        )
+
+        val error = assertFailsWith<CanonicalTimelineProjectionException0512> {
+            validateCanonicalTimelineResponse0512(response)
+        }
+        assertEquals("PROJECTION_INCOMPLETE", error.reasonCode)
     }
 
 }
