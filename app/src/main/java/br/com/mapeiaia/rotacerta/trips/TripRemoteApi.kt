@@ -352,6 +352,10 @@ data class DriverBookingUpsertRequest(
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
 )
 
 @Serializable
@@ -396,6 +400,10 @@ data class DriverProtectedBookingSnapshot(
     val holdExpiresAtMillis: Long? = null,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
 )
 
 @Serializable
@@ -1283,6 +1291,10 @@ class TripRemoteApi(
                             holdExpiresAtMillis = booking.holdExpiresAtMillis,
                             sourceReference = booking.sourceReference,
                             occupancyGroupId = booking.occupancyGroupId,
+                            fareMinorUnits = booking.fareMinorUnits,
+                            fareCurrencyCode = booking.fareCurrencyCode,
+                            boardingAddress = booking.boardingAddress,
+                            dropoffAddress = booking.dropoffAddress,
                         )
                     },
                     claimNamespace = claimNamespace,
@@ -1496,6 +1508,10 @@ class TripRemoteApi(
                 capacityClaimType = booking.capacityClaimType,
                 sourceReference = booking.sourceReference,
                 occupancyGroupId = booking.occupancyGroupId,
+                fareMinorUnits = booking.fareMinorUnits,
+                fareCurrencyCode = booking.fareCurrencyCode,
+                boardingAddress = booking.boardingAddress,
+                dropoffAddress = booking.dropoffAddress,
             ),
         ),
         requireDriverToken = true,
@@ -1963,7 +1979,9 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     capacityClaimType = capacityClaimType,
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
-    passengerId = existingLocal?.passengerId?.takeIf(String::isNotBlank) ?: passengerId,
+    passengerId = passengerId.takeIf(String::isNotBlank)
+        ?: existingLocal?.passengerId?.takeIf(String::isNotBlank)
+        .orEmpty(),
     fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits,
     fareCurrencyCode = fareCurrencyCode.ifBlank { existingLocal?.fareCurrencyCode.orEmpty() },
     boardingAddress = boardingAddress.ifBlank { existingLocal?.boardingAddress.orEmpty() },
