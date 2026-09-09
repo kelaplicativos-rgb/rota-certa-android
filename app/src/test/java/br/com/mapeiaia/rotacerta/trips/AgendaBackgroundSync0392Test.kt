@@ -90,6 +90,36 @@ class AgendaBackgroundSync0392Test {
         assertTrue(source.contains("val targetedRetryable = false"))
     }
     @Test
+    fun timelineCardTargetCollectorRefreshIsExactAndCanonicalOnly0517() {
+        assertEquals(AgendaBackgroundSyncMode0392.DELTA_ONLY, agendaBackgroundSyncMode0392("trip_collector_refresh"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("trip_collector_refresh"))
+
+        val source = backgroundSource()
+        val start = source.indexOf("internal suspend fun refreshCanonicalTripFromCollector0517")
+        val end = source.indexOf("fun enqueueRecoveryIfNeeded", start)
+        assertTrue(start >= 0 && end > start)
+        val exact = source.substring(start, end)
+
+        assertTrue(exact.contains("BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407("))
+        assertTrue(exact.contains("targetedCollectorResponse0407("))
+        assertTrue(exact.contains("reconcileCollectedExternalTrips0403("))
+        assertTrue(exact.contains("completeProfileUuids = emptySet()"))
+        assertTrue(exact.contains("drainPending("))
+        assertTrue(exact.contains("canonicalTripIds = targetPublicationIds"))
+        assertTrue(exact.contains("exactTargetOnly=true"))
+        assertTrue(exact.contains("collectorDirectTimelineRead=false"))
+        assertTrue(exact.contains("fullAccountCollection=false"))
+        assertFalse(exact.contains("runPendingHeadless("))
+        assertFalse(exact.contains("PublicAgendaAutoSync0300.sync("))
+
+        val timeline = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt").readText()
+        assertTrue(timeline.contains("enqueueTripCollectorRefresh0517("))
+        assertTrue(timeline.contains("Text(\"📡\")"))
+        assertFalse(timeline.contains("BlaBlaCollectorStateStore("))
+        assertFalse(timeline.contains("reverifyTripHeadless0407("))
+    }
+
+    @Test
     fun targetedCollectorPublicUrlAcceptsOnlyExactStrongTripAndAuthoritativeBinding() {
         val target = BlaBlaTripTarget0407(
             tenantId = "tenant-0442",
