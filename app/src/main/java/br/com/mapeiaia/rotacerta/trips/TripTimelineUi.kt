@@ -407,7 +407,7 @@ fun TripTimelineScreen(
                     val cachePresent0512 = canonicalResponse0494 != null
                     val localOperational0525 = localAgendaProjection0515.entries.isNotEmpty()
                     canonicalBackendFailure0494 = if (localOperational0525) {
-                        "Sincronização remota indisponível (" + failureCode0512 + "): Agenda canônica local preservada e Timeline continua operacional."
+                        "Sincronização remota indisponível (" + failureCode0512 + "): Timeline abastecida pela Agenda canônica local preservada e continua operacional."
                     } else if (cachePresent0512) {
                         "Sincronização remota indisponível (" + failureCode0512 + "): cache remoto mantido somente como contingência."
                     } else {
