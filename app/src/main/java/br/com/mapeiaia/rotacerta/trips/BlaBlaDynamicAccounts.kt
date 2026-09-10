@@ -1715,6 +1715,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val visibleCards = result.candidates
                 .filter { BlaBlaCollectorUrlModule.isSpecificTrip(it.href) }
                 .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
+            val rawTripIds0528 = result.candidates.mapNotNull { candidate ->
+                BlaBlaCollectorUrlModule.tripId(candidate.href)
+            }
+            val canonicalTripIds0528 = canonicalTripIds0528(rawTripIds0528)
+            val tripSetSha2560528 = tripSetSha2560528(canonicalTripIds0528)
             val stabilizer = ridesSnapshotStabilizer0526 ?: BlaBlaRidesSnapshotStabilizer0526().also {
                 ridesSnapshotStabilizer0526 = it
             }
@@ -1728,6 +1733,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 loadingActive = result.loadingActive || !result.documentReady,
                 lastMutationAgeMs = result.lastMutationAgeMs,
                 explicitEmptyList = result.explicitEmptyList,
+                tripSetSha256 = tripSetSha2560528,
                 htmlTruncated = result.snapshotTruncated,
                 htmlMaterializedComplete = result.snapshotContainsAllObservedCards,
             )
@@ -1769,7 +1775,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     UnifiedDebugEventStore.record(
                         "RIDES_SNAPSHOT_SCROLL_PROGRESS",
                         packageName,
-                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 iteration=${stabilizer.scrollIterations} cards=${stabilizer.finalCardCount} from=${result.scrollY} to=$target height=${result.scrollHeight} loader=${result.loadingActive}",
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 iteration=${stabilizer.scrollIterations} cards=${stabilizer.finalCardCount} tripSetSha256=${stabilizer.finalTripSetSha256} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations} from=${result.scrollY} to=$target height=${result.scrollHeight} loader=${result.loadingActive}",
                     )
                     webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
                         postSessionDelayed0405({ captureRideListSnapshot0526() }, RIDES_SCROLL_SETTLE_MS)
@@ -1785,7 +1791,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     UnifiedDebugEventStore.recordAlways(
                         "RIDES_SNAPSHOT_STABILIZED",
                         packageName,
-                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cardsInitial=${stabilizer.initialCardCount ?: 0} cardsFinal=${stabilizer.finalCardCount} scrollIterations=${stabilizer.scrollIterations} reachedEnd=${result.atBottom} mutationQuietMs=${result.lastMutationAgeMs}",
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cardsInitial=${stabilizer.initialCardCount ?: 0} cardsFinal=${stabilizer.finalCardCount} scrollIterations=${stabilizer.scrollIterations} reachedEnd=${result.atBottom} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations} tripSetSha256=${stabilizer.finalTripSetSha256} mutationQuietMs=${result.lastMutationAgeMs}",
+                    )
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_RIDES_STABILIZATION_CONFIRMED",
+                        packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${ridesSnapshotStore0526().accountKey(account.id)} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations} tripSetSha256=${stabilizer.finalTripSetSha256} completionReason=${decision.reason}",
                     )
                     captureRidesSnapshotEvidence0526(result, completeRequested = true, errorCode = "")
                 }
