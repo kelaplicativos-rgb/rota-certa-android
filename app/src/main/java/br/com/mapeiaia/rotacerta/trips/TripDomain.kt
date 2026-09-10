@@ -102,7 +102,7 @@ data class Trip(
     val capacityReliable: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis(),
     val updatedAtMillis: Long = System.currentTimeMillis(),
-    /** Seats allocated to the Rota Certa channel for this trip. Explicit zero is valid. */
+    /** Materialized global extra seats for this trip. They are added to the BlaBlaCar quota; explicit zero is valid. */
     val rotaCertaSeatAllocation: Int? = null,
     /** Canonical persisted origin. Old 0.1.372 external backings are resolved by strong-identity migration. */
     val recordOrigin: TripRecordOrigin = TripRecordOrigin.LOCAL,
@@ -292,7 +292,13 @@ data class Booking(
     val boardingAddress: String = "",
     /** Exact reservation dropoff address; the shared TripStop remains the route-order authority. */
     val dropoffAddress: String = "",
-    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address metadata. */
+    /** Exact pickup coordinate for this passenger occurrence; never inferred from city/name text. */
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    /** Exact dropoff coordinate for this passenger occurrence; never inferred from city/name text. */
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
+    /** True only after Rota Certa deliberately wrote the local-only identity/fare/address/coordinate metadata. */
     val localMetadataTouched: Boolean = false,
 )
 

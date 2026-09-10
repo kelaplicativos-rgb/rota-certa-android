@@ -523,20 +523,54 @@ fun BlaBlaCollectorPanel(
                     trip.profile_uuid.equals(account.profileUuid, ignoreCase = true) && trip.trip_id == exactTripId
                 }
                 val href = currentTrip?.trip_href
-                if (href.isNullOrBlank()) {
+                val profileUuid = account.profileUuid?.trim()?.lowercase().orEmpty()
+                val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId
+                if (
+                    href.isNullOrBlank() ||
+                    profileUuid.isBlank() ||
+                    BlaBlaCollectorUrlModule.tripId(href) != exactTripId
+                ) {
                     syncing = false
                     syncDateScope = null
                     targetedSyncTripId = null
-                    message = "Card exato sem link canônico; sincronização individual não iniciada."
+                    message = "Card exato sem identidade forte; sincronização individual não iniciada."
                     onChanged(message.orEmpty())
                 } else {
-                    UnifiedDebugEventStore.record(
-                        "AGENDA_SYNC_SESSION_LAUNCH",
-                        context.packageName,
-                        "cursor=${syncCursor + 1}/${syncQueue.size} account=${account.displayLabel} exact=${exactTripId != null} dateScoped=${dateScope.isNotEmpty()} sequentialGate=true",
+                    val target = BlaBlaTripTarget0407(
+                        tenantId = tenantId,
+                        accountId = account.id,
+                        profileUuid = profileUuid,
+                        tripId = exactTripId,
+                        tripHref = href,
                     )
-                    syncSessionInFlight = true
-                    sessionLauncher.launch(BlaBlaDynamicSessionIntents.syncExact(context, account, exactTripId, href))
+                    val command = BlaBlaCommand0407.forTarget(
+                        target = target,
+                        operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                        origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION,
+                    )
+                    val queued = AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
+                        context = context,
+                        target = target,
+                        commandId = command.commandId,
+                        requestedAtMillis = command.requestedAtMillis,
+                    )
+                    syncing = false
+                    archiving = false
+                    syncDateScope = null
+                    targetedSyncTripId = null
+                    syncQueue = emptyList()
+                    syncCursor = 0
+                    message = if (queued) {
+                        "Agenda atualizando somente esta viagem em segundo plano…"
+                    } else {
+                        "Atualização individual bloqueada: identidade forte não confirmada."
+                    }
+                    onChanged(message.orEmpty())
+                    UnifiedDebugEventStore.record(
+                        "AGENDA_EXACT_CARD_INTERNAL_SYNC_0518",
+                        context.packageName,
+                        "accountKey=${seatSyncDiagnosticKey(account.id)} tripIdPresent=true profileUuidPresent=true queued=$queued activityLaunch=false sessionLauncher=false visualNavigation=false owner=AgendaBackgroundSync0392",
+                    )
                 }
             } else if (dateScope.isNotEmpty()) {
                 val summary = rotaCertaDateSelectionSummary(

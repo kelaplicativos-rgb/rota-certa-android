@@ -419,6 +419,88 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun externalPrivateMirrorEnrichmentRestoresExistingPassengerTimelineMetadata() {
+        val passengerHref = "https://www.blablacar.com.br/booking/passenger-private-1"
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-private",
+            date = "2030-09-20",
+            actual_departure = "São Paulo",
+            actual_arrival = "São Tomé das Letras",
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Norma",
+                    seats = 1,
+                    boarding = "São Paulo",
+                    dropoff = "São Tomé das Letras",
+                    phone = "+5511999999999",
+                    booking_href = passengerHref,
+                ),
+            ),
+            booked_seats = 1,
+            passenger_roster_complete = true,
+        )
+        val trip = Trip(
+            id = "canonical-private",
+            title = "São Paulo → São Tomé das Letras",
+            publicToken = "canonical-private",
+            departureAtMillis = 4_000_000_000_000L,
+            capacity = 4,
+            stops = listOf(
+                TripStop(id = "sp", order = 0, name = "São Paulo"),
+                TripStop(id = "stl", order = 1, name = "São Tomé das Letras"),
+            ),
+        )
+        val claims = PublicAgendaAutoSync0300.externalCapacityClaims(source, trip, 1, "provider-trip")
+        val reservationKey = externalPassengerReservationKey(source.profile_uuid, passengerHref)!!
+        val enriched = PublicAgendaAutoSync0300.externalPrivateMirrorBookings0511(
+            source = source,
+            bookings = claims,
+            metadataLookup = { key ->
+                if (key == reservationKey) {
+                    ExternalPassengerMetadata(
+                        reservationKey = key,
+                        fareMinorUnits = 9_300L,
+                        fareCurrencyCode = "BRL",
+                        boardingAddress = "Terminal Rodoviário do Tietê, São Paulo",
+                        dropoffAddress = "Rodoviária de São Thomé das Letras",
+                        boardingLatitude = -23.5166,
+                        boardingLongitude = -46.6250,
+                        dropoffLatitude = -21.7218,
+                        dropoffLongitude = -44.9849,
+                    )
+                } else {
+                    null
+                }
+            },
+        ).single()
+
+        assertEquals("+5511999999999", enriched.passengerContact)
+        assertEquals(9_300L, enriched.fareMinorUnits)
+        assertEquals("BRL", enriched.fareCurrencyCode)
+        assertTrue(enriched.boardingAddress.contains("Tietê"))
+        assertTrue(enriched.dropoffAddress.contains("São Thomé"))
+        assertEquals(-23.5166, enriched.boardingLatitude)
+        assertEquals(-46.6250, enriched.boardingLongitude)
+        assertEquals(-21.7218, enriched.dropoffLatitude)
+        assertEquals(-44.9849, enriched.dropoffLongitude)
+        assertEquals(CapacityClaimType.EXTERNAL_OCCUPANCY, enriched.capacityClaimType)
+        assertEquals(1, enriched.seats)
+    }
+
+    @Test
+    fun serverCanonicalIngestionWritesPrivateMirrorOnlyAfterCanonicalRevisionAck() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val ack = source.indexOf("if (serverCanonicalAuthority0468 && result.canonicalRevision > 0L)")
+        val write = source.indexOf("TIMELINE_PRIVATE_MIRROR_COMMITTED_0511")
+        assertTrue(ack >= 0)
+        assertTrue(write > ack)
+        assertTrue(source.contains("canonicalRevision = result.canonicalRevision"))
+        assertTrue(source.contains("bookings = privateMirrorBookings0434"))
+    }
+
+    @Test
     fun priceParserAcceptsBrazilianFormatting() {
         assertEquals(9_300L, PublicAgendaAutoSync0300.parsePriceCents("R$ 93,00"))
         assertEquals(10_500L, PublicAgendaAutoSync0300.parsePriceCents("105"))

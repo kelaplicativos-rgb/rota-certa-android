@@ -14,6 +14,7 @@ class ContextualDiagnostics0507Test {
         executor: DiagnosticModule0507 = origin,
         correlation: String = "",
         operationId: String = "",
+        parentOperationId: String = "",
         details: String = "",
         severity: DiagnosticSeverity0507 = DiagnosticSeverity0507.INFO,
     ) = UnifiedDebugEventStore.SnapshotEvent(
@@ -32,6 +33,7 @@ class ContextualDiagnostics0507Test {
             correlationId = correlation,
             traceId = correlation,
             operationId = operationId,
+            parentOperationId = parentOperationId,
         ),
     )
 
@@ -70,20 +72,76 @@ class ContextualDiagnostics0507Test {
     }
 
     @Test
-    fun correlationCanBringExecutorStepWithoutDuplicatingStorage() {
-        val origin = event(20, "SCRIPT_START", DiagnosticModule0507.SCRIPTS, correlation = "corr-one")
-        val executor = event(
+    fun sharedTraceAloneDoesNotCrossParentModuleBoundary() {
+        val origin = event(
+            20,
+            "SCRIPT_START",
+            DiagnosticModule0507.SCRIPTS,
+            correlation = "corr-one",
+            operationId = "op-script",
+        )
+        val unrelatedExecutor = event(
             21,
             "BROWSER_STEP",
             parent = DiagnosticModule0507.BLABLACAR,
             origin = DiagnosticModule0507.BLABLACAR,
             executor = DiagnosticModule0507.BLABLACAR,
             correlation = "corr-one",
+            operationId = "op-browser",
+        )
+        val selected = ContextualDebugReport0507.select(
+            snapshot(listOf(origin, unrelatedExecutor)),
+            DiagnosticModule0507.SCRIPTS,
+        )
+        assertEquals(listOf("SCRIPT_START"), selected.map { it.stage })
+    }
+
+    @Test
+    fun explicitParentOperationCanBringChildExecutorStepWithoutDuplicatingStorage() {
+        val origin = event(
+            22,
+            "SCRIPT_START",
+            DiagnosticModule0507.SCRIPTS,
+            correlation = "corr-two",
+            operationId = "op-script",
+        )
+        val executor = event(
+            23,
+            "BROWSER_STEP",
+            parent = DiagnosticModule0507.BLABLACAR,
+            origin = DiagnosticModule0507.BLABLACAR,
+            executor = DiagnosticModule0507.BLABLACAR,
+            correlation = "corr-two",
+            operationId = "op-browser",
+            parentOperationId = "op-script",
         )
         val source = snapshot(listOf(origin, executor))
         val selected = ContextualDebugReport0507.select(source, DiagnosticModule0507.SCRIPTS)
         assertEquals(2, selected.size)
         assertEquals(2, source.events.size)
+    }
+
+    @Test
+    fun blaBlaReportDoesNotImportAllTripsStartupJustBecauseTraceMatches() {
+        val trace = "ag-ubzl1kpss-1s"
+        val blaBla = event(
+            24,
+            "MODULE_VIEW_OPENED_0507",
+            DiagnosticModule0507.BLABLACAR,
+            correlation = trace,
+        )
+        val allTrips = event(
+            25,
+            "TIMELINE_STARTUP",
+            DiagnosticModule0507.ALL_TRIPS,
+            correlation = trace,
+            operationId = "op-timeline",
+        )
+        val selected = ContextualDebugReport0507.select(
+            snapshot(listOf(blaBla, allTrips)),
+            DiagnosticModule0507.BLABLACAR,
+        )
+        assertEquals(listOf("MODULE_VIEW_OPENED_0507"), selected.map { it.stage })
     }
 
     @Test
@@ -100,6 +158,17 @@ class ContextualDiagnostics0507Test {
         assertTrue(once.contains("canonicalTripId=canon-123"))
         assertTrue(once.contains("operation=REMOTE_WRITE"))
         assertTrue(once.contains("correlationId=corr-55"))
+    }
+
+    @Test
+    fun sanitizerPreservesTechnicalUuidWhileMaskingStandalonePhone() {
+        val technicalId = "12345678-1234-1234-1234-123456789012"
+        val sanitized = UnifiedDebugEventStore.sanitizeForExport(
+            "entityId=$technicalId phone=1199998888",
+        )
+        assertTrue(sanitized.contains("entityId=$technicalId"))
+        assertFalse(sanitized.contains("1199998888"))
+        assertTrue(sanitized.contains("[telefone mascarado]"))
     }
 
     @Test

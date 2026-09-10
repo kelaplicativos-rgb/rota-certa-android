@@ -222,6 +222,10 @@ enum class TripTimelineIssue {
     OVERBOOKING,
     VALIDATION_PENDING,
     EXTERNAL_IDENTITY_CONFLICT,
+    EXTERNAL_IDENTITY_INCOMPLETE,
+    PASSENGER_PROJECTION_INCOMPLETE,
+    PRIVATE_PROJECTION_STALE,
+    REVISION_INCOMPATIBLE,
 }
 
 internal data class CanonicalTimelineProjection0494(
@@ -230,6 +234,32 @@ internal data class CanonicalTimelineProjection0494(
     val entries: List<TripTimelineEntry>,
     val snapshotAtMillis: Long,
 )
+
+internal fun passengerSeatsBySource0494(bookings: List<Booking>): Map<BookingSource, Int> {
+    val activePassengers = bookings.filter { booking ->
+        booking.capacityClaimType in setOf(CapacityClaimType.PASSENGER, CapacityClaimType.EXTERNAL_OCCUPANCY) &&
+            booking.status == BookingStatus.CONFIRMED
+    }
+    val result = mutableMapOf<BookingSource, Int>()
+    activePassengers.groupBy(::bookingOccupancyIdentityKey).values.forEach { group ->
+        val external = group
+            .filter { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
+            .maxByOrNull(Booking::seats)
+        val local = group
+            .filterNot { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
+            .maxByOrNull(Booking::seats)
+        val externalSeats = external?.seats?.coerceAtLeast(0) ?: 0
+        if (externalSeats > 0) {
+            result[BookingSource.BLABLACAR] = (result[BookingSource.BLABLACAR] ?: 0) + externalSeats
+        }
+        val localSeats = local?.seats?.coerceAtLeast(0) ?: 0
+        val localExtra = (localSeats - externalSeats).coerceAtLeast(0)
+        if (localExtra > 0 && local != null) {
+            result[local.source] = (result[local.source] ?: 0) + localExtra
+        }
+    }
+    return result.filterValues { it > 0 }
+}
 
 internal fun canonicalTimelineProjection0494(
     response: DriverTripSyncStateResponse0402?,
@@ -268,7 +298,7 @@ internal fun canonicalTimelineProjection0494(
         if (canonicalId.isBlank() || stops.size < 2) return@forEach
         val tripStatus = runCatching { TripStatus.valueOf(state.status.trim().uppercase()) }
             .getOrDefault(TripStatus.DRAFT)
-        val sourceCounts = state.sourceSeatCounts.mapNotNull { (source, seats) ->
+        val serverSourceCounts = state.sourceSeatCounts.mapNotNull { (source, seats) ->
             runCatching { BookingSource.valueOf(source.trim().uppercase()) }
                 .getOrNull()
                 ?.let { it to seats.coerceAtLeast(0) }
@@ -291,6 +321,7 @@ internal fun canonicalTimelineProjection0494(
             publicUrl = state.publicUrl.takeIf(String::isNotBlank),
             blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
             blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaManageUrl = state.blablaManageUrl.takeIf(String::isNotBlank),
             blablaPublicUrl = state.blablaPublicUrl.takeIf(String::isNotBlank),
             publicBookingEnabled = state.publicBookingEnabled,
             itineraryAuthoritative = state.itineraryAuthoritative,
@@ -313,6 +344,7 @@ internal fun canonicalTimelineProjection0494(
                 existingLocal = existingLocal,
             )
         }
+        val sourceCounts = passengerSeatsBySource0494(bookings).ifEmpty { serverSourceCounts }
         projectedTrips += trip
         projectedBookings += bookings
         projectedEntries += TripTimelineEntry(
@@ -330,6 +362,7 @@ internal fun canonicalTimelineProjection0494(
             maximumOccupiedSeats = state.maximumOccupiedSeats.coerceAtLeast(0),
             sourcePassengerSeats = sourceCounts,
             blablaTripId = state.blablaTripId.takeIf(String::isNotBlank),
+            blablaTripHref = state.blablaManageUrl.takeIf(String::isNotBlank),
             blablaPublicHref = state.blablaPublicUrl.takeIf(String::isNotBlank),
             blablaProfileUuid = state.blablaProfileUuid.takeIf(String::isNotBlank),
             blablaItineraryStops = stops.map(TripStop::name),
@@ -364,6 +397,28 @@ internal fun canonicalTimelineProjection0494(
     )
 }
 
+internal fun localAgendaTimelineProjection0515(
+    trips: List<Trip>,
+    bookings: List<Booking>,
+    localProfileLabel: String = "Agenda",
+    nowMillis: Long = System.currentTimeMillis(),
+): CanonicalTimelineProjection0494 {
+    val activeTrips = trips.filterNot(Trip::deleted)
+    val activeTripIds = activeTrips.map(Trip::id).toSet()
+    val activeBookings = bookings.filter { it.tripId in activeTripIds }
+    return CanonicalTimelineProjection0494(
+        trips = activeTrips,
+        bookings = activeBookings,
+        entries = TripTimelineEngine.fromLocalAgenda(
+            trips = activeTrips,
+            bookings = activeBookings,
+            localProfileLabel = localProfileLabel,
+            nowMillis = nowMillis,
+        ),
+        snapshotAtMillis = nowMillis,
+    )
+}
+
 object TripTimelineEngine {
     fun fromLocalAgenda(
         trips: List<Trip>,
@@ -393,13 +448,15 @@ object TripTimelineEngine {
                     rotaCertaSeatAllocation = trip.rotaCertaSeatAllocation,
                     minimumOccupiedSeats = occupied.minOrNull() ?: 0,
                     maximumOccupiedSeats = occupied.maxOrNull() ?: 0,
-                    sourcePassengerSeats = passengerSeatsBySource(tripBookings, nowMillis),
+                    sourcePassengerSeats = passengerSeatsBySource0494(tripBookings),
                     operationalBlockedSeats = operationalSeatSummary(trip, tripBookings, nowMillis).blockedSeats,
                     localTripId = trip.id,
                     blablaTripId = trip.blablaTripId,
                     blablaTripHref = trip.blablaManageUrl,
                     blablaPublicHref = trip.blablaPublicUrl,
                     blablaProfileUuid = trip.blablaProfileUuid,
+                    blablaItineraryStops = stops.map(TripStop::name),
+                    blablaPublishedSeats = trip.publishedSeats,
                 )
             }
             .sortedBy(TripTimelineEntry::departureAtMillis)
@@ -448,32 +505,6 @@ object TripTimelineEngine {
         return entries.sortedBy(TripTimelineEntry::departureAtMillis).map { entry ->
             entry.copy(issues = issues.getValue(entry.tripId).toSet())
         }
-    }
-
-    private fun passengerSeatsBySource(bookings: List<Booking>, @Suppress("UNUSED_PARAMETER") nowMillis: Long): Map<BookingSource, Int> {
-        val activePassengers = bookings.filter { booking ->
-            booking.capacityClaimType in setOf(CapacityClaimType.PASSENGER, CapacityClaimType.EXTERNAL_OCCUPANCY) &&
-                booking.status == BookingStatus.CONFIRMED
-        }
-        val result = mutableMapOf<BookingSource, Int>()
-        activePassengers.groupBy(::bookingOccupancyIdentityKey).values.forEach { group ->
-            val external = group
-                .filter { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
-                .maxByOrNull(Booking::seats)
-            val local = group
-                .filterNot { it.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY || it.source == BookingSource.BLABLACAR }
-                .maxByOrNull(Booking::seats)
-            val externalSeats = external?.seats?.coerceAtLeast(0) ?: 0
-            if (externalSeats > 0) {
-                result[BookingSource.BLABLACAR] = (result[BookingSource.BLABLACAR] ?: 0) + externalSeats
-            }
-            val localSeats = local?.seats?.coerceAtLeast(0) ?: 0
-            val localExtra = (localSeats - externalSeats).coerceAtLeast(0)
-            if (localExtra > 0 && local != null) {
-                result[local.source] = (result[local.source] ?: 0) + localExtra
-            }
-        }
-        return result.filterValues { it > 0 }
     }
 
     private fun duplicateKey(entry: TripTimelineEntry): String = listOf(

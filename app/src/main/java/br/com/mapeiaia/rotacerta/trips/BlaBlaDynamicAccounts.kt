@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import android.app.Activity
@@ -293,6 +296,10 @@ private data class DynamicTripDetail(
     val explicitEmptyRoster: Boolean = false,
     val rosterHasMore: Boolean = false,
     val rosterTerminalEvidence: Boolean = false,
+    val scrollY: Int = 0,
+    val scrollHeight: Int = 0,
+    val viewportHeight: Int = 0,
+    val atBottom: Boolean = false,
     val editHref: String = "",
     val publicTripHref: String = "",
     val publicTripHrefSource: String = "",
@@ -463,6 +470,33 @@ internal fun blaBlaDynamicCollectionTimeoutMs0389(request: BlaBlaBrowserRequest)
     else -> 0L
 }
 
+private fun recordBlaBlaCollectorEvidence0510(
+    stage: String,
+    packageName: String?,
+    details: String,
+) {
+    val rejected = stage == "TRIP_REJECTED"
+    UnifiedDebugEventStore.recordAlways(
+        stage = stage,
+        packageName = packageName,
+        details = details,
+        diagnosticContext = DiagnosticEventContext0507(
+            parentModule = DiagnosticModule0507.BLABLACAR,
+            originModule = DiagnosticModule0507.BLABLACAR,
+            executorModule = DiagnosticModule0507.BLABLACAR,
+            submodule = "COLLECTOR",
+            component = "BlaBlaDynamicAccountSessionController0401",
+            operation = stage,
+            severity = if (rejected) DiagnosticSeverity0507.WARNING else DiagnosticSeverity0507.INFO,
+            result = when (stage) {
+                "TRIP_ACCEPTED" -> "ACCEPTED"
+                "TRIP_REJECTED" -> "REJECTED"
+                else -> "OBSERVED"
+            },
+        ),
+    )
+}
+
 internal fun nextBlaBlaCandidateIndex(current: Int, size: Int): Int = when {
     size <= 0 -> 0
     current < 0 -> 0
@@ -558,6 +592,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesRestorePending = false
     private var ridesBottomStablePasses = 0
     private var tripRosterReadAttempts = 0
+    private var tripRosterScrollPasses = 0
+    private var tripRosterObservedPassengers = mutableListOf<BlaBlaCollectorPassenger>()
+    private val tripRosterObservedPassengerHrefs = linkedSetOf<String>()
     private var networkTripSourceReadAttempts0407 = 0
     private var publicTripNavigation0443: BoundPublicTripNavigation0443? = null
     private var targetedSnapshotSaved0407 = false
@@ -1317,6 +1354,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesRestorePending = false
         ridesBottomStablePasses = 0
         tripRosterReadAttempts = 0
+        tripRosterScrollPasses = 0
+        tripRosterObservedPassengers.clear()
+        tripRosterObservedPassengerHrefs.clear()
         networkTripSourceReadAttempts0407 = 0
         publicTripNavigation0443 = null
         targetedSnapshotSaved0407 = false
@@ -1876,7 +1916,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             }
             if (result == null) {
                 skipped++
-                UnifiedDebugEventStore.record(
+                recordBlaBlaCollectorEvidence0510(
                     "TRIP_REJECTED",
                     packageName,
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_dom_unreadable url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
@@ -1889,7 +1929,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(result.detail.url)
             if (candidateTripId.isNullOrBlank() || detailTripId.isNullOrBlank() || candidateTripId != detailTripId) {
                 skipped++
-                UnifiedDebugEventStore.record(
+                recordBlaBlaCollectorEvidence0510(
                     "TRIP_REJECTED",
                     packageName,
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=detail_trip_id_mismatch candidateTripId=${candidateTripId.orEmpty()} detailTripId=${detailTripId.orEmpty()} action=reject_stale_detail",
@@ -1928,21 +1968,20 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 )
             }
             val sourceBackedResult = (networkResolution?.let { resolution ->
+                // The trip-bound network response is high-quality passenger enrichment, but its
+                // bookings/waypoints arrays are not proof that the whole roster or itinerary was
+                // returned. Preserve the structural DOM evidence and merge identities monotonically.
+                val mergedPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+                    result.detail.passengers + resolution.passengers,
+                )
                 result.copy(
-                    detail = result.detail.copy(
-                        passengers = resolution.passengers,
-                        passengerRosterComplete = true,
-                    ),
-                    passengerHrefs = resolution.passengers.mapNotNull { passenger -> passenger.booking_href },
-                    explicitEmptyRoster = resolution.explicitEmpty,
-                    rosterHasMore = false,
-                    rosterTerminalEvidence = true,
-                    itineraryStops = if (resolution.itineraryAuthoritative) {
-                        resolution.itineraryStops
-                    } else {
-                        result.itineraryStops
-                    },
-                    itineraryAuthoritative = resolution.itineraryAuthoritative,
+                    detail = result.detail.copy(passengers = mergedPassengers),
+                    passengerHrefs = (
+                        result.passengerHrefs +
+                            resolution.passengers.mapNotNull { passenger -> passenger.booking_href }
+                        ).distinct(),
+                    itineraryStops = result.itineraryStops,
+                    itineraryAuthoritative = result.itineraryAuthoritative,
                 )
             } ?: result).let { source ->
                 source.copy(
@@ -1956,11 +1995,65 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_NETWORK_SOURCE_APPLIED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterComplete=true piiLogged=false",
+                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterAuthority=false piiLogged=false",
                 )
             }
             val acceptedResult = if (scriptSelection0449.wantsPassengerData()) {
-                val rosterSignature = directRosterSignature(sourceBackedResult)
+                tripRosterObservedPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+                    tripRosterObservedPassengers + sourceBackedResult.detail.passengers,
+                ).toMutableList()
+                tripRosterObservedPassengerHrefs += sourceBackedResult.passengerHrefs
+                val accumulatedRosterResult = sourceBackedResult.copy(
+                    detail = sourceBackedResult.detail.copy(
+                        passengers = tripRosterObservedPassengers.toList(),
+                    ),
+                    passengerHrefs = tripRosterObservedPassengerHrefs.toList(),
+                )
+
+                if (!accumulatedRosterResult.atBottom) {
+                    if (tripRosterScrollPasses >= MAX_TRIP_ROSTER_SCROLL_PASSES_0509) {
+                        skipped++
+                        recordBlaBlaCollectorEvidence0510(
+                            "TRIP_REJECTED",
+                            packageName,
+                            "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_bottom_not_proven scrollPasses=$tripRosterScrollPasses action=skip_fail_closed",
+                        )
+                        advanceCandidate(expectedSync, expectedCandidate)
+                        return@evaluateRequest
+                    }
+                    val viewport = accumulatedRosterResult.viewportHeight.coerceAtLeast(600)
+                    val maxScroll = (accumulatedRosterResult.scrollHeight - 1).coerceAtLeast(0)
+                    val target = (
+                        accumulatedRosterResult.scrollY + maxOf(600, viewport * 3 / 4)
+                        ).coerceAtMost(maxScroll)
+                    if (
+                        target <= accumulatedRosterResult.scrollY &&
+                        accumulatedRosterResult.scrollHeight > accumulatedRosterResult.viewportHeight
+                    ) {
+                        skipped++
+                        recordBlaBlaCollectorEvidence0510(
+                            "TRIP_REJECTED",
+                            packageName,
+                            "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_scroll_no_progress scrollY=${accumulatedRosterResult.scrollY} scrollHeight=${accumulatedRosterResult.scrollHeight} viewport=${accumulatedRosterResult.viewportHeight} action=skip_fail_closed",
+                        )
+                        advanceCandidate(expectedSync, expectedCandidate)
+                        return@evaluateRequest
+                    }
+                    tripRosterScrollPasses++
+                    UnifiedDebugEventStore.record(
+                        "ROSTER_TRAVERSAL_SCROLL",
+                        packageName,
+                        "account=${account.displayLabel} tripId=$candidateTripId pass=$tripRosterScrollPasses from=${accumulatedRosterResult.scrollY} to=$target observedPassengers=${tripRosterObservedPassengers.size} observedBookingLinks=${tripRosterObservedPassengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} atBottom=false",
+                    )
+                    webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
+                        postSessionDelayed0405({
+                            captureTripDetail(expectedSync, expectedNavigation, expectedCandidate)
+                        }, ROSTER_SCROLL_SETTLE_MS_0509)
+                    }
+                    return@evaluateRequest
+                }
+
+                val rosterSignature = directRosterSignature(accumulatedRosterResult)
                 if (rosterSignature == lastTripRosterSignature) {
                     tripRosterStablePasses++
                 } else {
@@ -1969,31 +2062,33 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 }
                 val awaitNetworkBeforeEmptyRoster = BlaBlaCollectorPassengerModule.shouldAwaitNetworkBeforeEmptyRoster(
                     networkResolved = networkResolution != null,
-                    passengerCount = sourceBackedResult.detail.passengers.size,
+                    passengerCount = accumulatedRosterResult.detail.passengers.size,
                     readAttempts = tripRosterReadAttempts,
                     maxReadAttempts = MAX_TRIP_ROSTER_READ_ATTEMPTS,
                 )
-                val confirmedRosterComplete = networkResolution != null ||
-                    (!awaitNetworkBeforeEmptyRoster && BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
-                        passengerCount = sourceBackedResult.detail.passengers.size,
-                        structurallyComplete = sourceBackedResult.detail.passengerRosterComplete,
-                        explicitEmpty = sourceBackedResult.explicitEmptyRoster,
-                        hasMore = sourceBackedResult.rosterHasMore,
-                        terminalEvidence = sourceBackedResult.rosterTerminalEvidence,
-                        stablePasses = tripRosterStablePasses,
-                    ))
-                val passengerResult = sourceBackedResult.copy(
-                    detail = sourceBackedResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
+                val confirmedRosterComplete =
+                    !awaitNetworkBeforeEmptyRoster &&
+                        accumulatedRosterResult.atBottom &&
+                        BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                            passengerCount = accumulatedRosterResult.detail.passengers.size,
+                            structurallyComplete = accumulatedRosterResult.detail.passengerRosterComplete,
+                            explicitEmpty = accumulatedRosterResult.explicitEmptyRoster,
+                            hasMore = accumulatedRosterResult.rosterHasMore,
+                            terminalEvidence = accumulatedRosterResult.rosterTerminalEvidence,
+                            stablePasses = tripRosterStablePasses,
+                        )
+                val passengerResult = accumulatedRosterResult.copy(
+                    detail = accumulatedRosterResult.detail.copy(passengerRosterComplete = confirmedRosterComplete),
                 )
                 val rosterState = BlaBlaCollectorPassengerModule.rosterState(
                     passengerCount = passengerResult.detail.passengers.size,
                     rosterComplete = passengerResult.detail.passengerRosterComplete,
                     explicitEmpty = passengerResult.explicitEmptyRoster,
                 )
-                UnifiedDebugEventStore.record(
+                recordBlaBlaCollectorEvidence0510(
                     "TRIP_ROSTER_PROBE",
                     packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${passengerResult.detail.passengers.size} bookingLinks=${passengerResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${sourceBackedResult.detail.passengerRosterComplete} rosterComplete=${passengerResult.detail.passengerRosterComplete} explicitEmpty=${passengerResult.explicitEmptyRoster} hasMore=${passengerResult.rosterHasMore} terminalEvidence=${passengerResult.rosterTerminalEvidence} stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
+                    "account=${account.displayLabel} tripId=$candidateTripId attempt=${tripRosterReadAttempts + 1} passengerCards=${passengerResult.detail.passengers.size} bookingLinks=${passengerResult.passengerHrefs.count { !it.startsWith(CARD_TARGET_PREFIX) }} structuralComplete=${accumulatedRosterResult.detail.passengerRosterComplete} rosterComplete=${passengerResult.detail.passengerRosterComplete} explicitEmpty=${passengerResult.explicitEmptyRoster} hasMore=${passengerResult.rosterHasMore} terminalEvidence=${passengerResult.rosterTerminalEvidence} atBottom=${passengerResult.atBottom} scrollPasses=$tripRosterScrollPasses stablePasses=$tripRosterStablePasses networkSource=${networkResolution != null} waitingForNetwork=$awaitNetworkBeforeEmptyRoster state=$rosterState",
                 )
                 if (rosterState == BlaBlaDirectRosterState.UNKNOWN) {
                     if (tripRosterReadAttempts < MAX_TRIP_ROSTER_READ_ATTEMPTS) {
@@ -2012,7 +2107,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         return@evaluateRequest
                     }
                     skipped++
-                    UnifiedDebugEventStore.record(
+                    recordBlaBlaCollectorEvidence0510(
                         "TRIP_REJECTED",
                         packageName,
                         "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=roster_unknown_after_probe attempts=${tripRosterReadAttempts + 1} action=skip_fail_closed",
@@ -2053,7 +2148,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 }
                 if (!editLinkMatches) {
                     skipped++
-                    UnifiedDebugEventStore.record(
+                    recordBlaBlaCollectorEvidence0510(
                         "TRIP_REJECTED",
                         packageName,
                         "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} tripId=$candidateTripId reason=edit_link_missing_or_mismatch attempts=${tripRosterReadAttempts + 1} action=quarantine_and_continue",
@@ -2082,14 +2177,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val ignoredProfileLinks =
                 (acceptedResult.driverProfileLinks.size - trustedDriverLinks.size).coerceAtLeast(0)
             val driverUuids = BlaBlaCollectorIdentityModule.uuids(trustedDriverLinks)
-            UnifiedDebugEventStore.record(
+            recordBlaBlaCollectorEvidence0510(
                 "TRIP_DETAIL_CAPTURED",
                 packageName,
                 "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} expectedUuid=${expectedUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")} ignoredNonDriverProfileLinks=$ignoredProfileLinks passengers=${identityAcceptedResult.detail.passengers.size} rosterComplete=${identityAcceptedResult.detail.passengerRosterComplete} networkSource=${networkResolution != null} editLinkPresent=${identityAcceptedResult.editHref.isNotBlank()} url=${BlaBlaCollectorUrlModule.sanitizeForLog(webView.url.orEmpty())}",
             )
             if (expectedUuid != null && driverUuids.isNotEmpty() && expectedUuid !in driverUuids) {
                 skipped++
-                UnifiedDebugEventStore.record(
+                recordBlaBlaCollectorEvidence0510(
                     "TRIP_REJECTED",
                     packageName,
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=explicit_detail_uuid_mismatch expectedUuid=$expectedUuid foundUuids=${driverUuids.joinToString(",")}",
@@ -2110,7 +2205,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             if (!identityConfirmedThisSync || account.verifiedDefinition() == null) {
                 skipped++
-                UnifiedDebugEventStore.record(
+                recordBlaBlaCollectorEvidence0510(
                     "TRIP_REJECTED",
                     packageName,
                     "account=${account.displayLabel} index=${expectedCandidate + 1}/${candidates.size} reason=identity_not_verified expectedUuid=${account.profileUuid.orEmpty()} foundUuids=${driverUuids.joinToString(",")}",
@@ -2214,8 +2309,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 publicTripHrefBinding = resolvedPublicLink?.binding.orEmpty(),
             )
             pendingTripPassengers = if (scriptSelection0449.wantsPassengerData()) {
-                (networkResolution?.passengers ?: preview?.passengers ?: identityAcceptedResult.detail.passengers)
-                    .toMutableList()
+                BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+                    identityAcceptedResult.detail.passengers,
+                ).toMutableList()
             } else {
                 mutableListOf()
             }
@@ -3021,7 +3117,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             }
             pendingPublishedSeats = evidence.seats
             store.saveDiagnosticHtml(account, "card-${resolvedCardTraversalKeys.size + 1}-options", evidence.domHtml)
-            UnifiedDebugEventStore.record(
+            recordBlaBlaCollectorEvidence0510(
                 "DIRECT_SEAT_OPTIONS_CAPTURED",
                 packageName,
                 "account=${account.displayLabel} tripId=$tripId publishedSeats=${evidence.seats} canAdd=${evidence.canAdd} canRemove=${evidence.canRemove} savePresent=${evidence.savePresent} htmlCaptured=${evidence.domHtml.isNotBlank()} identityMatch=true sequential=true",
@@ -3095,7 +3191,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             itinerary_stops = result.itineraryStops
                 .map(String::trim)
                 .filter(String::isNotBlank)
-                .distinct(),
+                .fold(mutableListOf<String>()) { ordered, stop ->
+                    if (ordered.lastOrNull() != stop) ordered += stop
+                    ordered
+                }
+                .toList(),
             itinerary_authoritative = result.itineraryAuthoritative,
             public_trip_href = BlaBlaCollectorUrlModule.publicTripForCollectorState(
                 result.publicTripHref,
@@ -3127,7 +3227,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         collected += trip
-        UnifiedDebugEventStore.record(
+        recordBlaBlaCollectorEvidence0510(
             "TRIP_ACCEPTED",
             packageName,
             "account=${account.displayLabel} order=${resolvedCardTraversalKeys.size + 1} tripId=${trip.trip_id.orEmpty()} date=${trip.date} passengers=${trip.passengers.size} itineraryStops=${trip.itinerary_stops.size} rosterComplete=${trip.passenger_roster_complete} publishedSeats=${trip.published_seats ?: -1} sequential=true",
@@ -3356,6 +3456,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
         passengerCallActionTriggered = false
         interceptedPassengerPhone = null
         tripRosterReadAttempts = 0
+        tripRosterScrollPasses = 0
+        tripRosterObservedPassengers.clear()
+        tripRosterObservedPassengerHrefs.clear()
         networkTripSourceReadAttempts0407 = 0
         publicTripNavigation0443 = null
         lastTripRosterSignature = ""
@@ -3439,6 +3542,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val latitude = validLatitude(booking.boardingLatitude)
             val longitude = validLongitude(booking.boardingLongitude)
             val hasCoordinates = latitude != null && longitude != null
+            val dropoffLatitude = validLatitude(booking.dropoffLatitude)
+            val dropoffLongitude = validLongitude(booking.dropoffLongitude)
+            val hasDropoffCoordinates = dropoffLatitude != null && dropoffLongitude != null
             passengerIdentityStore.saveExternalMetadata(
             current.copy(
                 externalPassengerId = booking.passengerId,
@@ -3450,6 +3556,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     dropoffAddress = dropoffAddress.ifBlank { current.dropoffAddress },
                     boardingLatitude = if (hasCoordinates) latitude else current.boardingLatitude,
                     boardingLongitude = if (hasCoordinates) longitude else current.boardingLongitude,
+                    dropoffLatitude = if (hasDropoffCoordinates) dropoffLatitude else current.dropoffLatitude,
+                    dropoffLongitude = if (hasDropoffCoordinates) dropoffLongitude else current.dropoffLongitude,
                     boardingLocationSource = if (hasCoordinates) {
                         "blablacar_network_booking_pickup"
                     } else {
@@ -3763,6 +3871,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
+        private const val MAX_TRIP_ROSTER_SCROLL_PASSES_0509 = 12
+        private const val ROSTER_SCROLL_SETTLE_MS_0509 = 650L
         private const val MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS = 2
         private const val PUBLIC_TRIP_SHARE_RETRY_MS = 350L
         private const val MAX_PUBLIC_TRIP_SEARCH_READ_ATTEMPTS = 3

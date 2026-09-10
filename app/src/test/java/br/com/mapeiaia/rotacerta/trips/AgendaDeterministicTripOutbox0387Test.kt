@@ -228,6 +228,20 @@ class AgendaDeterministicTripOutbox0387Test {
     }
 
     @Test
+    fun staleRejectedExternalIdentityIsSupersededAfterBoundedRetries0520() {
+        assertFalse(staleRejectedExternalIdentityMustSupersede0520(1, false, false))
+        assertFalse(staleRejectedExternalIdentityMustSupersede0520(2, false, false))
+        assertTrue(staleRejectedExternalIdentityMustSupersede0520(3, false, false))
+        assertFalse(staleRejectedExternalIdentityMustSupersede0520(200, true, false))
+        assertFalse(staleRejectedExternalIdentityMustSupersede0520(200, false, true))
+
+        val outbox = source("TripPublicationOutbox0387.kt")
+        assertTrue(outbox.contains("TRIP_MUTATION_OUTBOX_IDENTITY_SUPERSEDED_0520"))
+        assertTrue(outbox.contains("TRIP_MUTATION_EXTERNAL_ACCOUNT_OPTIONAL_0520"))
+        assertTrue(outbox.contains("strongSnapshotAuthority=true"))
+    }
+
+    @Test
     fun outboxIsDurableTenantScopedAndSupportsRetryRebaseAndSupersede() {
         val outbox = source("TripPublicationOutbox0387.kt")
         assertTrue(outbox.contains("getSharedPreferences(PREFS, Context.MODE_PRIVATE)"))

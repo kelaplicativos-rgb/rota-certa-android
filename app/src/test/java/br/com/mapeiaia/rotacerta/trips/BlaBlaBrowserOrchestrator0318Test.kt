@@ -76,6 +76,22 @@ class BlaBlaBrowserOrchestrator0318Test {
         assertTrue(dynamic.contains("ROSTER_EXPANSION_NOT_AUTOMATED"))
     }
 
+
+    @Test
+    fun positiveRosterMustTraversePageBottomAndKeepMergedObservationAuthoritative() {
+        val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
+        val detailScript = File("src/main/assets/blablacar/scripts/trip_detail.js").readText()
+
+        assertTrue(detailScript.contains("scrollHeight"))
+        assertTrue(detailScript.contains("viewportHeight"))
+        assertTrue(detailScript.contains("atBottom"))
+        assertTrue(dynamic.contains("ROSTER_TRAVERSAL_SCROLL"))
+        assertTrue(dynamic.contains("tripRosterObservedPassengers"))
+        assertTrue(dynamic.contains("tripRosterObservedPassengerHrefs"))
+        assertTrue(dynamic.contains("accumulatedRosterResult.atBottom"))
+        assertFalse(dynamic.contains("networkResolution?.passengers ?: preview?.passengers"))
+    }
+
     @Test
     fun scriptsAreNamedAfterTheDocumentedBrowserRequests() {
         val expected = setOf(

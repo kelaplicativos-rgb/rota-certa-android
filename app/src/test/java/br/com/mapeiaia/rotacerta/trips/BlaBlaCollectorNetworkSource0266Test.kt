@@ -54,6 +54,11 @@ class BlaBlaCollectorNetworkSource0266Test {
         assertEquals(8_900L, row.fareMinorUnits)
         assertEquals("BRL", row.fareCurrencyCode)
         assertEquals("Terminal de origem", row.boardingAddress)
+        assertEquals("Terminal de destino", row.dropoffAddress)
+        assertEquals(-23.55, row.boardingLatitude)
+        assertEquals(-46.63, row.boardingLongitude)
+        assertEquals(-22.90, row.dropoffLatitude)
+        assertEquals(-47.06, row.dropoffLongitude)
         assertEquals(
             "https://www.blablacar.com.br/rides/offer/passenger/707f1140-541a-11ea-a000-008600cf444c/0?id=$tripId",
             row.passenger.booking_href,
@@ -63,7 +68,7 @@ class BlaBlaCollectorNetworkSource0266Test {
     }
 
     @Test
-    fun exactNetworkWaypointsBecomeAuthoritativeOrderedItinerary() {
+    fun bookingManagementWaypointsRemainNonAuthoritativeRouteEvidence() {
         val source = BlaBlaNetworkTripSourceEvidence(
             tripId = tripId,
             bookingsComplete = true,
@@ -79,7 +84,7 @@ class BlaBlaCollectorNetworkSource0266Test {
 
         val resolved = BlaBlaCollectorNetworkSourceModule.resolve(tripId, source)!!
 
-        assertTrue(resolved.itineraryAuthoritative)
+        assertEquals(false, resolved.itineraryAuthoritative)
         assertEquals(
             listOf("Santo André", "Extrema", "Pouso Alegre", "São Thomé das Letras"),
             resolved.itineraryStops,
@@ -87,7 +92,7 @@ class BlaBlaCollectorNetworkSource0266Test {
     }
 
     @Test
-    fun visualMapCityIsNeverInventedButRealWaypointBecomesReservableEvidence() {
+    fun bookingWaypointCountNeverPromotesPartialTopologyToPublishedItinerary() {
         val mapOnly = BlaBlaNetworkTripSourceEvidence(
             tripId = tripId,
             bookingsComplete = true,
@@ -107,9 +112,9 @@ class BlaBlaCollectorNetworkSource0266Test {
                 BlaBlaNetworkWaypointSourceEvidence(label = "São Tomé das Letras"),
             ),
         )
-        val authoritative = BlaBlaCollectorNetworkSourceModule.resolve(tripId, structured)!!
-        assertTrue(authoritative.itineraryAuthoritative)
-        assertEquals(listOf("Santo André", "Atibaia", "São Tomé das Letras"), authoritative.itineraryStops)
+        val routeEvidence = BlaBlaCollectorNetworkSourceModule.resolve(tripId, structured)!!
+        assertEquals(false, routeEvidence.itineraryAuthoritative)
+        assertEquals(listOf("Santo André", "Atibaia", "São Tomé das Letras"), routeEvidence.itineraryStops)
     }
 
     @Test

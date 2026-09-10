@@ -59,6 +59,8 @@ internal data class BlaBlaNetworkResolvedBooking(
     val dropoffAddress: String,
     val boardingLatitude: Double?,
     val boardingLongitude: Double?,
+    val dropoffLatitude: Double?,
+    val dropoffLongitude: Double?,
 )
 
 internal data class BlaBlaNetworkTripResolution(
@@ -135,7 +137,10 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
             tripId = sourceTripId,
             bookings = resolved,
             itineraryStops = itineraryStops,
-            itineraryAuthoritative = evidence.waypointsComplete && itineraryStops.size >= 2,
+            // root.waypoints is observed on the booking-management payload. Runtime evidence
+            // proves its size changes with the booking set for the same strong trip identity,
+            // so it is useful route evidence but cannot define the complete published itinerary.
+            itineraryAuthoritative = false,
         )
     }
 
@@ -199,6 +204,8 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
             dropoffAddress = evidence.dropoff.address.trim().take(500),
             boardingLatitude = validLatitude(evidence.pickup.latitude),
             boardingLongitude = validLongitude(evidence.pickup.longitude),
+            dropoffLatitude = validLatitude(evidence.dropoff.latitude),
+            dropoffLongitude = validLongitude(evidence.dropoff.longitude),
         )
     }
 

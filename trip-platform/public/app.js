@@ -31,6 +31,25 @@ const queryDriverUsername = normalizePublicSlug(params.get("motorista") || "");
 const driverUsername = queryDriverUsername || publicSlug;
 let agendaChangeCursor0495 = 0;
 let agendaChangeWatchRunning0495 = false;
+let publicDriverWhatsapp0519 = "";
+
+function whatsappDigits0519(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+}
+
+function driverWhatsappHref0519(item, from, to) {
+  const digits = whatsappDigits0519(publicDriverWhatsapp0519);
+  if (!digits) return "";
+  const when = [
+    agendaDateLabel0473(item?.departureAtMillis, item?.timezoneId),
+    agendaTripTime0496(item?.departureAtMillis, item?.timezoneId),
+  ].filter(Boolean).join(" às ");
+  const message = "Olá! Vi a viagem " + from + " → " + to +
+    (when ? " (" + when + ")" : "") +
+    " na Agenda Rota Certa e gostaria de reservar uma vaga.";
+  return "https://wa.me/" + digits + "?text=" + encodeURIComponent(message);
+}
 
 function agendaExpansionStorageKey0506() {
   const scope = publicSlug || driverUsername || agendaToken || "public";
@@ -236,6 +255,7 @@ function seatRange(item) {
 
 function isFullTrip(item) {
   const range = seatRange(item);
+  if (item?.capacityReliable === true) return range.minimum === 0 && range.maximum === 0;
   return item?.isFull === true || item?.status === "FULL" || (range.minimum === 0 && range.maximum === 0);
 }
 
@@ -591,6 +611,21 @@ function renderAgendaCards(entries, container) {
     canonicalVisual0473.append(date, journey0473, expandedItinerary0480, bottom, expandHint0480);
     card.appendChild(canonicalVisual0473);
 
+    const whatsappHref0519 = driverWhatsappHref0519(item, from, to);
+    if (whatsappHref0519) {
+      const actions0519 = document.createElement("div");
+      actions0519.className = "agendaDriverActions0519";
+      const whatsapp0519 = document.createElement("a");
+      whatsapp0519.className = "agendaWhatsapp0519";
+      whatsapp0519.href = whatsappHref0519;
+      whatsapp0519.target = "_blank";
+      whatsapp0519.rel = "noopener noreferrer";
+      whatsapp0519.textContent = "💬 Fazer reserva com o motorista";
+      whatsapp0519.setAttribute("aria-label", "Fazer reserva com o motorista pelo WhatsApp");
+      actions0519.appendChild(whatsapp0519);
+      card.appendChild(actions0519);
+    }
+
     if (full) {
       const fullWord = document.createElement("div");
       fullWord.className = "fullWord";
@@ -674,6 +709,43 @@ function renderAgenda(trips) {
 
 let agendaLoadInFlight0491 = false;
 
+function publicAgendaSafeMessage0514(raw) {
+  const value = String(raw || "").replace(/[\r\n\t]+/g, " ").trim();
+  if (!value || /<html|<!doctype|<head|<body/i.test(value)) return "";
+  return value.slice(0, 220);
+}
+
+async function readPublicAgendaJson0514(response, fallbackMessage) {
+  const status = Number(response?.status || 0);
+  const contentType = String(response?.headers?.get?.("content-type") || "").toLowerCase();
+  const raw = await response.text();
+  let body = null;
+  if (contentType.includes("json") || /^[\s]*[\[{]/.test(raw)) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") body = parsed;
+    } catch (_) {
+      body = null;
+    }
+  }
+  if (!response.ok) {
+    const backendMessage = publicAgendaSafeMessage0514(body?.message);
+    const http = status > 0 ? " (HTTP " + status + ")" : "";
+    throw new Error(backendMessage || fallbackMessage + http + ".");
+  }
+  if (!body) {
+    console.warn("[RotaCertaPublicAgenda0514]", {
+      event: "PUBLIC_AGENDA_NON_JSON_RESPONSE",
+      status,
+      contentType: contentType.slice(0, 80),
+      bodyLogged: false,
+    });
+    const http = status > 0 ? " (HTTP " + status + ")" : "";
+    throw new Error(fallbackMessage + http + ": resposta inválida do serviço.");
+  }
+  return body;
+}
+
 async function watchPublicAgendaChanges0495() {
   if (agendaChangeWatchRunning0495 || navigator.onLine === false || driverUsername.length < 3) return;
   agendaChangeWatchRunning0495 = true;
@@ -689,8 +761,7 @@ async function watchPublicAgendaChanges0495() {
         headers: { Accept: "application/json" },
         cache: "no-store",
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.message || "Invalidação da Agenda indisponível.");
+      const body = await readPublicAgendaJson0514(response, "Invalidação da Agenda temporariamente indisponível");
       agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.cursor || 0));
       if (body?.degraded === true) break;
       if (body?.changed === true) {
@@ -710,6 +781,52 @@ function configurePassengerAreaLink0491() {
   link.href = "/minha-area.html?motorista=" + encodeURIComponent(driverUsername);
 }
 
+let agendaStaticFailoverActive0517 = false;
+
+function publicAgendaStaticFailoverUrl0517() {
+  const slug = normalizePublicSlug(publicSlug || driverUsername);
+  if (slug.length < 3 || RESERVED_PUBLIC_SLUGS.has(slug)) return "";
+  return "/__agenda_fallback/" + encodeURIComponent(slug) + ".json";
+}
+
+async function readPublicAgendaFallback0517() {
+  const path = publicAgendaStaticFailoverUrl0517();
+  if (!path) return null;
+  const response = await fetch(path + "?ts=" + Date.now(), {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  });
+  if (!response.ok) return null;
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  const raw = await response.text();
+  if (!contentType.includes("json") && !/^[\s]*[\[{]/.test(raw)) return null;
+  try {
+    const body = JSON.parse(raw);
+    if (!body || typeof body !== "object" || !Array.isArray(body.trips)) return null;
+    return body;
+  } catch (_) {
+    return null;
+  }
+}
+
+function applyPublicAgendaBody0517(body, fromStaticFailover0517 = false) {
+  const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
+  publicDriverWhatsapp0519 = String(body?.driver?.whatsapp || "").trim();
+  $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
+  agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
+  renderAgenda(Array.isArray(body.trips) ? body.trips : []);
+  agendaStaticFailoverActive0517 = fromStaticFailover0517;
+  if (fromStaticFailover0517) {
+    console.warn("[RotaCertaPublicAgenda0517]", {
+      event: "PUBLIC_AGENDA_STATIC_FAILOVER_0517",
+      source: "HOSTING_SANITIZED_SNAPSHOT",
+      bodyLogged: false,
+    });
+  } else {
+    watchPublicAgendaChanges0495();
+  }
+}
+
 async function loadAgenda(silent0491 = false) {
   if (agendaLoadInFlight0491) return;
   if (driverUsername.length < 3 || (!publicSlug && agendaToken.length < 16)) {
@@ -725,14 +842,16 @@ async function loadAgenda(silent0491 = false) {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body.message || "Agenda indisponível.");
-    const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
-    $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
-    agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
-    renderAgenda(Array.isArray(body.trips) ? body.trips : []);
-    watchPublicAgendaChanges0495();
+    const body = await readPublicAgendaJson0514(response, "Agenda temporariamente indisponível");
+    applyPublicAgendaBody0517(body, false);
   } catch (error) {
+    if (!silent0491 || agendaStaticFailoverActive0517) {
+      const fallbackBody0517 = await readPublicAgendaFallback0517().catch(() => null);
+      if (fallbackBody0517) {
+        applyPublicAgendaBody0517(fallbackBody0517, true);
+        return;
+      }
+    }
     if (!silent0491) setError(error.message || "Não foi possível carregar a Agenda de Viagens.");
   } finally {
     agendaLoadInFlight0491 = false;

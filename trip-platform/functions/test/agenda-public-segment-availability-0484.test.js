@@ -200,7 +200,7 @@ test("0504 public labels keep canonical availability numeric and privacy-safe", 
   assert.equal(segmentAvailabilityLabel0484(2), "2 vagas");
   assert.match(html, /agendaSegmentAvailability0484/);
   assert.match(html, /agendaSegmentPassengers0489/);
-  assert.match(html, /app\.js\?v=0\.1\.506/);
+  assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
 });
 
 test("0504 card summary remains numeric for zero, exact and segment ranges", () => {
@@ -370,8 +370,9 @@ test("0500 public Agenda projection allowlist removes passenger/private/admin da
 });
 
 
-test("0500 anonymous public driver projection never serializes WhatsApp or driver phone", () => {
+test("0519 public driver profile exposes only configured driver WhatsApp, never passenger contact", () => {
   const profile = between(api, "function safePublicDriverProfile", "function publicProjectionAttestedCurrent0429");
-  assert.doesNotMatch(profile, /profile\.whatsapp/);
-  assert.doesNotMatch(profile, /driverWhatsapp/);
+  assert.match(profile, /driverWhatsapp0519/);
+  assert.match(profile, /profile\.whatsapp/);
+  assert.doesNotMatch(profile, /passengerContact|passengerName|driverPhone/);
 });

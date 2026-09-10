@@ -190,6 +190,53 @@ class BlaBlaCollectorModules0264Test {
         assertEquals(2, merged.size)
     }
 
+
+    @Test
+    fun positiveStructuralRosterNeedsTwoStableTerminalPasses() {
+        assertFalse(
+            BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                passengerCount = 2,
+                structurallyComplete = true,
+                explicitEmpty = false,
+                hasMore = false,
+                terminalEvidence = true,
+                stablePasses = 1,
+            ),
+        )
+        assertTrue(
+            BlaBlaCollectorPassengerModule.rosterCompleteAfterStableProbe(
+                passengerCount = 2,
+                structurallyComplete = true,
+                explicitEmpty = false,
+                hasMore = false,
+                terminalEvidence = true,
+                stablePasses = 2,
+            ),
+        )
+    }
+
+    @Test
+    fun networkSubsetCannotEraseThirdDistinctDomReservation() {
+        val second = passenger.copy(
+            name = "Passenger B",
+            booking_href = "https://www.blablacar.com.br/rides/offer/passenger/reservation-b",
+        )
+        val third = passenger.copy(
+            name = "Passenger C",
+            booking_href = "https://www.blablacar.com.br/rides/offer/passenger/reservation-c",
+        )
+
+        val merged = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
+            listOf(passenger, second, third) + listOf(passenger, second),
+        )
+
+        assertEquals(3, merged.size)
+        assertEquals(
+            setOf("reservation-a", "reservation-b", "reservation-c"),
+            merged.mapNotNull { it.booking_href?.substringAfterLast('/') }.toSet(),
+        )
+    }
+
     @Test
     fun normalizedTripDoesNotCountDuplicateDomNodesAsOccupiedSeats() {
         val weak = passenger.copy(phone = null, booking_href = null)

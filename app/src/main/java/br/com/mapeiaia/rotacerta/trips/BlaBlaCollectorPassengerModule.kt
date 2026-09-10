@@ -45,7 +45,7 @@ internal object BlaBlaCollectorPassengerModule {
     ): Boolean = when {
         passengerCount < 0 || hasMore || !terminalEvidence -> false
         explicitEmpty && passengerCount == 0 -> stablePasses >= 3
-        structurallyComplete && passengerCount > 0 -> true
+        structurallyComplete && passengerCount > 0 -> stablePasses >= 2
         passengerCount > 0 -> stablePasses >= 2
         else -> stablePasses >= 3
     }

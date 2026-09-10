@@ -1,74 +1,180 @@
-name: Agenda 0.1.303 hosting full-card state
+name: Rota Certa 0.1.521 public Agenda current snapshot
 
 on:
   push:
     branches:
-      - agent/agenda-public-capacity-fidelity-0.1.303
+      - agent/canonical-segment-root-cause-0.1.509
     paths:
       - '.github/workflows/agenda-0303-hosting-full-card.yml'
+      - 'trip-platform/public/**'
+      - 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
+      - 'trip-platform/functions/test/agenda-card-expansion-state-0506.test.js'
+      - 'trip-platform/functions/test/agenda-public-segment-availability-0484.test.js'
+      - 'app/build.gradle.kts'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: public-agenda-hosting-0514-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hosting:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     env:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
         with:
-          ref: agent/agenda-public-capacity-fidelity-0.1.303
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate disabled full-trip UI
+      - name: Validate public Agenda recovery and preserved UI contracts
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'versionCode = 5813' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.521"' app/build.gradle.kts
           node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/public-capacity-fidelity-0303.test.js
-          grep -Fq 'document.createElement(isFull ? "article" : "a")' trip-platform/public/app.js
-          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' trip-platform/public/app.js
-          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' trip-platform/public/app.js
-          grep -Fq 'pointer-events:none' trip-platform/public/index.html
+          node --test             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js
+          grep -Fq 'async function readPublicAgendaJson0514' trip-platform/public/app.js
+          grep -Fq 'async function readPublicAgendaFallback0517' trip-platform/public/app.js
+          grep -Fq 'PUBLIC_AGENDA_STATIC_FAILOVER_0517' trip-platform/public/app.js
+          grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' trip-platform/public/app.js
+          grep -Fq 'bodyLogged: false' trip-platform/public/app.js
+          ! grep -Fq 'const body = await response.json()' trip-platform/public/app.js
+          grep -Fq 'Agenda temporariamente indisponível' trip-platform/public/app.js
+          grep -Fq '/app.js?v=0.1.519-global-extra-seats-whatsapp0519' trip-platform/public/index.html
+          grep -Fq 'agendaSegmentAvailabilitySeats0484' trip-platform/public/app.js
+          grep -Fq 'agendaPassengerDot0473' trip-platform/public/app.js
+          grep -Fq 'applyAgendaTripExpansionState0506' trip-platform/public/app.js
+          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f"
 
       - name: Configure Firebase authentication
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${FIREBASE_TOKEN:-}" ]; then
-            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
-          elif [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
-            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
-            echo "Firebase service account: $CLIENT_EMAIL"
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
             echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
           elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
-            CLIENT_EMAIL="$(node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/firebase-sa.json","utf8"));process.stdout.write(String(x.client_email||""))')"
-            echo "Firebase service account: $CLIENT_EMAIL"
             echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
             echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
           else
-            echo "Firebase credential is missing."
+            echo "Firebase credential is missing." >&2
             exit 3
           fi
 
-      - name: Deploy Hosting
+      - name: Materialize sanitized public Agenda failover snapshot
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${FIREBASE_AUTH_MODE:-}" != "service-account" ]; then
+            echo "A service-account credential is required to materialize the sanitized failover snapshot." >&2
+            exit 4
+          fi
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          mkdir -p trip-platform/public/__agenda_fallback
+          node <<'NODE'
+          "use strict";
+          const fs = require("node:fs");
+          const express = require("./trip-platform/functions/node_modules/express");
+          const { tripApi } = require("./trip-platform/functions/index.js");
+
+          const slug = "ezequiel";
+          const output = "./trip-platform/public/__agenda_fallback/" + slug + ".json";
+          const forbiddenKeys = new Set([
+            "passengerContact", "passengerName", "phone", "whatsapp",
+            "driverTokenHash", "agendaTokenHash", "bookingId", "canonicalTripId",
+            "privateMirrorJson", "notes", "address", "latitude", "longitude",
+          ]);
+
+          function allowPublicDriverWhatsapp0519(path, key) {
+            return path === "$.driver" && key === "whatsapp";
+          }
+
+          function sanitizeStaticFailover(value, path = "$") {
+            if (Array.isArray(value)) {
+              return value.map((entry, index) => sanitizeStaticFailover(entry, path + "[" + index + "]"));
+            }
+            if (!value || typeof value !== "object") return value;
+            const clean = {};
+            for (const [key, child] of Object.entries(value)) {
+              if (forbiddenKeys.has(key) && !allowPublicDriverWhatsapp0519(path, key)) continue;
+              clean[key] = sanitizeStaticFailover(child, path + "." + key);
+            }
+            return clean;
+          }
+
+          function assertSanitized(value, path = "$") {
+            if (Array.isArray(value)) {
+              value.forEach((entry, index) => assertSanitized(entry, path + "[" + index + "]"));
+              return;
+            }
+            if (!value || typeof value !== "object") return;
+            for (const [key, child] of Object.entries(value)) {
+              if (forbiddenKeys.has(key) && !allowPublicDriverWhatsapp0519(path, key)) {
+                throw new Error("private field in failover snapshot: " + path + "." + key);
+              }
+              assertSanitized(child, path + "." + key);
+            }
+          }
+
+          async function main() {
+            const app = express();
+            app.use((req, res) => tripApi(req, res));
+            const server = await new Promise((resolve) => {
+              const listener = app.listen(8787, "127.0.0.1", () => resolve(listener));
+            });
+            try {
+              const response = await fetch("http://127.0.0.1:8787/v1/public/agenda/" + encodeURIComponent(slug), {
+                headers: { Accept: "application/json" },
+              });
+              const raw = await response.text();
+              if (!response.ok) throw new Error("local canonical public Agenda returned HTTP " + response.status + ": " + raw.slice(0, 180));
+              const body = JSON.parse(raw);
+              if (!body || typeof body !== "object" || !Array.isArray(body.trips)) {
+                throw new Error("canonical public Agenda payload is structurally invalid");
+              }
+              const sanitizedBody = sanitizeStaticFailover(body);
+              assertSanitized(sanitizedBody);
+              fs.writeFileSync(output, JSON.stringify(sanitizedBody));
+              process.stdout.write("PUBLIC_AGENDA_FAILOVER_0517_MATERIALIZED trips=" + sanitizedBody.trips.length + "\n");
+            } finally {
+              await new Promise((resolve) => server.close(resolve));
+            }
+          }
+
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
+          NODE
+          test -s trip-platform/public/__agenda_fallback/ezequiel.json
+
+      - name: Deploy exact HEAD Hosting only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
@@ -77,13 +183,19 @@ jobs:
             npx --yes firebase-tools@latest deploy --project "$PROJECT" --only hosting --non-interactive
           fi
 
-      - name: Smoke published files
+      - name: Smoke published 0.1.516 failover assets
         shell: bash
         run: |
           set -euo pipefail
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/app.js > /tmp/live-app.js
-          grep -Fq 'state.textContent = isFull ? "Cheio" : "Disponível"' /tmp/live-app.js
-          grep -Fq 'action.textContent = isFull ? "CHEIO" : "RESERVAR"' /tmp/live-app.js
-          curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/ > /tmp/live-index.html
-          grep -Fq 'pointer-events:none' /tmp/live-index.html
-          echo "HOSTING_FULL_CARD_STATE=PASS"
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/app.js?sha=$GITHUB_SHA" > /tmp/live-app.js
+          grep -Fq 'async function readPublicAgendaJson0514' /tmp/live-app.js
+          grep -Fq 'PUBLIC_AGENDA_NON_JSON_RESPONSE' /tmp/live-app.js
+          ! grep -Fq 'const body = await response.json()' /tmp/live-app.js
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
+          grep -Fq '/app.js?v=0.1.519-global-extra-seats-whatsapp0519' /tmp/live-index.html
+          curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/__agenda_fallback/ezequiel.json?sha=$GITHUB_SHA" > /tmp/live-agenda-failover.json
+          node -e 'const fs=require("fs");const b=JSON.parse(fs.readFileSync("/tmp/live-agenda-failover.json","utf8"));if(!b||!Array.isArray(b.trips))process.exit(2);console.log("PUBLIC_AGENDA_FAILOVER_0517_LIVE trips="+b.trips.length)'
+          echo "PUBLIC_AGENDA_HOSTING_FAILOVER_0517=PASS"
+          echo "source_head=$GITHUB_SHA"
+          echo "functions_deploy=NOT_PERFORMED"

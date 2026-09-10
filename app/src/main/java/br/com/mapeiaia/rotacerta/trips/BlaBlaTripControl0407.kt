@@ -504,6 +504,21 @@ internal object BlaBlaCapabilityRegistry0407 {
     }
 }
 
+internal fun canonicalTimelineManageHref0524(entry: TripTimelineEntry): String {
+    val tripId = entry.blablaTripId?.trim().orEmpty()
+    if (tripId.isBlank()) return ""
+
+    val persisted = entry.blablaTripHref?.trim().orEmpty()
+    if (persisted.isNotBlank() && BlaBlaCollectorUrlModule.tripId(persisted) == tripId) {
+        return BlaBlaCollectorUrlModule.canonical(persisted)
+    }
+
+    val derived = "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/$tripId"
+    return BlaBlaCollectorUrlModule.canonical(derived)
+        .takeIf { href -> BlaBlaCollectorUrlModule.tripId(href) == tripId }
+        .orEmpty()
+}
+
 internal fun resolveBlaBlaTripTarget0407(
     context: Context,
     entry: TripTimelineEntry,
@@ -525,7 +540,7 @@ internal fun resolveBlaBlaTripTarget0407(
     val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId.trim()
     val profileUuid = canonicalTimelineProfileUuid(entry)?.trim()?.lowercase().orEmpty()
     val tripId = entry.blablaTripId?.trim().orEmpty()
-    val tripHref = entry.blablaTripHref?.trim().orEmpty()
+    val tripHref = canonicalTimelineManageHref0524(entry)
     if (tenantId.isBlank() || profileUuid.isBlank() || tripId.isBlank() || tripHref.isBlank()) return null
     if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return null
     val matchingAccounts = accounts.filter { account ->

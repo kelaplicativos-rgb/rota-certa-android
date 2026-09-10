@@ -156,6 +156,10 @@ data class RemoteBooking(
     val fareCurrencyCode: String = "",
     val boardingAddress: String = "",
     val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
     val holdExpiresAtMillis: Long? = null,
 )
 
@@ -352,6 +356,14 @@ data class DriverBookingUpsertRequest(
     val capacityClaimType: CapacityClaimType = CapacityClaimType.PASSENGER,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
 )
 
 @Serializable
@@ -396,6 +408,14 @@ data class DriverProtectedBookingSnapshot(
     val holdExpiresAtMillis: Long? = null,
     val sourceReference: String = "",
     val occupancyGroupId: String? = null,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
+    val boardingLatitude: Double? = null,
+    val boardingLongitude: Double? = null,
+    val dropoffLatitude: Double? = null,
+    val dropoffLongitude: Double? = null,
 )
 
 @Serializable
@@ -585,6 +605,7 @@ data class DriverTripSyncState0402(
     val tripKey: String = "",
     val blablaProfileUuid: String = "",
     val blablaTripId: String = "",
+    val blablaManageUrl: String = "",
     val blablaPublicUrl: String = "",
     val driverDisplayName: String = "",
     val title: String = "",
@@ -711,6 +732,165 @@ internal class TripRemoteApiException(
     },
     cause,
 )
+
+internal class CanonicalTimelineProjectionException0512(
+    val reasonCode: String,
+    message: String,
+) : IllegalStateException(message)
+
+internal fun canonicalTimelineFailureCode0512(error: Throwable): String {
+    if (error is kotlinx.coroutines.CancellationException) return "CANCELLED"
+    if (error is CanonicalTimelineProjectionException0512) return error.reasonCode
+    if (error is TripRemoteApiException) {
+        if (error.transportPhase == "decode_json") {
+            return if (error.responseBytes <= 0) "EMPTY_RESPONSE" else "PARSING_FAILED"
+        }
+        return when {
+            error.httpStatus == 401 -> "AUTH_FAILED"
+            error.httpStatus == 403 -> "FORBIDDEN"
+            error.httpStatus == 404 -> "NOT_FOUND"
+            error.httpStatus == 409 -> "HTTP_CONFLICT"
+            error.httpStatus >= 500 -> "SERVER_ERROR"
+            error.httpStatus > 0 -> "HTTP_" + error.httpStatus
+            error.message.orEmpty().contains("timed out", ignoreCase = true) ||
+                error.message.orEmpty().contains("timeout", ignoreCase = true) -> "TIMEOUT"
+            else -> "NETWORK_UNREACHABLE"
+        }
+    }
+    return "UNKNOWN"
+}
+
+internal fun canonicalTimelineFailureDiagnostic0512(error: Throwable): String = when (error) {
+    is TripRemoteApiException -> buildString {
+        append("code=").append(canonicalTimelineFailureCode0512(error))
+        append(" httpStatus=").append(error.httpStatus)
+        append(" phase=").append(error.transportPhase.ifBlank { "unknown" })
+        append(" endpoint=").append(error.endpoint.take(160))
+        append(" networkCallId=").append(error.networkCallId.take(120))
+        append(" requestId=").append(error.requestId.take(120))
+        append(" correlationId=").append(error.correlationId.take(120))
+        append(" responseBytes=").append(error.responseBytes)
+        append(" elapsedMs=").append(error.elapsedMs)
+    }
+    is CanonicalTimelineProjectionException0512 ->
+        "code=" + error.reasonCode + " projectionRejected=true"
+    else ->
+        "code=" + canonicalTimelineFailureCode0512(error) + " type=" + error.javaClass.simpleName.take(80)
+}
+
+internal fun validateCanonicalTimelineResponse0512(
+    response: DriverTripSyncStateResponse0402,
+): DriverTripSyncStateResponse0402 {
+    if (
+        response.source != "CANONICAL_NATIVE_FIREWALL" ||
+        response.provenancePolicy0500 != "AGENDA_CANONICAL_ONLY_0503" ||
+        response.collectorRead ||
+        response.collectorFallback ||
+        response.collectorDerivedData
+    ) {
+        throw CanonicalTimelineProjectionException0512(
+            "SCHEMA_INVALID",
+            "Timeline recusou payload fora da Agenda canônica autenticada.",
+        )
+    }
+    val seenCanonicalIds = mutableSetOf<String>()
+    response.trips.forEach { state ->
+        val canonicalId = state.canonicalTripId.ifBlank { state.remoteTripId }.trim()
+        if (canonicalId.isBlank() || !seenCanonicalIds.add(canonicalId)) {
+            throw CanonicalTimelineProjectionException0512(
+                "IDENTITY_INVALID",
+                "Identidade canônica ausente ou duplicada na projeção da Timeline.",
+            )
+        }
+        if (state.canonicalRevision < 0L || state.publicationRevision < 0L) {
+            throw CanonicalTimelineProjectionException0512(
+                "REVISION_INVALID",
+                "Revisão inválida na projeção canônica da Timeline.",
+            )
+        }
+        if (state.canonicalIssues.any { it.equals("REVISION_INCOMPATIBLE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "REVISION_INVALID",
+                "A projeção canônica mudou durante a hidratação e foi rejeitada.",
+            )
+        }
+        if (state.canonicalIssues.any { it.equals("PASSENGER_PROJECTION_INCOMPLETE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PASSENGER_PROJECTION_FAILED",
+                "A projeção canônica de passageiros está incompleta.",
+            )
+        }
+        if (state.canonicalIssues.any { it.equals("PRIVATE_PROJECTION_STALE", ignoreCase = true) }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "A projeção privada operacional não corresponde à revisão canônica atual.",
+            )
+        }
+        if (state.stops.size < 2) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Itinerário canônico incompleto na projeção da Timeline.",
+            )
+        }
+        val segmentCount = state.stops.size - 1
+        val segmentVectors = listOf(
+            state.segmentLoads,
+            state.segmentPassengerLoads,
+            state.segmentBlockedLoads,
+            state.segmentAvailableSeats,
+        )
+        if (segmentVectors.any { values -> values.isNotEmpty() && values.size != segmentCount }) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Vetores de segmento incompatíveis com o itinerário canônico.",
+            )
+        }
+        if (
+            segmentVectors.flatten().any { it < 0 } ||
+            state.capacity < 0 ||
+            state.minimumOccupiedSeats < 0 ||
+            state.maximumOccupiedSeats < 0 ||
+            state.operationalBlockedSeats < 0 ||
+            state.operationalOverbookingSeats < 0 ||
+            listOfNotNull(
+                state.operationalAvailableSeats,
+                state.availableSeatsMinimum,
+                state.availableSeatsMaximum,
+            ).any { it < 0 }
+        ) {
+            throw CanonicalTimelineProjectionException0512(
+                "PROJECTION_INCOMPLETE",
+                "Capacidade ou ocupação negativa na projeção canônica.",
+            )
+        }
+        if (state.bookingsCount != state.bookings.size) {
+            throw CanonicalTimelineProjectionException0512(
+                "PASSENGER_PROJECTION_FAILED",
+                "Quantidade de passageiros projetados diverge do estado canônico.",
+            )
+        }
+        state.bookings.forEach { booking ->
+            if (booking.id.isBlank()) {
+                throw CanonicalTimelineProjectionException0512(
+                    "IDENTITY_INVALID",
+                    "Reserva canônica sem identidade.",
+                )
+            }
+            val bookingTripId = booking.tripId.trim()
+            if (
+                bookingTripId.isNotBlank() &&
+                bookingTripId != canonicalId &&
+                bookingTripId != state.remoteTripId
+            ) {
+                throw CanonicalTimelineProjectionException0512(
+                    "IDENTITY_INVALID",
+                    "Reserva associada a outra viagem canônica.",
+                )
+            }
+        }
+    }
+    return response
+}
 
 @Serializable
 data class DriverOperationalStatusRequest(
@@ -864,19 +1044,68 @@ class TripRemoteApi(
      */
     suspend fun loadCanonicalTimelineState0494(
         includePastForVerification0429: Boolean = true,
+        correlationId0512: String = "",
     ): DriverTripSyncStateResponse0402 {
+        val correlationId = correlationId0512.trim().take(120).ifBlank {
+            "tl-" + System.nanoTime().toString(36)
+        }
+        UnifiedDebugEventStore.record(
+            "CANONICAL_REQUEST_START",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " endpoint=/v1/driver/trips/sync-state timelineProjection=true collectorRead=false",
+        )
         val response = listDriverTripSyncStates0402(
             includePastForVerification0429 = includePastForVerification0429,
             timelineProjection0494 = true,
         )
-        require(
-            response.source == "CANONICAL_NATIVE_FIREWALL" &&
-                response.provenancePolicy0500 == "AGENDA_CANONICAL_ONLY_0503" &&
-                !response.collectorRead &&
-                !response.collectorFallback &&
-                !response.collectorDerivedData,
-        ) { "Timeline recusou payload fora da Agenda canônica autenticada." }
-        return response.copy(
+        UnifiedDebugEventStore.record(
+            "CANONICAL_RESPONSE_RECEIVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " trips=" + response.trips.size +
+                " bookings=" + response.trips.sumOf { it.bookings.size } +
+                " source=" + UnifiedDebugEventStore.sanitizeForExport(response.source).take(80),
+        )
+        val validated = try {
+            validateCanonicalTimelineResponse0512(response)
+        } catch (error: CanonicalTimelineProjectionException0512) {
+            UnifiedDebugEventStore.record(
+                "CANONICAL_PROJECTION_REJECTED",
+                "br.com.mapeiaia.rotacerta.trips",
+                "correlationId=" + correlationId +
+                    " reason=" + error.reasonCode +
+                    " trips=" + response.trips.size,
+            )
+            throw error
+        }
+        val revisions = validated.trips.map(DriverTripSyncState0402::canonicalRevision)
+        UnifiedDebugEventStore.record(
+            "CANONICAL_IDENTITY_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " canonicalTrips=" + validated.trips.size +
+                " uniqueCanonicalTrips=" + validated.trips.map { it.canonicalTripId.ifBlank { it.remoteTripId } }.distinct().size,
+        )
+        UnifiedDebugEventStore.record(
+            "CANONICAL_REVISION_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " minRevision=" + (revisions.minOrNull() ?: 0L) +
+                " maxRevision=" + (revisions.maxOrNull() ?: 0L),
+        )
+        UnifiedDebugEventStore.record(
+            "PASSENGER_PROJECTION_RESOLVED",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId +
+                " bookings=" + validated.trips.sumOf { it.bookings.size },
+        )
+        UnifiedDebugEventStore.record(
+            "CANONICAL_VALIDATION_OK",
+            "br.com.mapeiaia.rotacerta.trips",
+            "correlationId=" + correlationId + " trips=" + validated.trips.size,
+        )
+        return validated.copy(
             source = "CANONICAL_NATIVE_FIREWALL",
             provenancePolicy0500 = "AGENDA_CANONICAL_ONLY_0503",
             collectorRead = false,
@@ -1075,6 +1304,14 @@ class TripRemoteApi(
                             holdExpiresAtMillis = booking.holdExpiresAtMillis,
                             sourceReference = booking.sourceReference,
                             occupancyGroupId = booking.occupancyGroupId,
+                            fareMinorUnits = booking.fareMinorUnits,
+                            fareCurrencyCode = booking.fareCurrencyCode,
+                            boardingAddress = booking.boardingAddress,
+                            dropoffAddress = booking.dropoffAddress,
+                            boardingLatitude = booking.boardingLatitude,
+                            boardingLongitude = booking.boardingLongitude,
+                            dropoffLatitude = booking.dropoffLatitude,
+                            dropoffLongitude = booking.dropoffLongitude,
                         )
                     },
                     claimNamespace = claimNamespace,
@@ -1288,6 +1525,14 @@ class TripRemoteApi(
                 capacityClaimType = booking.capacityClaimType,
                 sourceReference = booking.sourceReference,
                 occupancyGroupId = booking.occupancyGroupId,
+                fareMinorUnits = booking.fareMinorUnits,
+                fareCurrencyCode = booking.fareCurrencyCode,
+                boardingAddress = booking.boardingAddress,
+                dropoffAddress = booking.dropoffAddress,
+                boardingLatitude = booking.boardingLatitude,
+                boardingLongitude = booking.boardingLongitude,
+                dropoffLatitude = booking.dropoffLatitude,
+                dropoffLongitude = booking.dropoffLongitude,
             ),
         ),
         requireDriverToken = true,
@@ -1316,6 +1561,14 @@ class TripRemoteApi(
                 capacityClaimType = booking.capacityClaimType,
                 sourceReference = booking.sourceReference,
                 occupancyGroupId = booking.occupancyGroupId,
+                fareMinorUnits = booking.fareMinorUnits,
+                fareCurrencyCode = booking.fareCurrencyCode,
+                boardingAddress = booking.boardingAddress,
+                dropoffAddress = booking.dropoffAddress,
+                boardingLatitude = booking.boardingLatitude,
+                boardingLongitude = booking.boardingLongitude,
+                dropoffLatitude = booking.dropoffLatitude,
+                dropoffLongitude = booking.dropoffLongitude,
             ),
         ),
         requireDriverToken = true,
@@ -1755,11 +2008,17 @@ fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = 
     capacityClaimType = capacityClaimType,
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
-    passengerId = existingLocal?.passengerId?.takeIf(String::isNotBlank) ?: passengerId,
+    passengerId = passengerId.takeIf(String::isNotBlank)
+        ?: existingLocal?.passengerId?.takeIf(String::isNotBlank)
+        .orEmpty(),
     fareMinorUnits = fareMinorUnits ?: existingLocal?.fareMinorUnits,
     fareCurrencyCode = fareCurrencyCode.ifBlank { existingLocal?.fareCurrencyCode.orEmpty() },
     boardingAddress = boardingAddress.ifBlank { existingLocal?.boardingAddress.orEmpty() },
     dropoffAddress = dropoffAddress.ifBlank { existingLocal?.dropoffAddress.orEmpty() },
+    boardingLatitude = boardingLatitude ?: existingLocal?.boardingLatitude,
+    boardingLongitude = boardingLongitude ?: existingLocal?.boardingLongitude,
+    dropoffLatitude = dropoffLatitude ?: existingLocal?.dropoffLatitude,
+    dropoffLongitude = dropoffLongitude ?: existingLocal?.dropoffLongitude,
     cancellationToken = existingLocal?.cancellationToken,
     localMetadataTouched = existingLocal?.localMetadataTouched == true,
 )

@@ -103,7 +103,7 @@ internal fun ContextualDebugReportScreen0507(module: DiagnosticModule0507) {
     ) {
         Text("Relatório de depuração — ${module.label}", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Fonte única: flight recorder do Rota Certa. Eventos correlacionados de outros componentes aparecem somente por correlationId/traceId/operationId explícito.",
+            "Fonte única: flight recorder do Rota Certa. O módulo pai define o escopo; passos de outro executor entram somente por parentOperationId → operationId explícito.",
             style = MaterialTheme.typography.bodySmall,
         )
 

@@ -16,6 +16,31 @@ class BlaBlaTripControl0407Test {
     )
 
     @Test
+    fun canonicalBackendTripWithoutManageHrefDerivesExactAdministrativeTarget0524() {
+        val entry = TripTimelineEntry(
+            tripId = "canonical-trip-0524",
+            profileId = target.profileUuid,
+            profileLabel = "Ezequiel",
+            departureAtMillis = 1_800_000_000_000L,
+            arrivalAtMillis = 1_800_003_600_000L,
+            origin = "São Paulo",
+            destination = "São Tomé das Letras",
+            status = TripStatus.PUBLISHED,
+            capacity = 6,
+            minimumOccupiedSeats = 4,
+            maximumOccupiedSeats = 4,
+            sourcePassengerSeats = mapOf(BookingSource.BLABLACAR to 4),
+            blablaTripId = target.tripId,
+            blablaProfileUuid = target.profileUuid,
+        )
+
+        assertEquals(
+            "https://www.blablacar.com.br/rides/offer/${target.tripId}",
+            canonicalTimelineManageHref0524(entry),
+        )
+    }
+
+    @Test
     fun staticOnlyCapabilitiesAreNotExposedAsProductionActions() {
         val snapshot = BlaBlaCapabilityRegistry0407.snapshot(target = target)
         val palette = buildBlaBlaTripActionPalette0407(snapshot, hasPublicationHref = true)

@@ -235,7 +235,14 @@ object UnifiedDebugEventStore {
             .replace(Regex("\\s{2,}"), " ")
             .trim()
 
-    private fun maskSensitive(value: String): String = value
+    private fun maskSensitive(value: String): String {
+        val protectedTechnicalUuids = mutableListOf<String>()
+        var masked = value.replace(TECHNICAL_UUID_0510) { match ->
+            val placeholder = "__RC_TECH_UUID_${protectedTechnicalUuids.size}__"
+            protectedTechnicalUuids += match.value
+            placeholder
+        }
+        masked = masked
         .replace(
             Regex("(?is)-----BEGIN(?: [A-Z0-9]+)* PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)* PRIVATE KEY-----"),
             "[chave privada mascarada]",
@@ -265,6 +272,15 @@ object UnifiedDebugEventStore {
         .replace(
             Regex("(?i)\\b(eventText|accessibilityText|rawText|messageText)\\s*[:=]\\s*([^|;]+)"),
         ) { match -> "${match.groupValues[1]}=[texto mascarado]" }
+        protectedTechnicalUuids.forEachIndexed { index, uuid ->
+            masked = masked.replace("__RC_TECH_UUID_${index}__", uuid)
+        }
+        return masked
+    }
+
+    private val TECHNICAL_UUID_0510 = Regex(
+        "(?i)\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b",
+    )
 
     private fun percentile(sorted: List<Long>, percentile: Int): Long {
         if (sorted.isEmpty()) return -1L

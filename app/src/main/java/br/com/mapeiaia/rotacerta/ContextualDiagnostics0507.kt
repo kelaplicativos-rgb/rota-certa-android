@@ -92,28 +92,38 @@ object ContextualDebugReport0507 {
             (filter.sinceMillis == null || event.atMillis >= filter.sinceMillis) &&
                 diagnostic.severity in filter.severities
         }
-        val seed = periodCandidates.filter { event ->
+        val direct = periodCandidates.filter { event ->
             val diagnostic = event.diagnosticContext ?: return@filter false
-            diagnostic.parentModule == module || diagnostic.originModule == module
+            diagnostic.parentModule == module
         }
-        val causalIds = seed.flatMap { event ->
-            val diagnostic = event.diagnosticContext ?: return@flatMap emptyList()
-            listOf(diagnostic.correlationId, diagnostic.traceId)
-        }.filter(String::isNotBlank).toSet()
-        val operationIds = seed.flatMap { event ->
-            val diagnostic = event.diagnosticContext ?: return@flatMap emptyList()
-            listOf(diagnostic.operationId, diagnostic.parentOperationId)
-        }.filter(String::isNotBlank).toSet()
+        val contextualSet = LinkedHashSet<UnifiedDebugEventStore.SnapshotEvent>()
+        contextualSet.addAll(direct)
+        val includedOperationIds = direct.mapNotNull { event ->
+            event.diagnosticContext?.operationId?.takeIf(String::isNotBlank)
+        }.toMutableSet()
 
-        val contextual = periodCandidates.filter { event ->
-            val diagnostic = event.diagnosticContext ?: return@filter false
-            diagnostic.parentModule == module ||
-                diagnostic.originModule == module ||
-                diagnostic.correlationId.takeIf(String::isNotBlank) in causalIds ||
-                diagnostic.traceId.takeIf(String::isNotBlank) in causalIds ||
-                diagnostic.operationId.takeIf(String::isNotBlank) in operationIds ||
-                diagnostic.parentOperationId.takeIf(String::isNotBlank) in operationIds
+        // correlationId/traceId identify an end-to-end trace but are intentionally
+        // too broad to authorize cross-module inclusion. A child from another
+        // executor is included only when it explicitly references a selected
+        // operation through parentOperationId -> operationId.
+        var expanded = true
+        while (expanded) {
+            expanded = false
+            periodCandidates.forEach { event ->
+                if (event in contextualSet) return@forEach
+                val diagnostic = event.diagnosticContext ?: return@forEach
+                val parentOperationId = diagnostic.parentOperationId
+                    .takeIf(String::isNotBlank)
+                    ?: return@forEach
+                if (parentOperationId !in includedOperationIds) return@forEach
+                contextualSet += event
+                diagnostic.operationId
+                    .takeIf(String::isNotBlank)
+                    ?.let(includedOperationIds::add)
+                expanded = true
+            }
         }
+        val contextual = contextualSet.toList()
 
         val operationNeedle = filter.operationQuery.trim().lowercase(Locale.ROOT)
         val idNeedle = filter.technicalIdQuery.trim().lowercase(Locale.ROOT)
