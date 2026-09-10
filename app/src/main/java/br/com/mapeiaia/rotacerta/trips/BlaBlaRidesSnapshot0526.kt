@@ -292,6 +292,7 @@ internal data class BlaBlaRidesSnapshotObservation0526(
     val lastMutationAgeMs: Long,
     val explicitEmptyList: Boolean,
     val htmlTruncated: Boolean = false,
+    val htmlMaterializedComplete: Boolean = true,
 )
 
 internal enum class BlaBlaRidesSnapshotAction0526 { SCROLL, WAIT, CAPTURE, INCOMPLETE }
@@ -350,14 +351,21 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
         lastScrollY = observation.scrollY
 
         if (stablePasses >= requiredStablePasses) {
-            return if (observation.htmlTruncated) {
-                BlaBlaRidesSnapshotDecision0526(
+            return when {
+                observation.htmlTruncated -> BlaBlaRidesSnapshotDecision0526(
                     BlaBlaRidesSnapshotAction0526.INCOMPLETE,
                     stablePasses,
                     "HTML_TRUNCATED",
                 )
-            } else {
-                BlaBlaRidesSnapshotDecision0526(BlaBlaRidesSnapshotAction0526.CAPTURE, stablePasses)
+                !observation.htmlMaterializedComplete -> BlaBlaRidesSnapshotDecision0526(
+                    BlaBlaRidesSnapshotAction0526.INCOMPLETE,
+                    stablePasses,
+                    "HTML_NOT_FULLY_MATERIALIZED",
+                )
+                else -> BlaBlaRidesSnapshotDecision0526(
+                    BlaBlaRidesSnapshotAction0526.CAPTURE,
+                    stablePasses,
+                )
             }
         }
 
