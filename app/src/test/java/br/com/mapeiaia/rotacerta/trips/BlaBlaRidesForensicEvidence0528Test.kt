@@ -171,6 +171,45 @@ class BlaBlaRidesForensicEvidence0528Test {
     }
 
     @Test
+    fun base64MhtmlHtmlPartIsDecodedForIndependentTripSetVerification() {
+        val html = "<a href=\"/rides/offer?id=$tripA\">A</a>"
+        val encoded = java.util.Base64.getEncoder().encodeToString(html.toByteArray(Charsets.UTF_8))
+        val mhtml = """
+            MIME-Version: 1.0
+            Content-Type: multipart/related; boundary=abc
+
+            --abc
+            Content-Type: text/html
+            Content-Transfer-Encoding: base64
+
+            $encoded
+            --abc--
+        """.trimIndent()
+
+        val result = compareHtmlMhtmlTripSets0528(html, mhtml)
+        assertTrue(result.sameTripSet)
+        assertEquals(1, result.htmlTripCount)
+        assertEquals(1, result.mhtmlTripCount)
+    }
+
+    @Test
+    fun reusableSecretMarkersAreRejectedWithoutLoggingSecretValues() {
+        assertEquals(
+            "AUTHORIZATION_BEARER",
+            sensitiveArtifactMarker0528("Authorization: Bearer abcdefghijklmnopqrstuvwxyz"),
+        )
+        assertEquals(
+            "SET_COOKIE_HEADER",
+            sensitiveArtifactMarker0528("Set-Cookie: session=secret-value; Secure"),
+        )
+        assertEquals(
+            "REFRESH_TOKEN",
+            sensitiveArtifactMarker0528("""{"refresh_token":"reusable-secret-value"}"""),
+        )
+        assertNull(sensitiveArtifactMarker0528("cookie preferences and authorization policy text"))
+    }
+
+    @Test
     fun hashMismatchAndMissingFileAreRejected() {
         val file = File.createTempFile("rides-0528", ".txt")
         try {
