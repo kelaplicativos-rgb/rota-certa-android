@@ -150,10 +150,15 @@ object BlaBlaDynamicSessionIntents {
     const val EXTRA_AUTOMATIC_COLLECTION_ORIGIN = "blablacar_automatic_collection_origin_0400"
     const val EXTRA_SYNC_FAILURE_0407 = "blablacar_sync_failure_0407"
     const val EXTRA_SOURCE_ACCESS_STATUS_0426 = "blablacar_source_access_status_0426"
+    const val EXTRA_RIDES_SNAPSHOT_CAPTURE_ID_0526 = "blablacar_rides_snapshot_capture_id_0526"
+    const val EXTRA_RIDES_SNAPSHOT_POSITION_0526 = "blablacar_rides_snapshot_position_0526"
+    const val EXTRA_RIDES_SNAPSHOT_TOTAL_0526 = "blablacar_rides_snapshot_total_0526"
+    const val EXTRA_RIDES_SNAPSHOT_STATUS_0526 = "blablacar_rides_snapshot_status_0526"
     const val MODE_LOGIN = "login"
     const val MODE_SYNC = "sync"
     const val MODE_PROFILE = "profile"
     const val MODE_MANAGE = "manage"
+    const val MODE_RIDES_SNAPSHOT_0526 = "rides_snapshot_0526"
 
     fun login(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_LOGIN)
     fun profile(context: Context, account: BlaBlaDynamicAccount): Intent = intent(context, account, MODE_PROFILE)
@@ -161,6 +166,19 @@ object BlaBlaDynamicSessionIntents {
     internal fun syncPayload(account: BlaBlaDynamicAccount): Intent = Intent()
         .putExtra(EXTRA_ACCOUNT_ID, account.id)
         .putExtra(EXTRA_MODE, MODE_SYNC)
+
+    internal fun ridesSnapshotPayload(
+        account: BlaBlaDynamicAccount,
+        captureId: String,
+        position: Int,
+        total: Int,
+    ): Intent = Intent()
+        .putExtra(EXTRA_ACCOUNT_ID, account.id)
+        .putExtra(EXTRA_MODE, MODE_RIDES_SNAPSHOT_0526)
+        .putExtra(EXTRA_RIDES_SNAPSHOT_CAPTURE_ID_0526, captureId)
+        .putExtra(EXTRA_RIDES_SNAPSHOT_POSITION_0526, position)
+        .putExtra(EXTRA_RIDES_SNAPSHOT_TOTAL_0526, total)
+
     fun syncToday(context: Context, account: BlaBlaDynamicAccount, targetDate: LocalDate): Intent =
         syncDates(context, account, listOf(targetDate))
 
@@ -280,10 +298,16 @@ private data class DynamicRideList(
     val candidates: List<BlaBlaDomRideCandidate> = emptyList(),
     val bodyText: String = "",
     val explicitEmptyList: Boolean = false,
+    val documentReady: Boolean = false,
+    val loadingActive: Boolean = false,
+    val lastMutationAgeMs: Long = 0L,
     val scrollY: Int = 0,
     val scrollHeight: Int = 0,
     val viewportHeight: Int = 0,
     val atBottom: Boolean = false,
+    val snapshotHtml: String = "",
+    val snapshotHtmlLength: Int = 0,
+    val snapshotTruncated: Boolean = false,
     val domHtml: String = "",
 )
 
@@ -537,6 +561,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     baseContext: Context,
     private val launchIntent: Intent?,
     private val visualHost: ((android.view.View) -> Unit)?,
+    private val snapshotProgress0526: (String) -> Unit = {},
     private val finishHost: (Int, Intent) -> Unit,
 ) : ContextThemeWrapper(baseContext, baseContext.applicationInfo.theme) {
     private var pendingResultCode = Activity.RESULT_CANCELED
@@ -644,6 +669,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var sourceAccessInspectedSyncGeneration0448 = Long.MIN_VALUE
     private var sourceAccessInspectedNavigationGeneration0448 = Long.MIN_VALUE
     private var restrictionHandledGeneration0426 = Long.MIN_VALUE
+    private var ridesSnapshotCaptureId0526 = ""
+    private var ridesSnapshotPosition0526 = 0
+    private var ridesSnapshotTotal0526 = 0
+    private var ridesSnapshotTerminal0526 = false
+    private var ridesSnapshotIdentityAttempts0526 = 0
+    private var ridesSnapshotStabilizer0526: BlaBlaRidesSnapshotStabilizer0526? = null
 
 
     fun start() {
@@ -656,6 +687,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        ridesSnapshotCaptureId0526 = intent?.getStringExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_CAPTURE_ID_0526,
+        )?.trim().orEmpty()
+        ridesSnapshotPosition0526 = intent?.getIntExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_POSITION_0526,
+            0,
+        ) ?: 0
+        ridesSnapshotTotal0526 = intent?.getIntExtra(
+            BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_TOTAL_0526,
+            0,
+        ) ?: 0
         automaticCollectionGeneration = intent?.getLongExtra(
             BlaBlaDynamicSessionIntents.EXTRA_AUTOMATIC_COLLECTION_GENERATION,
             0L,
@@ -715,6 +757,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
             targetDates = emptyList()
         }
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+            if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_SESSION,
+                    errorCode = "MULTI_PROFILE_UNAVAILABLE",
+                )
+                return
+            }
             if (visualHost == null && mode == BlaBlaDynamicSessionIntents.MODE_SYNC) {
                 if (automaticCollectionClaimed) {
                     automaticCollectionReported = true
@@ -750,6 +799,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         when (mode) {
             BlaBlaDynamicSessionIntents.MODE_SYNC -> beginSync()
             BlaBlaDynamicSessionIntents.MODE_PROFILE -> beginProfileSync()
+            BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 -> beginRidesSnapshot0526()
             BlaBlaDynamicSessionIntents.MODE_MANAGE -> {
                 if (acquireExternalFlight0426("manage_browser")) {
                     loadTrackedUrl(manageTargetUrl() ?: RIDES_URL)
@@ -890,7 +940,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (isAutomaticHeadless0404()) {
+                if (isHeadlessBrowserController0526()) {
                     headlessPageFinishedNavigationGeneration0404 = navigationGeneration
                     UnifiedDebugEventStore.record(
                         "BLABLACAR_HEADLESS_PAGE_FINISHED_0404",
@@ -917,10 +967,22 @@ internal class BlaBlaDynamicAccountSessionController0401(
             statusView.text = account.displayLabel + " • " + url.take(110)
         }
         when (phase) {
-            Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureIdentityForSync() }, 650)
+            Phase.IDENTITY -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({
+                if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+                    captureIdentityForRidesSnapshot0526()
+                } else {
+                    captureIdentityForSync()
+                }
+            }, 650)
             Phase.PROFILE_PUBLIC -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ capturePublicProfilePage() }, 850)
             Phase.PROFILE_REVIEWS -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureProfileReviewsPage() }, 850)
-            Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({ captureRideList() }, 900)
+            Phase.RIDES -> if (BlaBlaCollectorUrlModule.isAllowed(url)) postSessionDelayed0405({
+                if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+                    captureRideListSnapshot0526()
+                } else {
+                    captureRideList()
+                }
+            }, 900)
             Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
             Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
                 val expectedSync = syncGeneration
@@ -1407,12 +1469,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
         visualHost == null &&
             mode == BlaBlaDynamicSessionIntents.MODE_SYNC
 
+    private fun isHeadlessBrowserController0526(): Boolean =
+        visualHost == null &&
+            (mode == BlaBlaDynamicSessionIntents.MODE_SYNC ||
+                mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526)
+
     private fun postSessionDelayed0405(action: () -> Unit, delayMs: Long) {
         if (destroyed) return
         val guarded = Runnable {
             if (!destroyed) action()
         }
-        if (isAutomaticHeadless0404()) {
+        if (isHeadlessBrowserController0526()) {
             headlessDelayedHandler0405.postDelayed(guarded, delayMs)
         } else {
             webView.postDelayed(guarded, delayMs)
@@ -1420,13 +1487,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun scheduleHeadlessPageFallback0404(expectedNavigation: Long) {
-        if (!isAutomaticHeadless0404()) return
+        if (!isHeadlessBrowserController0526()) return
         val expectedSync = syncGeneration
         val expectedPhase = phase
         postSessionDelayed0405({
             if (
                 destroyed ||
-                !isAutomaticHeadless0404() ||
+                !isHeadlessBrowserController0526() ||
                 expectedSync != syncGeneration ||
                 expectedNavigation != navigationGeneration ||
                 expectedPhase != phase ||
@@ -1441,8 +1508,16 @@ internal class BlaBlaDynamicAccountSessionController0401(
             )
             inspectSourceAccess0426(webView, webView.url.orEmpty()) {
                 when (expectedPhase) {
-                    Phase.IDENTITY -> captureIdentityForSync()
-                    Phase.RIDES -> captureRideList()
+                    Phase.IDENTITY -> if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+                        captureIdentityForRidesSnapshot0526()
+                    } else {
+                        captureIdentityForSync()
+                    }
+                    Phase.RIDES -> if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+                        captureRideListSnapshot0526()
+                    } else {
+                        captureRideList()
+                    }
                     Phase.DETAIL -> scheduleTripDetailCapture(webView)
                     Phase.PUBLIC_SHARE -> capturePublicTripShare(expectedSync, expectedNavigation, candidateIndex)
                     Phase.PUBLIC_SEARCH_LINK -> capturePublicTripFromExactSearch(expectedSync, expectedNavigation, candidateIndex)
