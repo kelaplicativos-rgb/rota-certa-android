@@ -1832,7 +1832,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 callbackResolved = true
                 val savedFile = savedPath
                     ?.takeIf(String::isNotBlank)
-                    ?.let(::java.io.File)
+                    ?.let { java.io.File(it) }
                     ?.takeIf { it.isFile && it.length() > 0L }
                     ?: target.takeIf { it.isFile && it.length() > 0L }
                 val mhtmlEvidence = savedFile?.let { file ->
@@ -4505,6 +4505,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val REQUIRED_STABLE_BOTTOM_PASSES = 2
         private const val RIDES_SCROLL_SETTLE_MS = 750L
         private const val RIDES_BOTTOM_SETTLE_MS = 1200L
+        private const val RIDES_SNAPSHOT_RETRY_MS_0526 = 900L
+        private const val MHTML_CAPTURE_TIMEOUT_MS_0526 = 15_000L
         private const val MAX_PASSENGER_EVIDENCE_READ_ATTEMPTS = 3
         private const val MAX_TRIP_ROSTER_READ_ATTEMPTS = 5
         private const val MAX_TRIP_ROSTER_SCROLL_PASSES_0509 = 12
