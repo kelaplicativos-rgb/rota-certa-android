@@ -31,7 +31,8 @@ import kotlinx.coroutines.launch
  *
  * This screen intentionally owns no synchronization state. Opening it or returning
  * from an isolated login/profile WebView never enqueues background synchronization work.
- * The forensic rides snapshot command is read-only and writes only app-private evidence.
+ * The forensic rides snapshot command is read-only; 0.1.533 then enriches every proven
+ * inventory trip through the existing exact-trip collector path and checkpoints privately.
  */
 @Composable
 internal fun BlaBlaAccountsAndBrowsersScreen0399() {
@@ -45,9 +46,11 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
     var ridesSnapshotDownloadRunning0527 by remember { mutableStateOf(false) }
     var ridesSnapshotJsonDownloadRunning0531 by remember { mutableStateOf(false) }
+    var ridesEnrichmentDownloadRunning0533 by remember { mutableStateOf(false) }
     var ridesSnapshotProgress0526 by remember { mutableStateOf("") }
     var ridesSnapshotSummary0526 by remember { mutableStateOf("") }
     var lastRidesSnapshot0526 by remember { mutableStateOf<BlaBlaRidesSnapshotManifest0526?>(null) }
+    var lastRidesEnrichment0533 by remember { mutableStateOf<BlaBlaRidesEnrichmentManifest0533?>(null) }
 
     val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         revision++
@@ -113,41 +116,66 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                     enabled = multiProfileAvailable &&
                         !ridesSnapshotRunning0526 &&
                         !ridesSnapshotDownloadRunning0527 &&
-                        !ridesSnapshotJsonDownloadRunning0531,
+                        !ridesSnapshotJsonDownloadRunning0531 &&
+                        !ridesEnrichmentDownloadRunning0533,
                     onClick = {
                         ridesSnapshotRunning0526 = true
                         ridesSnapshotSummary0526 = ""
                         lastRidesSnapshot0526 = null
-                        ridesSnapshotProgress0526 = "Preparando captura privada…"
+                        lastRidesEnrichment0533 = null
+                        ridesSnapshotProgress0526 = "Preparando inventário privado…"
                         scope.launch {
-                            val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
-                                ridesSnapshotProgress0526 = progress
-                            }
-                            lastRidesSnapshot0526 = manifest
-                            ridesSnapshotSummary0526 = buildString {
-                                append("Captura ").append(manifest.captureId)
-                                append(" • ").append(manifest.result)
-                                manifest.profiles.forEach { profile ->
-                                    append("\n")
-                                    append(profile.displayName.ifBlank { profile.expectedProfileUuid })
-                                    append(": ").append(profile.status)
-                                    append(" • ").append(profile.cardCountFinal).append(" viagens")
-                                    if (profile.errorCode.isNotBlank()) {
-                                        append(" • ").append(profile.errorCode)
+                            try {
+                                val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
+                                    ridesSnapshotProgress0526 = progress
+                                }
+                                lastRidesSnapshot0526 = manifest
+                                ridesSnapshotSummary0526 = buildString {
+                                    append("Inventário ").append(manifest.captureId)
+                                    append(" • ").append(manifest.result)
+                                    manifest.profiles.forEach { profile ->
+                                        append("\n")
+                                        append(profile.displayName.ifBlank { profile.expectedProfileUuid })
+                                        append(": ").append(profile.status)
+                                        append(" • ").append(profile.cardCountFinal).append(" viagens")
+                                        if (profile.errorCode.isNotBlank()) append(" • ").append(profile.errorCode)
                                     }
                                 }
+                                ridesSnapshotProgress0526 = "Inventário finalizado • iniciando enriquecimento exato por tripId…"
+                                val enrichment = BlaBlaRidesEnrichmentCoordinator0533.enrichAll(context, manifest) { progress ->
+                                    ridesSnapshotProgress0526 = progress
+                                }
+                                lastRidesEnrichment0533 = enrichment
+                                ridesSnapshotSummary0526 += buildString {
+                                    append("\nEnriquecimento: ")
+                                    append(if (enrichment.enrichmentComplete) "COMPLETE" else "INCOMPLETE")
+                                    append(" • esperadas=").append(enrichment.expectedTripCount)
+                                    append(" • terminais=").append(enrichment.terminalTripCount)
+                                    append(" • completas=").append(enrichment.completeCount)
+                                    append(" • parciais=").append(enrichment.partialCount)
+                                    append(" • falhas=").append(enrichment.failedCount)
+                                    append(" • pendentes/desconhecidas=").append(enrichment.pendingUnknownCount)
+                                }
+                                ridesSnapshotProgress0526 = if (enrichment.enrichmentComplete) {
+                                    "Inventário e enriquecimento concluídos • 100% das viagens comprovadas"
+                                } else {
+                                    "Enriquecimento terminou sem cobertura total • nenhuma ausência foi convertida em dado vazio"
+                                }
+                            } catch (error: Throwable) {
+                                ridesSnapshotProgress0526 = "Captura/enriquecimento interrompido: " +
+                                    (error.message ?: error.javaClass.simpleName)
+                            } finally {
+                                ridesSnapshotRunning0526 = false
                             }
-                            ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
-                            ridesSnapshotRunning0526 = false
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
                         if (ridesSnapshotRunning0526) {
-                            "📥 Capturando Suas viagens…"
+                            "📥 Capturando e enriquecendo Suas viagens…"
                         } else {
-                            "📥 Capturar Suas viagens de todos os perfis"
+                            "📥 Capturar e enriquecer Suas viagens de todos os perfis"
                         },
                     )
                 }
@@ -163,7 +191,8 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 OutlinedButton(
                     enabled = !ridesSnapshotRunning0526 &&
                         !ridesSnapshotDownloadRunning0527 &&
-                        !ridesSnapshotJsonDownloadRunning0531,
+                        !ridesSnapshotJsonDownloadRunning0531 &&
+                        !ridesEnrichmentDownloadRunning0533,
                     onClick = {
                         ridesSnapshotDownloadRunning0527 = true
                         ridesSnapshotProgress0526 = "Preparando download da captura…"
@@ -195,18 +224,19 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 OutlinedButton(
                     enabled = !ridesSnapshotRunning0526 &&
                         !ridesSnapshotDownloadRunning0527 &&
-                        !ridesSnapshotJsonDownloadRunning0531,
+                        !ridesSnapshotJsonDownloadRunning0531 &&
+                        !ridesEnrichmentDownloadRunning0533,
                     onClick = {
                         ridesSnapshotJsonDownloadRunning0531 = true
-                        ridesSnapshotProgress0526 = "Preparando JSON estruturado para o Rota Certa…"
+                        ridesSnapshotProgress0526 = "Preparando JSON de inventário para o Rota Certa…"
                         scope.launch {
                             try {
                                 val result = BlaBlaRidesPortableJsonDownload0531.download(context, manifest)
                                 ridesSnapshotProgress0526 =
-                                    "JSON do Rota Certa concluído • ${result.displayName} • Downloads/Rota Certa"
+                                    "JSON de inventário concluído • ${result.displayName} • Downloads/Rota Certa"
                             } catch (error: Throwable) {
                                 ridesSnapshotProgress0526 =
-                                    "Não foi possível gerar o JSON do Rota Certa: " +
+                                    "Não foi possível gerar o JSON de inventário: " +
                                         (error.message ?: error.javaClass.simpleName)
                             } finally {
                                 ridesSnapshotJsonDownloadRunning0531 = false
@@ -217,9 +247,44 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 ) {
                     Text(
                         if (ridesSnapshotJsonDownloadRunning0531) {
-                            "📄 Gerando JSON do Rota Certa…"
+                            "📄 Gerando JSON de inventário…"
                         } else {
-                            "📄 Baixar dados para Rota Certa (.json)"
+                            "📄 Baixar inventário para Rota Certa (.json)"
+                        },
+                    )
+                }
+            }
+
+            lastRidesEnrichment0533?.let { enrichment ->
+                OutlinedButton(
+                    enabled = !ridesSnapshotRunning0526 &&
+                        !ridesSnapshotDownloadRunning0527 &&
+                        !ridesSnapshotJsonDownloadRunning0531 &&
+                        !ridesEnrichmentDownloadRunning0533,
+                    onClick = {
+                        ridesEnrichmentDownloadRunning0533 = true
+                        ridesSnapshotProgress0526 = "Preparando JSON enriquecido com checkpoints…"
+                        scope.launch {
+                            try {
+                                val result = BlaBlaRidesEnrichmentDownload0533.download(context, enrichment)
+                                ridesSnapshotProgress0526 =
+                                    "JSON enriquecido concluído • ${result.displayName} • Downloads/Rota Certa"
+                            } catch (error: Throwable) {
+                                ridesSnapshotProgress0526 =
+                                    "Não foi possível gerar o JSON enriquecido: " +
+                                        (error.message ?: error.javaClass.simpleName)
+                            } finally {
+                                ridesEnrichmentDownloadRunning0533 = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (ridesEnrichmentDownloadRunning0533) {
+                            "🧾 Gerando JSON enriquecido…"
+                        } else {
+                            "🧾 Baixar enriquecimento por tripId (.json)"
                         },
                     )
                 }
@@ -239,11 +304,11 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     }
 
     Text(
-        "Abrir uma conta abre somente a sessão isolada para login/configuração. " +
-            "A captura de Suas viagens é somente leitura e salva HTML/MHTML em armazenamento privado. " +
-            "O ZIP preserva a evidência forense completa; o JSON reúne os dois perfis em um único arquivo " +
-            "estruturado que o próprio Rota Certa valida e consegue reler. Ambos são salvos em Downloads/Rota Certa; " +
-            "nenhum ciclo de sincronização pública é iniciado por esta tela.",
+        "A captura preserva o inventário forense de Suas viagens (HTML/MHTML + índices). Em seguida, cada tripId " +
+            "com vínculo administrativo comprovado é aberto internamente no perfil WebView correto pelo coletor exato já existente, " +
+            "com checkpoint privado após cada viagem. Falha, timeout, restrição ou roster incompleto permanecem explícitos e nunca " +
+            "viram 'sem passageiros'. O ZIP e o JSON de inventário preservam o comportamento anterior; o JSON enriquecido contém " +
+            "os dados operacionais privados comprovados e continua fora da Agenda pública.",
         style = MaterialTheme.typography.bodySmall,
     )
 
