@@ -57,6 +57,7 @@ old_card = '''    Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = profileColors.background),'''
 new_card = '''    Card(
         modifier = Modifier
@@ -66,6 +67,7 @@ new_card = '''    Card(
                 onClickLabel = if (expanded) "Fechar viagem" else "Abrir viagem",
                 onClick = onToggleExpanded,
             ),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = profileColors.background),'''
 ui = replace_once(ui, old_card, new_card, "Timeline whole-card click target")
 
