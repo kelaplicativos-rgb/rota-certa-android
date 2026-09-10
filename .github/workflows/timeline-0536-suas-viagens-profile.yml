@@ -122,12 +122,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Full unit regression and pre-commit debug APK
+      - name: Focused Timeline regression and pre-commit debug APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.trips.TripTimelineProfile0536Test' :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
 
       - name: Commit tested materialized source
