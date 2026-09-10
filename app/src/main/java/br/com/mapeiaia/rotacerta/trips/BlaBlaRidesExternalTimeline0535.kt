@@ -140,7 +140,7 @@ internal data class BlaBlaExternalScheduleCycle0535(
     }
 }
 
-private data class ParsedExternalRide0535(
+internal data class ParsedExternalRide0535(
     val tripId: String,
     val listPosition: Int,
     val date: String,
