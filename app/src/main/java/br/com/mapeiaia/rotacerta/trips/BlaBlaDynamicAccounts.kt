@@ -1190,6 +1190,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
         statusView.text =
             "BlaBlaCar restringiu temporariamente esta sessão. Seus últimos dados válidos foram preservados. " +
                 "A sincronização será retomada após a sessão voltar a ficar disponível."
+        if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_SESSION,
+                errorCode = "TEMPORARILY_RESTRICTED",
+                finalUrl = finalUrl,
+            )
+            return
+        }
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
             BlaBlaAutomaticCollectionCoordinator0400.onAccountTemporarilyRestricted0426(
@@ -1219,6 +1227,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (phase == Phase.IDLE) {
             statusView.text =
                 account.displayLabel + " • BlaBlaCar não carregou. Use a navegação novamente quando a conexão estiver disponível."
+            return
+        }
+        if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_NAVIGATION,
+                errorCode = "NETWORK_ERROR_" + errorCode,
+                finalUrl = targetUrl,
+            )
             return
         }
         if (mode != BlaBlaDynamicSessionIntents.MODE_SYNC && mode != BlaBlaDynamicSessionIntents.MODE_PROFILE) return
@@ -4399,6 +4415,31 @@ internal class BlaBlaDynamicAccountSessionController0401(
     fun destroy(reason: String = "host_destroyed") {
         if (destroyed) return
         destroyed = true
+        if (
+            mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 &&
+            !ridesSnapshotTerminal0526 &&
+            ridesSnapshotCaptureId0526.isNotBlank() &&
+            ::account.isInitialized
+        ) {
+            ridesSnapshotTerminal0526 = true
+            runCatching {
+                ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+                    if (
+                        previous.status == BlaBlaRidesSnapshotStatus0526.COMPLETE ||
+                        previous.status == BlaBlaRidesSnapshotStatus0526.INCOMPLETE ||
+                        previous.status.startsWith("FAILED_")
+                    ) {
+                        previous
+                    } else {
+                        previous.copy(
+                            completedAt = java.time.Instant.now().toString(),
+                            status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
+                            errorCode = reason.take(120).ifBlank { "HOST_DESTROYED" },
+                        )
+                    }
+                }
+            }
+        }
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
             BlaBlaAutomaticCollectionCoordinator0400.onAccountInterrupted(
