@@ -519,6 +519,9 @@ internal fun canonicalTimelineManageHref0524(entry: TripTimelineEntry): String {
         .orEmpty()
 }
 
+internal fun timelineBlaBlaTargetUnambiguous0525(entry: TripTimelineEntry): Boolean =
+    TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT !in entry.issues
+
 internal fun resolveBlaBlaTripTarget0407(
     context: Context,
     entry: TripTimelineEntry,
@@ -537,6 +540,7 @@ internal fun resolveBlaBlaTripTarget0407(
     entry: TripTimelineEntry,
     accounts: List<BlaBlaDynamicAccount>,
 ): BlaBlaTripTarget0407? {
+    if (!timelineBlaBlaTargetUnambiguous0525(entry)) return null
     val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId.trim()
     val profileUuid = canonicalTimelineProfileUuid(entry)?.trim()?.lowercase().orEmpty()
     val tripId = entry.blablaTripId?.trim().orEmpty()
