@@ -63,6 +63,7 @@ internal data class BlaBlaRidesSnapshotProfile0526(
     val ridesIndexSha256: String = "",
     val crossFormatConsistency: BlaBlaRidesCrossFormatConsistency0528 = BlaBlaRidesCrossFormatConsistency0528(),
     val rideDateRange: BlaBlaRidesRideDateRange0528 = BlaBlaRidesRideDateRange0528(),
+    val securityEvidence: BlaBlaRidesArtifactSecurityEvidence0528 = BlaBlaRidesArtifactSecurityEvidence0528(),
     val htmlCaptured: Boolean = false,
     val mhtmlSupported: Boolean = true,
     val mhtmlCaptured: Boolean = false,
