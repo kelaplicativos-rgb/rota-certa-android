@@ -183,6 +183,11 @@
   const loadingActive = Array.from(document.querySelectorAll(
     '[aria-busy="true"], [role="progressbar"], [data-testid*="loader" i], [data-testid*="loading" i], [class*="spinner" i]'
   )).some(isVisible);
+  const archivedSentinelPattern = /viagens? arquivadas?|archived (?:rides|trips)|trajets? archiv|fahrten archiv|viajes? archiv|viaggi? archivi/i;
+  const endSentinelNode = Array.from(document.querySelectorAll(
+    'h1, h2, h3, h4, [role="heading"], summary, button, a'
+  )).find((node) => isVisible(node) && archivedSentinelPattern.test(clean(node.innerText || node.textContent)));
+  const endSentinelText = clean(endSentinelNode && (endSentinelNode.innerText || endSentinelNode.textContent)).slice(0, 160);
 
   // Keep the historical small diagnostic DOM unchanged for the existing collector.
   const diagnosticClone = document.documentElement.cloneNode(true);
@@ -218,6 +223,8 @@
     explicitEmptyList: !!emptyStructure || emptyText,
     documentReady: document.readyState === 'complete',
     loadingActive: loadingActive,
+    endSentinelVisible: !!endSentinelNode,
+    endSentinelText: endSentinelText,
     lastMutationAgeMs: Math.max(0, Date.now() - Number(probe.lastMutationAt || Date.now())),
     scrollY: Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0)),
     scrollHeight: Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0)),
