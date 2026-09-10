@@ -92,8 +92,10 @@ jobs:
           assert 'preservePassengerTimelineSnapshotDuringRefresh0532' in helper
           assert 'if (!entry.canonicalBackendAuthoritative0494 || trip == null' not in ui
           assert 'if (trip == null || canonicalBookings0494 == null) return null' in ui
-          assert 'keepsCurrentSnapshotWhenImmediateCanonicalIsMissing' in tests
-          assert 'replacesCurrentSnapshotAtomicallyWhenNewCanonicalSnapshotIsComplete' in tests
+          assert 'refresh preserves complete current snapshot when immediate seed is absent' in tests
+          assert 'refresh preserves complete current snapshot instead of downgrading to immediate seed' in tests
+          assert 'first render seeds from persisted canonical snapshot' in tests
+          assert 'first render without any canonical snapshot stays absent instead of inventing loading content' in tests
           gradle = Path('app/build.gradle.kts').read_text(encoding='utf-8')
           assert 'versionCode = 5824' in gradle
           assert 'versionName = "0.1.532"' in gradle
