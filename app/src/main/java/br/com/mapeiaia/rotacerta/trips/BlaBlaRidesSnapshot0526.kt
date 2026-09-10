@@ -1,16 +1,18 @@
 package br.com.mapeiaia.rotacerta.trips
 
-import android.content.ClipData
+import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
 import android.os.Build
-import androidx.core.content.FileProvider
+import android.os.Environment
+import android.provider.MediaStore
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -186,13 +188,9 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
     fun manifestPath(captureId: String): String =
         File(captureDir(captureId), "manifest.json").absolutePath
 
-    fun copyForShare(captureId: String, cacheRoot: File): List<File> = synchronized(lock) {
+    fun downloadEntries0527(captureId: String): List<BlaBlaRidesSnapshotDownloadEntry0527> = synchronized(lock) {
         val manifest = readUnlocked(captureId) ?: return@synchronized emptyList()
         val sourceRoot = captureDir(captureId).canonicalFile
-        val shareDir = File(cacheRoot, safeCaptureId(captureId)).apply {
-            deleteRecursively()
-            mkdirs()
-        }
         val relativePaths = buildList {
             add("manifest.json")
             manifest.profiles.forEach { profile ->
@@ -205,8 +203,10 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
             if (!source.path.startsWith(sourceRoot.path + File.separator) || !source.isFile) {
                 return@mapNotNull null
             }
-            val safeName = relative.replace('/', '_').replace('\\', '_')
-            File(shareDir, safeName).also { target -> source.copyTo(target, overwrite = true) }
+            BlaBlaRidesSnapshotDownloadEntry0527(
+                relativePath = relative.replace('\\', '/').trimStart('/'),
+                file = source,
+            )
         }
     }
 
@@ -278,33 +278,73 @@ internal fun ridesSnapshotGlobalResult0526(statuses: Collection<String>): String
     else -> "FAILED"
 }
 
-internal object BlaBlaRidesSnapshotShare0526 {
-    fun share(context: Context, manifest: BlaBlaRidesSnapshotManifest0526) {
-        val files = BlaBlaRidesSnapshotStore0526(context).copyForShare(
-            captureId = manifest.captureId,
-            cacheRoot = File(context.cacheDir, "trip_calendar/blablacar-rides"),
-        )
-        require(files.isNotEmpty()) { "No rides snapshot evidence available to share" }
-        val authority = "${context.packageName}.tripfiles"
-        val uris = ArrayList(files.map { file ->
-            FileProvider.getUriForFile(context, authority, file)
-        })
-        val clip = ClipData.newUri(
-            context.contentResolver,
-            "Rota Certa • Suas viagens • evidência privada",
-            uris.first(),
-        )
-        uris.drop(1).forEach { uri -> clip.addItem(ClipData.Item(uri)) }
-        val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-            type = "application/octet-stream"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
-            clipData = clip
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+internal data class BlaBlaRidesSnapshotDownloadEntry0527(
+    val relativePath: String,
+    val file: File,
+)
+
+internal data class BlaBlaRidesSnapshotDownloadResult0527(
+    val displayName: String,
+    val relativeLocation: String,
+    val bytes: Long,
+)
+
+internal object BlaBlaRidesSnapshotDownload0527 {
+    suspend fun download(
+        context: Context,
+        manifest: BlaBlaRidesSnapshotManifest0526,
+    ): BlaBlaRidesSnapshotDownloadResult0527 = withContext(Dispatchers.IO) {
+        require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            "Download automático requer Android 10 ou superior"
         }
-        context.startActivity(
-            Intent.createChooser(send, "Compartilhar evidência privada de Suas viagens")
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        val app = context.applicationContext
+        val entries = BlaBlaRidesSnapshotStore0526(app).downloadEntries0527(manifest.captureId)
+        require(entries.isNotEmpty()) { "Nenhuma evidência disponível para download" }
+
+        val displayName =
+            "rota-certa-suas-viagens-${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)}.zip"
+        val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/Rota Certa"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val resolver = app.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: error("Android não disponibilizou um destino em Downloads")
+
+        try {
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                ZipOutputStream(output.buffered()).use { zip ->
+                    entries.forEach { entry ->
+                        val safeRelative = entry.relativePath
+                            .split('/')
+                            .filter { segment -> segment.isNotBlank() && segment != "." && segment != ".." }
+                            .joinToString("/")
+                        require(safeRelative.isNotBlank()) { "Nome de arquivo inválido na captura" }
+                        zip.putNextEntry(ZipEntry(safeRelative))
+                        entry.file.inputStream().buffered().use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                }
+            } ?: error("Não foi possível abrir o arquivo de destino em Downloads")
+
+            ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }.also { ready ->
+                resolver.update(uri, ready, null, null)
+            }
+
+            BlaBlaRidesSnapshotDownloadResult0527(
+                displayName = displayName,
+                relativeLocation = "$relativePath/$displayName",
+                bytes = entries.sumOf { it.file.length() },
+            )
+        } catch (error: Throwable) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
     }
 }
 
