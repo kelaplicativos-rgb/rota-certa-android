@@ -17,26 +17,33 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.webkit.WebViewFeature
+import kotlinx.coroutines.launch
 
 /**
  * Configuration-only projection of the existing BlaBlaCar account/browser authority.
  *
  * This screen intentionally owns no synchronization state. Opening it or returning
  * from an isolated login/profile WebView never enqueues background synchronization work.
+ * The forensic rides snapshot command is read-only and writes only app-private evidence.
  */
 @Composable
 internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     val context = LocalContext.current
     val registry = remember(context) { BlaBlaDynamicAccountRegistry(context) }
     val sessionStore = remember(context) { BlaBlaDynamicSessionStore(context) }
+    val scope = rememberCoroutineScope()
     var revision by remember { mutableIntStateOf(0) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
+    var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
+    var ridesSnapshotProgress0526 by remember { mutableStateOf("") }
+    var ridesSnapshotSummary0526 by remember { mutableStateOf("") }
 
     val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         revision++
@@ -97,8 +104,55 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 }
             }
 
+            if (accounts.isNotEmpty()) {
+                Button(
+                    enabled = multiProfileAvailable && !ridesSnapshotRunning0526,
+                    onClick = {
+                        ridesSnapshotRunning0526 = true
+                        ridesSnapshotSummary0526 = ""
+                        ridesSnapshotProgress0526 = "Preparando captura privada…"
+                        scope.launch {
+                            val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
+                                ridesSnapshotProgress0526 = progress
+                            }
+                            ridesSnapshotSummary0526 = buildString {
+                                append("Captura ").append(manifest.captureId)
+                                append(" • ").append(manifest.result)
+                                manifest.profiles.forEach { profile ->
+                                    append("\n")
+                                    append(profile.displayName.ifBlank { profile.expectedProfileUuid })
+                                    append(": ").append(profile.status)
+                                    append(" • ").append(profile.cardCountFinal).append(" viagens")
+                                    if (profile.errorCode.isNotBlank()) {
+                                        append(" • ").append(profile.errorCode)
+                                    }
+                                }
+                            }
+                            ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
+                            ridesSnapshotRunning0526 = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (ridesSnapshotRunning0526) {
+                            "📥 Capturando Suas viagens…"
+                        } else {
+                            "📥 Capturar Suas viagens de todos os perfis"
+                        },
+                    )
+                }
+            }
+
+            if (ridesSnapshotProgress0526.isNotBlank()) {
+                Text(ridesSnapshotProgress0526, style = MaterialTheme.typography.bodySmall)
+            }
+            if (ridesSnapshotSummary0526.isNotBlank()) {
+                Text(ridesSnapshotSummary0526, style = MaterialTheme.typography.bodySmall)
+            }
+
             Button(
-                enabled = multiProfileAvailable,
+                enabled = multiProfileAvailable && !ridesSnapshotRunning0526,
                 onClick = {
                     newAccountLabel = ""
                     showAddAccount = true
@@ -112,7 +166,8 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
 
     Text(
         "Abrir uma conta abre somente a sessão isolada para login/configuração. " +
-            "Nenhum ciclo de sincronização é iniciado por esta tela.",
+            "A captura de Suas viagens é somente leitura e salva HTML/MHTML em armazenamento privado; " +
+            "nenhum ciclo de sincronização pública é iniciado por esta tela.",
         style = MaterialTheme.typography.bodySmall,
     )
 
