@@ -1,7 +1,10 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.ClipData
 import android.content.Context
+import android.content.Intent
 import android.os.Build
+import androidx.core.content.FileProvider
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
@@ -183,6 +186,30 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
     fun manifestPath(captureId: String): String =
         File(captureDir(captureId), "manifest.json").absolutePath
 
+    fun copyForShare(captureId: String, cacheRoot: File): List<File> = synchronized(lock) {
+        val manifest = readUnlocked(captureId) ?: return@synchronized emptyList()
+        val sourceRoot = captureDir(captureId).canonicalFile
+        val shareDir = File(cacheRoot, safeCaptureId(captureId)).apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val relativePaths = buildList {
+            add("manifest.json")
+            manifest.profiles.forEach { profile ->
+                profile.htmlFile.takeIf(String::isNotBlank)?.let(::add)
+                profile.mhtmlFile.takeIf(String::isNotBlank)?.let(::add)
+            }
+        }.distinct()
+        relativePaths.mapNotNull { relative ->
+            val source = File(sourceRoot, relative).canonicalFile
+            if (!source.path.startsWith(sourceRoot.path + File.separator) || !source.isFile) {
+                return@mapNotNull null
+            }
+            val safeName = relative.replace('/', '_').replace('\\', '_')
+            File(shareDir, safeName).also { target -> source.copyTo(target, overwrite = true) }
+        }
+    }
+
     private fun writeManifest(manifest: BlaBlaRidesSnapshotManifest0526) {
         val dir = captureDir(manifest.captureId).apply { mkdirs() }
         val target = File(dir, "manifest.json")
@@ -249,6 +276,36 @@ internal fun ridesSnapshotGlobalResult0526(statuses: Collection<String>): String
     statuses.any { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "PARTIAL_SUCCESS"
     statuses.any { it == BlaBlaRidesSnapshotStatus0526.INCOMPLETE } -> "INCOMPLETE"
     else -> "FAILED"
+}
+
+internal object BlaBlaRidesSnapshotShare0526 {
+    fun share(context: Context, manifest: BlaBlaRidesSnapshotManifest0526) {
+        val files = BlaBlaRidesSnapshotStore0526(context).copyForShare(
+            captureId = manifest.captureId,
+            cacheRoot = File(context.cacheDir, "trip_calendar/blablacar-rides"),
+        )
+        require(files.isNotEmpty()) { "No rides snapshot evidence available to share" }
+        val authority = "${context.packageName}.tripfiles"
+        val uris = ArrayList(files.map { file ->
+            FileProvider.getUriForFile(context, authority, file)
+        })
+        val clip = ClipData.newUri(
+            context.contentResolver,
+            "Rota Certa • Suas viagens • evidência privada",
+            uris.first(),
+        )
+        uris.drop(1).forEach { uri -> clip.addItem(ClipData.Item(uri)) }
+        val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "application/octet-stream"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            clipData = clip
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            Intent.createChooser(send, "Compartilhar evidência privada de Suas viagens")
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
 }
 
 internal data class BlaBlaRidesSnapshotIdentity0526(
