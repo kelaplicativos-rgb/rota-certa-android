@@ -29,6 +29,14 @@ class TripTimelineBaseDirectionStage47Test {
     )
 
     @Test
+    fun compactTimelineCardShowsOnlyActionableIdaOrVoltaDirection0524() {
+        assertEquals("↑ IDA", timelineDirectionDisplayLabel(TimelineDirectionState.OUTBOUND))
+        assertEquals("↓ VOLTA", timelineDirectionDisplayLabel(TimelineDirectionState.INBOUND))
+        assertNull(timelineDirectionDisplayLabel(TimelineDirectionState.NEUTRAL))
+        assertNull(timelineDirectionDisplayLabel(TimelineDirectionState.UNKNOWN))
+    }
+
+    @Test
     fun externalTrustedGeoReturnsIdaVoltaAndNeutralLabels() {
         val home = Coordinate(0.0, 0.0)
         val geo = mapOf(
