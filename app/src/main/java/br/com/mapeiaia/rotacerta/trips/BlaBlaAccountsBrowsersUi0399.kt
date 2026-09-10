@@ -44,6 +44,7 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     var newAccountLabel by remember { mutableStateOf("") }
     var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
     var ridesSnapshotDownloadRunning0527 by remember { mutableStateOf(false) }
+    var ridesSnapshotJsonDownloadRunning0531 by remember { mutableStateOf(false) }
     var ridesSnapshotProgress0526 by remember { mutableStateOf("") }
     var ridesSnapshotSummary0526 by remember { mutableStateOf("") }
     var lastRidesSnapshot0526 by remember { mutableStateOf<BlaBlaRidesSnapshotManifest0526?>(null) }
@@ -109,7 +110,10 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
 
             if (accounts.isNotEmpty()) {
                 Button(
-                    enabled = multiProfileAvailable && !ridesSnapshotRunning0526,
+                    enabled = multiProfileAvailable &&
+                        !ridesSnapshotRunning0526 &&
+                        !ridesSnapshotDownloadRunning0527 &&
+                        !ridesSnapshotJsonDownloadRunning0531,
                     onClick = {
                         ridesSnapshotRunning0526 = true
                         ridesSnapshotSummary0526 = ""
@@ -157,7 +161,9 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
             }
             lastRidesSnapshot0526?.let { manifest ->
                 OutlinedButton(
-                    enabled = !ridesSnapshotRunning0526 && !ridesSnapshotDownloadRunning0527,
+                    enabled = !ridesSnapshotRunning0526 &&
+                        !ridesSnapshotDownloadRunning0527 &&
+                        !ridesSnapshotJsonDownloadRunning0531,
                     onClick = {
                         ridesSnapshotDownloadRunning0527 = true
                         ridesSnapshotProgress0526 = "Preparando download da captura…"
@@ -185,6 +191,38 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                         },
                     )
                 }
+
+                OutlinedButton(
+                    enabled = !ridesSnapshotRunning0526 &&
+                        !ridesSnapshotDownloadRunning0527 &&
+                        !ridesSnapshotJsonDownloadRunning0531,
+                    onClick = {
+                        ridesSnapshotJsonDownloadRunning0531 = true
+                        ridesSnapshotProgress0526 = "Preparando JSON estruturado para o Rota Certa…"
+                        scope.launch {
+                            try {
+                                val result = BlaBlaRidesPortableJsonDownload0531.download(context, manifest)
+                                ridesSnapshotProgress0526 =
+                                    "JSON do Rota Certa concluído • ${result.displayName} • Downloads/Rota Certa"
+                            } catch (error: Throwable) {
+                                ridesSnapshotProgress0526 =
+                                    "Não foi possível gerar o JSON do Rota Certa: " +
+                                        (error.message ?: error.javaClass.simpleName)
+                            } finally {
+                                ridesSnapshotJsonDownloadRunning0531 = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (ridesSnapshotJsonDownloadRunning0531) {
+                            "📄 Gerando JSON do Rota Certa…"
+                        } else {
+                            "📄 Baixar dados para Rota Certa (.json)"
+                        },
+                    )
+                }
             }
 
             Button(
@@ -203,7 +241,9 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     Text(
         "Abrir uma conta abre somente a sessão isolada para login/configuração. " +
             "A captura de Suas viagens é somente leitura e salva HTML/MHTML em armazenamento privado. " +
-            "O botão de download gera um ZIP em Downloads/Rota Certa; nenhum ciclo de sincronização pública é iniciado por esta tela.",
+            "O ZIP preserva a evidência forense completa; o JSON reúne os dois perfis em um único arquivo " +
+            "estruturado que o próprio Rota Certa valida e consegue reler. Ambos são salvos em Downloads/Rota Certa; " +
+            "nenhum ciclo de sincronização pública é iniciado por esta tela.",
         style = MaterialTheme.typography.bodySmall,
     )
 
