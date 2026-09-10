@@ -420,6 +420,7 @@ internal data class BlaBlaRidesSnapshotObservation0526(
     val loadingActive: Boolean,
     val lastMutationAgeMs: Long,
     val explicitEmptyList: Boolean,
+    val tripSetSha256: String = "",
     val htmlTruncated: Boolean = false,
     val htmlMaterializedComplete: Boolean = true,
 )
@@ -448,10 +449,25 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
         private set
     var finalCardCount: Int = 0
         private set
+    val requiredStableIterations: Int
+        get() = requiredStablePasses + 1
+    var observedStableIterations: Int = 0
+        private set
+    var noNewTripIterations: Int = 0
+        private set
+    val cardCountHistory: List<Int>
+        get() = cardCountHistoryMutable.toList()
+    val tripSetFingerprintHistory: List<String>
+        get() = tripSetFingerprintHistoryMutable.toList()
+    var finalTripSetSha256: String = ""
+        private set
+
+    private val cardCountHistoryMutable = mutableListOf<Int>()
+    private val tripSetFingerprintHistoryMutable = mutableListOf<String>()
     private var lastCardCount = -1
     private var lastHeight = -1
     private var lastScrollY = -1
-    private var stablePasses = 0
+    private var lastTripSetSha256 = ""
     private var noProgressCycles = 0
 
     fun observe(
@@ -462,38 +478,69 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
         initialCardCount = initialCardCount ?: observation.cardCount
         finalCardCount = maxOf(finalCardCount, observation.cardCount)
 
-        val contentProgress = observation.cardCount > lastCardCount || observation.scrollHeight > lastHeight
+        val currentTripSetSha256 = observation.tripSetSha256.ifBlank {
+            // Compatibility fallback for legacy unit fixtures. Runtime 0.1.528 always supplies
+            // the deterministic administrative-trip set fingerprint.
+            BlaBlaRidesSnapshotStore0526.sha256(
+                "legacy-card-count:${observation.cardCount}".toByteArray(Charsets.UTF_8),
+            )
+        }
+        finalTripSetSha256 = currentTripSetSha256
+        cardCountHistoryMutable += observation.cardCount
+        tripSetFingerprintHistoryMutable += currentTripSetSha256
+
+        val tripSetChanged = lastTripSetSha256.isNotBlank() && currentTripSetSha256 != lastTripSetSha256
+        val contentProgress =
+            tripSetChanged || observation.cardCount > lastCardCount || observation.scrollHeight > lastHeight
         val scrollProgress = observation.scrollY > lastScrollY
         if (contentProgress || scrollProgress) noProgressCycles = 0 else noProgressCycles++
 
+        noNewTripIterations = if (
+            lastTripSetSha256.isNotBlank() &&
+            currentTripSetSha256 == lastTripSetSha256
+        ) {
+            noNewTripIterations + 1
+        } else {
+            0
+        }
+
         val sameMaterializedContent =
-            observation.cardCount == lastCardCount && observation.scrollHeight == lastHeight
+            lastTripSetSha256.isNotBlank() &&
+            currentTripSetSha256 == lastTripSetSha256 &&
+            observation.cardCount == lastCardCount &&
+            observation.scrollHeight == lastHeight
         val terminalShape = observation.atBottom &&
             !observation.loadingActive &&
             observation.lastMutationAgeMs >= mutationQuietMillis &&
             (observation.cardCount > 0 || observation.explicitEmptyList)
 
-        stablePasses = if (terminalShape && sameMaterializedContent) stablePasses + 1 else 0
+        observedStableIterations = when {
+            !terminalShape -> 0
+            sameMaterializedContent -> observedStableIterations + 1
+            else -> 1
+        }
 
         lastCardCount = observation.cardCount
         lastHeight = observation.scrollHeight
         lastScrollY = observation.scrollY
+        lastTripSetSha256 = currentTripSetSha256
 
-        if (stablePasses >= requiredStablePasses) {
+        if (observedStableIterations >= requiredStableIterations) {
             return when {
                 observation.htmlTruncated -> BlaBlaRidesSnapshotDecision0526(
                     BlaBlaRidesSnapshotAction0526.INCOMPLETE,
-                    stablePasses,
+                    observedStableIterations,
                     "HTML_TRUNCATED",
                 )
                 !observation.htmlMaterializedComplete -> BlaBlaRidesSnapshotDecision0526(
                     BlaBlaRidesSnapshotAction0526.INCOMPLETE,
-                    stablePasses,
+                    observedStableIterations,
                     "HTML_NOT_FULLY_MATERIALIZED",
                 )
                 else -> BlaBlaRidesSnapshotDecision0526(
                     BlaBlaRidesSnapshotAction0526.CAPTURE,
-                    stablePasses,
+                    observedStableIterations,
+                    "TRIP_ID_SET_UNCHANGED_AT_BOTTOM",
                 )
             }
         }
@@ -505,14 +552,24 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
                 cycles >= maxCycles -> "MAX_SCROLL_CYCLES"
                 else -> "NO_PROGRESS"
             }
-            return BlaBlaRidesSnapshotDecision0526(BlaBlaRidesSnapshotAction0526.INCOMPLETE, stablePasses, reason)
+            return BlaBlaRidesSnapshotDecision0526(
+                BlaBlaRidesSnapshotAction0526.INCOMPLETE,
+                observedStableIterations,
+                reason,
+            )
         }
 
         return if (!observation.atBottom) {
             scrollIterations++
-            BlaBlaRidesSnapshotDecision0526(BlaBlaRidesSnapshotAction0526.SCROLL, stablePasses)
+            BlaBlaRidesSnapshotDecision0526(
+                BlaBlaRidesSnapshotAction0526.SCROLL,
+                observedStableIterations,
+            )
         } else {
-            BlaBlaRidesSnapshotDecision0526(BlaBlaRidesSnapshotAction0526.WAIT, stablePasses)
+            BlaBlaRidesSnapshotDecision0526(
+                BlaBlaRidesSnapshotAction0526.WAIT,
+                observedStableIterations,
+            )
         }
     }
 }
