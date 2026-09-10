@@ -1,0 +1,170 @@
+name: Timeline passenger snapshot 0.1.532
+
+on:
+  push:
+    branches:
+      - agent/timeline-passenger-snapshot-0.1.532
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: ${{ !contains(github.event.head_commit.message, 'fix: keep passenger snapshot atomic') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/timeline-passenger-snapshot-0.1.532
+
+      - name: Apply causal Timeline passenger snapshot fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          ui = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt')
+          text = ui.read_text(encoding='utf-8')
+          original = text
+
+          old_gate = 'if (!entry.canonicalBackendAuthoritative0494 || trip == null || canonicalBookings0494 == null) return null'
+          new_gate = 'if (trip == null || canonicalBookings0494 == null) return null'
+          if text.count(old_gate) != 1:
+              raise SystemExit(f'authority gate match count={text.count(old_gate)}')
+          text = text.replace(old_gate, new_gate)
+
+          old_reset = '        renderSnapshot0394 = immediateCanonicalSnapshot0517\n        renderFailure0512 = null'
+          new_reset = '''        renderSnapshot0394 = preservePassengerTimelineSnapshotDuringRefresh0532(
+              current = renderSnapshot0394,
+              immediateCanonical = immediateCanonicalSnapshot0517,
+          )'''
+          if text.count(old_reset) != 1:
+              raise SystemExit(f'refresh reset match count={text.count(old_reset)}')
+          text = text.replace(old_reset, new_reset)
+
+          failure_state = '''    var renderFailure0512 by remember(entry.tripId, trip?.id) {
+              mutableStateOf<String?>(null)
+          }
+'''
+          if text.count(failure_state) != 1:
+              raise SystemExit(f'failure state match count={text.count(failure_state)}')
+          text = text.replace(failure_state, '')
+
+          failure_assignment = '            renderFailure0512 = "PASSENGER_PROJECTION_FAILED"\n'
+          if text.count(failure_assignment) != 1:
+              raise SystemExit(f'failure assignment match count={text.count(failure_assignment)}')
+          text = text.replace(failure_assignment, '')
+
+          loading_block = re.compile(
+              r'''    if \(renderSnapshot == null\) \{\n'''
+              r'''        if \(renderFailure0512 == null\) \{\n'''
+              r'''            Text\("Carregando passageiros…", style = MaterialTheme\.typography\.bodySmall\)\n'''
+              r'''        \} else \{\n'''
+              r'''            Text\(\n'''
+              r'''                "⚠️ Não foi possível resolver os passageiros desta viagem\. O card canônico foi preservado; atualize novamente\.",\n'''
+              r'''                style = MaterialTheme\.typography\.bodySmall,\n'''
+              r'''            \)\n'''
+              r'''        \}\n'''
+              r'''        return\n'''
+              r'''    \}'''
+          )
+          text, count = loading_block.subn('    if (renderSnapshot == null) return', text)
+          if count != 1:
+              raise SystemExit(f'loading block match count={count}')
+
+          legacy_source = '" source=" + if (entry.canonicalBackendAuthoritative0494) "CANONICAL_BACKEND" else "LOCAL_LEGACY",'
+          local_source = '" source=" + if (entry.canonicalBackendAuthoritative0494) "CANONICAL_BACKEND" else "LOCAL_CANONICAL_AGENDA",'
+          if text.count(legacy_source) != 1:
+              raise SystemExit(f'telemetry source match count={text.count(legacy_source)}')
+          text = text.replace(legacy_source, local_source)
+
+          if text == original:
+              raise SystemExit('PassengerTimelineUi.kt unchanged')
+          if 'Carregando passageiros' in text:
+              raise SystemExit('visible passenger loading text still present')
+          if 'renderSnapshot0394 = immediateCanonicalSnapshot0517' in text:
+              raise SystemExit('degrading refresh assignment still present')
+          if old_gate in text:
+              raise SystemExit('remote-authority gate still blocks local canonical seed')
+          ui.write_text(text, encoding='utf-8')
+
+          gradle = Path('app/build.gradle.kts')
+          build = gradle.read_text(encoding='utf-8')
+          if build.count('versionCode = 5823') != 1 or build.count('versionName = "0.1.531"') != 1:
+              raise SystemExit('unexpected current version metadata')
+          build = build.replace('versionCode = 5823', 'versionCode = 5824')
+          build = build.replace('versionName = "0.1.531"', 'versionName = "0.1.532"')
+          gradle.write_text(build, encoding='utf-8')
+          PY
+
+          git diff --check
+          git diff -- app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt app/build.gradle.kts
+
+      - name: Commit final source state
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt app/build.gradle.kts
+          git commit -m "fix: keep passenger snapshot atomic during refresh (0.1.532)"
+          git push origin HEAD:agent/timeline-passenger-snapshot-0.1.532
+
+  validate-final-sha:
+    if: ${{ contains(github.event.head_commit.message, 'fix: keep passenger snapshot atomic') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify structural invariants
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          ui = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt').read_text(encoding='utf-8')
+          assert 'Carregando passageiros' not in ui
+          assert 'renderSnapshot0394 = immediateCanonicalSnapshot0517' not in ui
+          assert 'preservePassengerTimelineSnapshotDuringRefresh0532' in ui
+          assert 'if (!entry.canonicalBackendAuthoritative0494 || trip == null' not in ui
+          assert 'if (trip == null || canonicalBookings0494 == null) return null' in ui
+          gradle = Path('app/build.gradle.kts').read_text(encoding='utf-8')
+          assert 'versionCode = 5824' in gradle
+          assert 'versionName = "0.1.532"' in gradle
+          PY
+
+      - name: Unit tests and APK build
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      - name: Package final-SHA APK evidence
+        shell: bash
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/app-debug.apk out/rota-certa-0.1.532-timeline-passenger-snapshot.apk
+          {
+            echo "branch=agent/timeline-passenger-snapshot-0.1.532"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "versionName=0.1.532"
+            echo "versionCode=5824"
+            echo "sourceLoadingTextPresent=$(grep -R -F -q 'Carregando passageiros' app/src/main/java && echo true || echo false)"
+            sha256sum out/rota-certa-0.1.532-timeline-passenger-snapshot.apk
+          } > out/build-evidence.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.532-timeline-passenger-snapshot
+          path: out/
+          if-no-files-found: error
+          retention-days: 30
