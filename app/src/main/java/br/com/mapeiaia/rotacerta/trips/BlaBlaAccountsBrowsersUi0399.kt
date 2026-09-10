@@ -9,6 +9,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,6 +45,7 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
     var ridesSnapshotProgress0526 by remember { mutableStateOf("") }
     var ridesSnapshotSummary0526 by remember { mutableStateOf("") }
+    var lastRidesSnapshot0526 by remember { mutableStateOf<BlaBlaRidesSnapshotManifest0526?>(null) }
 
     val sessionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         revision++
@@ -110,11 +112,13 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                     onClick = {
                         ridesSnapshotRunning0526 = true
                         ridesSnapshotSummary0526 = ""
+                        lastRidesSnapshot0526 = null
                         ridesSnapshotProgress0526 = "Preparando captura privada…"
                         scope.launch {
                             val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
                                 ridesSnapshotProgress0526 = progress
                             }
+                            lastRidesSnapshot0526 = manifest
                             ridesSnapshotSummary0526 = buildString {
                                 append("Captura ").append(manifest.captureId)
                                 append(" • ").append(manifest.result)
@@ -149,6 +153,23 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
             }
             if (ridesSnapshotSummary0526.isNotBlank()) {
                 Text(ridesSnapshotSummary0526, style = MaterialTheme.typography.bodySmall)
+            }
+            lastRidesSnapshot0526?.let { manifest ->
+                OutlinedButton(
+                    enabled = !ridesSnapshotRunning0526,
+                    onClick = {
+                        runCatching {
+                            BlaBlaRidesSnapshotShare0526.share(context, manifest)
+                        }.onFailure { error ->
+                            ridesSnapshotProgress0526 =
+                                "Não foi possível compartilhar a evidência: " +
+                                    (error.message ?: error.javaClass.simpleName)
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("📤 Compartilhar última captura privada")
+                }
             }
 
             Button(
