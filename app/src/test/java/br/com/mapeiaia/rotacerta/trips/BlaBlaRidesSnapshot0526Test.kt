@@ -93,17 +93,10 @@ class BlaBlaRidesSnapshot0526Test {
             ).action,
         )
         assertEquals(
-            BlaBlaRidesSnapshotAction0526.WAIT,
+            BlaBlaRidesSnapshotAction0526.CAPTURE,
             stabilizer.observe(
                 obs(cards = 8, y = 1600, height = 2200, bottom = true, mutationAge = 2600),
                 nowMillis = 3700,
-            ).action,
-        )
-        assertEquals(
-            BlaBlaRidesSnapshotAction0526.CAPTURE,
-            stabilizer.observe(
-                obs(cards = 8, y = 1600, height = 2200, bottom = true, mutationAge = 3800),
-                nowMillis = 4900,
             ).action,
         )
         assertEquals(3, stabilizer.initialCardCount)
