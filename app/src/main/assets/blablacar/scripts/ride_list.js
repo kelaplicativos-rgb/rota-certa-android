@@ -152,21 +152,71 @@
     '[data-testid*="no-ride"], [data-testid*="no-trip"], [aria-label*="no ride" i], [aria-label*="no trip" i]'
   );
   const emptyText = /nenhuma viagem|sem viagens|no trips|no rides|aucun trajet|keine fahrten|sin viajes|nessun viaggio/i.test(bodyText);
-  const clone = document.documentElement.cloneNode(true);
-clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
-clone.querySelectorAll('input, textarea').forEach((node) => {
-  node.removeAttribute('value');
-  node.textContent = '';
-});
-const html = clone.outerHTML || '';
+
+  // Persistent, page-local stabilization evidence. It observes DOM materialization only;
+  // it does not click, mutate BlaBlaCar data, or create a second collection path.
+  const probeKey = '__rotaCertaRidesSnapshotProbe0526';
+  let probe = window[probeKey];
+  if (!probe || !probe.observer) {
+    probe = { lastMutationAt: Date.now(), observer: null };
+    probe.observer = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => mutation.type === 'childList' || mutation.type === 'characterData')) {
+        probe.lastMutationAt = Date.now();
+      }
+    });
+    probe.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
+    window[probeKey] = probe;
+  }
+  const isVisible = (node) => {
+    if (!node) return false;
+    const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
+    if (style && (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') === 0)) return false;
+    return !!(node.getClientRects && node.getClientRects().length);
+  };
+  const loadingActive = Array.from(document.querySelectorAll(
+    '[aria-busy="true"], [role="progressbar"], [data-testid*="loader" i], [data-testid*="loading" i], [class*="spinner" i]'
+  )).some(isVisible);
+
+  // Keep the historical small diagnostic DOM unchanged for the existing collector.
+  const diagnosticClone = document.documentElement.cloneNode(true);
+  diagnosticClone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
+  diagnosticClone.querySelectorAll('input, textarea').forEach((node) => {
+    node.removeAttribute('value');
+    node.textContent = '';
+  });
+  const diagnosticHtml = diagnosticClone.outerHTML || '';
+
+  // Private forensic HTML keeps rendered style/link structure but removes executable scripts
+  // and form values. It is never published by the collector or Agenda pipeline.
+  const snapshotClone = document.documentElement.cloneNode(true);
+  snapshotClone.querySelectorAll('script, noscript').forEach((node) => node.remove());
+  snapshotClone.querySelectorAll('input').forEach((node) => {
+    node.removeAttribute('value');
+    node.removeAttribute('checked');
+  });
+  snapshotClone.querySelectorAll('textarea').forEach((node) => {
+    node.removeAttribute('value');
+    node.textContent = '';
+  });
+  const fullSnapshotHtml = '<!doctype html>\n' + (snapshotClone.outerHTML || '');
+  const maxSnapshotChars = 1500000;
+  const snapshotTruncated = fullSnapshotHtml.length > maxSnapshotChars;
+  const snapshotHtml = fullSnapshotHtml.slice(0, maxSnapshotChars);
+
   return JSON.stringify({
     candidates: fromRoots.concat(fallback),
     bodyText: bodyText,
     explicitEmptyList: !!emptyStructure || emptyText,
+    documentReady: document.readyState === 'complete',
+    loadingActive: loadingActive,
+    lastMutationAgeMs: Math.max(0, Date.now() - Number(probe.lastMutationAt || Date.now())),
     scrollY: Math.max(0, Math.round(window.scrollY || window.pageYOffset || 0)),
     scrollHeight: Math.max(0, Math.round(document.documentElement.scrollHeight || document.body.scrollHeight || 0)),
     viewportHeight: Math.max(0, Math.round(window.innerHeight || document.documentElement.clientHeight || 0)),
     atBottom: Math.ceil((window.scrollY || window.pageYOffset || 0) + (window.innerHeight || document.documentElement.clientHeight || 0)) >= Math.max(document.documentElement.scrollHeight || 0, document.body.scrollHeight || 0) - 8,
-    domHtml: html.slice(0, 350000)
+    snapshotHtml: snapshotHtml,
+    snapshotHtmlLength: fullSnapshotHtml.length,
+    snapshotTruncated: snapshotTruncated,
+    domHtml: diagnosticHtml.slice(0, 350000)
   });
 })();
