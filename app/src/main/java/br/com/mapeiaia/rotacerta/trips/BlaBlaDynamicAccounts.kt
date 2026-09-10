@@ -302,6 +302,8 @@ private data class DynamicRideList(
     val explicitEmptyList: Boolean = false,
     val documentReady: Boolean = false,
     val loadingActive: Boolean = false,
+    val endSentinelVisible: Boolean = false,
+    val endSentinelText: String = "",
     val lastMutationAgeMs: Long = 0L,
     val scrollY: Int = 0,
     val scrollHeight: Int = 0,
@@ -1569,10 +1571,57 @@ internal class BlaBlaDynamicAccountSessionController0401(
             identityConfirmedThisSync = true
             ridesSnapshotIdentityAttempts0526 = 0
             val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid).orEmpty()
-            ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+            val identityCapturedAt = java.time.Instant.now().toString()
+            val store0528 = ridesSnapshotStore0526()
+            val identityLocators0528 = sanitizedIdentityLocators0528(
+                profileLinks = evidence.profileLinks,
+                authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+            )
+            if (identityLocators0528.isEmpty()) {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                    errorCode = "IDENTITY_EVIDENCE_NOT_AUDITABLE",
+                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                )
+                return@evaluateRequest
+            }
+            val identityPayload0528 = BlaBlaRidesIdentityJson0528(
+                accountKey = store0528.accountKey(account.id),
+                expectedProfileUuid = expected,
+                authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                confirmedAt = identityCapturedAt,
+                locators = identityLocators0528,
+            )
+            val identityArtifact0528 = runCatching {
+                store0528.writeIdentityJson0528(
+                    captureId = ridesSnapshotCaptureId0526,
+                    profileUuid = expected,
+                    payload = identityPayload0528,
+                )
+            }.getOrElse {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
+                    errorCode = "IDENTITY_EVIDENCE_WRITE_FAILED",
+                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                )
+                return@evaluateRequest
+            }
+            val identityEvidence0528 = BlaBlaRidesIdentityEvidence0528(
+                source = identityPayload0528.source,
+                capturedAt = identityCapturedAt,
+                evidenceType = identityPayload0528.evidenceType,
+                evidenceHashSha256 = identityArtifact0528.sha256,
+                accountKey = identityPayload0528.accountKey,
+                locators = identityLocators0528,
+            )
+            store0528.updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
                 previous.copy(
                     authenticatedProfileUuid = resolution.authenticatedProfileUuid,
                     identityConfirmed = true,
+                    identityEvidence = identityEvidence0528,
+                    identityFile = identityArtifact0528.relativePath,
+                    identityBytes = identityArtifact0528.bytes,
+                    identitySha256 = identityArtifact0528.sha256,
                     status = BlaBlaRidesSnapshotStatus0526.IDENTITY_CONFIRMED,
                     errorCode = "",
                 )
@@ -1581,6 +1630,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 "RIDES_SNAPSHOT_IDENTITY_CONFIRMED",
                 packageName,
                 "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuid=$expected authenticatedUuid=${resolution.authenticatedProfileUuid} identityStrong=true",
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED",
+                packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${identityPayload0528.accountKey} source=SESSION_IDENTITY evidenceType=${identityPayload0528.evidenceType} locatorCount=${identityLocators0528.size} identitySha256=${identityArtifact0528.sha256}",
             )
             snapshotProgress0526(
                 "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Carregando Suas viagens",
