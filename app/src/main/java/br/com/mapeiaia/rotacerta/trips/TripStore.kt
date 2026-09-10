@@ -115,6 +115,104 @@ class TripStore(context: Context) {
         normalized
     }
 
+    /**
+     * Persists a Timeline secondary-sync merge without granting the remote
+     * projection authority to replace the local Agenda. The projection reaching
+     * this method has already passed the 0.1.525 non-degrading merge.
+     *
+     * This deliberately does not call saveTrip()/saveBookingsBatch(): those are
+     * business-mutation APIs and would mint new canonical revisions for a remote
+     * confirmation. Here the accepted canonical revision is preserved exactly.
+     */
+    internal fun persistSecondaryCanonicalTimelineMerge0525(
+        projection: CanonicalTimelineProjection0494,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean = synchronized(CANONICAL_LOCK) {
+        if (projection.trips.isEmpty()) return@synchronized false
+
+        val currentTrips = trips()
+        val currentBookings = bookings()
+        val incomingById = projection.trips.associateBy(Trip::id)
+        val representedTripIds = incomingById.keys
+
+        val nextTrips = currentTrips.map { current ->
+            val incoming = incomingById[current.id] ?: return@map current
+            when {
+                current.deleted -> current
+                current.canonicalRevision > incoming.canonicalRevision -> current
+                else -> incoming.copy(
+                    id = current.id,
+                    createdAtMillis = current.createdAtMillis,
+                    // Local collector evidence is canonicalized before Timeline and
+                    // is not supplied by the remote Timeline response. Never erase it.
+                    externalSnapshot = incoming.externalSnapshot ?: current.externalSnapshot,
+                    externalSnapshotFingerprint = incoming.externalSnapshotFingerprint
+                        .ifBlank { current.externalSnapshotFingerprint },
+                    externalSnapshotComplete = incoming.externalSnapshotComplete || current.externalSnapshotComplete,
+                    lastCollectionRunId = incoming.lastCollectionRunId.ifBlank { current.lastCollectionRunId },
+                    lastCollectionGeneration = maxOf(
+                        incoming.lastCollectionGeneration,
+                        current.lastCollectionGeneration,
+                    ),
+                    lastObservedAtMillis = maxOf(incoming.lastObservedAtMillis, current.lastObservedAtMillis),
+                    deleted = current.deleted,
+                    deletedAtMillis = current.deletedAtMillis,
+                )
+            }
+        }.toMutableList()
+
+        projection.trips
+            .filter { incoming -> currentTrips.none { it.id == incoming.id } }
+            .filterNot(Trip::deleted)
+            .forEach(nextTrips::add)
+
+        val currentBookingById = currentBookings.associateBy(Booking::id)
+        val prepared = projection.bookings.map { booking ->
+            prepareBookingForPersistence(booking, currentBookingById[booking.id])
+        }
+        val passengerIds = passengerIdentityStore.ensureLocalBookingProfilesBatch(prepared)
+        val normalizedIncomingBookings = prepared.map { booking ->
+            booking.copy(
+                passengerId = passengerIds[booking.id] ?: booking.passengerId,
+                updatedAtMillis = booking.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
+            )
+        }
+        val preservedBookings = currentBookings.filter { it.tripId !in representedTripIds }
+        val nextBookings = (preservedBookings + normalizedIncomingBookings)
+            .distinctBy(Booking::id)
+
+        val bookingsByTrip = nextBookings.groupBy(Booking::tripId)
+        val hashedTrips = nextTrips.map { trip ->
+            if (trip.id !in representedTripIds || trip.deleted) {
+                trip
+            } else {
+                val stateHash = canonicalTripStateHash0406(trip, bookingsByTrip[trip.id].orEmpty())
+                if (trip.canonicalStateHash == stateHash) trip else trip.copy(canonicalStateHash = stateHash)
+            }
+        }.sortedByDescending(Trip::departureAtMillis)
+
+        val currentTripsComparable = currentTrips.sortedByDescending(Trip::departureAtMillis)
+        val changed = hashedTrips != currentTripsComparable || nextBookings != currentBookings
+        if (!changed) return@synchronized false
+
+        require(
+            prefs.edit()
+                .putString(tripsKey, json.encodeToString(hashedTrips))
+                .putString(bookingsKey, json.encodeToString(nextBookings))
+                .commit(),
+        ) { "Falha ao persistir merge canônico secundário da Timeline." }
+
+        UnifiedDebugEventStore.record(
+            "TIMELINE_SECONDARY_CANONICAL_PERSISTED_0525",
+            appContext.packageName,
+            "trips=" + representedTripIds.size +
+                " bookings=" + normalizedIncomingBookings.size +
+                " source=SECONDARY_CANONICAL_SYNC collectorRead=false collectorFallback=false privateValuesLogged=false",
+        )
+        BookingRealtimeEvents0356.notifyChanged()
+        true
+    }
+
     fun getTrip(id: String): Trip? = trips().firstOrNull { it.id == id }
 
     internal fun recordPublicationCommitted0411(
