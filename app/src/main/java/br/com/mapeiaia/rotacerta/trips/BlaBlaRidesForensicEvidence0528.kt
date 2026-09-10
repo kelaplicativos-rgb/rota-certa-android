@@ -85,6 +85,18 @@ internal data class BlaBlaRidesRideDateRange0528(
 )
 
 @Serializable
+internal data class BlaBlaRidesArtifactSecurityEvidence0528(
+    val policy: String = "NO_REUSABLE_AUTH_MATERIAL_V1",
+    val scannedAt: String = "",
+    val htmlScanned: Boolean = false,
+    val mhtmlScanned: Boolean = false,
+    val identitySchemaMinimal: Boolean = true,
+    val ridesIndexSchemaMinimal: Boolean = true,
+    val reusableSecretMarkersDetected: Int = 0,
+    val result: String = "",
+)
+
+@Serializable
 internal data class BlaBlaRidesIdentityJson0528(
     val schemaVersion: String = "blablacar-rides-identity-v1",
     val accountKey: String,
@@ -115,6 +127,7 @@ internal data class BlaBlaRidesArtifactChecks0528(
     val htmlFileValid: Boolean = false,
     val mhtmlFileValid: Boolean = false,
     val crossFormatPayloadValid: Boolean = false,
+    val securityArtifactsValid: Boolean = false,
 )
 
 private val STABLE_RIDE_ID_0528 = Regex("^[A-Za-z0-9_-]{8,160}$")
@@ -364,6 +377,16 @@ internal fun forensicCompletionError0528(
         profile.identityEvidence.locators.isEmpty()
     ) return "IDENTITY_EVIDENCE_MISSING"
     if (!checks.identityFileValid) return "IDENTITY_ARTIFACT_INVALID"
+    if (!checks.securityArtifactsValid) return "REUSABLE_AUTH_MATERIAL_DETECTED"
+    if (profile.securityEvidence.policy != "NO_REUSABLE_AUTH_MATERIAL_V1" ||
+        profile.securityEvidence.scannedAt.isBlank() ||
+        !profile.securityEvidence.htmlScanned ||
+        (profile.mhtmlSupported && !profile.securityEvidence.mhtmlScanned) ||
+        !profile.securityEvidence.identitySchemaMinimal ||
+        !profile.securityEvidence.ridesIndexSchemaMinimal ||
+        profile.securityEvidence.reusableSecretMarkersDetected != 0 ||
+        profile.securityEvidence.result != "PASS"
+    ) return "SECURITY_EVIDENCE_MISSING"
     if (!checks.identityPayloadValid) return "IDENTITY_PAYLOAD_INVALID"
     if (!BlaBlaCollectorUrlModule.ridesPageMatches(profile.finalUrl)) return "NOT_ON_RIDES_PAGE"
     if (!profile.reachedEnd || !profile.endEvidence.atBottom ||
@@ -434,6 +457,12 @@ internal fun BlaBlaRidesSnapshotStore0526.validateProfileForComplete0528(
     } else {
         true
     }
+    val securityArtifactsValid =
+        htmlFileValid &&
+        htmlFile != null &&
+        sensitiveArtifactMarker0528(htmlFile) == null &&
+        (!profile.mhtmlSupported ||
+            (mhtmlFileValid && mhtmlFile != null && sensitiveArtifactMarker0528(mhtmlFile, decodeMhtml = true) == null))
 
     val identityPayloadValid = if (identityFileValid) {
         runCatching {
@@ -496,6 +525,7 @@ internal fun BlaBlaRidesSnapshotStore0526.validateProfileForComplete0528(
             htmlFileValid = htmlFileValid,
             mhtmlFileValid = mhtmlFileValid,
             crossFormatPayloadValid = crossFormatPayloadValid,
+            securityArtifactsValid = securityArtifactsValid,
         ),
     )
 }
