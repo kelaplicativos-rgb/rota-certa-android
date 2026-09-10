@@ -2126,6 +2126,15 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 htmlSha256 = htmlEvidence.sha256,
                 mhtmlSha256 = mhtmlEvidence?.sha256.orEmpty(),
                 crossFormatConsistency = crossFormat0528,
+                securityEvidence = BlaBlaRidesArtifactSecurityEvidence0528(
+                    scannedAt = now,
+                    htmlScanned = true,
+                    mhtmlScanned = mhtmlEvidence != null,
+                    identitySchemaMinimal = true,
+                    ridesIndexSchemaMinimal = true,
+                    reusableSecretMarkersDetected = 0,
+                    result = if (mhtmlEvidence != null) "PASS" else "INCOMPLETE",
+                ),
                 status = BlaBlaRidesSnapshotStatus0526.CAPTURING,
                 errorCode = "",
             )
