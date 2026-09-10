@@ -1,17 +1,17 @@
-name: Rota Certa 0.1.526 BlaBla rides snapshot
-# 0.1.526: private authenticated multi-profile 'Suas viagens' HTML/MHTML evidence via the existing BlaBlaCar WebView/session authority.
+name: Rota Certa 0.1.527 BlaBla rides download
+# 0.1.527: private authenticated multi-profile 'Suas viagens' evidence with direct ZIP download to Android Downloads; existing BlaBlaCar WebView/session authority preserved.
 
 on:
   push:
     branches:
-      - agent/blablacar-rides-snapshot-0.1.526
+      - agent/blablacar-rides-download-0.1.527
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-rides-snapshot-0526-${{ github.ref }}
+  group: blablacar-rides-download-0527-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: c473d53c5d5a2634e82b7fb4f8c2ed7995737510
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5818'
-      EXPECTED_VERSION_NAME: '0.1.526'
+      EXPECTED_VERSION_CODE: '5819'
+      EXPECTED_VERSION_NAME: '0.1.527'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -140,6 +140,16 @@ jobs:
           ! grep -Fq 'localAgendaProjection0515 = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'persistSecondaryCanonicalTimelineMerge0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
           grep -Fq 'timelineBlaBlaTargetUnambiguous0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
+          SNAPSHOT='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt'
+          SNAPSHOT_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt'
+          grep -Fq 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' "$SNAPSHOT"
+          grep -Fq 'Environment.DIRECTORY_DOWNLOADS' "$SNAPSHOT"
+          grep -Fq 'ZipOutputStream' "$SNAPSHOT"
+          grep -Fq 'downloadEntries0527' "$SNAPSHOT"
+          grep -Fq 'Baixar última captura (.zip)' "$SNAPSHOT_UI"
+          ! grep -Fq 'Intent.ACTION_SEND_MULTIPLE' "$SNAPSHOT"
+          ! grep -Fq 'BlaBlaRidesSnapshotShare0526' "$SNAPSHOT_UI"
+          ! grep -Fq 'Compartilhar última captura privada' "$SNAPSHOT_UI"
 
       - name: Assemble exact-head final debug APK
         shell: bash
@@ -186,10 +196,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0526
+          OUT=/tmp/0527
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-blablacar-rides-snapshot.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-blablacar-rides-download.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
@@ -210,6 +220,8 @@ jobs:
           rides_snapshot_private_html_mhtml=PASS
           rides_snapshot_sha256_manifest=PASS
           rides_snapshot_no_publication=PASS
+          rides_snapshot_downloads_zip_to_android_downloads=PASS
+          rides_snapshot_share_action=PROHIBITED
           timeline_local_primary=PASS
           secondary_canonical_sync=PASS
           remote_incomplete_non_degrading=PASS
@@ -274,7 +286,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.526-blablacar-rides-snapshot-${{ github.sha }}
+          name: rota-certa-0.1.527-blablacar-rides-download-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0526
+          path: /tmp/0527
