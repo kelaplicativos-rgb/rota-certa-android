@@ -202,6 +202,7 @@
   // and form values. It is never published by the collector or Agenda pipeline.
   const snapshotClone = document.documentElement.cloneNode(true);
   snapshotClone.querySelectorAll('script, noscript').forEach((node) => node.remove());
+  snapshotClone.querySelectorAll('meta[http-equiv="set-cookie" i]').forEach((node) => node.remove());
   snapshotClone.querySelectorAll('input').forEach((node) => {
     node.removeAttribute('value');
     node.removeAttribute('checked');
@@ -210,6 +211,29 @@
     node.removeAttribute('value');
     node.textContent = '';
   });
+  const sensitiveAttributeName = /(?:token|authorization|cookie|session|password|passwd|secret|credential|csrf)/i;
+  const sensitiveQuery = /([?&])(?:access_token|refresh_token|id_token|auth_token|authorization|session_token|session_id|sessionid|csrf_token)=[^&#"'\s]*/ig;
+  snapshotClone.querySelectorAll('*').forEach((node) => {
+    Array.from(node.attributes || []).forEach((attribute) => {
+      const name = String(attribute.name || '');
+      if (/^on/i.test(name) || sensitiveAttributeName.test(name)) {
+        node.removeAttribute(name);
+        return;
+      }
+      if (/^(?:href|src|action|formaction)$/i.test(name)) {
+        const scrubbed = String(attribute.value || '')
+          .replace(sensitiveQuery, '$1')
+          .replace(/[?&]+$/, '');
+        if (scrubbed !== attribute.value) node.setAttribute(name, scrubbed);
+      }
+    });
+  });
+  if (document.createTreeWalker && typeof NodeFilter !== 'undefined') {
+    const comments = [];
+    const walker = document.createTreeWalker(snapshotClone, NodeFilter.SHOW_COMMENT);
+    while (walker.nextNode()) comments.push(walker.currentNode);
+    comments.forEach((node) => node.parentNode && node.parentNode.removeChild(node));
+  }
   const fullSnapshotHtml = '<!doctype html>\n' + (snapshotClone.outerHTML || '');
   const maxSnapshotChars = 1500000;
   const snapshotTruncated = fullSnapshotHtml.length > maxSnapshotChars;
