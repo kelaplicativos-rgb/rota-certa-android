@@ -1,17 +1,17 @@
-name: Rota Certa 0.1.524 canonical Timeline operational recovery
-# 0.1.524: preserve the stable 0.1.520 mutation path and restore strong identity/private operational fields from compatible canonical Agenda evidence without reconnecting Timeline to the collector.
+name: Rota Certa 0.1.525 Timeline local primary
+# 0.1.525: persisted Android Agenda is the primary Timeline authority; remote canonical state is secondary non-degrading sync only.
 
 on:
   push:
     branches:
-      - agent/canonical-segment-root-cause-0.1.509
+      - agent/timeline-local-primary-0.1.525
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: timeline-canonical-passenger-first-paint-0517-${{ github.ref }}
+  group: timeline-local-primary-0525-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -24,10 +24,10 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
+      BASE_AUTHORITY_SHA: c473d53c5d5a2634e82b7fb4f8c2ed7995737510
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5816'
-      EXPECTED_VERSION_NAME: '0.1.524'
+      EXPECTED_VERSION_CODE: '5817'
+      EXPECTED_VERSION_NAME: '0.1.525'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -110,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test.offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorNetworkSource0266Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test.offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorNetworkSource0266Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
 
       - name: Verify structural constraints and sanitization markers
         shell: bash
@@ -131,6 +131,15 @@ jobs:
           ! grep -Fq 'remoteProjectionDivergenceObserved = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           ! grep -Fq 'Agenda não confirmou todas as alterações imediatamente' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
           grep -Fq 'GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
+          grep -Fq 'mergeCanonicalTimelineProjections0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TIMELINE_LOCAL_PRIMARY_SELECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TIMELINE_REMOTE_SYNC_STARTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TIMELINE_REMOTE_INCOMPLETE_IGNORED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TIMELINE_REMOTE_CONFLICT_REJECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'TIMELINE_RADAR_LOCAL_IDENTITY_USED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          ! grep -Fq 'localAgendaProjection0515 = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'persistSecondaryCanonicalTimelineMerge0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'timelineBlaBlaTargetUnambiguous0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
 
       - name: Assemble exact-head final debug APK
         shell: bash
@@ -163,12 +172,12 @@ jobs:
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
           LIVE_BACKEND_HEALTH=DEGRADED
-          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0524.json; then
-            if grep -Fq '"ok":true' /tmp/live-health-0524.json; then
+          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0525.json; then
+            if grep -Fq '"ok":true' /tmp/live-health-0525.json; then
               LIVE_BACKEND_HEALTH=PASS
             fi
           else
-            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0524.json
+            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0525.json
           fi
           echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
           echo "backend_health=$LIVE_BACKEND_HEALTH"
@@ -177,22 +186,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0524
+          OUT=/tmp/0525
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-operational-recovery.apk"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-local-primary.apk"
           cp "$APK" "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
           cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0524.json "$OUT/"
+          cp /tmp/live-health-0525.json "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
           source_head=$GITHUB_SHA
           source_branch=$GITHUB_REF_NAME
+          timeline_local_primary=PASS
+          secondary_canonical_sync=PASS
+          remote_incomplete_non_degrading=PASS
+          remote_empty_private_non_degrading=PASS
+          remote_newer_safe_merge=PASS
+          remote_conflict_rejected=PASS
+          radar_local_identity=PASS
           canonical_failure_classification=PASS
           cancellation_not_backend_offline=PASS
           canonical_projection_pre_cache_validation=PASS
@@ -237,7 +253,7 @@ jobs:
           public_agenda_non_json_error_boundary=PASS
           public_agenda_cache_buster=PASS
           pull_refresh_canonical_source=PASS
-          snapshot_atomic_replace_after_validation=PASS
+          snapshot_non_degrading_merge_after_validation=PASS
           unified_sanitized_diagnostics=PASS
           farol_untouched=PASS
           backend_health=$LIVE_BACKEND_HEALTH
@@ -250,7 +266,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.524-timeline-operational-recovery-${{ github.sha }}
+          name: rota-certa-0.1.525-timeline-local-primary-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0524
+          path: /tmp/0525
