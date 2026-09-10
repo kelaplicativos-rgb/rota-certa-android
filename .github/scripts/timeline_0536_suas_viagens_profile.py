@@ -291,7 +291,7 @@ new_header = '''        Column(modifier = Modifier.padding(13.dp), verticalArran
                 Text("$endTime0536  chegada", style = MaterialTheme.typography.bodyMedium)
             }
             Text("●  ${entry.origin}", style = MaterialTheme.typography.titleMedium)
-            Text("│", style = MaterialTheme.typography.bodyMedium, color = profileColors.accent)
+            Text("│", style = MaterialTheme.typography.bodyMedium, color = profileColors.border)
             Text("●  ${entry.destination}", style = MaterialTheme.typography.titleMedium)
             entry.blablaPrice?.takeIf(String::isNotBlank)?.let { price0536 ->
                 Text(price0536, style = MaterialTheme.typography.bodySmall)
@@ -309,7 +309,7 @@ new_header = '''        Column(modifier = Modifier.padding(13.dp), verticalArran
             }
 
             if (expanded) {
-                Text("RESUMO DA VIAGEM", style = MaterialTheme.typography.labelLarge, color = profileColors.accent)
+                Text("RESUMO DA VIAGEM", style = MaterialTheme.typography.labelLarge, color = profileColors.border)
 
             val allocation = tripChannelAllocationBreakdown('''
 ui = replace_once(ui, old_header, new_header, "Suas viagens closed-card header")
