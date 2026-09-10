@@ -22,6 +22,7 @@ class BlaBlaTripControl0407Test {
             profileId = target.profileUuid,
             profileLabel = "Ezequiel",
             departureAtMillis = 1_800_000_000_000L,
+            arrivalAtMillis = 1_800_003_600_000L,
             origin = "São Paulo",
             destination = "São Tomé das Letras",
             status = TripStatus.PUBLISHED,
