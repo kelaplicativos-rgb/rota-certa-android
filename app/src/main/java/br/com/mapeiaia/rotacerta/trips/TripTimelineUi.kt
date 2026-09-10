@@ -136,6 +136,7 @@ fun TripTimelineScreen(
     var downloadRequestToken0399 by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var syncPendingOnly by remember { mutableStateOf(false) }
+    var expandedTripIds0536 by remember { mutableStateOf<Set<String>>(emptySet()) }
     var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
@@ -837,12 +838,26 @@ fun TripTimelineScreen(
                 item(key = timelineLazyItemKey0380(entry)) {
                     val trip = timelineTripByEntryId[entry.tripId]
                     val archived = showArchived
+                    val expansionKey0536 = timelineExpansionKey0536(entry.tripId)
                     TimelineEntryCard(
                         entry = entry,
                         trip = trip,
                         store = store,
                         formatter = formatter,
+                        profileDisplayLabel = timelineDriverProfileLabel0536(
+                            profileUuid = entry.blablaProfileUuid,
+                            profileId = entry.profileId,
+                            accounts = registeredAccounts0432,
+                        ),
                         profileColorSlot = profileColorSlots[timelineProfileIdentity(entry)] ?: 0,
+                        expanded = expansionKey0536 in expandedTripIds0536,
+                        onToggleExpanded = {
+                            expandedTripIds0536 = if (expansionKey0536 in expandedTripIds0536) {
+                                expandedTripIds0536 - expansionKey0536
+                            } else {
+                                expandedTripIds0536 + expansionKey0536
+                            }
+                        },
                         archived = archived,
                         onManageLocal = onManageLocal,
                         onChanged = onCanonicalChanged0495,
@@ -893,6 +908,54 @@ internal fun timelineLazyItemKey0380(entry: TripTimelineEntry): String =
         )
     }
 
+
+internal fun timelineExpansionKey0536(tripId: String): String = tripId.trim()
+
+internal fun timelineDriverProfileLabel0536(
+    profileUuid: String?,
+    profileId: String?,
+    accounts: List<BlaBlaDynamicAccount>,
+): String {
+    val canonicalUuid = profileUuid
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf(String::isNotEmpty)
+    if (canonicalUuid != null) {
+        val names = accounts.asSequence()
+            .filter { account ->
+                account.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) == canonicalUuid
+            }
+            .mapNotNull { account -> BlaBlaDriverProfileNamePolicy.normalize(account.profileName) }
+            .distinct()
+            .toList()
+        return names.singleOrNull() ?: "Perfil BlaBlaCar"
+    }
+
+    val canonicalAccountId = profileId
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { it.isNotEmpty() && it != "local" }
+    if (canonicalAccountId != null) {
+        val names = accounts.asSequence()
+            .filter { account -> account.id.trim().lowercase() == canonicalAccountId }
+            .mapNotNull { account -> BlaBlaDriverProfileNamePolicy.normalize(account.profileName) }
+            .distinct()
+            .toList()
+        return names.singleOrNull() ?: "Perfil não identificado"
+    }
+    return "Agenda"
+}
+
+internal fun timelineDurationLabel0536(startMillis: Long, endMillis: Long?): String {
+    val totalMinutes = endMillis
+        ?.minus(startMillis)
+        ?.takeIf { it > 0L }
+        ?.div(60_000L)
+        ?: return "—"
+    val hours = totalMinutes / 60L
+    val minutes = totalMinutes % 60L
+    return if (hours > 0L) "${hours}h${minutes.toString().padStart(2, '0')}" else "${minutes}min"
+}
 
 internal fun externalSyncStateIsPending(state: BlaBlaPublicationSeatSyncVisualState?): Boolean = state in setOf(
     BlaBlaPublicationSeatSyncVisualState.PENDING,
@@ -1680,7 +1743,10 @@ private fun TimelineEntryCard(
     trip: Trip?,
     store: TripStore,
     formatter: DateTimeFormatter,
+    profileDisplayLabel: String,
     profileColorSlot: Int,
+    expanded: Boolean,
+    onToggleExpanded: () -> Unit,
     archived: Boolean,
     onManageLocal: (String) -> Unit,
     onChanged: (String) -> Unit,
@@ -1840,14 +1906,24 @@ private fun TimelineEntryCard(
         border = BorderStroke(1.dp, profileColors.border),
     ) {
         Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val date = formatter.format(Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault()))
+            val departureDateTime0536 = Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault())
+            val arrivalDateTime0536 = entry.arrivalAtMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
+            val date0536 = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.getDefault()).format(departureDateTime0536)
+            val clockFormatter0536 = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+            val startTime0536 = clockFormatter0536.format(departureDateTime0536)
+            val endTime0536 = arrivalDateTime0536?.let(clockFormatter0536::format) ?: "—"
+            val duration0536 = timelineDurationLabel0536(entry.departureAtMillis, entry.arrivalAtMillis)
+            val passengerCount0536 = maxOf(
+                entry.maximumOccupiedSeats,
+                entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) },
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    date.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                    date0536.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
                     style = MaterialTheme.typography.labelLarge,
                 )
                 Text(
@@ -1876,10 +1952,36 @@ private fun TimelineEntryCard(
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
-            Text("${entry.origin} → ${entry.destination}", style = MaterialTheme.typography.titleMedium)
+            Text("👤 $profileDisplayLabel", style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("$startTime0536  saída", style = MaterialTheme.typography.bodyMedium)
+                Text("$duration0536  duração", style = MaterialTheme.typography.bodySmall)
+                Text("$endTime0536  chegada", style = MaterialTheme.typography.bodyMedium)
+            }
+            Text("●  ${entry.origin}", style = MaterialTheme.typography.titleMedium)
+            Text("│", style = MaterialTheme.typography.bodyMedium, color = profileColors.border)
+            Text("●  ${entry.destination}", style = MaterialTheme.typography.titleMedium)
+            entry.blablaPrice?.takeIf(String::isNotBlank)?.let { price0536 ->
+                Text(price0536, style = MaterialTheme.typography.bodySmall)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("👥 $passengerCount0536 passageiro(s)", style = MaterialTheme.typography.bodySmall)
+                Text("🚗", style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onToggleExpanded) {
+                    Text(if (expanded) "▲ Fechar" else "▼ Abrir")
+                }
+            }
 
-            val meta = listOfNotNull(entry.profileLabel.takeIf(String::isNotBlank), entry.blablaPrice).joinToString(" • ")
-            if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall)
+            if (expanded) {
+                Text("RESUMO DA VIAGEM", style = MaterialTheme.typography.labelLarge, color = profileColors.border)
 
             val allocation = tripChannelAllocationBreakdown(
                 entry.capacity,
@@ -2121,6 +2223,7 @@ private fun TimelineEntryCard(
                     }
                 },
             )
+            }
         }
     }
 

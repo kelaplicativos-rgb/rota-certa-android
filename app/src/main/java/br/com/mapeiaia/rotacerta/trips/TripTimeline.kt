@@ -835,6 +835,9 @@ internal fun mergeCanonicalTimelineProjections0525(
     )
 }
 
+internal fun canonicalTimelineProfileId0536(blablaProfileUuid: String?, fallbackProfileId: String): String =
+    blablaProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty) ?: fallbackProfileId
+
 object TripTimelineEngine {
     fun fromLocalAgenda(
         trips: List<Trip>,
@@ -851,10 +854,14 @@ object TripTimelineEngine {
                 val tripBookings = bookings.filter { it.tripId == trip.id }
                 val loads = SeatAvailabilityEngine.segmentLoads(trip, tripBookings, nowMillis)
                 val occupied = loads.map(SegmentLoad::occupiedSeats)
+                val canonicalProfileUuid0536 = trip.blablaProfileUuid
+                    ?.trim()
+                    ?.lowercase()
+                    ?.takeIf(String::isNotEmpty)
                 TripTimelineEntry(
                     tripId = trip.id,
-                    profileId = localProfileId,
-                    profileLabel = localProfileLabel,
+                    profileId = canonicalTimelineProfileId0536(canonicalProfileUuid0536, localProfileId),
+                    profileLabel = if (canonicalProfileUuid0536 != null) "Perfil BlaBlaCar" else localProfileLabel,
                     departureAtMillis = trip.departureAtMillis,
                     arrivalAtMillis = stops.last().plannedArrivalMillis,
                     origin = stops.first().name,

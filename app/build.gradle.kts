@@ -94,8 +94,8 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5827
-        versionName = "0.1.535"
+        versionCode = 5828
+        versionName = "0.1.536"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
