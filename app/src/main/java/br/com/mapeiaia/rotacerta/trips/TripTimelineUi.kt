@@ -174,8 +174,19 @@ fun TripTimelineScreen(
     }
     var canonicalBackendFailure0494 by remember { mutableStateOf<String?>(null) }
     var canonicalBackendFailureCode0512 by remember { mutableStateOf<String?>(null) }
-    var localAgendaProjection0515 by remember(store) {
-        mutableStateOf<CanonicalTimelineProjection0494?>(null)
+    var localAgendaProjection0515 by remember(
+        store,
+        trips,
+        bookings,
+        onlineSettings0494.driverDisplayName,
+    ) {
+        mutableStateOf(
+            localAgendaTimelineProjection0515(
+                trips = trips,
+                bookings = bookings,
+                localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+            ),
+        )
     }
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
 
@@ -191,9 +202,16 @@ fun TripTimelineScreen(
         UnifiedDebugEventStore.record(
             "TIMELINE_LOCAL_AGENDA_HYDRATED_0515",
             context.packageName,
-            "trips=" + localAgendaProjection0515?.trips.orEmpty().size +
-                " bookings=" + localAgendaProjection0515?.bookings.orEmpty().size +
+            "trips=" + localAgendaProjection0515.trips.size +
+                " bookings=" + localAgendaProjection0515.bookings.size +
                 " source=CANONICAL_AGENDA collectorDirectRead=false privateValuesLogged=false",
+        )
+        UnifiedDebugEventStore.record(
+            "TIMELINE_LOCAL_PRIMARY_SELECTED",
+            context.packageName,
+            "trips=" + localAgendaProjection0515.trips.size +
+                " bookings=" + localAgendaProjection0515.bookings.size +
+                " authority=LOCAL_CANONICAL_AGENDA secondary=REMOTE_CANONICAL_SYNC collectorRead=false collectorFallback=false privateValuesLogged=false",
         )
     }
 
@@ -235,6 +253,11 @@ fun TripTimelineScreen(
                     } else {
                         "Integração canônica não configurada."
                     }
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_LOCAL_PRESERVED",
+                        context.packageName,
+                        "reasonCode=CONFIGURATION_MISSING authority=LOCAL_CANONICAL_AGENDA collectorRead=false collectorFallback=false",
+                    )
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     return@withLock
                 }
@@ -246,56 +269,117 @@ fun TripTimelineScreen(
                         " reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
                         " source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                 )
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_REMOTE_SYNC_STARTED",
+                    context.packageName,
+                    "correlationId=" + correlationId0512 +
+                        " reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
+                        " source=SECONDARY_CANONICAL_SYNC localAuthority=true collectorRead=false collectorFallback=false",
+                )
                 try {
                     val response = TripRemoteApi(onlineSettings0494).loadCanonicalTimelineState0494(
                         includePastForVerification0429 = true,
                         correlationId0512 = correlationId0512,
                     )
-                    val previousRevisions0512 = canonicalResponse0494
-                        ?.trips
-                        .orEmpty()
-                        .associate { state ->
-                            state.canonicalTripId.ifBlank { state.remoteTripId } to state.canonicalRevision
-                        }
                     val cached = withContext(Dispatchers.IO) {
                         store.saveTimelineCanonicalCache0494(response)
                     }
                     canonicalResponse0494 = cached
-                    localAgendaProjection0515 = null
+
+                    val localBeforeMerge0525 = withContext(Dispatchers.IO) {
+                        AgendaBackgroundSync0392.materializeCanonicalExternalPrivateBookings0515(context, store)
+                        localAgendaTimelineProjection0515(
+                            trips = store.trips(),
+                            bookings = store.bookings(),
+                            localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+                        )
+                    }
+                    val remoteSecondary0525 = canonicalTimelineProjection0494(
+                        response = cached,
+                        fallbackProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Rota Certa" },
+                        existingLocalBookings = localBeforeMerge0525.bookings,
+                    )
+                    val merge0525 = mergeCanonicalTimelineProjections0525(
+                        localPrimary = localBeforeMerge0525,
+                        remoteSecondary = remoteSecondary0525,
+                        localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+                    )
+                    val persisted0525 = if (merge0525.changed) {
+                        withContext(Dispatchers.IO) {
+                            store.persistSecondaryCanonicalTimelineMerge0525(merge0525.projection)
+                        }
+                    } else {
+                        false
+                    }
+                    localAgendaProjection0515 = if (persisted0525) {
+                        withContext(Dispatchers.IO) {
+                            localAgendaTimelineProjection0515(
+                                trips = store.trips(),
+                                bookings = store.bookings(),
+                                localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+                            )
+                        }
+                    } else {
+                        merge0525.projection
+                    }
+
                     canonicalBackendStale0494 = false
                     canonicalBackendFailure0494 = null
                     canonicalBackendFailureCode0512 = null
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, null)
+
                     val revisions = cached.trips.map(DriverTripSyncState0402::canonicalRevision)
-                    val replacedCount0512 = cached.trips.count { state ->
-                        val id = state.canonicalTripId.ifBlank { state.remoteTripId }
-                        previousRevisions0512[id] != state.canonicalRevision
+                    val mergedCount0525 = merge0525.mergedTrips + merge0525.remoteRecoveryTrips
+                    UnifiedDebugEventStore.record(
+                        if (merge0525.changed) "TIMELINE_REMOTE_MERGED" else "TIMELINE_REMOTE_NOOP",
+                        context.packageName,
+                        "correlationId=" + correlationId0512 +
+                            " mergedTrips=" + merge0525.mergedTrips +
+                            " recoveryTrips=" + merge0525.remoteRecoveryTrips +
+                            " persisted=" + persisted0525 +
+                            " source=SECONDARY_CANONICAL_SYNC localAuthority=true collectorRead=false collectorFallback=false",
+                    )
+                    if (merge0525.incompleteRemoteIgnored > 0) {
+                        UnifiedDebugEventStore.record(
+                            "TIMELINE_REMOTE_INCOMPLETE_IGNORED",
+                            context.packageName,
+                            "correlationId=" + correlationId0512 +
+                                " trips=" + merge0525.incompleteRemoteIgnored +
+                                " localPreserved=true privateValuesLogged=false",
+                        )
+                    }
+                    if (merge0525.conflictsRejected > 0) {
+                        UnifiedDebugEventStore.record(
+                            "TIMELINE_REMOTE_CONFLICT_REJECTED",
+                            context.packageName,
+                            "correlationId=" + correlationId0512 +
+                                " trips=" + merge0525.conflictsRejected +
+                                " localPreserved=true remoteActionAmbiguous=true privateValuesLogged=false",
+                        )
                     }
                     UnifiedDebugEventStore.record(
                         "TIMELINE_SNAPSHOT_REPLACED",
                         context.packageName,
                         "correlationId=" + correlationId0512 +
-                            " replacedTrips=" + replacedCount0512 +
-                            " trips=" + cached.trips.size +
+                            " replacedTrips=" + mergedCount0525 +
+                            " trips=" + localAgendaProjection0515.trips.size +
                             " minRevision=" + (revisions.minOrNull() ?: 0L) +
                             " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
-                            " collectorFallback=false",
+                            " mode=NON_DEGRADING_MERGE collectorFallback=false",
                     )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_REFRESH_APPLIED",
                         context.packageName,
                         "correlationId=" + correlationId0512 +
                             " reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
-                            " trips=" + cached.trips.size +
-                            " minRevision=" + (revisions.minOrNull() ?: 0L) +
-                            " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
-                            " source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
+                            " trips=" + localAgendaProjection0515.trips.size +
+                            " source=LOCAL_CANONICAL_AGENDA secondary=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
                     )
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_BACKEND_READ_0494",
                         context.packageName,
                         "correlationId=" + correlationId0512 +
-                            " source=CANONICAL_BACKEND trips=" + cached.trips.size +
+                            " source=SECONDARY_CANONICAL_SYNC trips=" + cached.trips.size +
                             " minRevision=" + (revisions.minOrNull() ?: 0L) +
                             " maxRevision=" + (revisions.maxOrNull() ?: 0L) +
                             " collectorRead=false",
@@ -304,7 +388,7 @@ fun TripTimelineScreen(
                         "TIMELINE_REFRESH_SUCCESS",
                         context.packageName,
                         "correlationId=" + correlationId0512 +
-                            " source=CANONICAL_NATIVE_FIREWALL collectorFallback=false",
+                            " source=LOCAL_PRIMARY_WITH_SECONDARY_CANONICAL_SYNC collectorFallback=false",
                     )
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
@@ -321,33 +405,22 @@ fun TripTimelineScreen(
                     canonicalBackendStale0494 = true
                     canonicalBackendFailureCode0512 = failureCode0512
                     val cachePresent0512 = canonicalResponse0494 != null
-                    canonicalBackendFailure0494 = when (failureCode0512) {
-                        "NETWORK_UNREACHABLE", "TIMEOUT", "SERVER_ERROR" ->
-                            if (localAgendaProjection0515?.entries.orEmpty().isNotEmpty()) {
-                                "Backend canônico inacessível (" + failureCode0512 + "): Timeline abastecida pela Agenda canônica local. O coletor não foi acessado diretamente pela Timeline."
-                            } else if (cachePresent0512) {
-                                "Backend canônico inacessível (" + failureCode0512 + "): mantendo o último snapshot canônico íntegro."
-                            } else {
-                                "Backend canônico inacessível (" + failureCode0512 + ")."
-                            }
-                        "AUTH_FAILED", "FORBIDDEN" -> if (cachePresent0512) {
-                            "A autenticação do backend canônico falhou (" + failureCode0512 + "): mantendo o último snapshot íntegro."
-                        } else {
-                            "A autenticação do backend canônico falhou (" + failureCode0512 + ")."
-                        }
-                        "EMPTY_RESPONSE", "PARSING_FAILED", "SCHEMA_INVALID",
-                        "IDENTITY_INVALID", "REVISION_INVALID", "PROJECTION_INCOMPLETE",
-                        "PASSENGER_PROJECTION_FAILED" -> if (cachePresent0512) {
-                            "Backend respondeu, mas a projeção canônica foi rejeitada (" + failureCode0512 + "). O último snapshot íntegro foi mantido."
-                        } else {
-                            "Backend respondeu, mas a projeção canônica foi rejeitada (" + failureCode0512 + ")."
-                        }
-                        else -> if (cachePresent0512) {
-                            "Falha canônica classificada como " + failureCode0512 + ": mantendo o último snapshot íntegro."
-                        } else {
-                            "Falha canônica classificada como " + failureCode0512 + "."
-                        }
+                    val localOperational0525 = localAgendaProjection0515.entries.isNotEmpty()
+                    canonicalBackendFailure0494 = if (localOperational0525) {
+                        "Sincronização remota indisponível (" + failureCode0512 + "): Agenda canônica local preservada e Timeline continua operacional."
+                    } else if (cachePresent0512) {
+                        "Sincronização remota indisponível (" + failureCode0512 + "): cache remoto mantido somente como contingência."
+                    } else {
+                        "Sincronização remota indisponível (" + failureCode0512 + ")."
                     }
+                    UnifiedDebugEventStore.record(
+                        "TIMELINE_LOCAL_PRESERVED",
+                        context.packageName,
+                        "correlationId=" + correlationId0512 +
+                            " reasonCode=" + failureCode0512 +
+                            " localOperational=" + localOperational0525 +
+                            " authority=LOCAL_CANONICAL_AGENDA collectorRead=false collectorFallback=false",
+                    )
                     if (manualPull0499) canonicalRefreshStateCallback0499.value(false, canonicalBackendFailure0494)
                     val projectionFailure0512 = failureCode0512 in setOf(
                         "EMPTY_RESPONSE",
@@ -358,6 +431,15 @@ fun TripTimelineScreen(
                         "PROJECTION_INCOMPLETE",
                         "PASSENGER_PROJECTION_FAILED",
                     )
+                    if (projectionFailure0512) {
+                        UnifiedDebugEventStore.record(
+                            "TIMELINE_REMOTE_INCOMPLETE_IGNORED",
+                            context.packageName,
+                            "correlationId=" + correlationId0512 +
+                                " reasonCode=" + failureCode0512 +
+                                " localPreserved=true privateValuesLogged=false",
+                        )
+                    }
                     UnifiedDebugEventStore.record(
                         if (projectionFailure0512) "TIMELINE_CANONICAL_PROJECTION_REJECTED_0512"
                         else "TIMELINE_CANONICAL_BACKEND_OFFLINE_0494",
@@ -419,27 +501,29 @@ fun TripTimelineScreen(
     }
 
     val traceId = AgendaTrace.currentTraceId()
-    val canonicalBackendProjection0494 = remember(canonicalResponse0494, onlineSettings0494.driverDisplayName, bookings) {
+    val canonicalBackendProjection0494 = remember(
+        canonicalResponse0494,
+        onlineSettings0494.driverDisplayName,
+        localAgendaProjection0515.bookings,
+    ) {
         canonicalTimelineProjection0494(
             response = canonicalResponse0494,
             fallbackProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Rota Certa" },
-            existingLocalBookings = bookings,
+            existingLocalBookings = localAgendaProjection0515.bookings,
         )
     }
-    val canonicalProjection0494 = remember(
+    val canonicalMerge0525 = remember(
         canonicalBackendProjection0494,
-        canonicalBackendStale0494,
-        canonicalResponse0494,
         localAgendaProjection0515,
+        onlineSettings0494.driverDisplayName,
     ) {
-        if ((canonicalBackendStale0494 || canonicalResponse0494 == null) &&
-            localAgendaProjection0515?.entries.orEmpty().isNotEmpty()
-        ) {
-            localAgendaProjection0515!!
-        } else {
-            canonicalBackendProjection0494
-        }
+        mergeCanonicalTimelineProjections0525(
+            localPrimary = localAgendaProjection0515,
+            remoteSecondary = canonicalBackendProjection0494,
+            localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+        )
     }
+    val canonicalProjection0494 = canonicalMerge0525.projection
     val canonicalTrips0494 = canonicalProjection0494.trips
     val canonicalBookings0494 = canonicalProjection0494.bookings
     val directionGeo = remember(canonicalTrips0494, appSettings) {
@@ -633,12 +717,9 @@ fun TripTimelineScreen(
 
     val effectiveTimelineDownloadResponse0516 = remember(
         canonicalResponse0494,
-        canonicalBackendStale0494,
         canonicalProjection0494,
     ) {
-        if ((canonicalBackendStale0494 || canonicalResponse0494 == null) &&
-            canonicalProjection0494.entries.isNotEmpty()
-        ) {
+        if (canonicalProjection0494.entries.isNotEmpty()) {
             localAgendaTimelineDownloadResponse0516(canonicalProjection0494)
         } else {
             canonicalResponse0494
@@ -1696,6 +1777,11 @@ private fun TimelineEntryCard(
         } else if (reverifyPending0407) {
             onChanged("Esta viagem já está sendo atualizada em segundo plano.")
         } else {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_RADAR_LOCAL_IDENTITY_USED",
+                context.packageName,
+                "source=LOCAL_PRIMARY_CANONICAL strongIdentity=true remoteBackendRequired=false collectorRead=false collectorFallback=false privateValuesLogged=false",
+            )
             val command = BlaBlaCommand0407.forTarget(
                 target = target,
                 operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
