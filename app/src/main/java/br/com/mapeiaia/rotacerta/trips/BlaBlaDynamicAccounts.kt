@@ -563,8 +563,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     baseContext: Context,
     private val launchIntent: Intent?,
     private val visualHost: ((android.view.View) -> Unit)?,
-    private val snapshotProgress0526: (String) -> Unit = {},
     private val finishHost: (Int, Intent) -> Unit,
+    private val snapshotProgress0526: (String) -> Unit = {},
 ) : ContextThemeWrapper(baseContext, baseContext.applicationInfo.theme) {
     private var pendingResultCode = Activity.RESULT_CANCELED
     private var pendingResultData = Intent()
