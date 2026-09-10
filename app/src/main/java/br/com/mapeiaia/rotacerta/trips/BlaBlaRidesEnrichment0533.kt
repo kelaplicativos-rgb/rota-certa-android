@@ -148,7 +148,7 @@ internal fun extractInventoryTripTargets0533(
     val origin = BlaBlaCollectorUrlModule.origin(inventoryPageUrl).orEmpty()
     val pageUri = runCatching { URI(inventoryPageUrl) }.getOrNull()
     val found = linkedMapOf<String, MutableSet<String>>()
-    val hrefRegex = Regex("""(?is)\\bhref\\s*=\\s*[\"']([^\"']+)[\"']""")
+    val hrefRegex = Regex("""(?is)\bhref\s*=\s*["']([^"']+)["']""")
     hrefRegex.findAll(htmlRaw).forEach { match ->
         val raw = match.groupValues[1]
             .replace("&amp;", "&", ignoreCase = true)
