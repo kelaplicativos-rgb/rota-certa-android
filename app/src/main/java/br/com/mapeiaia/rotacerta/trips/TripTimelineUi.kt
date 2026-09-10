@@ -1900,7 +1900,11 @@ private fun TimelineEntryCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .padding(vertical = 6.dp)
+            .clickable(
+                onClickLabel = if (expanded) "Fechar viagem" else "Abrir viagem",
+                onClick = onToggleExpanded,
+            ),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = profileColors.background),
         border = BorderStroke(1.dp, profileColors.border),
@@ -1975,9 +1979,11 @@ private fun TimelineEntryCard(
             ) {
                 Text("👥 $passengerCount0536 passageiro(s)", style = MaterialTheme.typography.bodySmall)
                 Text("🚗", style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onToggleExpanded) {
-                    Text(if (expanded) "▲ Fechar" else "▼ Abrir")
-                }
+                Text(
+                    text = if (expanded) "▲ Toque para fechar" else "▼ Toque para abrir",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
 
             if (expanded) {
