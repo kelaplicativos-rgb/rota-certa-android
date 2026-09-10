@@ -42,6 +42,10 @@ internal data class BlaBlaRidesSnapshotProfile0526(
     val authenticatedProfileUuid: String = "",
     val displayName: String = "",
     val identityConfirmed: Boolean = false,
+    val identityEvidence: BlaBlaRidesIdentityEvidence0528 = BlaBlaRidesIdentityEvidence0528(),
+    val identityFile: String = "",
+    val identityBytes: Long = 0L,
+    val identitySha256: String = "",
     val startedAt: String = "",
     val completedAt: String = "",
     val finalUrl: String = "",
@@ -50,7 +54,15 @@ internal data class BlaBlaRidesSnapshotProfile0526(
     val cardCountFinal: Int = 0,
     val scrollIterations: Int = 0,
     val reachedEnd: Boolean = false,
+    val endEvidence: BlaBlaRidesEndEvidence0528 = BlaBlaRidesEndEvidence0528(),
     val stabilized: Boolean = false,
+    val stabilizationEvidence: BlaBlaRidesStabilizationEvidence0528 = BlaBlaRidesStabilizationEvidence0528(),
+    val tripInventory: BlaBlaRidesTripInventory0528 = BlaBlaRidesTripInventory0528(),
+    val ridesIndexFile: String = "",
+    val ridesIndexBytes: Long = 0L,
+    val ridesIndexSha256: String = "",
+    val crossFormatConsistency: BlaBlaRidesCrossFormatConsistency0528 = BlaBlaRidesCrossFormatConsistency0528(),
+    val rideDateRange: BlaBlaRidesRideDateRange0528 = BlaBlaRidesRideDateRange0528(),
     val htmlCaptured: Boolean = false,
     val mhtmlSupported: Boolean = true,
     val mhtmlCaptured: Boolean = false,
@@ -66,7 +78,7 @@ internal data class BlaBlaRidesSnapshotProfile0526(
 
 @Serializable
 internal data class BlaBlaRidesSnapshotManifest0526(
-    val schemaVersion: String = "blablacar-rides-snapshot-v1",
+    val schemaVersion: String = "blablacar-rides-snapshot-v2",
     val captureId: String,
     val startedAt: String,
     val completedAt: String = "",
@@ -76,6 +88,7 @@ internal data class BlaBlaRidesSnapshotManifest0526(
     val branch: String = BuildConfig.BUILD_GIT_BRANCH,
     val device: String = "${Build.MANUFACTURER} ${Build.MODEL} / Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
     val expectedProfiles: List<String> = emptyList(),
+    val manifestChecksumFile: String = "manifest.sha256",
     val result: String = "RUNNING",
     val profiles: List<BlaBlaRidesSnapshotProfile0526> = emptyList(),
 )
@@ -91,6 +104,7 @@ internal object BlaBlaRidesSnapshotStatus0526 {
     const val CAPTURING = "CAPTURING"
     const val COMPLETE = "COMPLETE"
     const val INCOMPLETE = "INCOMPLETE"
+    const val INCONSISTENT = "INCONSISTENT"
     const val FAILED_IDENTITY = "FAILED_IDENTITY"
     const val FAILED_SESSION = "FAILED_SESSION"
     const val FAILED_NAVIGATION = "FAILED_NAVIGATION"
@@ -147,6 +161,7 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
         val result = ridesSnapshotGlobalResult0526(statuses)
         val replacement = current.copy(completedAt = Instant.now().toString(), result = result)
         writeManifest(replacement)
+        writeManifestChecksum0528(replacement.captureId)
         UnifiedDebugEventStore.recordAlways(
             "RIDES_SNAPSHOT_COMPLETED",
             appContext.packageName,
@@ -193,7 +208,10 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
         val sourceRoot = captureDir(captureId).canonicalFile
         val relativePaths = buildList {
             add("manifest.json")
+            manifest.manifestChecksumFile.takeIf(String::isNotBlank)?.let(::add)
             manifest.profiles.forEach { profile ->
+                profile.identityFile.takeIf(String::isNotBlank)?.let(::add)
+                profile.ridesIndexFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.htmlFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.mhtmlFile.takeIf(String::isNotBlank)?.let(::add)
             }
@@ -207,6 +225,19 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
                 relativePath = relative.replace('\\', '/').trimStart('/'),
                 file = source,
             )
+        }
+    }
+
+    private fun writeManifestChecksum0528(captureId: String) {
+        val manifest = manifestFile(captureId)
+        if (!manifest.isFile) return
+        val checksum = File(captureDir(captureId), "manifest.sha256")
+        val line = "${sha256(manifest)}  manifest.json\n"
+        val temp = File(checksum.parentFile, "manifest.sha256.tmp")
+        temp.writeText(line, Charsets.UTF_8)
+        if (!temp.renameTo(checksum)) {
+            checksum.writeBytes(temp.readBytes())
+            temp.delete()
         }
     }
 
@@ -274,7 +305,7 @@ internal fun ridesSnapshotGlobalResult0526(statuses: Collection<String>): String
     statuses.isEmpty() -> "FAILED"
     statuses.all { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "COMPLETE"
     statuses.any { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "PARTIAL_SUCCESS"
-    statuses.any { it == BlaBlaRidesSnapshotStatus0526.INCOMPLETE } -> "INCOMPLETE"
+    statuses.any { it == BlaBlaRidesSnapshotStatus0526.INCOMPLETE || it == BlaBlaRidesSnapshotStatus0526.INCONSISTENT } -> "INCOMPLETE"
     else -> "FAILED"
 }
 
