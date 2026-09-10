@@ -139,13 +139,7 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
     fun finish(captureId: String): BlaBlaRidesSnapshotManifest0526? = synchronized(lock) {
         val current = readUnlocked(captureId) ?: return@synchronized null
         val statuses = current.profiles.map { it.status }
-        val result = when {
-            statuses.isEmpty() -> "FAILED"
-            statuses.all { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "COMPLETE"
-            statuses.any { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "PARTIAL_SUCCESS"
-            statuses.any { it == BlaBlaRidesSnapshotStatus0526.INCOMPLETE } -> "INCOMPLETE"
-            else -> "FAILED"
-        }
+        val result = ridesSnapshotGlobalResult0526(statuses)
         val replacement = current.copy(completedAt = Instant.now().toString(), result = result)
         writeManifest(replacement)
         UnifiedDebugEventStore.recordAlways(
@@ -247,6 +241,14 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
 
         internal fun safeCaptureId(value: String): String = value.filter { it.isLetterOrDigit() || it in "._-" }.take(96)
     }
+}
+
+internal fun ridesSnapshotGlobalResult0526(statuses: Collection<String>): String = when {
+    statuses.isEmpty() -> "FAILED"
+    statuses.all { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "COMPLETE"
+    statuses.any { it == BlaBlaRidesSnapshotStatus0526.COMPLETE } -> "PARTIAL_SUCCESS"
+    statuses.any { it == BlaBlaRidesSnapshotStatus0526.INCOMPLETE } -> "INCOMPLETE"
+    else -> "FAILED"
 }
 
 internal data class BlaBlaRidesSnapshotIdentity0526(
