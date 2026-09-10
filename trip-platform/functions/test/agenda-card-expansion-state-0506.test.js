@@ -127,7 +127,7 @@ test("0506 telemetry proves user collapse, restored-open data updates and true r
 });
 
 test("0506 build and cache identity are exact", () => {
-  assert.match(gradle, /versionCode = 5819/);
-  assert.match(gradle, /versionName = "0\.1\.527"/);
+  assert.match(gradle, /versionCode = 5820/);
+  assert.match(gradle, /versionName = "0\.1\.528"/);
   assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
 });
