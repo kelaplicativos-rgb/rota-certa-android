@@ -296,6 +296,8 @@ private data class DynamicProfileReviewsPage(
 @Serializable
 private data class DynamicRideList(
     val candidates: List<BlaBlaDomRideCandidate> = emptyList(),
+    val observedCardCount: Int = 0,
+    val snapshotContainsAllObservedCards: Boolean = true,
     val bodyText: String = "",
     val explicitEmptyList: Boolean = false,
     val documentReady: Boolean = false,
@@ -1646,8 +1648,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val stabilizer = ridesSnapshotStabilizer0526 ?: BlaBlaRidesSnapshotStabilizer0526().also {
                 ridesSnapshotStabilizer0526 = it
             }
+            val materializedCardCount = maxOf(visibleCards.size, result.observedCardCount)
             val observation = BlaBlaRidesSnapshotObservation0526(
-                cardCount = visibleCards.size,
+                cardCount = materializedCardCount,
                 scrollY = result.scrollY,
                 scrollHeight = result.scrollHeight,
                 viewportHeight = result.viewportHeight,
@@ -1656,6 +1659,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 lastMutationAgeMs = result.lastMutationAgeMs,
                 explicitEmptyList = result.explicitEmptyList,
                 htmlTruncated = result.snapshotTruncated,
+                htmlMaterializedComplete = result.snapshotContainsAllObservedCards,
             )
             val decision = stabilizer.observe(observation)
             val firstObservation = stabilizer.cycles == 1
@@ -1669,7 +1673,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 previous.copy(
                     finalUrl = finalUrl,
                     timestamp = java.time.Instant.now().toString(),
-                    cardCountInitial = stabilizer.initialCardCount ?: visibleCards.size,
+                    cardCountInitial = stabilizer.initialCardCount ?: materializedCardCount,
                     cardCountFinal = stabilizer.finalCardCount,
                     scrollIterations = stabilizer.scrollIterations,
                     reachedEnd = result.atBottom,
@@ -1680,7 +1684,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 UnifiedDebugEventStore.recordAlways(
                     "RIDES_SNAPSHOT_PAGE_OPENED",
                     packageName,
-                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cards=${visibleCards.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(finalUrl)}",
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cards=$materializedCardCount visibleNow=${visibleCards.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(finalUrl)}",
                 )
             }
 
