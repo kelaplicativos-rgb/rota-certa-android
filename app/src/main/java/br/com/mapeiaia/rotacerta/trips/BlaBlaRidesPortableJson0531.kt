@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import android.content.ContentValues
 import android.content.Context
 import android.os.Build
