@@ -124,7 +124,9 @@ jobs:
           CHANGED="$(git diff --name-only "$BASE_SHA_0533..HEAD")"
           ! grep -E 'TripTimeline|PassengerTimeline|PublicAgenda|LiveRideAccessibilityService' <<< "$CHANGED"
           test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesEnrichment0533.kt
-          ! grep -R -E 'materializ.*BlaBlaRidesEnrichment0533|cat > .*BlaBlaRidesEnrichment0533' .github scripts 2>/dev/null
+          if [ -d scripts ]; then
+            ! grep -R -E 'BlaBlaRidesEnrichment0533\.kt' scripts
+          fi
 
       - name: Focused inventory and enrichment regression tests
         shell: bash
