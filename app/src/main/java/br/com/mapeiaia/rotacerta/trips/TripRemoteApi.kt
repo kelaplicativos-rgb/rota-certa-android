@@ -605,6 +605,7 @@ data class DriverTripSyncState0402(
     val tripKey: String = "",
     val blablaProfileUuid: String = "",
     val blablaTripId: String = "",
+    val blablaManageUrl: String = "",
     val blablaPublicUrl: String = "",
     val driverDisplayName: String = "",
     val title: String = "",
