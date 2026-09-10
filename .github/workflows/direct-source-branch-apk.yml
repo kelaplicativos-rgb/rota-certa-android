@@ -1,5 +1,5 @@
-name: Rota Certa 0.1.523 canonical Timeline operational recovery
-# 0.1.523: preserve the stable 0.1.520 mutation path and restore strong identity/private operational fields from compatible canonical Agenda evidence without reconnecting Timeline to the collector.
+name: Rota Certa 0.1.524 canonical Timeline operational recovery
+# 0.1.524: preserve the stable 0.1.520 mutation path and restore strong identity/private operational fields from compatible canonical Agenda evidence without reconnecting Timeline to the collector.
 
 on:
   push:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: 9e9d15f611564a9197d17e4530b1511975e95c21
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5815'
-      EXPECTED_VERSION_NAME: '0.1.523'
+      EXPECTED_VERSION_CODE: '5816'
+      EXPECTED_VERSION_NAME: '0.1.524'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -163,12 +163,12 @@ jobs:
           test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
           LIVE_BACKEND_HEALTH=DEGRADED
-          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0523.json; then
-            if grep -Fq '"ok":true' /tmp/live-health-0523.json; then
+          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0524.json; then
+            if grep -Fq '"ok":true' /tmp/live-health-0524.json; then
               LIVE_BACKEND_HEALTH=PASS
             fi
           else
-            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0523.json
+            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0524.json
           fi
           echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
           echo "backend_health=$LIVE_BACKEND_HEALTH"
@@ -177,7 +177,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OUT=/tmp/0523
+          OUT=/tmp/0524
           mkdir -p "$OUT"
           APK='app/build/outputs/apk/debug/app-debug.apk'
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-timeline-operational-recovery.apk"
@@ -187,7 +187,7 @@ jobs:
           cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
           cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
           cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0523.json "$OUT/"
+          cp /tmp/live-health-0524.json "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
@@ -226,6 +226,9 @@ jobs:
           stale_private_mirror_non_authoritative=PASS
           compatible_private_mirror_missing_field_fallback=PASS
           canonical_external_identity_recovery=PASS
+          canonical_manage_href_projection=PASS
+          canonical_public_url_private_fallback=PASS
+          neutral_compact_label_hidden=PASS
           external_identity_internal_block=PROHIBITED
           timeline_direct_collector_dependency=PROHIBITED
           timeline_collector_fallback=PROHIBITED
@@ -247,7 +250,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.523-timeline-operational-recovery-${{ github.sha }}
+          name: rota-certa-0.1.524-timeline-operational-recovery-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0523
+          path: /tmp/0524
