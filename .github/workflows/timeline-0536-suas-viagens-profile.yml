@@ -34,8 +34,10 @@ jobs:
           grep -Fq 'versionName = "0.1.535"' app/build.gradle.kts
           grep -Fq 'profileId = localProfileId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
           grep -Fq 'val registeredAccounts0432 = remember(entries)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'contentDescription = "GPS embarque ${passenger.name}"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
-          grep -Fq 'contentDescription = "GPS desembarque ${passenger.name}"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'val pickupTarget = passengerPickupMapTarget(passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'openPassengerPickupMap(context, pickupTarget)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'val dropoffTarget = passengerDropoffMapTarget(passenger)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'openPassengerDropoffMap(context, dropoffTarget)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           ! grep -Fq 'Carregando passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
           test -f .github/scripts/timeline_0536_suas_viagens_profile.py
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.before
