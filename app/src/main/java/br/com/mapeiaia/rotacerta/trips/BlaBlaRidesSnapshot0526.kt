@@ -267,14 +267,13 @@ internal object BlaBlaRidesSnapshotIdentityPolicy0526 {
             ?: return BlaBlaRidesSnapshotIdentity0526(false, errorCode = "EXPECTED_PROFILE_UUID_MISSING")
         val strong = profileLinks.flatMap { link -> UUID_RE.findAll(link).map { it.value.lowercase() }.toList() }
             .distinct()
-        val authenticated = when {
-            expected in strong -> expected
-            strong.size == 1 -> strong.single()
-            else -> ""
-        }
+        val authenticated = strong.singleOrNull().orEmpty()
         if (authenticated == expected) return BlaBlaRidesSnapshotIdentity0526(true, authenticated)
         if (authenticated.isNotBlank()) {
             return BlaBlaRidesSnapshotIdentity0526(false, authenticated, "PROFILE_UUID_MISMATCH")
+        }
+        if (strong.size > 1) {
+            return BlaBlaRidesSnapshotIdentity0526(false, errorCode = "PROFILE_IDENTITY_AMBIGUOUS")
         }
         val observed = observedUuids.mapNotNull(BlaBlaRidesSnapshotStore0526::strongUuid).distinct()
         val diagnosticCandidate = observed.singleOrNull().orEmpty()
