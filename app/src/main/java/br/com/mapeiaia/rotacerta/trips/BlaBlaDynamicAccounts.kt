@@ -1452,6 +1452,522 @@ internal class BlaBlaDynamicAccountSessionController0401(
         loadTrackedUrl(PROFILE_URL)
     }
 
+    private fun beginRidesSnapshot0526() {
+        if (ridesSnapshotCaptureId0526.isBlank()) {
+            ridesSnapshotTerminal0526 = true
+            setResult(
+                Activity.RESULT_CANCELED,
+                Intent()
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                    .putExtra(BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_STATUS_0526, BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE),
+            )
+            finish()
+            return
+        }
+        val expectedUuid = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
+        if (expectedUuid == null) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "EXPECTED_PROFILE_UUID_MISSING",
+            )
+            return
+        }
+        if (!acquireExternalFlight0426("rides_snapshot_0526")) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_SESSION,
+                errorCode = "SINGLE_FLIGHT_BUSY",
+            )
+            return
+        }
+        syncGeneration++
+        navigationGeneration = 0L
+        headlessPageFinishedNavigationGeneration0404 = -1L
+        identityConfirmedThisSync = false
+        ridesSnapshotTerminal0526 = false
+        ridesSnapshotIdentityAttempts0526 = 0
+        rideReadAttempts = 0
+        ridesSnapshotStabilizer0526 = BlaBlaRidesSnapshotStabilizer0526()
+        val now = java.time.Instant.now().toString()
+        ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+            previous.copy(
+                expectedProfileUuid = expectedUuid,
+                displayName = account.displayLabel.take(120),
+                startedAt = now,
+                timestamp = now,
+                status = BlaBlaRidesSnapshotStatus0526.IDENTITY_CHECK,
+                errorCode = "",
+            )
+        }
+        snapshotProgress0526(
+            "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Validando identidade",
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_PROFILE_SESSION_SELECTED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuidPresent=true isolatedWebProfile=true",
+        )
+        enterBrowserPhase(Phase.IDENTITY, BlaBlaBrowserRequest.SESSION_IDENTITY, "rides_snapshot_identity_0526")
+        if (::statusView.isInitialized) statusView.text = "${account.displayLabel} • validando identidade para captura…"
+        loadTrackedUrl(PROFILE_URL)
+    }
+
+    private fun captureIdentityForRidesSnapshot0526() {
+        if (
+            mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+            phase != Phase.IDENTITY ||
+            ridesSnapshotTerminal0526
+        ) return
+        evaluateRequest<DynamicIdentityEvidence>(BlaBlaBrowserRequest.SESSION_IDENTITY) { evidence ->
+            if (
+                mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+                phase != Phase.IDENTITY ||
+                ridesSnapshotTerminal0526
+            ) return@evaluateRequest
+            if (evidence == null) {
+                retryRidesSnapshotIdentity0526("IDENTITY_DOM_UNREADABLE")
+                return@evaluateRequest
+            }
+            val resolution = BlaBlaRidesSnapshotIdentityPolicy0526.resolve(
+                expectedProfileUuid = account.profileUuid,
+                profileLinks = evidence.profileLinks,
+                observedUuids = evidence.observedUuids,
+            )
+            if (!resolution.confirmed) {
+                if (resolution.errorCode == "PROFILE_UUID_MISMATCH") {
+                    failRidesSnapshot0526(
+                        status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                        errorCode = resolution.errorCode,
+                        authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                    )
+                } else {
+                    retryRidesSnapshotIdentity0526(
+                        reason = resolution.errorCode.ifBlank { "PROFILE_IDENTITY_NOT_STRONG" },
+                        authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                    )
+                }
+                return@evaluateRequest
+            }
+
+            identityConfirmedThisSync = true
+            ridesSnapshotIdentityAttempts0526 = 0
+            val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid).orEmpty()
+            ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+                previous.copy(
+                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                    identityConfirmed = true,
+                    status = BlaBlaRidesSnapshotStatus0526.IDENTITY_CONFIRMED,
+                    errorCode = "",
+                )
+            }
+            UnifiedDebugEventStore.recordAlways(
+                "RIDES_SNAPSHOT_IDENTITY_CONFIRMED",
+                packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuid=$expected authenticatedUuid=${resolution.authenticatedProfileUuid} identityStrong=true",
+            )
+            snapshotProgress0526(
+                "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Carregando Suas viagens",
+            )
+            enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "rides_snapshot_open_list_0526")
+            ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) {
+                it.copy(status = BlaBlaRidesSnapshotStatus0526.RIDES_LOADING)
+            }
+            loadTrackedUrl(RIDES_URL)
+        }
+    }
+
+    private fun retryRidesSnapshotIdentity0526(
+        reason: String,
+        authenticatedProfileUuid: String = "",
+    ) {
+        ridesSnapshotIdentityAttempts0526++
+        if (ridesSnapshotIdentityAttempts0526 >= MAX_IDENTITY_READ_ATTEMPTS) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = reason,
+                authenticatedProfileUuid = authenticatedProfileUuid,
+            )
+            return
+        }
+        UnifiedDebugEventStore.record(
+            "RIDES_SNAPSHOT_IDENTITY_RETRY",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 attempt=$ridesSnapshotIdentityAttempts0526/$MAX_IDENTITY_READ_ATTEMPTS reason=${reason.take(80)}",
+        )
+        postSessionDelayed0405({ captureIdentityForRidesSnapshot0526() }, IDENTITY_RETRY_MS)
+    }
+
+    private fun captureRideListSnapshot0526() {
+        if (
+            mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+            phase != Phase.RIDES ||
+            ridesSnapshotTerminal0526
+        ) return
+        evaluateRequest<DynamicRideList>(BlaBlaBrowserRequest.RIDE_LIST) { result ->
+            if (
+                mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+                phase != Phase.RIDES ||
+                ridesSnapshotTerminal0526
+            ) return@evaluateRequest
+            if (result == null) {
+                rideReadAttempts++
+                if (rideReadAttempts < MAX_RIDES_EMPTY_READ_ATTEMPTS) {
+                    postSessionDelayed0405({ captureRideListSnapshot0526() }, RIDES_SNAPSHOT_RETRY_MS_0526)
+                } else {
+                    failRidesSnapshot0526(
+                        status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
+                        errorCode = "RIDES_DOM_UNREADABLE",
+                    )
+                }
+                return@evaluateRequest
+            }
+
+            val finalUrl = webView.url.orEmpty()
+            val ridesPath = runCatching { android.net.Uri.parse(finalUrl).path.orEmpty().trimEnd('/') }.getOrDefault("")
+            if (!BlaBlaCollectorUrlModule.isAllowed(finalUrl) || ridesPath != "/rides") {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_NAVIGATION,
+                    errorCode = "NOT_ON_RIDES_PAGE",
+                    finalUrl = finalUrl,
+                )
+                return@evaluateRequest
+            }
+            if (looksLoggedOut(result.bodyText)) {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_SESSION,
+                    errorCode = "RIDES_SESSION_LOGGED_OUT",
+                    finalUrl = finalUrl,
+                )
+                return@evaluateRequest
+            }
+
+            val visibleCards = result.candidates
+                .filter { BlaBlaCollectorUrlModule.isSpecificTrip(it.href) }
+                .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
+            val stabilizer = ridesSnapshotStabilizer0526 ?: BlaBlaRidesSnapshotStabilizer0526().also {
+                ridesSnapshotStabilizer0526 = it
+            }
+            val observation = BlaBlaRidesSnapshotObservation0526(
+                cardCount = visibleCards.size,
+                scrollY = result.scrollY,
+                scrollHeight = result.scrollHeight,
+                viewportHeight = result.viewportHeight,
+                atBottom = result.atBottom,
+                loadingActive = result.loadingActive || !result.documentReady,
+                lastMutationAgeMs = result.lastMutationAgeMs,
+                explicitEmptyList = result.explicitEmptyList,
+                htmlTruncated = result.snapshotTruncated,
+            )
+            val decision = stabilizer.observe(observation)
+            val firstObservation = stabilizer.cycles == 1
+            val status = when (decision.action) {
+                BlaBlaRidesSnapshotAction0526.SCROLL -> BlaBlaRidesSnapshotStatus0526.SCROLLING
+                BlaBlaRidesSnapshotAction0526.WAIT -> BlaBlaRidesSnapshotStatus0526.STABILIZING
+                BlaBlaRidesSnapshotAction0526.CAPTURE -> BlaBlaRidesSnapshotStatus0526.CAPTURING
+                BlaBlaRidesSnapshotAction0526.INCOMPLETE -> BlaBlaRidesSnapshotStatus0526.CAPTURING
+            }
+            ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+                previous.copy(
+                    finalUrl = finalUrl,
+                    timestamp = java.time.Instant.now().toString(),
+                    cardCountInitial = stabilizer.initialCardCount ?: visibleCards.size,
+                    cardCountFinal = stabilizer.finalCardCount,
+                    scrollIterations = stabilizer.scrollIterations,
+                    reachedEnd = result.atBottom,
+                    status = status,
+                )
+            }
+            if (firstObservation) {
+                UnifiedDebugEventStore.recordAlways(
+                    "RIDES_SNAPSHOT_PAGE_OPENED",
+                    packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cards=${visibleCards.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(finalUrl)}",
+                )
+            }
+
+            when (decision.action) {
+                BlaBlaRidesSnapshotAction0526.SCROLL -> {
+                    val viewport = result.viewportHeight.coerceAtLeast(600)
+                    val maxScroll = (result.scrollHeight - 1).coerceAtLeast(0)
+                    val target = (result.scrollY + maxOf(600, viewport * 3 / 4)).coerceAtMost(maxScroll)
+                    snapshotProgress0526(
+                        "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Encontradas ${stabilizer.finalCardCount} viagens • carregando mais",
+                    )
+                    UnifiedDebugEventStore.record(
+                        "RIDES_SNAPSHOT_SCROLL_PROGRESS",
+                        packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 iteration=${stabilizer.scrollIterations} cards=${stabilizer.finalCardCount} from=${result.scrollY} to=$target height=${result.scrollHeight} loader=${result.loadingActive}",
+                    )
+                    webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
+                        postSessionDelayed0405({ captureRideListSnapshot0526() }, RIDES_SCROLL_SETTLE_MS)
+                    }
+                }
+                BlaBlaRidesSnapshotAction0526.WAIT -> {
+                    snapshotProgress0526(
+                        "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Estabilizando lista • ${stabilizer.finalCardCount} viagens",
+                    )
+                    postSessionDelayed0405({ captureRideListSnapshot0526() }, RIDES_BOTTOM_SETTLE_MS)
+                }
+                BlaBlaRidesSnapshotAction0526.CAPTURE -> {
+                    UnifiedDebugEventStore.recordAlways(
+                        "RIDES_SNAPSHOT_STABILIZED",
+                        packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cardsInitial=${stabilizer.initialCardCount ?: 0} cardsFinal=${stabilizer.finalCardCount} scrollIterations=${stabilizer.scrollIterations} reachedEnd=${result.atBottom} mutationQuietMs=${result.lastMutationAgeMs}",
+                    )
+                    captureRidesSnapshotEvidence0526(result, completeRequested = true, errorCode = "")
+                }
+                BlaBlaRidesSnapshotAction0526.INCOMPLETE -> {
+                    captureRidesSnapshotEvidence0526(
+                        result = result,
+                        completeRequested = false,
+                        errorCode = decision.reason.ifBlank { "STABILIZATION_INCOMPLETE" },
+                    )
+                }
+            }
+        }
+    }
+
+    private fun captureRidesSnapshotEvidence0526(
+        result: DynamicRideList,
+        completeRequested: Boolean,
+        errorCode: String,
+    ) {
+        if (ridesSnapshotTerminal0526) return
+        val expectedUuid = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
+        if (expectedUuid == null || !identityConfirmedThisSync) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "IDENTITY_LOST_BEFORE_CAPTURE",
+                finalUrl = webView.url.orEmpty(),
+            )
+            return
+        }
+        snapshotProgress0526(
+            "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Gerando HTML",
+        )
+        ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) {
+            it.copy(status = BlaBlaRidesSnapshotStatus0526.CAPTURING)
+        }
+
+        val htmlEvidence = runCatching {
+            require(result.snapshotHtml.isNotBlank()) { "snapshot html empty" }
+            ridesSnapshotStore0526().writeHtml(
+                captureId = ridesSnapshotCaptureId0526,
+                profileUuid = expectedUuid,
+                html = result.snapshotHtml,
+            )
+        }.getOrElse {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
+                errorCode = "HTML_CAPTURE_FAILED",
+                finalUrl = webView.url.orEmpty(),
+            )
+            return
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_HTML_SAVED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 bytes=${htmlEvidence.bytes} sha256=${htmlEvidence.sha256}",
+        )
+        ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+            previous.copy(
+                htmlCaptured = true,
+                htmlFile = htmlEvidence.relativePath,
+                htmlBytes = htmlEvidence.bytes,
+                htmlSha256 = htmlEvidence.sha256,
+            )
+        }
+
+        snapshotProgress0526(
+            "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Gerando MHTML",
+        )
+        val target = runCatching {
+            ridesSnapshotStore0526().mhtmlTarget(ridesSnapshotCaptureId0526, expectedUuid)
+        }.getOrElse {
+            finishRidesSnapshotEvidence0526(
+                result = result,
+                htmlEvidence = htmlEvidence,
+                mhtmlEvidence = null,
+                completeRequested = false,
+                errorCode = errorCode.ifBlank { "MHTML_TARGET_FAILED" },
+            )
+            return
+        }
+        runCatching { if (target.exists()) target.delete() }
+        var callbackResolved = false
+        postSessionDelayed0405({
+            if (callbackResolved || ridesSnapshotTerminal0526) return@postSessionDelayed0405
+            callbackResolved = true
+            finishRidesSnapshotEvidence0526(
+                result = result,
+                htmlEvidence = htmlEvidence,
+                mhtmlEvidence = null,
+                completeRequested = false,
+                errorCode = errorCode.ifBlank { "MHTML_CAPTURE_TIMEOUT" },
+            )
+        }, MHTML_CAPTURE_TIMEOUT_MS_0526)
+
+        runCatching {
+            webView.saveWebArchive(target.absolutePath, false) { savedPath ->
+                if (callbackResolved || ridesSnapshotTerminal0526) return@saveWebArchive
+                callbackResolved = true
+                val savedFile = savedPath
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::java.io.File)
+                    ?.takeIf { it.isFile && it.length() > 0L }
+                    ?: target.takeIf { it.isFile && it.length() > 0L }
+                val mhtmlEvidence = savedFile?.let { file ->
+                    runCatching { ridesSnapshotStore0526().evidence(ridesSnapshotCaptureId0526, file) }.getOrNull()
+                }
+                if (mhtmlEvidence != null) {
+                    UnifiedDebugEventStore.recordAlways(
+                        "RIDES_SNAPSHOT_MHTML_SAVED",
+                        packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 bytes=${mhtmlEvidence.bytes} sha256=${mhtmlEvidence.sha256}",
+                    )
+                }
+                finishRidesSnapshotEvidence0526(
+                    result = result,
+                    htmlEvidence = htmlEvidence,
+                    mhtmlEvidence = mhtmlEvidence,
+                    completeRequested = completeRequested && mhtmlEvidence != null,
+                    errorCode = when {
+                        errorCode.isNotBlank() -> errorCode
+                        mhtmlEvidence == null -> "MHTML_CAPTURE_FAILED"
+                        else -> ""
+                    },
+                )
+            }
+        }.onFailure {
+            if (!callbackResolved && !ridesSnapshotTerminal0526) {
+                callbackResolved = true
+                finishRidesSnapshotEvidence0526(
+                    result = result,
+                    htmlEvidence = htmlEvidence,
+                    mhtmlEvidence = null,
+                    completeRequested = false,
+                    errorCode = errorCode.ifBlank { "MHTML_CAPTURE_FAILED" },
+                )
+            }
+        }
+    }
+
+    private fun finishRidesSnapshotEvidence0526(
+        result: DynamicRideList,
+        htmlEvidence: BlaBlaRidesSnapshotFile0526,
+        mhtmlEvidence: BlaBlaRidesSnapshotFile0526?,
+        completeRequested: Boolean,
+        errorCode: String,
+    ) {
+        if (ridesSnapshotTerminal0526) return
+        ridesSnapshotTerminal0526 = true
+        val stabilizer = ridesSnapshotStabilizer0526
+        val status = if (completeRequested && mhtmlEvidence != null && !result.snapshotTruncated) {
+            BlaBlaRidesSnapshotStatus0526.COMPLETE
+        } else {
+            BlaBlaRidesSnapshotStatus0526.INCOMPLETE
+        }
+        val finalError = when {
+            status == BlaBlaRidesSnapshotStatus0526.COMPLETE -> ""
+            errorCode.isNotBlank() -> errorCode
+            result.snapshotTruncated -> "HTML_TRUNCATED"
+            mhtmlEvidence == null -> "MHTML_CAPTURE_FAILED"
+            else -> "STABILIZATION_INCOMPLETE"
+        }
+        val now = java.time.Instant.now().toString()
+        ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+            previous.copy(
+                completedAt = now,
+                timestamp = now,
+                finalUrl = webView.url.orEmpty(),
+                cardCountInitial = stabilizer?.initialCardCount ?: previous.cardCountInitial,
+                cardCountFinal = stabilizer?.finalCardCount ?: previous.cardCountFinal,
+                scrollIterations = stabilizer?.scrollIterations ?: previous.scrollIterations,
+                reachedEnd = result.atBottom,
+                stabilized = status == BlaBlaRidesSnapshotStatus0526.COMPLETE,
+                htmlCaptured = true,
+                mhtmlSupported = true,
+                mhtmlCaptured = mhtmlEvidence != null,
+                htmlFile = htmlEvidence.relativePath,
+                mhtmlFile = mhtmlEvidence?.relativePath.orEmpty(),
+                htmlBytes = htmlEvidence.bytes,
+                mhtmlBytes = mhtmlEvidence?.bytes ?: 0L,
+                htmlSha256 = htmlEvidence.sha256,
+                mhtmlSha256 = mhtmlEvidence?.sha256.orEmpty(),
+                status = status,
+                errorCode = finalError,
+            )
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_PROFILE_COMPLETED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 status=$status cardsInitial=${stabilizer?.initialCardCount ?: 0} cardsFinal=${stabilizer?.finalCardCount ?: 0} scrollIterations=${stabilizer?.scrollIterations ?: 0} reachedEnd=${result.atBottom} stabilized=${status == BlaBlaRidesSnapshotStatus0526.COMPLETE} html=true mhtml=${mhtmlEvidence != null} error=${finalError.take(80)}",
+        )
+        snapshotProgress0526(
+            if (status == BlaBlaRidesSnapshotStatus0526.COMPLETE) {
+                "Perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} concluído • ${stabilizer?.finalCardCount ?: 0} viagens"
+            } else {
+                "Perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} incompleto • ${finalError.take(60)}"
+            },
+        )
+        releaseExternalFlight0426()
+        enterBrowserPhase(Phase.IDLE, null, "rides_snapshot_terminal_0526")
+        setResult(
+            if (status == BlaBlaRidesSnapshotStatus0526.COMPLETE) Activity.RESULT_OK else Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_STATUS_0526, status),
+        )
+        finish()
+    }
+
+    private fun failRidesSnapshot0526(
+        status: String,
+        errorCode: String,
+        authenticatedProfileUuid: String = "",
+        finalUrl: String = "",
+    ) {
+        if (ridesSnapshotTerminal0526) return
+        ridesSnapshotTerminal0526 = true
+        val now = java.time.Instant.now().toString()
+        if (ridesSnapshotCaptureId0526.isNotBlank() && ::account.isInitialized) {
+            runCatching {
+                ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+                    previous.copy(
+                        authenticatedProfileUuid = authenticatedProfileUuid.ifBlank { previous.authenticatedProfileUuid },
+                        identityConfirmed = false,
+                        completedAt = now,
+                        timestamp = now,
+                        finalUrl = finalUrl.ifBlank {
+                            if (::webView.isInitialized) webView.url.orEmpty() else previous.finalUrl
+                        },
+                        status = status,
+                        errorCode = errorCode.take(120),
+                    )
+                }
+            }
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_PROFILE_FAILED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 status=$status error=${errorCode.take(80)} authenticatedUuidPresent=${authenticatedProfileUuid.isNotBlank()} fileSaved=false",
+        )
+        snapshotProgress0526(
+            "Perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} falhou • ${errorCode.take(60)}",
+        )
+        releaseExternalFlight0426()
+        enterBrowserPhase(Phase.IDLE, null, "rides_snapshot_failed_0526")
+        setResult(
+            Activity.RESULT_CANCELED,
+            Intent()
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_ACCOUNT_ID, account.id)
+                .putExtra(BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_STATUS_0526, status),
+        )
+        finish()
+    }
+
+    private fun ridesSnapshotStore0526(): BlaBlaRidesSnapshotStore0526 =
+        BlaBlaRidesSnapshotStore0526(this)
+
     private fun loadTrackedUrl(url: String) {
         val now = System.currentTimeMillis()
         lastNavigationIntervalMillis0426 =
