@@ -1526,6 +1526,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             packageName,
             "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuidPresent=true isolatedWebProfile=true",
         )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_SNAPSHOT_PROFILE_STARTED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${ridesSnapshotStore0526().accountKey(account.id)} traceId=${seatSyncDiagnosticKey(internalSessionId0426)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 source=SESSION_IDENTITY",
+        )
         enterBrowserPhase(Phase.IDENTITY, BlaBlaBrowserRequest.SESSION_IDENTITY, "rides_snapshot_identity_0526")
         if (::statusView.isInitialized) statusView.text = "${account.displayLabel} • validando identidade para captura…"
         loadTrackedUrl(PROFILE_URL)
@@ -1776,6 +1781,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         "RIDES_SNAPSHOT_SCROLL_PROGRESS",
                         packageName,
                         "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 iteration=${stabilizer.scrollIterations} cards=${stabilizer.finalCardCount} tripSetSha256=${stabilizer.finalTripSetSha256} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations} from=${result.scrollY} to=$target height=${result.scrollHeight} loader=${result.loadingActive}",
+                    )
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_RIDES_SCROLL_PROGRESS",
+                        packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${ridesSnapshotStore0526().accountKey(account.id)} traceId=${seatSyncDiagnosticKey(internalSessionId0426)} iteration=${stabilizer.scrollIterations} cards=${stabilizer.finalCardCount} tripSetSha256=${stabilizer.finalTripSetSha256} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations}",
                     )
                     webView.evaluateJavascript("window.scrollTo(0, $target); 'ok';") {
                         postSessionDelayed0405({ captureRideListSnapshot0526() }, RIDES_SCROLL_SETTLE_MS)
@@ -2230,6 +2240,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
             "RIDES_SNAPSHOT_PROFILE_FAILED",
             packageName,
             "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 status=$status error=${errorCode.take(80)} authenticatedUuidPresent=${authenticatedProfileUuid.isNotBlank()} fileSaved=false",
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_SNAPSHOT_FAILED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${if (::account.isInitialized) ridesSnapshotStore0526().accountKey(account.id) else "unknown"} traceId=${seatSyncDiagnosticKey(internalSessionId0426)} status=$status reason=${errorCode.take(100)}",
         )
         snapshotProgress0526(
             "Perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} falhou • ${errorCode.take(60)}",
