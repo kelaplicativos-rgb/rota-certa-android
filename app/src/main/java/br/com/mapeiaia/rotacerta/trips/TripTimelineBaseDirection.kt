@@ -98,7 +98,7 @@ internal fun timelineDirectionState(
 internal fun timelineDirectionDisplayLabel(state: TimelineDirectionState): String? = when (state) {
     TimelineDirectionState.OUTBOUND -> "↑ IDA"
     TimelineDirectionState.INBOUND -> "↓ VOLTA"
-    TimelineDirectionState.NEUTRAL -> "↔ NEUTRA"
+    TimelineDirectionState.NEUTRAL -> null
     TimelineDirectionState.UNKNOWN -> null
 }
 
