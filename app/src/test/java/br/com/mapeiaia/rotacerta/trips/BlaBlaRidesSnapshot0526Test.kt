@@ -93,10 +93,17 @@ class BlaBlaRidesSnapshot0526Test {
             ).action,
         )
         assertEquals(
-            BlaBlaRidesSnapshotAction0526.CAPTURE,
+            BlaBlaRidesSnapshotAction0526.WAIT,
             stabilizer.observe(
                 obs(cards = 8, y = 1600, height = 2200, bottom = true, mutationAge = 2600),
                 nowMillis = 3700,
+            ).action,
+        )
+        assertEquals(
+            BlaBlaRidesSnapshotAction0526.CAPTURE,
+            stabilizer.observe(
+                obs(cards = 8, y = 1600, height = 2200, bottom = true, mutationAge = 3900),
+                nowMillis = 5000,
             ).action,
         )
         assertEquals(3, stabilizer.initialCardCount)
@@ -163,8 +170,13 @@ class BlaBlaRidesSnapshot0526Test {
             obs(cards = 5, y = 900, height = 1700, bottom = true, loading = false, mutationAge = 2800),
             nowMillis = 9800,
         )
+        val quiet3 = stabilizer.observe(
+            obs(cards = 5, y = 900, height = 1700, bottom = true, loading = false, mutationAge = 4100),
+            nowMillis = 11100,
+        )
         assertEquals(BlaBlaRidesSnapshotAction0526.WAIT, quiet1.action)
-        assertEquals(BlaBlaRidesSnapshotAction0526.CAPTURE, quiet2.action)
+        assertEquals(BlaBlaRidesSnapshotAction0526.WAIT, quiet2.action)
+        assertEquals(BlaBlaRidesSnapshotAction0526.CAPTURE, quiet3.action)
     }
 
     @Test
