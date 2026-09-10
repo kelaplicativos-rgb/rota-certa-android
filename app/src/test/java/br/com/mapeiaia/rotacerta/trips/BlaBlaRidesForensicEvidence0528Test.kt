@@ -121,6 +121,31 @@ class BlaBlaRidesForensicEvidence0528Test {
     }
 
     @Test
+    fun finalizationGateAllowsOnlyOneTerminalCaptureUntilReset() {
+        val gate = BlaBlaRidesSnapshotFinalizationGate0529()
+        assertFalse(gate.inFlight)
+        assertTrue(gate.tryAcquire())
+        assertTrue(gate.inFlight)
+        assertFalse(gate.tryAcquire())
+        gate.reset()
+        assertFalse(gate.inFlight)
+        assertTrue(gate.tryAcquire())
+    }
+
+    @Test
+    fun stabilizationProofIsIndependentFromMhtmlOutcome() {
+        val inventory = buildTripInventory0528(listOf(tripA, tripB), explicitEmptyList = false)
+        val proven = BlaBlaRidesStabilizationEvidence0528(
+            requiredStableIterations = 3,
+            observedStableIterations = 4,
+            tripSetSha256 = inventory.tripIdsSha256,
+            completionReason = "TRIP_ID_SET_UNCHANGED_AT_BOTTOM",
+        )
+        assertTrue(ridesStabilizationProven0529(proven))
+        assertFalse(ridesStabilizationProven0529(proven.copy(observedStableIterations = 2)))
+    }
+
+    @Test
     fun htmlAndQuotedPrintableMhtmlWithSameTripsAreConsistent() {
         val html = """
             <a href="https://www.blablacar.com.br/rides/offer?id=$tripA">A</a>

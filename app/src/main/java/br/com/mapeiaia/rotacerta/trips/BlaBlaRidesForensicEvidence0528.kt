@@ -220,6 +220,14 @@ internal fun compareHtmlMhtmlTripSets0528(
     )
 }
 
+internal fun ridesStabilizationProven0529(
+    evidence: BlaBlaRidesStabilizationEvidence0528,
+): Boolean =
+    evidence.requiredStableIterations >= 2 &&
+        evidence.observedStableIterations >= evidence.requiredStableIterations &&
+        evidence.tripSetSha256.isNotBlank() &&
+        evidence.completionReason.isNotBlank()
+
 internal fun buildRideDateRange0528(dates: Collection<LocalDate>): BlaBlaRidesRideDateRange0528 {
     val ordered = dates.distinct().sorted()
     return BlaBlaRidesRideDateRange0528(

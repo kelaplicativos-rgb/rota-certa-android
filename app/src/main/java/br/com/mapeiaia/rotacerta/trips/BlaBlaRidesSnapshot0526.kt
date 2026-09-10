@@ -460,6 +460,21 @@ internal data class BlaBlaRidesSnapshotDecision0526(
     val reason: String = "",
 )
 
+internal class BlaBlaRidesSnapshotFinalizationGate0529 {
+    var inFlight: Boolean = false
+        private set
+
+    fun tryAcquire(): Boolean {
+        if (inFlight) return false
+        inFlight = true
+        return true
+    }
+
+    fun reset() {
+        inFlight = false
+    }
+}
+
 internal class BlaBlaRidesSnapshotStabilizer0526(
     private val startedAtMillis: Long = System.currentTimeMillis(),
     private val maxCycles: Int = 60,
@@ -506,7 +521,7 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
         finalCardCount = maxOf(finalCardCount, observation.cardCount)
 
         val currentTripSetSha256 = observation.tripSetSha256.ifBlank {
-            // Compatibility fallback for legacy unit fixtures. Runtime 0.1.528 always supplies
+            // Compatibility fallback for legacy unit fixtures. Runtime 0.1.529 always supplies
             // the deterministic administrative-trip set fingerprint.
             BlaBlaRidesSnapshotStore0526.sha256(
                 "legacy-card-count:${observation.cardCount}".toByteArray(Charsets.UTF_8),

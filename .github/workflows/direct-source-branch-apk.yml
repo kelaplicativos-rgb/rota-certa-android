@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.528 BlaBla rides forensic v2
-# 0.1.528: forensic-v2 authenticated multi-profile 'Suas viagens' evidence with strong identity proof, trip-set stabilization, HTML/MHTML consistency and direct ZIP download; existing BlaBlaCar WebView/session authority preserved.
+name: Rota Certa 0.1.529 BlaBla rides forensic v2
+# 0.1.529: forensic-v2 authenticated multi-profile 'Suas viagens' evidence with strong identity proof, trip-set stabilization, HTML/MHTML consistency and direct ZIP download; existing BlaBlaCar WebView/session authority preserved.
 
 on:
   push:
     branches:
-      - agent/blablacar-rides-forensic-v2-0.1.528
+      - agent/blablacar-rides-forensic-v2-0.1.529
   workflow_dispatch:
 
 permissions:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       BASE_AUTHORITY_SHA: c473d53c5d5a2634e82b7fb4f8c2ed7995737510
       FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5820'
-      EXPECTED_VERSION_NAME: '0.1.528'
+      EXPECTED_VERSION_CODE: '5821'
+      EXPECTED_VERSION_NAME: '0.1.529'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -331,7 +331,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.528-blablacar-rides-forensic-v2-${{ github.sha }}
+          name: rota-certa-0.1.529-blablacar-rides-forensic-v2-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0528

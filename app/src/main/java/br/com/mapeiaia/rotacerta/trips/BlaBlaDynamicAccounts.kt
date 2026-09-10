@@ -679,6 +679,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesSnapshotTerminal0526 = false
     private var ridesSnapshotIdentityAttempts0526 = 0
     private var ridesSnapshotStabilizer0526: BlaBlaRidesSnapshotStabilizer0526? = null
+    private val ridesSnapshotEvidenceGate0529 = BlaBlaRidesSnapshotFinalizationGate0529()
 
 
     fun start() {
@@ -1507,6 +1508,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         ridesSnapshotIdentityAttempts0526 = 0
         rideReadAttempts = 0
         ridesSnapshotStabilizer0526 = BlaBlaRidesSnapshotStabilizer0526()
+        ridesSnapshotEvidenceGate0529.reset()
         val now = java.time.Instant.now().toString()
         ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
             previous.copy(
@@ -1677,13 +1679,15 @@ internal class BlaBlaDynamicAccountSessionController0401(
         if (
             mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
             phase != Phase.RIDES ||
-            ridesSnapshotTerminal0526
+            ridesSnapshotTerminal0526 ||
+            ridesSnapshotEvidenceGate0529.inFlight
         ) return
         evaluateRequest<DynamicRideList>(BlaBlaBrowserRequest.RIDE_LIST) { result ->
             if (
                 mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
                 phase != Phase.RIDES ||
-                ridesSnapshotTerminal0526
+                ridesSnapshotTerminal0526 ||
+                ridesSnapshotEvidenceGate0529.inFlight
             ) return@evaluateRequest
             if (result == null) {
                 rideReadAttempts++
@@ -1767,6 +1771,19 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     packageName,
                     "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 cards=$materializedCardCount visibleNow=${visibleCards.size} url=${BlaBlaCollectorUrlModule.sanitizeForLog(finalUrl)}",
                 )
+            }
+
+            if (
+                (decision.action == BlaBlaRidesSnapshotAction0526.CAPTURE ||
+                    decision.action == BlaBlaRidesSnapshotAction0526.INCOMPLETE) &&
+                !ridesSnapshotEvidenceGate0529.tryAcquire()
+            ) {
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_RIDES_FINALIZATION_REENTRY_IGNORED_0529",
+                    packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${ridesSnapshotStore0526().accountKey(account.id)} action=${decision.action} stableIterations=${stabilizer.observedStableIterations}/${stabilizer.requiredStableIterations}",
+                )
+                return@evaluateRequest
             }
 
             when (decision.action) {
@@ -1918,9 +1935,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 scrollIterations = stabilizer?.scrollIterations ?: previous.scrollIterations,
                 reachedEnd = result.atBottom,
                 endEvidence = endEvidence0528,
-                stabilized = completeRequested &&
-                    (stabilizer?.observedStableIterations ?: 0) >=
-                    (stabilizer?.requiredStableIterations ?: Int.MAX_VALUE),
+                stabilized = ridesStabilizationProven0529(stabilizationEvidence0528),
                 stabilizationEvidence = stabilizationEvidence0528,
                 tripInventory = inventory0528,
                 ridesIndexFile = ridesIndexArtifact0528.relativePath,
@@ -2024,6 +2039,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     ?.let { java.io.File(it) }
                     ?.takeIf { it.isFile && it.length() > 0L }
                     ?: target.takeIf { it.isFile && it.length() > 0L }
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_RIDES_MHTML_CAPTURE_RESULT_0529",
+                    packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${store0528.accountKey(account.id)} savedPathPresent=${!savedPath.isNullOrBlank()} savedFileUsable=${savedFile != null} targetExists=${target.isFile} targetBytes=${target.takeIf { it.isFile }?.length() ?: 0L}",
+                )
                 val mhtmlSensitive0528 = savedFile?.let { file ->
                     sensitiveArtifactMarker0528(file, decodeMhtml = true)
                 }
@@ -2112,10 +2132,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 cardCountFinal = stabilizer?.finalCardCount ?: previous.cardCountFinal,
                 scrollIterations = stabilizer?.scrollIterations ?: previous.scrollIterations,
                 reachedEnd = previous.endEvidence.atBottom,
-                stabilized = completeRequested &&
-                    previous.stabilizationEvidence.observedStableIterations >=
-                    previous.stabilizationEvidence.requiredStableIterations &&
-                    previous.stabilizationEvidence.requiredStableIterations >= 2,
+                stabilized = ridesStabilizationProven0529(previous.stabilizationEvidence),
                 htmlCaptured = true,
                 mhtmlSupported = true,
                 mhtmlCaptured = mhtmlEvidence != null,
