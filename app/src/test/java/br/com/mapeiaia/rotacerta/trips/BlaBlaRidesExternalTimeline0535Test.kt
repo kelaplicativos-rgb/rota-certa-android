@@ -155,7 +155,7 @@ class BlaBlaRidesExternalTimeline0535Test {
     fun continuityConfirmedUnknownAndConflictAreSeparated() {
         val a = BlaBlaExternalTimelineRide0535("trip_a_0001", destination = "Extrema", origin = "Santo André")
         val b = BlaBlaExternalTimelineRide0535("trip_b_0002", origin = "Extrema", destination = "Pouso Alegre")
-        val c = BlaBlaExternalTimelineRide0535("trip_c_0003", origin = "", destination = "Campinas")
+        val c = BlaBlaExternalTimelineRide0535("trip_c_0003", origin = "", destination = "")
         val d = BlaBlaExternalTimelineRide0535("trip_d_0004", origin = "São Paulo", destination = "Santos")
         val results = analyzeContinuity0535(listOf(a, b, c, d))
         assertEquals("CONTINUITY_CONFIRMED", results[0].classification)

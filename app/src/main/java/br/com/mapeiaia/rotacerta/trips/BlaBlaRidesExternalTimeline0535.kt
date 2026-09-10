@@ -174,9 +174,6 @@ private val DATE_0535 = Regex(
 private val TIME_0535 = Regex("""^([01]?\d|2[0-3]):[0-5]\d$""")
 private val TAG_0535 = Regex("""(?is)<[^>]+>""")
 private val SPACE_0535 = Regex("""\s+""")
-private val BRAZIL_STATE_SUFFIX_0535 = Regex(
-    """\s(?:ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)$""",
-)
 
 private val MONTHS_0535 = mapOf(
     "jan" to 1, "fev" to 2, "mar" to 3, "abr" to 4,
@@ -280,8 +277,6 @@ private fun normalizedLocation0535(raw: String): String = Normalizer.normalize(r
     .replace(Regex("\\p{M}+"), "")
     .lowercase()
     .replace(Regex("[^a-z0-9]+"), " ")
-    .trim()
-    .replace(BRAZIL_STATE_SUFFIX_0535, "")
     .trim()
 
 private fun evidenceText0535(ride: BlaBlaExternalTimelineRide0535): String = listOfNotNull(
