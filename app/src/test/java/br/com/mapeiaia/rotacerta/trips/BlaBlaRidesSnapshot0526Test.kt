@@ -233,7 +233,7 @@ class BlaBlaRidesSnapshot0526Test {
     }
 
     @Test
-    fun snapshotReusesOfficialBrowserAndRideListWithoutCanonicalPublication() {
+    fun snapshotReusesOfficialBrowserAndRideListAndDownloadsZipWithoutCanonicalPublication() {
         val snapshot = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt").readText()
         val dynamic = File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt").readText()
         val script = File("src/main/assets/blablacar/scripts/ride_list.js").readText()
@@ -246,9 +246,14 @@ class BlaBlaRidesSnapshot0526Test {
         assertTrue(dynamic.contains("BlaBlaBrowserRequest.SESSION_IDENTITY"))
         assertTrue(dynamic.contains("BlaBlaBrowserRequest.RIDE_LIST"))
         assertTrue(dynamic.contains("webView.saveWebArchive"))
-        assertTrue(snapshot.contains("Intent.ACTION_SEND_MULTIPLE"))
-        assertTrue(snapshot.contains(".tripfiles"))
-        assertTrue(snapshot.contains("copyForShare"))
+        assertFalse(snapshot.contains("Intent.ACTION_SEND_MULTIPLE"))
+        assertFalse(snapshot.contains("FileProvider"))
+        assertFalse(snapshot.contains("copyForShare"))
+        assertTrue(snapshot.contains("MediaStore.Downloads.EXTERNAL_CONTENT_URI"))
+        assertTrue(snapshot.contains("Environment.DIRECTORY_DOWNLOADS"))
+        assertTrue(snapshot.contains("ZipOutputStream"))
+        assertTrue(snapshot.contains("downloadEntries0527"))
+        assertTrue(snapshot.contains("application/zip"))
         assertTrue(script.contains("MutationObserver"))
         assertTrue(script.contains("observedCardCount"))
         assertTrue(script.contains("loadingActive"))
