@@ -1,0 +1,131 @@
+name: Timeline 0.1.536 Suas viagens multiprofile
+
+on:
+  push:
+    branches:
+      - agent/timeline-suas-viagens-profile-0.1.536
+    paths:
+      - '.github/scripts/timeline_0536_suas_viagens_profile.py'
+      - '.github/workflows/timeline-0536-suas-viagens-profile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: timeline-0536-suas-viagens-profile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/timeline-suas-viagens-profile-0.1.536
+
+      - name: Prove exact 0.1.535 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5827' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.535"' app/build.gradle.kts
+          grep -Fq 'profileId = localProfileId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'val registeredAccounts0432 = remember(entries)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'contentDescription = "GPS embarque ${passenger.name}"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'contentDescription = "GPS desembarque ${passenger.name}"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          ! grep -Fq 'Carregando passageiros' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          test -f .github/scripts/timeline_0536_suas_viagens_profile.py
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.before
+
+      - name: Materialize minimal Timeline reconstruction
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/timeline_0536_suas_viagens_profile.py
+          git diff --check
+          grep -Fq 'var expandedTripIds0536 by remember { mutableStateOf<Set<String>>(emptySet()) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("👤 $profileDisplayLabel"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'Text("RESUMO DA VIAGEM"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'canonicalTimelineProfileId0536' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'versionCode = 5828' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.536"' app/build.gradle.kts
+
+      - name: Protect FAROL and exact scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/farol.after
+          cmp /tmp/farol.before /tmp/farol.after
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineProfile0536Test.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Full unit regression and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Commit tested materialized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
+                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/TripTimelineProfile0536Test.kt
+          git commit -m 'feat(timeline): compact multiprofile cards 0.1.536'
+          git push origin HEAD:agent/timeline-suas-viagens-profile-0.1.536
+          FINAL_SHA="$(git rev-parse HEAD)"
+          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          git diff --exit-code
+
+      - name: Prepare final-SHA APK evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          grep -Fq 'versionCode = 5828' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.536"' app/build.gradle.kts
+          mkdir -p /tmp/timeline-0536
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/timeline-0536/rota-certa-0.1.536-debug.apk
+          cp /tmp/apk.sha256 /tmp/timeline-0536/apk.sha256
+          cp /tmp/source-head.txt /tmp/timeline-0536/source-head.txt
+          printf '%s\n' \
+            'versionName=0.1.536' \
+            'versionCode=5828' \
+            "sourceSha=$FINAL_SHA" \
+            'timelineSource=existing canonical local Agenda projection' \
+            'cardsInitialState=closed' \
+            'expansionKey=canonical tripId' \
+            'driverIdentity=persistent canonical profile UUID/account ID' \
+            'passengerGps=existing per-passenger pickup/dropoff controls preserved' \
+            'loadingPassengersVisible=false' \
+            'farolUntouched=true' > /tmp/timeline-0536/version.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-timeline-0.1.536-${{ env.FINAL_SHA }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/timeline-0536
