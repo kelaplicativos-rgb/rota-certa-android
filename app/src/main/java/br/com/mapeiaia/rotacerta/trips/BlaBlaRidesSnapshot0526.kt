@@ -157,15 +157,41 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
 
     fun finish(captureId: String): BlaBlaRidesSnapshotManifest0526? = synchronized(lock) {
         val current = readUnlocked(captureId) ?: return@synchronized null
-        val statuses = current.profiles.map { it.status }
+        val verifiedProfiles = current.profiles.map { profile ->
+            if (profile.status != BlaBlaRidesSnapshotStatus0526.COMPLETE) return@map profile
+            val finalError = runCatching {
+                validateProfileForComplete0528(captureId, profile)
+            }.getOrElse { "FINAL_FORENSIC_REVERIFY_FAILED" }
+            if (finalError == null) {
+                profile
+            } else {
+                profile.copy(
+                    status = if (
+                        finalError.contains("HTML_MHTML") ||
+                        finalError.contains("ARTIFACT_INVALID") ||
+                        finalError.contains("HASH_MISMATCH")
+                    ) {
+                        BlaBlaRidesSnapshotStatus0526.INCONSISTENT
+                    } else {
+                        BlaBlaRidesSnapshotStatus0526.INCOMPLETE
+                    },
+                    errorCode = "FINAL_REVERIFY_${finalError.take(100)}",
+                )
+            }
+        }
+        val statuses = verifiedProfiles.map { it.status }
         val result = ridesSnapshotGlobalResult0526(statuses)
-        val replacement = current.copy(completedAt = Instant.now().toString(), result = result)
+        val replacement = current.copy(
+            completedAt = Instant.now().toString(),
+            result = result,
+            profiles = verifiedProfiles,
+        )
         writeManifest(replacement)
         writeManifestChecksum0528(replacement.captureId)
         UnifiedDebugEventStore.recordAlways(
             "RIDES_SNAPSHOT_COMPLETED",
             appContext.packageName,
-            "captureId=${safeCaptureId(captureId)} result=$result profiles=${replacement.profiles.size} complete=${replacement.profiles.count { it.status == BlaBlaRidesSnapshotStatus0526.COMPLETE }} partial=${replacement.profiles.count { it.status == BlaBlaRidesSnapshotStatus0526.INCOMPLETE }} failed=${replacement.profiles.count { it.status.startsWith("FAILED_") }} privateEvidence=true",
+            "captureId=${safeCaptureId(captureId)} result=$result profiles=${replacement.profiles.size} complete=${replacement.profiles.count { it.status == BlaBlaRidesSnapshotStatus0526.COMPLETE }} partial=${replacement.profiles.count { it.status == BlaBlaRidesSnapshotStatus0526.INCOMPLETE || it.status == BlaBlaRidesSnapshotStatus0526.INCONSISTENT }} failed=${replacement.profiles.count { it.status.startsWith("FAILED_") }} finalForensicReverify=true privateEvidence=true",
         )
         replacement
     }
