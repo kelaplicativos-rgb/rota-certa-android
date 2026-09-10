@@ -267,6 +267,33 @@ class BlaBlaRidesForensicEvidence0528Test {
     }
 
     @Test
+    fun reusableSecretMaterialAndMissingSecurityProofRejectComplete() {
+        assertEquals(
+            "REUSABLE_AUTH_MATERIAL_DETECTED",
+            forensicCompletionError0528(
+                validProfile(),
+                validChecks().copy(securityArtifactsValid = false),
+            ),
+        )
+        assertEquals(
+            "SECURITY_EVIDENCE_MISSING",
+            forensicCompletionError0528(
+                validProfile().copy(securityEvidence = BlaBlaRidesArtifactSecurityEvidence0528()),
+                validChecks(),
+            ),
+        )
+        assertEquals(
+            "AUTHORIZATION_BEARER",
+            sensitiveArtifactMarker0528("Authorization: Bearer abcdefghijklmnop"),
+        )
+        assertEquals(
+            "REFRESH_TOKEN",
+            sensitiveArtifactMarker0528("{\"refresh_token\":\"secretsecret\"}"),
+        )
+        assertNull(sensitiveArtifactMarker0528("<a href=\"/rides/offer?id=$tripA\">ride</a>"))
+    }
+
+    @Test
     fun forensicIdentityArtifactContainsNoReusableSessionFieldsBySchema() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt",
@@ -353,6 +380,15 @@ class BlaBlaRidesForensicEvidence0528Test {
             ridesIndexFile = "$profileUuid/rides-index.json",
             ridesIndexBytes = 100,
             ridesIndexSha256 = "c".repeat(64),
+            securityEvidence = BlaBlaRidesArtifactSecurityEvidence0528(
+                scannedAt = "2026-09-10T00:02:00Z",
+                htmlScanned = true,
+                mhtmlScanned = true,
+                identitySchemaMinimal = true,
+                ridesIndexSchemaMinimal = true,
+                reusableSecretMarkersDetected = 0,
+                result = "PASS",
+            ),
             crossFormatConsistency = BlaBlaRidesCrossFormatConsistency0528(
                 htmlTripCount = 2,
                 mhtmlTripCount = 2,
@@ -380,5 +416,6 @@ class BlaBlaRidesForensicEvidence0528Test {
         htmlFileValid = true,
         mhtmlFileValid = true,
         crossFormatPayloadValid = true,
+        securityArtifactsValid = true,
     )
 }
