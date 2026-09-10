@@ -158,7 +158,7 @@
   const probeKey = '__rotaCertaRidesSnapshotProbe0526';
   let probe = window[probeKey];
   if (!probe || !probe.observer) {
-    probe = { lastMutationAt: Date.now(), observer: null };
+    probe = { lastMutationAt: Date.now(), observer: null, observedRideHrefs: {} };
     probe.observer = new MutationObserver((mutations) => {
       if (mutations.some((mutation) => mutation.type === 'childList' || mutation.type === 'characterData')) {
         probe.lastMutationAt = Date.now();
@@ -167,6 +167,13 @@
     probe.observer.observe(document.documentElement, { subtree: true, childList: true, characterData: true });
     window[probeKey] = probe;
   }
+  if (!probe.observedRideHrefs) probe.observedRideHrefs = {};
+  const currentCandidates = fromRoots.concat(fallback);
+  currentCandidates.forEach((candidate) => {
+    const href = clean(candidate && candidate.href);
+    if (href) probe.observedRideHrefs[href] = true;
+  });
+  const observedCardCount = Object.keys(probe.observedRideHrefs).length;
   const isVisible = (node) => {
     if (!node) return false;
     const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
@@ -204,7 +211,9 @@
   const snapshotHtml = fullSnapshotHtml.slice(0, maxSnapshotChars);
 
   return JSON.stringify({
-    candidates: fromRoots.concat(fallback),
+    candidates: currentCandidates,
+    observedCardCount: observedCardCount,
+    snapshotContainsAllObservedCards: currentCandidates.length >= observedCardCount,
     bodyText: bodyText,
     explicitEmptyList: !!emptyStructure || emptyText,
     documentReady: document.readyState === 'complete',
