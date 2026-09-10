@@ -3,6 +3,7 @@ package br.com.mapeiaia.rotacerta.trips
 import java.io.File
 import java.net.URI
 import java.time.LocalDate
+import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -169,12 +170,30 @@ internal fun extractAdministrativeTripIds0528(raw: String): List<String> {
     )
 }
 
+internal fun mhtmlSearchCorpus0528(raw: String): String {
+    if (raw.isBlank()) return raw
+    val corpus = StringBuilder(raw.length.coerceAtMost(2_000_000) + 1024)
+    corpus.append(raw)
+    val base64Parts = Regex(
+        """(?is)Content-Transfer-Encoding:\s*base64\s*\r?\n(?:[^\r\n]*\r?\n)*?\r?\n([A-Za-z0-9+/=\r\n]{32,})""",
+    ).findAll(raw)
+    base64Parts.take(32).forEach { match ->
+        val encoded = match.groupValues[1].replace(Regex("\\s+"), "")
+        if (encoded.isBlank() || encoded.length > 8_000_000) return@forEach
+        runCatching { Base64.getDecoder().decode(encoded) }.getOrNull()?.let { bytes ->
+            corpus.append('\n')
+            corpus.append(bytes.toString(Charsets.ISO_8859_1))
+        }
+    }
+    return corpus.toString()
+}
+
 internal fun compareHtmlMhtmlTripSets0528(
     htmlRaw: String,
     mhtmlRaw: String,
 ): BlaBlaRidesCrossFormatConsistency0528 {
     val htmlIds = extractAdministrativeTripIds0528(htmlRaw)
-    val mhtmlIds = extractAdministrativeTripIds0528(mhtmlRaw)
+    val mhtmlIds = extractAdministrativeTripIds0528(mhtmlSearchCorpus0528(mhtmlRaw))
     val htmlSet = htmlIds.toSet()
     val mhtmlSet = mhtmlIds.toSet()
     return BlaBlaRidesCrossFormatConsistency0528(
@@ -295,6 +314,37 @@ internal fun verifySnapshotArtifact0528(
     }.getOrDefault(false)
 }
 
+private val SECRET_PATTERNS_0528 = listOf(
+    "AUTHORIZATION_BEARER" to Regex("""(?i)authorization\s*:\s*bearer\s+[A-Za-z0-9._~+/-]{8,}"""),
+    "SET_COOKIE_HEADER" to Regex("""(?i)set-cookie\s*:\s*[^\r\n]{8,}"""),
+    "COOKIE_HEADER" to Regex("""(?i)(?:^|[\r\n])cookie\s*:\s*[^\r\n]{8,}"""),
+    "ACCESS_TOKEN" to Regex("""(?i)[\"']access[_-]?token[\"']\s*[:=]\s*[\"'][^\"']{8,}"""),
+    "REFRESH_TOKEN" to Regex("""(?i)[\"']refresh[_-]?token[\"']\s*[:=]\s*[\"'][^\"']{8,}"""),
+    "ID_TOKEN" to Regex("""(?i)[\"']id[_-]?token[\"']\s*[:=]\s*[\"'][^\"']{8,}"""),
+    "PASSWORD_VALUE" to Regex("""(?i)[\"'](?:password|passwd)[\"']\s*[:=]\s*[\"'][^\"']+"""),
+)
+
+internal fun sensitiveArtifactMarker0528(raw: String): String? =
+    SECRET_PATTERNS_0528.firstNotNullOfOrNull { (code, regex) ->
+        code.takeIf { regex.containsMatchIn(raw) }
+    }
+
+internal fun sensitiveArtifactMarker0528(file: File, decodeMhtml: Boolean = false): String? {
+    if (!file.isFile) return "FILE_MISSING"
+    val maxBytes = 16L * 1024L * 1024L
+    if (file.length() > maxBytes) return "SECURITY_SCAN_SIZE_LIMIT"
+    val raw = runCatching { file.readBytes().toString(Charsets.ISO_8859_1) }
+        .getOrElse { return "SECURITY_SCAN_READ_FAILED" }
+    sensitiveArtifactMarker0528(raw)?.let { return it }
+    if (decodeMhtml) {
+        val corpus = mhtmlSearchCorpus0528(raw)
+        if (corpus !== raw) {
+            sensitiveArtifactMarker0528(corpus)?.let { return it }
+        }
+    }
+    return null
+}
+
 internal fun forensicCompletionError0528(
     profile: BlaBlaRidesSnapshotProfile0526,
     checks: BlaBlaRidesArtifactChecks0528,
@@ -309,6 +359,7 @@ internal fun forensicCompletionError0528(
         profile.identityEvidence.capturedAt.isBlank() ||
         profile.identityEvidence.evidenceType.isBlank() ||
         profile.identityEvidence.evidenceHashSha256.isBlank() ||
+        profile.identityEvidence.evidenceHashSha256 != profile.identitySha256 ||
         profile.identityEvidence.accountKey != profile.accountKey ||
         profile.identityEvidence.locators.isEmpty()
     ) return "IDENTITY_EVIDENCE_MISSING"
