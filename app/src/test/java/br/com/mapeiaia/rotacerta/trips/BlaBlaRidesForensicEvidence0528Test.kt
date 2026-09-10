@@ -133,6 +133,36 @@ class BlaBlaRidesForensicEvidence0528Test {
     }
 
     @Test
+    fun identityProbeGateSerializesDuplicateTriggersAndHonorsBackoff() {
+        val gate = BlaBlaRidesSnapshotIdentityProbeGate0530()
+        assertTrue(gate.tryAcquire(1_000L))
+        assertFalse(gate.tryAcquire(1_001L))
+
+        gate.releaseWithBackoff(nowMillis = 1_000L, delayMillis = 900L)
+        assertFalse(gate.tryAcquire(1_899L))
+        assertTrue(gate.tryAcquire(1_900L))
+
+        gate.release()
+        assertTrue(gate.tryAcquire(1_900L))
+        gate.reset()
+        assertTrue(gate.tryAcquire(0L))
+    }
+
+    @Test
+    fun snapshotIdentityColdStartHasDedicatedSerializedRetryBudget() {
+        val dynamic = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt",
+        ).readText()
+
+        assertTrue(dynamic.contains("ridesSnapshotIdentityProbeGate0530.tryAcquire"))
+        assertTrue(dynamic.contains("RIDES_SNAPSHOT_IDENTITY_PROBE_DEDUPED_0530"))
+        assertTrue(dynamic.contains("MAX_RIDES_SNAPSHOT_IDENTITY_READ_ATTEMPTS_0530 = 6"))
+        assertTrue(dynamic.contains("RIDES_SNAPSHOT_IDENTITY_RETRY_MS_0530 = 900L"))
+        assertTrue(dynamic.contains("MAX_IDENTITY_READ_ATTEMPTS = 3"))
+        assertTrue(dynamic.contains("IDENTITY_RETRY_MS = 700L"))
+    }
+
+    @Test
     fun stabilizationProofIsIndependentFromMhtmlOutcome() {
         val inventory = buildTripInventory0528(listOf(tripA, tripB), explicitEmptyList = false)
         val proven = BlaBlaRidesStabilizationEvidence0528(

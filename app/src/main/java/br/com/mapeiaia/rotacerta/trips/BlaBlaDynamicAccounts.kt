@@ -680,6 +680,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesSnapshotIdentityAttempts0526 = 0
     private var ridesSnapshotStabilizer0526: BlaBlaRidesSnapshotStabilizer0526? = null
     private val ridesSnapshotEvidenceGate0529 = BlaBlaRidesSnapshotFinalizationGate0529()
+    private val ridesSnapshotIdentityProbeGate0530 = BlaBlaRidesSnapshotIdentityProbeGate0530()
 
 
     fun start() {
@@ -1509,6 +1510,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         rideReadAttempts = 0
         ridesSnapshotStabilizer0526 = BlaBlaRidesSnapshotStabilizer0526()
         ridesSnapshotEvidenceGate0529.reset()
+        ridesSnapshotIdentityProbeGate0530.reset()
         val now = java.time.Instant.now().toString()
         ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
             previous.copy(
@@ -1544,7 +1546,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             phase != Phase.IDENTITY ||
             ridesSnapshotTerminal0526
         ) return
+        val probeNow = android.os.SystemClock.elapsedRealtime()
+        if (!ridesSnapshotIdentityProbeGate0530.tryAcquire(probeNow)) {
+            UnifiedDebugEventStore.record(
+                "RIDES_SNAPSHOT_IDENTITY_PROBE_DEDUPED_0530",
+                packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 attempt=$ridesSnapshotIdentityAttempts0526 inFlight=${ridesSnapshotIdentityProbeGate0530.inFlight} nextAllowedAt=${ridesSnapshotIdentityProbeGate0530.nextAllowedAtMillis}",
+            )
+            return
+        }
         evaluateRequest<DynamicIdentityEvidence>(BlaBlaBrowserRequest.SESSION_IDENTITY) { evidence ->
+            ridesSnapshotIdentityProbeGate0530.release()
             if (
                 mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
                 phase != Phase.IDENTITY ||
@@ -1659,7 +1671,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         authenticatedProfileUuid: String = "",
     ) {
         ridesSnapshotIdentityAttempts0526++
-        if (ridesSnapshotIdentityAttempts0526 >= MAX_IDENTITY_READ_ATTEMPTS) {
+        if (ridesSnapshotIdentityAttempts0526 >= MAX_RIDES_SNAPSHOT_IDENTITY_READ_ATTEMPTS_0530) {
             failRidesSnapshot0526(
                 status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
                 errorCode = reason,
@@ -1667,12 +1679,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
             )
             return
         }
+        val retryDelay = RIDES_SNAPSHOT_IDENTITY_RETRY_MS_0530
+        ridesSnapshotIdentityProbeGate0530.releaseWithBackoff(
+            android.os.SystemClock.elapsedRealtime(),
+            retryDelay,
+        )
         UnifiedDebugEventStore.record(
             "RIDES_SNAPSHOT_IDENTITY_RETRY",
             packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 attempt=$ridesSnapshotIdentityAttempts0526/$MAX_IDENTITY_READ_ATTEMPTS reason=${reason.take(80)}",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 attempt=$ridesSnapshotIdentityAttempts0526/$MAX_RIDES_SNAPSHOT_IDENTITY_READ_ATTEMPTS_0530 reason=${reason.take(80)} serialized=true",
         )
-        postSessionDelayed0405({ captureIdentityForRidesSnapshot0526() }, IDENTITY_RETRY_MS)
+        postSessionDelayed0405({ captureIdentityForRidesSnapshot0526() }, retryDelay)
     }
 
     private fun captureRideListSnapshot0526() {
@@ -4799,6 +4816,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         private const val MAX_RIDES_EMPTY_READ_ATTEMPTS = 3
         private const val MAX_IDENTITY_READ_ATTEMPTS = 3
         private const val IDENTITY_RETRY_MS = 700L
+        private const val MAX_RIDES_SNAPSHOT_IDENTITY_READ_ATTEMPTS_0530 = 6
+        private const val RIDES_SNAPSHOT_IDENTITY_RETRY_MS_0530 = 900L
         private const val HEADLESS_PAGE_CALLBACK_FALLBACK_MS_0404 = 20_000L
         internal const val SOURCE_ACCESS_PROBE_TIMEOUT_MS_0447 = 4_000L
         private const val MAX_PROFILE_REVIEW_READ_ATTEMPTS = 24

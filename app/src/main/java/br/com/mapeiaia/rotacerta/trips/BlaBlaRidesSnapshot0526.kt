@@ -475,6 +475,39 @@ internal class BlaBlaRidesSnapshotFinalizationGate0529 {
     }
 }
 
+/**
+ * Serializes cold-start identity probes for the forensic rides capture only.
+ *
+ * Page-finished, headless fallback and retry callbacks may arrive close together. They must
+ * not consume multiple identity attempts for the same not-yet-materialized DOM state.
+ */
+internal class BlaBlaRidesSnapshotIdentityProbeGate0530 {
+    var inFlight: Boolean = false
+        private set
+    var nextAllowedAtMillis: Long = 0L
+        private set
+
+    fun tryAcquire(nowMillis: Long): Boolean {
+        if (inFlight || nowMillis < nextAllowedAtMillis) return false
+        inFlight = true
+        return true
+    }
+
+    fun release() {
+        inFlight = false
+    }
+
+    fun releaseWithBackoff(nowMillis: Long, delayMillis: Long) {
+        inFlight = false
+        nextAllowedAtMillis = nowMillis + delayMillis.coerceAtLeast(0L)
+    }
+
+    fun reset() {
+        inFlight = false
+        nextAllowedAtMillis = 0L
+    }
+}
+
 internal class BlaBlaRidesSnapshotStabilizer0526(
     private val startedAtMillis: Long = System.currentTimeMillis(),
     private val maxCycles: Int = 60,
