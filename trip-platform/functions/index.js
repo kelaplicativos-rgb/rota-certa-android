@@ -8946,28 +8946,73 @@ function canonicalTimelineExternalIdentity0523(data, canonicalProjection, privat
     };
   }
 
-  // A lagging private mirror can complete a one-sided root identity, but it must
-  // never resurrect an identity after both root fields were deliberately cleared.
+  // A lagging private mirror can complete a one-sided root identity. 0.1.524
+  // also accepts an exact-canonical-id external mirror when tripKey drift is the
+  // only incompatibility and the surviving root side agrees with that mirror.
+  // A fully cleared root identity is still never resurrected.
   const rootOneSided = Boolean(rootProfile) !== Boolean(rootTrip);
-  const privateProfile = privateMirrorCompatible
-    ? cleanText(privatePayload && privatePayload.blablaProfileUuid, 180).toLowerCase()
-    : "";
-  const privateTrip = privateMirrorCompatible
-    ? cleanText(privatePayload && privatePayload.blablaTripId, 180)
-    : "";
+  const privateCanonicalId = cleanText(privatePayload && privatePayload.canonicalTripId, 180);
+  const privateRevision = Math.max(0, Number(privatePayload && privatePayload.canonicalRevision || 0));
+  const privateProfile = cleanText(privatePayload && privatePayload.blablaProfileUuid, 180).toLowerCase();
+  const privateTrip = cleanText(privatePayload && privatePayload.blablaTripId, 180);
+  const privateRecordOrigin = cleanText(privatePayload && privatePayload.recordOrigin, 48).toUpperCase();
+  const exactCanonicalOneSided0524 =
+    rootOneSided &&
+    canonicalId &&
+    privateCanonicalId === canonicalId &&
+    privateRevision <= canonicalRevision &&
+    privateProfile && privateTrip &&
+    privateRecordOrigin === "EXTERNAL_BACKING" &&
+    (!rootProfile || rootProfile === privateProfile) &&
+    (!rootTrip || rootTrip === privateTrip);
   const privateMatches =
     rootOneSided && privateProfile && privateTrip &&
     (!rootProfile || rootProfile === privateProfile) &&
-    (!rootTrip || rootTrip === privateTrip);
+    (!rootTrip || rootTrip === privateTrip) &&
+    (privateMirrorCompatible || exactCanonicalOneSided0524);
   if (privateMatches) {
     return {
       blablaProfileUuid: privateProfile,
       blablaTripId: privateTrip,
-      source: "COMPATIBLE_PRIVATE_MIRROR",
+      source: privateMirrorCompatible ? "COMPATIBLE_PRIVATE_MIRROR" : "EXACT_CANONICAL_PRIVATE_IDENTITY_0524",
     };
   }
 
   return { blablaProfileUuid: rootProfile, blablaTripId: rootTrip, source: "ROOT_INCOMPLETE" };
+}
+
+function canonicalTimelineManageUrl0524(data, externalIdentity) {
+  const tripId = cleanText(externalIdentity && externalIdentity.blablaTripId, 180);
+  if (!tripId) return "";
+  const persisted = normalizeBlaBlaManageUrl(data && data.blablaManageUrl, tripId);
+  if (persisted) return persisted;
+  return normalizeBlaBlaManageUrl(
+    `https://www.blablacar.com.br/rides/offer/${encodeURIComponent(tripId)}`,
+    tripId,
+  );
+}
+
+function canonicalTimelinePublicUrl0524(data, canonicalProjection, privatePayload, externalIdentity) {
+  const tripId = cleanText(externalIdentity && externalIdentity.blablaTripId, 180);
+  const profileUuid = cleanText(externalIdentity && externalIdentity.blablaProfileUuid, 180).toLowerCase();
+  if (!tripId || !profileUuid) return "";
+
+  const current = normalizeCanonicalBoundBlaBlaPublicUrl0423(
+    (canonicalProjection && canonicalProjection.blablaPublicUrl) || (data && data.blablaPublicUrl),
+    tripId,
+  );
+  if (current) return current;
+
+  const canonicalId = cleanText(data && (data.canonicalTripId || data.localTripId), 180);
+  const privateMatches =
+    privatePayload &&
+    privatePayload.schemaVersion === "private-agenda-mirror-v1" &&
+    cleanText(privatePayload.canonicalTripId, 180) === canonicalId &&
+    cleanText(privatePayload.blablaProfileUuid, 180).toLowerCase() === profileUuid &&
+    cleanText(privatePayload.blablaTripId, 180) === tripId;
+  return privateMatches
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(privatePayload.blablaPublicUrl, tripId)
+    : "";
 }
 
 function canonicalTimelinePrivateStops0523(rawStops, privatePayload, privateMirrorCompatible) {
@@ -9198,6 +9243,13 @@ async function listDriverTripSyncState0402(req, res) {
       privatePayload0499,
       privateMirrorCompatible0523,
     );
+    const externalManageUrl0524 = canonicalTimelineManageUrl0524(data, externalIdentity0523);
+    const externalPublicUrl0524 = canonicalTimelinePublicUrl0524(
+      data,
+      canonicalProjection0494,
+      privatePayload0499,
+      externalIdentity0523,
+    );
     const hasExternalProfile0512 = Boolean(externalIdentity0523.blablaProfileUuid);
     const hasExternalTrip0512 = Boolean(externalIdentity0523.blablaTripId);
     if (hasExternalProfile0512 !== hasExternalTrip0512) {
@@ -9251,7 +9303,8 @@ async function listDriverTripSyncState0402(req, res) {
       tripKey: cleanText(data.tripKey, 180),
       blablaProfileUuid: externalIdentity0523.blablaProfileUuid,
       blablaTripId: externalIdentity0523.blablaTripId,
-      blablaPublicUrl: cleanText(canonicalProjection0494.blablaPublicUrl || data.blablaPublicUrl, 1200),
+      blablaManageUrl: externalManageUrl0524,
+      blablaPublicUrl: externalPublicUrl0524,
       driverDisplayName: cleanText(data.driverDisplayName, 160),
       title: cleanText(canonicalProjection0494.title || data.title, 220),
       publicUrl: cleanText(canonicalProjection0494.publicUrl || data.publicUrl, 1200),
