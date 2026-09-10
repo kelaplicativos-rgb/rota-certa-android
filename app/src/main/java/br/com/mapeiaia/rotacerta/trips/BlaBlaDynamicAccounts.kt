@@ -1945,6 +1945,18 @@ internal class BlaBlaDynamicAccountSessionController0401(
             )
             return
         }
+        val htmlFile0528 = store0528.resolveArtifact0528(ridesSnapshotCaptureId0526, htmlEvidence.relativePath)
+        val htmlSensitive0528 = htmlFile0528?.let { sensitiveArtifactMarker0528(it) }
+        if (htmlSensitive0528 != null) {
+            runCatching { htmlFile0528.delete() }
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
+                errorCode = "HTML_SENSITIVE_MATERIAL_${htmlSensitive0528.take(60)}",
+                authenticatedProfileUuid = expectedUuid,
+                finalUrl = webView.url.orEmpty(),
+            )
+            return
+        }
         UnifiedDebugEventStore.recordAlways(
             "RIDES_SNAPSHOT_HTML_SAVED",
             packageName,
@@ -2002,9 +2014,17 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     ?.let { java.io.File(it) }
                     ?.takeIf { it.isFile && it.length() > 0L }
                     ?: target.takeIf { it.isFile && it.length() > 0L }
-                val mhtmlEvidence = savedFile?.let { file ->
-                    runCatching { store0528.evidence(ridesSnapshotCaptureId0526, file) }.getOrNull()
+                val mhtmlSensitive0528 = savedFile?.let { file ->
+                    sensitiveArtifactMarker0528(file, decodeMhtml = true)
                 }
+                if (mhtmlSensitive0528 != null) {
+                    runCatching { savedFile?.delete() }
+                }
+                val mhtmlEvidence = savedFile
+                    ?.takeIf { mhtmlSensitive0528 == null }
+                    ?.let { file ->
+                        runCatching { store0528.evidence(ridesSnapshotCaptureId0526, file) }.getOrNull()
+                    }
                 if (mhtmlEvidence != null) {
                     UnifiedDebugEventStore.recordAlways(
                         "RIDES_SNAPSHOT_MHTML_SAVED",
@@ -2024,6 +2044,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     completeRequested = completeRequested && mhtmlEvidence != null,
                     errorCode = when {
                         errorCode.isNotBlank() -> errorCode
+                        mhtmlSensitive0528 != null -> "MHTML_SENSITIVE_MATERIAL_${mhtmlSensitive0528.take(60)}"
                         mhtmlEvidence == null -> "MHTML_CAPTURE_FAILED"
                         else -> ""
                     },
@@ -2189,7 +2210,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
                     previous.copy(
                         authenticatedProfileUuid = authenticatedProfileUuid.ifBlank { previous.authenticatedProfileUuid },
-                        identityConfirmed = false,
+                        identityConfirmed = if (status == BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY) {
+                            false
+                        } else {
+                            previous.identityConfirmed
+                        },
                         completedAt = now,
                         timestamp = now,
                         finalUrl = finalUrl.ifBlank {
