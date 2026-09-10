@@ -187,6 +187,30 @@ test("0523 strong identity is recovered only from compatible canonical evidence"
   const privatePayload = { blablaProfileUuid: "profile-a", blablaTripId: "trip-a" };
   assert.equal(identity0523(root, staleProjection, privatePayload, true).blablaTripId, "trip-a");
 
+  const tripKeyDriftPayload0524 = {
+    schemaVersion: "private-agenda-mirror-v1",
+    canonicalTripId: "canonical-a",
+    canonicalRevision: 11,
+    tripKey: "legacy-trip-key",
+    recordOrigin: "EXTERNAL_BACKING",
+    blablaProfileUuid: "profile-a",
+    blablaTripId: "trip-a",
+  };
+  assert.deepEqual(
+    { ...identity0523(root, staleProjection, tripKeyDriftPayload0524, false) },
+    { blablaProfileUuid: "profile-a", blablaTripId: "trip-a", source: "EXACT_CANONICAL_PRIVATE_IDENTITY_0524" },
+  );
+  const tripOnlyRoot0524 = {
+    canonicalTripId: "canonical-a",
+    canonicalRevision: 12,
+    blablaProfileUuid: "",
+    blablaTripId: "trip-a",
+  };
+  assert.equal(
+    identity0523(tripOnlyRoot0524, staleProjection, tripKeyDriftPayload0524, false).blablaProfileUuid,
+    "profile-a",
+  );
+
   const conflicting = { blablaProfileUuid: "profile-other", blablaTripId: "trip-other" };
   assert.equal(identity0523(root, staleProjection, conflicting, true).blablaTripId, "");
 
@@ -234,6 +258,9 @@ test("0503 Timeline endpoint reads canonical Agenda and authenticated private mi
   assert.match(fn, /privateMirrorCompatible0523/);
   assert.match(fn, /canonicalTimelinePrivateStops0523/);
   assert.match(fn, /externalIdentity0523/);
+  assert.match(fn, /externalManageUrl0524/);
+  assert.match(fn, /externalPublicUrl0524/);
+  assert.match(fn, /blablaManageUrl:/);
   assert.match(fn, /bookings0494/);
   assert.match(fn, /blablaTripId:/);
   assert.match(fn, /notes0499:/);
