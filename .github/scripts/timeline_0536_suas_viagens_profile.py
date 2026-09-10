@@ -35,9 +35,9 @@ if 'versionCode = 5827' not in build or 'versionName = "0.1.535"' not in build:
 passenger_ui = read(PASSENGER_UI)
 if "Carregando passageiros" in passenger_ui:
     fail("Visible passenger loading state is present in baseline; this task must not hide a structural regression")
-if 'contentDescription = "GPS embarque ${passenger.name}"' not in passenger_ui:
+if 'val pickupTarget = passengerPickupMapTarget(passenger)' not in passenger_ui or 'openPassengerPickupMap(context, pickupTarget)' not in passenger_ui:
     fail("Passenger pickup GPS baseline not found")
-if 'contentDescription = "GPS desembarque ${passenger.name}"' not in passenger_ui:
+if 'val dropoffTarget = passengerDropoffMapTarget(passenger)' not in passenger_ui or 'openPassengerDropoffMap(context, dropoffTarget)' not in passenger_ui:
     fail("Passenger dropoff GPS baseline not found")
 
 # 1) Preserve the canonical BlaBlaCar profile UUID per local trip instead of
