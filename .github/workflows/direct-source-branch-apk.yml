@@ -110,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test.offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorNetworkSource0266Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test.offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorNetworkSource0266Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
 
       - name: Verify structural constraints and sanitization markers
         shell: bash
@@ -150,6 +150,19 @@ jobs:
           ! grep -Fq 'Intent.ACTION_SEND_MULTIPLE' "$SNAPSHOT"
           ! grep -Fq 'BlaBlaRidesSnapshotShare0526' "$SNAPSHOT_UI"
           ! grep -Fq 'Compartilhar última captura privada' "$SNAPSHOT_UI"
+          FORENSIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt'
+          grep -Fq 'blablacar-rides-snapshot-v2' "$SNAPSHOT"
+          grep -Fq 'identity.json' "$FORENSIC"
+          grep -Fq 'rides-index.json' "$FORENSIC"
+          grep -Fq 'tripSetSha2560528' "$FORENSIC"
+          grep -Fq 'compareHtmlMhtmlTripSets0528' "$FORENSIC"
+          grep -Fq 'NO_REUSABLE_AUTH_MATERIAL_V1' "$FORENSIC"
+          grep -Fq 'validateProfileForComplete0528' "$FORENSIC"
+          grep -Fq 'ARCHIVED_RIDES_SENTINEL_VISIBLE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'BLABLACAR_RIDES_END_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_CONFIRMED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'BLABLACAR_RIDES_CROSS_FORMAT_VERIFIED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
           FORENSIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt'
           grep -Fq 'blablacar-rides-snapshot-v2' "$SNAPSHOT"
           grep -Fq 'manifest.sha256' "$SNAPSHOT"
@@ -235,6 +248,15 @@ jobs:
           rides_snapshot_no_publication=PASS
           rides_snapshot_downloads_zip_to_android_downloads=PASS
           rides_snapshot_share_action=PROHIBITED
+          rides_snapshot_manifest_schema_v2=PASS
+          rides_snapshot_identity_json_sha256=PASS
+          rides_snapshot_rides_index_sha256=PASS
+          rides_snapshot_trip_set_fingerprint=PASS
+          rides_snapshot_end_evidence=PASS
+          rides_snapshot_stabilization_evidence=PASS
+          rides_snapshot_html_mhtml_cross_format_gate=PASS
+          rides_snapshot_no_reusable_auth_material_gate=PASS
+          rides_snapshot_complete_requires_forensic_evidence=PASS
           rides_snapshot_schema_v2=PASS
           rides_snapshot_identity_json_sha256=PASS
           rides_snapshot_rides_index_json_sha256=PASS
