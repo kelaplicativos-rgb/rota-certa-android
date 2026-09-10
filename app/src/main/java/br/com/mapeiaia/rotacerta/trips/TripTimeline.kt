@@ -611,7 +611,7 @@ private fun mergeTimelineTrip0525(local: Trip, remote: Trip): Trip {
 
     val localManage = timelineValidManageUrl0525(local.blablaManageUrl, mergedTripId)
     val remoteManage = timelineValidManageUrl0525(remote.blablaManageUrl, mergedTripId)
-    val localPublic = timelineValidPublicUrl0525(local.blablaPublicUrl, mergedTripId)
+    val localPublicPersisted = local.blablaPublicUrl?.trim()?.takeIf(String::isNotBlank)
     val remotePublic = timelineValidPublicUrl0525(remote.blablaPublicUrl, mergedTripId)
 
     return local.copy(
@@ -636,7 +636,7 @@ private fun mergeTimelineTrip0525(local: Trip, remote: Trip): Trip {
         },
         blablaPublicUrl = when {
             remoteNewer && remotePublic != null -> remotePublic
-            localPublic != null -> localPublic
+            localPublicPersisted != null -> localPublicPersisted
             remotePublic != null -> remotePublic
             else -> null
         },
