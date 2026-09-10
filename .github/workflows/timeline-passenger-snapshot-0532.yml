@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/timeline-passenger-snapshot-0.1.532
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,138 +12,143 @@ permissions:
 jobs:
   materialize-test-build:
     runs-on: ubuntu-latest
+    env:
+      GOOGLE_MAPS_API_KEY: timeline_passenger_snapshot_0532_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: agent/timeline-passenger-snapshot-0.1.532
+
+      - name: Prove exact triggering HEAD
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Materialize causal fix if needed
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
+      - uses: android-actions/setup-android@v3
 
-          ui_path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt')
-          text = ui_path.read_text(encoding='utf-8')
-
-          old_gate = 'if (!entry.canonicalBackendAuthoritative0494 || trip == null || canonicalBookings0494 == null) return null'
-          if old_gate in text:
-              if text.count(old_gate) != 1:
-                  raise SystemExit('unexpected authority gate count')
-              text = text.replace(
-                  old_gate,
-                  'if (trip == null || canonicalBookings0494 == null) return null',
-              )
-
-              old_reset = '        renderSnapshot0394 = immediateCanonicalSnapshot0517\n        renderFailure0512 = null'
-              new_reset = '        renderSnapshot0394 = preservePassengerTimelineSnapshotDuringRefresh0532(\n            current = renderSnapshot0394,\n            immediateCanonical = immediateCanonicalSnapshot0517,\n        )'
-              if text.count(old_reset) != 1:
-                  raise SystemExit('unexpected degrading refresh reset count')
-              text = text.replace(old_reset, new_reset)
-
-              failure_state = '    var renderFailure0512 by remember(entry.tripId, trip?.id) {\n        mutableStateOf<String?>(null)\n    }\n'
-              if text.count(failure_state) != 1:
-                  raise SystemExit('unexpected render failure state count')
-              text = text.replace(failure_state, '')
-
-              failure_assignment = '            renderFailure0512 = "PASSENGER_PROJECTION_FAILED"\n'
-              if text.count(failure_assignment) != 1:
-                  raise SystemExit('unexpected render failure assignment count')
-              text = text.replace(failure_assignment, '')
-
-              loading_pattern = re.compile(
-                  r'    if \(renderSnapshot == null\) \{\n'
-                  r'        if \(renderFailure0512 == null\) \{\n'
-                  r'            Text\("Carregando passageiros…", style = MaterialTheme\.typography\.bodySmall\)\n'
-                  r'        \} else \{\n'
-                  r'            Text\(\n'
-                  r'                "⚠️ Não foi possível resolver os passageiros desta viagem\. O card canônico foi preservado; atualize novamente\.",\n'
-                  r'                style = MaterialTheme\.typography\.bodySmall,\n'
-                  r'            \)\n'
-                  r'        \}\n'
-                  r'        return\n'
-                  r'    \}'
-              )
-              text, count = loading_pattern.subn('    if (renderSnapshot == null) return', text)
-              if count != 1:
-                  raise SystemExit(f'unexpected loading block count={count}')
-
-              legacy_source = '" source=" + if (entry.canonicalBackendAuthoritative0494) "CANONICAL_BACKEND" else "LOCAL_LEGACY",'
-              if text.count(legacy_source) != 1:
-                  raise SystemExit('unexpected local telemetry source count')
-              text = text.replace(
-                  legacy_source,
-                  '" source=" + if (entry.canonicalBackendAuthoritative0494) "CANONICAL_BACKEND" else "LOCAL_CANONICAL_AGENDA",',
-              )
-              ui_path.write_text(text, encoding='utf-8')
-
-              gradle_path = Path('app/build.gradle.kts')
-              gradle = gradle_path.read_text(encoding='utf-8')
-              if gradle.count('versionCode = 5823') != 1 or gradle.count('versionName = "0.1.531"') != 1:
-                  raise SystemExit('unexpected base version metadata')
-              gradle = gradle.replace('versionCode = 5823', 'versionCode = 5824')
-              gradle = gradle.replace('versionName = "0.1.531"', 'versionName = "0.1.532"')
-              gradle_path.write_text(gradle, encoding='utf-8')
-          else:
-              if 'preservePassengerTimelineSnapshotDuringRefresh0532' not in text:
-                  raise SystemExit('neither base nor fixed passenger snapshot state found')
-          PY
-
-          git diff --check
-          if ! git diff --quiet -- app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt app/build.gradle.kts; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt app/build.gradle.kts
-            git commit -m "fix: keep passenger snapshot atomic during refresh (0.1.532)"
-            git push origin HEAD:agent/timeline-passenger-snapshot-0.1.532
-          fi
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Verify structural invariants
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           ui = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt').read_text(encoding='utf-8')
+          helper = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineSnapshotState0532.kt').read_text(encoding='utf-8')
+          tests = Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineSnapshotState0532Test.kt').read_text(encoding='utf-8')
           assert 'Carregando passageiros' not in ui
           assert 'renderSnapshot0394 = immediateCanonicalSnapshot0517' not in ui
           assert 'preservePassengerTimelineSnapshotDuringRefresh0532' in ui
+          assert 'preservePassengerTimelineSnapshotDuringRefresh0532' in helper
           assert 'if (!entry.canonicalBackendAuthoritative0494 || trip == null' not in ui
           assert 'if (trip == null || canonicalBookings0494 == null) return null' in ui
+          assert 'keepsCurrentSnapshotWhenImmediateCanonicalIsMissing' in tests
+          assert 'replacesCurrentSnapshotAtomicallyWhenNewCanonicalSnapshotIsComplete' in tests
           gradle = Path('app/build.gradle.kts').read_text(encoding='utf-8')
           assert 'versionCode = 5824' in gradle
           assert 'versionName = "0.1.532"' in gradle
           PY
 
-      - name: Unit tests and APK build
+      - name: Focused snapshot regression tests
         shell: bash
         run: |
+          set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineSnapshotState0532Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Build final-SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK" >/tmp/zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5824'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.532'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" > /tmp/apk.sha256
 
       - name: Package final-SHA APK evidence
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p out
           cp app/build/outputs/apk/debug/app-debug.apk out/rota-certa-0.1.532-timeline-passenger-snapshot.apk
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/apk.sha256 out/
           {
-            echo "branch=agent/timeline-passenger-snapshot-0.1.532"
-            echo "sha=$(git rev-parse HEAD)"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "sha=$GITHUB_SHA"
             echo "versionName=0.1.532"
             echo "versionCode=5824"
             echo "sourceLoadingTextPresent=$(grep -R -F -q 'Carregando passageiros' app/src/main/java && echo true || echo false)"
-            sha256sum out/rota-certa-0.1.532-timeline-passenger-snapshot.apk
+            echo "physicalApproval=PENDING_SAMSUNG_SM-S911B_ANDROID_16"
+            cat /tmp/apk.sha256
           } > out/build-evidence.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.532-timeline-passenger-snapshot-${{ github.run_number }}
+          name: rota-certa-0.1.532-timeline-passenger-snapshot-${{ github.sha }}
           path: out/
           if-no-files-found: error
           retention-days: 30
