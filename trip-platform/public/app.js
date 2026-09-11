@@ -31,24 +31,52 @@ const queryDriverUsername = normalizePublicSlug(params.get("motorista") || "");
 const driverUsername = queryDriverUsername || publicSlug;
 let agendaChangeCursor0495 = 0;
 let agendaChangeWatchRunning0495 = false;
-let publicDriverWhatsapp0519 = "";
 
-function whatsappDigits0519(raw) {
-  const digits = String(raw || "").replace(/\D/g, "");
-  return digits.length >= 10 && digits.length <= 15 ? digits : "";
+function isOfficialBlaBlaHost0541(hostname) {
+  const labels = String(hostname || "").toLowerCase().replace(/^\.+|\.+$/g, "").split(".").filter(Boolean);
+  const root = labels[0] === "www" ? labels.slice(1) : labels;
+  if (root[0] !== "blablacar") return false;
+  const suffix = root.slice(1);
+  if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+  if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+  return false;
 }
 
-function driverWhatsappHref0519(item, from, to) {
-  const digits = whatsappDigits0519(publicDriverWhatsapp0519);
-  if (!digits) return "";
-  const when = [
-    agendaDateLabel0473(item?.departureAtMillis, item?.timezoneId),
-    agendaTripTime0496(item?.departureAtMillis, item?.timezoneId),
-  ].filter(Boolean).join(" às ");
-  const message = "Olá! Vi a viagem " + from + " → " + to +
-    (when ? " (" + when + ")" : "") +
-    " na Agenda Rota Certa e gostaria de reservar uma vaga.";
-  return "https://wa.me/" + digits + "?text=" + encodeURIComponent(message);
+function validatedBlaBlaReservationUrl0541(raw) {
+  const value = String(raw || "").trim().slice(0, 1200);
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !isOfficialBlaBlaHost0541(url.hostname)) return "";
+    if (url.username || url.password || (url.port && url.port !== "443")) return "";
+    const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+    if (!path.startsWith("/trip/")) return "";
+    const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
+    if (!match || !String(match[1] || "").trim()) return "";
+    url.searchParams.delete("search_uuid");
+    url.hash = "";
+    return url.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
+function agendaReservationTelemetry0541(eventName, item, reason) {
+  const canonicalTripRef = publicAgendaTripKey0506(item);
+  const detail = {
+    event: eventName,
+    canonicalTripRef: canonicalTripRef || "unavailable",
+    source: "PUBLIC_AGENDA_UI",
+    reason,
+    hasCanonicalBlaBlaPublicUrl: Boolean(validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)),
+    privateDataLogged: false,
+  };
+  console.info("[RotaCertaAgendaReservation0541]", detail);
+  try {
+    window.dispatchEvent(new CustomEvent("rota-certa-agenda-reservation-0541", { detail }));
+  } catch (_) {
+    // Console estruturado permanece como telemetria sanitizada mínima.
+  }
 }
 
 function agendaExpansionStorageKey0506() {
@@ -611,20 +639,31 @@ function renderAgendaCards(entries, container) {
     canonicalVisual0473.append(date, journey0473, expandedItinerary0480, bottom, expandHint0480);
     card.appendChild(canonicalVisual0473);
 
-    const whatsappHref0519 = driverWhatsappHref0519(item, from, to);
-    if (whatsappHref0519) {
-      const actions0519 = document.createElement("div");
-      actions0519.className = "agendaDriverActions0519";
-      const whatsapp0519 = document.createElement("a");
-      whatsapp0519.className = "agendaWhatsapp0519";
-      whatsapp0519.href = whatsappHref0519;
-      whatsapp0519.target = "_blank";
-      whatsapp0519.rel = "noopener noreferrer";
-      whatsapp0519.textContent = "💬 Fazer reserva com o motorista";
-      whatsapp0519.setAttribute("aria-label", "Fazer reserva com o motorista pelo WhatsApp");
-      actions0519.appendChild(whatsapp0519);
-      card.appendChild(actions0519);
+    const reservationHref0541 = validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl);
+    const actions0541 = document.createElement("div");
+    actions0541.className = "agendaTripActions0541";
+    if (reservationHref0541) {
+      const reserve0541 = document.createElement("a");
+      reserve0541.className = "agendaReserve0541";
+      reserve0541.href = reservationHref0541;
+      reserve0541.rel = "noopener noreferrer";
+      reserve0541.textContent = "🟢 Reservar vaga";
+      reserve0541.setAttribute("aria-label", "Reservar vaga na publicação BlaBlaCar desta viagem");
+      reserve0541.addEventListener("click", () => {
+        agendaReservationTelemetry0541("AGENDA_RESERVATION_PUBLICATION_OPENED_0541", item, "CANONICAL_BLABLACAR_PUBLICATION");
+      });
+      actions0541.appendChild(reserve0541);
+    } else {
+      const unavailable0541 = document.createElement("button");
+      unavailable0541.className = "agendaReserve0541 agendaReserveUnavailable0541";
+      unavailable0541.type = "button";
+      unavailable0541.disabled = true;
+      unavailable0541.textContent = "Reserva temporariamente indisponível";
+      unavailable0541.setAttribute("aria-label", "Reserva temporariamente indisponível: publicação BlaBlaCar não validada");
+      actions0541.appendChild(unavailable0541);
+      agendaReservationTelemetry0541("AGENDA_RESERVATION_UNAVAILABLE_0541", item, item?.blablaPublicUrl ? "PUBLICATION_URL_REJECTED" : "PUBLICATION_URL_ABSENT");
     }
+    card.appendChild(actions0541);
 
     if (full) {
       const fullWord = document.createElement("div");
@@ -811,7 +850,6 @@ async function readPublicAgendaFallback0517() {
 
 function applyPublicAgendaBody0517(body, fromStaticFailover0517 = false) {
   const displayName = String(body?.driver?.displayName || driverUsername || "").trim();
-  publicDriverWhatsapp0519 = String(body?.driver?.whatsapp || "").trim();
   $("driverName").textContent = displayName ? "Viagens com " + displayName : "";
   agendaChangeCursor0495 = Math.max(agendaChangeCursor0495, Number(body?.changeCursor0495 || 0));
   renderAgenda(Array.isArray(body.trips) ? body.trips : []);

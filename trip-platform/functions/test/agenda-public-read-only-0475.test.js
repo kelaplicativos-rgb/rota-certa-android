@@ -22,7 +22,7 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
+  assert.match(html, /app\.js\?v=0\.1\.541-reserve-blablacar0541/);
   assert.match(html, /id="passengerAreaLink0491"/);
   assert.match(html, /href="\/minha-area\.html"/);
   for (const forbidden of [
@@ -41,14 +41,23 @@ test("0475 browser bundle is read-only and keeps the canonical 0473 card hierarc
   assert.match(app, /publicAvailabilityLabel/);
   assert.match(app, /fullFareFor/);
   assert.match(app, /PUBLIC_AGENDA_CARD_STATUSES_0469/);
-  assert.match(app, /agendaWhatsapp0519/);
-  assert.match(app, /Fazer reserva com o motorista/);
-  assert.match(app, /https:\/\/wa\.me\//);
+  assert.match(app, /validatedBlaBlaReservationUrl0541/);
+  assert.match(app, /item\?\.blablaPublicUrl/);
+  assert.match(app, /🟢 Reservar vaga/);
+  assert.match(app, /Reserva temporariamente indisponível/);
+  assert.match(app, /AGENDA_RESERVATION_PUBLICATION_OPENED_0541/);
+  assert.match(app, /AGENDA_RESERVATION_UNAVAILABLE_0541/);
+  assert.match(app, /url\.protocol !== "https:"/);
+  assert.match(app, /path\.startsWith\("\/trip\/"\)/);
+  assert.doesNotMatch(app, /https:\/\/wa\.me\//);
+  assert.doesNotMatch(app, /Fazer reserva com o motorista/);
+  assert.doesNotMatch(app, /blablacar:\/\//i);
+  assert.doesNotMatch(app, /\/search|search_uuid=.*href/i);
   assert.doesNotMatch(app, /method:\s*["']POST["']/);
   for (const forbidden of [
     "/v1/admin/", "passengerSession", "privateAuth", "requestPublicAgendaAccess",
     "agendaAdminCardCapabilities", "public-visibility", "Administrar esta viagem",
-    "Reservar pelo WhatsApp", "Reservar na BlaBlaCar", "startBooking",
+    "Reservar pelo WhatsApp", "startBooking",
   ]) assert.doesNotMatch(app, new RegExp(forbidden, "i"), forbidden);
 });
 
@@ -80,8 +89,8 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5823/);
-  assert.match(gradle, /versionName = "0\.1\.531"/);
+  assert.match(gradle, /versionCode = 5833/);
+  assert.match(gradle, /versionName = "0\.1\.541"/);
 });
 
 
@@ -98,7 +107,7 @@ test("0514 public Agenda never exposes non-JSON backend HTML as a parser error",
 
 
 test("0517 public Agenda falls back to the sanitized Hosting snapshot during backend 503", () => {
-  assert.match(html, /app\.js\?v=0\.1\.519-global-extra-seats-whatsapp0519/);
+  assert.match(html, /app\.js\?v=0\.1\.541-reserve-blablacar0541/);
   assert.match(app, /function publicAgendaStaticFailoverUrl0517/);
   assert.match(app, /async function readPublicAgendaFallback0517/);
   assert.match(app, /\/__agenda_fallback\//);
