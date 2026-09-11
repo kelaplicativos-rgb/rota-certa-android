@@ -1,61 +1,173 @@
-name: Build public reserve BlaBlaCar 0.1.541
+name: Build public reserve request 0.1.542
 
 on:
   push:
     branches:
       - agent/build-public-reserve-blablacar-0.1.541
+    paths:
+      - '.github/workflows/passenger-timeline-geo-ux-direct.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  test-build-final-sha:
+  materialize-preview-build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
-      TARGET_SHA: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
-      TARGET_BRANCH: agent/public-reserve-blablacar-0.1.541
-      PARENT_SHA: 13d14ccb49a0d8d26a4004789abe751a05a68aa7
-      ROTA_CERTA_GIT_SHA: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
-      ROTA_CERTA_GIT_BRANCH: agent/public-reserve-blablacar-0.1.541
-      GOOGLE_MAPS_API_KEY: public_reserve_blablacar_0541_ci_dummy_key
+      TARGET_BRANCH: agent/public-reserve-request-0.1.542
+      BASE_SHA: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      PREVIEW_CHANNEL: reserve-request-0542
+      GOOGLE_MAPS_API_KEY: public_reserve_request_0542_ci_dummy_key
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout target work branch
+        uses: actions/checkout@v4
         with:
-          ref: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
+          ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
-
-      - name: Prove exact final source and surgical scope
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          mapfile -t changed < <(git diff --name-only "$PARENT_SHA" "$TARGET_SHA")
-          printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 4
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'app/build.gradle.kts'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/public/app.js'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/public/index.html'
-          test "$(git diff --name-only "$PARENT_SHA" "$TARGET_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)" = ''
-          test "$(git diff --name-only "$PARENT_SHA" "$TARGET_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt)" = ''
-          grep -Fq 'versionCode = 5833' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.541"' app/build.gradle.kts
-
-      - name: Validate public reservation routing tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      - name: Prove base and materialize only CTA visual copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$BASE_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match for {old!r}, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once('app/build.gradle.kts', 'versionCode = 5833', 'versionCode = 5834')
+          replace_once('app/build.gradle.kts', 'versionName = "0.1.541"', 'versionName = "0.1.542"')
+
+          replace_once('trip-platform/public/app.js', 'reserve0541.textContent = "🟢 Reservar vaga";', 'reserve0541.textContent = "Fazer pedido de reserva";')
+          replace_once('trip-platform/public/app.js', 'reserve0541.setAttribute("aria-label", "Reservar vaga na publicação BlaBlaCar desta viagem");', 'reserve0541.setAttribute("aria-label", "Fazer pedido de reserva na publicação BlaBlaCar desta viagem");')
+
+          replace_once('trip-platform/public/index.html', 'background:#14853f;color:#fff', 'background:#0071eb;color:#fff')
+          replace_once('trip-platform/public/index.html', 'outline:3px solid #0b5f2b', 'outline:3px solid #0057b8')
+          replace_once('trip-platform/public/index.html', '/app.js?v=0.1.541-reserve-blablacar0541', '/app.js?v=0.1.542-reserve-request0542')
+
+          test_path = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
+          test = test_path.read_text()
+          replacements = [
+              ('app\\.js\\?v=0\\.1\\.541-reserve-blablacar0541', 'app\\.js\\?v=0\\.1\\.542-reserve-request0542'),
+              ('/🟢 Reservar vaga/', '/Fazer pedido de reserva/'),
+              ('versionCode = 5833', 'versionCode = 5834'),
+              ('versionName = "0\\.1\\.541"', 'versionName = "0\\.1\\.542"'),
+          ]
+          for old, new in replacements:
+              if old not in test:
+                  raise SystemExit(f'test missing expected token: {old}')
+              test = test.replace(old, new)
+          anchor = '  assert.match(app, /Fazer pedido de reserva/);\n'
+          if anchor not in test:
+              raise SystemExit('updated CTA assertion anchor missing')
+          test = test.replace(anchor, anchor + '  assert.doesNotMatch(app, /🟢 Reservar vaga/);\n  assert.match(html, /background:#0071eb;color:#fff/);\n', 1)
+          test_path.write_text(test)
+          PY
+
+          node --check trip-platform/public/app.js
+          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'versionCode = 5834' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
+          grep -Fq 'reserve0541.textContent = "Fazer pedido de reserva";' trip-platform/public/app.js
+          ! grep -Fq '🟢 Reservar vaga' trip-platform/public/app.js
+          grep -Fq 'background:#0071eb;color:#fff' trip-platform/public/index.html
+          grep -Fq '/app.js?v=0.1.542-reserve-request0542' trip-platform/public/index.html
+          ! grep -Fq 'https://wa.me/' trip-platform/public/app.js
+          ! grep -Fq 'Fazer reserva com o motorista' trip-platform/public/app.js
+          test "$(git diff --name-only | wc -l | tr -d ' ')" = '4'
+          git diff --name-only | sort | tee /tmp/changed-files.txt
+          grep -Fxq 'app/build.gradle.kts' /tmp/changed-files.txt
+          grep -Fxq 'trip-platform/functions/test/agenda-public-read-only-0475.test.js' /tmp/changed-files.txt
+          grep -Fxq 'trip-platform/public/app.js' /tmp/changed-files.txt
+          grep -Fxq 'trip-platform/public/index.html' /tmp/changed-files.txt
+          test "$(git diff --name-only -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)" = ''
+          test "$(git diff --name-only -- app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt)" = ''
+
+      - name: Commit and push final source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'kelaplicativos-rgb'
+          git config user.email 'kel.aplicativos@gmail.com'
+          git add app/build.gradle.kts trip-platform/public/app.js trip-platform/public/index.html trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          git commit -m 'feat: align public reservation request CTA 0.1.542'
+          git push origin HEAD:"$TARGET_BRANCH"
+          FINAL_SHA="$(git rev-parse HEAD)"
+          SHORT_SHA="${FINAL_SHA:0:8}"
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$TARGET_BRANCH" >> "$GITHUB_ENV"
+          printf '%s\n' "$FINAL_SHA" > /tmp/final-sha.txt
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
+          else
+            echo 'Firebase credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Deploy exact 0.1.542 public source to preview channel only
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
+            npx --yes firebase-tools@latest hosting:channel:deploy "$PREVIEW_CHANNEL" --project "$PROJECT" --expires 1d --non-interactive --token "$FIREBASE_TOKEN" | tee /tmp/firebase-preview.txt
+          else
+            npx --yes firebase-tools@latest hosting:channel:deploy "$PREVIEW_CHANNEL" --project "$PROJECT" --expires 1d --non-interactive | tee /tmp/firebase-preview.txt
+          fi
+          PREVIEW_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-preview.txt | tail -1)"
+          test -n "$PREVIEW_URL"
+          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          printf '%s\n' "$PREVIEW_URL" > /tmp/preview-url.txt
+
+      - name: Smoke preview exact CTA and no WhatsApp
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --retry 8 --retry-delay 2 --fail --silent --show-error "$PREVIEW_URL/app.js?sha=$FINAL_SHA" > /tmp/live-app.js
+          grep -Fq 'reserve0541.textContent = "Fazer pedido de reserva";' /tmp/live-app.js
+          grep -Fq 'validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)' /tmp/live-app.js
+          ! grep -Fq '🟢 Reservar vaga' /tmp/live-app.js
+          ! grep -Fq 'https://wa.me/' /tmp/live-app.js
+          ! grep -Fq 'Fazer reserva com o motorista' /tmp/live-app.js
+          curl --retry 8 --retry-delay 2 --fail --silent --show-error "$PREVIEW_URL/ezequiel?sha=$FINAL_SHA" > /tmp/live-index.html
+          grep -Fq '/app.js?v=0.1.542-reserve-request0542' /tmp/live-index.html
+          grep -Fq 'background:#0071eb;color:#fff' /tmp/live-index.html
 
       - name: Configure Firebase Android app for build only
         shell: bash
@@ -65,17 +177,8 @@ jobs:
             grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
             exit 0
           fi
-          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
-            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
-            chmod 600 /tmp/firebase-sa.json
-            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
-          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
-            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
-            chmod 600 /tmp/firebase-sa.json
-            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
-          fi
           PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
             npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
             APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
             test -n "$APP_ID"
@@ -99,62 +202,59 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build exact-SHA debug APK
+      - name: Build final-SHA debug APK
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
           chmod +x gradlew
           ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           APK='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
 
-      - name: Verify exact-SHA APK identity
+      - name: Verify final-SHA APK identity
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           APK='app/build/outputs/apk/debug/app-debug.apk'
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          test -x "$BUILD_TOOLS/aapt"
-          test -x "$BUILD_TOOLS/apksigner"
           "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
           PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
           grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='5833'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='0.1.541'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5834'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.542'" <<< "$PACKAGE_LINE"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           grep -Fq 'Verified' /tmp/apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$TARGET_SHA" /tmp/dex-strings.txt
+          grep -Fq "$FINAL_SHA" /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
-      - name: Package exact-SHA evidence
+      - name: Package final evidence
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          mkdir -p /tmp/rota-certa-0.1.541
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/rota-certa-0.1.541/rota-certa-0.1.541-5833-0f727e58-debug.apk
-          cp /tmp/apk.sha256 /tmp/aapt.txt /tmp/apksigner.txt /tmp/rota-certa-0.1.541/
-          git rev-parse HEAD | tee /tmp/rota-certa-0.1.541/source-head.txt
+          OUT=/tmp/rota-certa-0.1.542
+          mkdir -p "$OUT"
+          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.542-5834-${SHORT_SHA}-debug.apk"
+          cp /tmp/apk.sha256 /tmp/aapt.txt /tmp/apksigner.txt /tmp/final-sha.txt /tmp/preview-url.txt /tmp/firebase-preview.txt "$OUT/"
           printf '%s\n' \
-            'branch=agent/public-reserve-blablacar-0.1.541' \
-            'sha=0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c' \
-            'versionName=0.1.541' \
-            'versionCode=5833' \
+            'branch=agent/public-reserve-request-0.1.542' \
+            "sha=$FINAL_SHA" \
+            'versionName=0.1.542' \
+            'versionCode=5834' \
             'package=br.com.mapeiaia.rotacerta' \
+            'ctaText=Fazer pedido de reserva' \
+            'ctaColor=#0071EB' \
             'reservationAuthority=BLABLACAR' \
-            'navigation=https-public-trip-only' \
-            'rotaCertaBookingMutation=false' \
-            'publicAgendaReadOnly=true' \
-            'targetedPublicAgendaTests=6_passed' \
-            'fullUnitSuiteAttempt=2360_tests_59_unrelated_baseline_failures_not_feature_gate' \
+            'whatsappReservationCta=false' \
+            'productionHosting=UNCHANGED' \
+            "previewUrl=$PREVIEW_URL" \
             'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' \
-            > /tmp/rota-certa-0.1.541/build-evidence.txt
+            > "$OUT/build-evidence.txt"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.541-5833-0f727e58
-          path: /tmp/rota-certa-0.1.541
+          name: rota-certa-0.1.542-5834-final
+          path: /tmp/rota-certa-0.1.542
           retention-days: 14
           if-no-files-found: error
