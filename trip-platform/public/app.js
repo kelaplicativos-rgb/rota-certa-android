@@ -50,9 +50,16 @@ function validatedBlaBlaReservationUrl0541(raw) {
     if (url.protocol !== "https:" || !isOfficialBlaBlaHost0541(url.hostname)) return "";
     if (url.username || url.password || (url.port && url.port !== "443")) return "";
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
-    if (!path.startsWith("/trip/")) return "";
-    const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
-    if (!match || !String(match[1] || "").trim()) return "";
+    let publicId = "";
+    if (path === "/trip") {
+      publicId = String(url.searchParams.get("id") || "").trim();
+    } else if (path.startsWith("/trip/")) {
+      const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
+      publicId = match ? String(match[1] || "").trim() : "";
+    } else {
+      return "";
+    }
+    if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
     url.searchParams.delete("search_uuid");
     url.hash = "";
     return url.toString();

@@ -22,7 +22,7 @@ function between(source, startMarker, endMarker) {
 
 test("0475 public HTML contains only the read-only trip list surface", () => {
   assert.match(html, /id="agendaTrips"/);
-  assert.match(html, /app\.js\?v=0\.1\.542-reserve-request0542/);
+  assert.match(html, /app\.js\?v=0\.1\.543-reserve-request-trip-query0543/);
   assert.match(html, /id="passengerAreaLink0491"/);
   assert.match(html, /href="\/minha-area\.html"/);
   for (const forbidden of [
@@ -91,8 +91,8 @@ test("0475 Android opens only the public Agenda and version is exact", () => {
   assert.match(android, /ABRIR AGENDA PÚBLICA/);
   assert.doesNotMatch(android, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(android, /Agenda Pública somente leitura exibe o mesmo estado canônico/);
-  assert.match(gradle, /versionCode = 5834/);
-  assert.match(gradle, /versionName = "0\.1\.542"/);
+  assert.match(gradle, /versionCode = 5835/);
+  assert.match(gradle, /versionName = "0\.1\.543"/);
 });
 
 
@@ -109,7 +109,7 @@ test("0514 public Agenda never exposes non-JSON backend HTML as a parser error",
 
 
 test("0517 public Agenda falls back to the sanitized Hosting snapshot during backend 503", () => {
-  assert.match(html, /app\.js\?v=0\.1\.542-reserve-request0542/);
+  assert.match(html, /app\.js\?v=0\.1\.543-reserve-request-trip-query0543/);
   assert.match(app, /function publicAgendaStaticFailoverUrl0517/);
   assert.match(app, /async function readPublicAgendaFallback0517/);
   assert.match(app, /\/__agenda_fallback\//);
