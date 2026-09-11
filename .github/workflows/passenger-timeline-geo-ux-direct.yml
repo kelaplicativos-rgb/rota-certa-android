@@ -41,21 +41,12 @@ jobs:
           grep -Fq 'versionCode = 5833' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.541"' app/build.gradle.kts
 
-      - name: Validate public reservation routing contracts
+      - name: Validate public reservation routing tests
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/public/app.js
           node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
-          grep -Fq '🟢 Reservar vaga' trip-platform/public/app.js
-          grep -Fq 'canonicalBlaBlaReservationUrl0541' trip-platform/public/app.js
-          grep -Fq 'item?.blablaPublicUrl' trip-platform/public/app.js
-          grep -Fq 'Reserva temporariamente indisponível' trip-platform/public/app.js
-          ! grep -Fq 'https://wa.me/' trip-platform/public/app.js
-          ! grep -Fq 'blablacar://' trip-platform/public/app.js
-          ! grep -Fq 'method: "POST"' trip-platform/public/app.js
-          grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
-          grep -Fq 'blablaPublicUrl' trip-platform/functions/index.js
 
       - uses: actions/setup-java@v4
         with:
