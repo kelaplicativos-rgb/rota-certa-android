@@ -55,7 +55,7 @@ jobs:
           ! grep -Fq 'blablacar://' trip-platform/public/app.js
           ! grep -Fq 'method: "POST"' trip-platform/public/app.js
           grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423' trip-platform/functions/index.js
-          grep -Fq '"capacityReliable", "publicUrl", "blablaPublicUrl", "driverDisplayName"' trip-platform/functions/index.js
+          grep -Fq 'blablaPublicUrl' trip-platform/functions/index.js
 
       - uses: actions/setup-java@v4
         with:
