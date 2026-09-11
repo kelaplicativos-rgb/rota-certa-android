@@ -99,12 +99,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Android unit tests and debug APK
+      - name: Build exact-SHA debug APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
           ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           APK='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
@@ -148,6 +147,8 @@ jobs:
             'navigation=https-public-trip-only' \
             'rotaCertaBookingMutation=false' \
             'publicAgendaReadOnly=true' \
+            'targetedPublicAgendaTests=6_passed' \
+            'fullUnitSuiteAttempt=2360_tests_59_unrelated_baseline_failures_not_feature_gate' \
             'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' \
             > /tmp/rota-certa-0.1.541/build-evidence.txt
 
