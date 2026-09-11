@@ -435,11 +435,11 @@ private fun TripApp(
         if (!timelinePullRefreshing0499) {
             timelinePullRefreshing0499 = true
             timelinePullRefreshToken0499 += 1
-            message = "Atualizando Timeline pelo domínio permitido do Rota Certa..."
+            message = "Atualizando todas as viagens: BlaBlaCar → Agenda → Timeline..."
             UnifiedDebugEventStore.record(
-                "AGENDA_TIMELINE_CANONICAL_PULL_REFRESH_0499",
+                "AGENDA_TIMELINE_GLOBAL_PULL_REFRESH_0538",
                 activity.packageName,
-                "networkSync=true source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorFallback=false collectorDerivedData=false",
+                "collectorBatch=true collectorToAgenda=true directTimelineCollectorRead=false canonicalSecondaryRefresh=true collectorFallback=false",
             )
         }
     }
@@ -841,9 +841,9 @@ private fun TripApp(
                         if (!refreshing0499) {
                             if (error0499.isNullOrBlank()) {
                                 refresh()
-                                message = "Timeline atualizada pelo domínio permitido do Rota Certa. O coletor BlaBlaCar não participa deste fluxo."
+                                message = "Atualização global solicitada: BlaBlaCar → Agenda → Timeline. O backend canônico permanece secundário."
                             } else {
-                                message = "Não foi possível atualizar a Timeline pelo domínio permitido: $error0499"
+                                message = "Atualização BlaBlaCar → Agenda continua em segundo plano; sincronização canônica secundária indisponível: $error0499"
                             }
                         }
                     },

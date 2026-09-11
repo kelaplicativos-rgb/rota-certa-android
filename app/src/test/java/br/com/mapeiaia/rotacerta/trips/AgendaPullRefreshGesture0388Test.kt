@@ -51,14 +51,16 @@ class AgendaPullRefreshGesture0388Test {
     }
 
     @Test
-    fun downwardDragStartedAwayFromTopRemainsNormalScrollForWholeSequence() {
+    fun downwardDragStartedAwayFromTopPreservesShortScrollThenAcceptsDeliberatePull() {
         val gate = gate()
         gate.onDown(Offset.Zero, canRefreshAtStart = false, refreshRunningAtStart = false)
 
-        val decision = gate.onMove(Offset(0f, 40f))
+        assertNull(gate.onMove(Offset(0f, 30f)), "short reverse scroll away from top must remain available")
+        val decision = gate.onMove(Offset(0f, 50f))
 
-        assertEquals(AgendaPullRefreshOutcome0388.BLOCKED_NOT_AT_TOP, decision?.outcome)
-        assertNull(gate.onMove(Offset(0f, 100f)), "reaching top later in the same drag must not become a refresh")
+        assertEquals(AgendaPullRefreshOutcome0388.ACCEPTED, decision?.outcome)
+        assertTrue(decision?.accepted == true)
+        assertFalse(decision?.eligibleAtStart == true)
     }
 
     @Test

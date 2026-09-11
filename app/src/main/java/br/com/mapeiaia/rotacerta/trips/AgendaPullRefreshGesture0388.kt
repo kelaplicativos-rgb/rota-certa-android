@@ -42,14 +42,15 @@ internal data class AgendaPullRefreshDecision0388(
 /**
  * Pointer-sequence gate for the Agenda Timeline pull-to-refresh.
  *
- * It deliberately snapshots list eligibility and refresh state on DOWN. A gesture that starts
- * while the list is scrolled away from the top remains a normal list scroll even if that same
- * drag eventually reaches the top. Likewise, a gesture that starts while a full refresh is
+ * It snapshots list position and refresh state on DOWN. At the top, the existing touch-slop
+ * threshold remains immediate. Away from the top, a larger deliberate downward pull is required
+ * so ordinary short reverse scrolling still works. A gesture that starts while a full refresh is
  * running can never start a second cycle.
  */
 internal class AgendaPullRefreshGestureGate0388(
     private val touchSlopPx: Float,
     private val verticalDominanceRatio: Float = 1.15f,
+    private val awayFromTopTriggerMultiplier: Float = 4f,
 ) {
     private var started = false
     private var resolved = false
@@ -75,14 +76,25 @@ internal class AgendaPullRefreshGestureGate0388(
         val dy = position.y - start.y
         val distanceSquared = dx * dx + dy * dy
         val slop = touchSlopPx.coerceAtLeast(0f)
-        if (distanceSquared <= slop * slop) return null
-
         val verticalDown = dy > 0f && abs(dy) > abs(dx) * verticalDominanceRatio
         val outcome = when {
-            !verticalDown -> AgendaPullRefreshOutcome0388.REJECTED_DIRECTION
-            refreshingAtStart -> AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING
-            !eligibleAtStart -> AgendaPullRefreshOutcome0388.BLOCKED_NOT_AT_TOP
-            else -> AgendaPullRefreshOutcome0388.ACCEPTED
+            !verticalDown -> {
+                if (distanceSquared <= slop * slop) return null
+                AgendaPullRefreshOutcome0388.REJECTED_DIRECTION
+            }
+            refreshingAtStart -> {
+                if (distanceSquared <= slop * slop) return null
+                AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING
+            }
+            else -> {
+                val triggerPx = if (eligibleAtStart) {
+                    slop
+                } else {
+                    slop * awayFromTopTriggerMultiplier.coerceAtLeast(1f)
+                }
+                if (dy <= triggerPx) return null
+                AgendaPullRefreshOutcome0388.ACCEPTED
+            }
         }
         resolved = true
         return AgendaPullRefreshDecision0388(

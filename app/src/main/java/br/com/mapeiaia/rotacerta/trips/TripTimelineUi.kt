@@ -82,6 +82,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 
+internal fun distinctTimelineGlobalPullTargets0538(
+    targets: Iterable<BlaBlaTripTarget0407?>,
+): List<BlaBlaTripTarget0407> = targets
+    .filterNotNull()
+    .distinctBy(BlaBlaTripTarget0407::strongIdentityKey)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripTimelineScreen(
@@ -223,12 +229,6 @@ fun TripTimelineScreen(
             context.packageName,
             "reason=${UnifiedDebugEventStore.sanitizeForExport(reason).take(80)} source=CANONICAL_NATIVE_FIREWALL collectorRead=false collectorDerivedData=false",
         )
-    }
-
-    LaunchedEffect(manualRefreshToken0499) {
-        if (manualRefreshToken0499 > 0) {
-            invalidateCanonicalTimeline0495("USER_PULL_REFRESH")
-        }
     }
 
     LaunchedEffect(onlineSettings0494.apiBaseUrl, onlineSettings0494.driverUsername) {
@@ -679,6 +679,39 @@ fun TripTimelineScreen(
                 accounts = registeredAccounts0432,
             )
         }
+    }
+    LaunchedEffect(manualRefreshToken0499) {
+        if (manualRefreshToken0499 <= 0) return@LaunchedEffect
+        val resolvedTargets0538 = tripTargetsByCard0432.values.filterNotNull()
+        val targets0538 = distinctTimelineGlobalPullTargets0538(resolvedTargets0538)
+        var acceptedTargets0538 = 0
+        targets0538.forEach { target0538 ->
+            val command0538 = BlaBlaCommand0407.forTarget(
+                target = target0538,
+                operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION,
+            )
+            if (
+                AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
+                    context = context,
+                    target = target0538,
+                    commandId = command0538.commandId,
+                    requestedAtMillis = command0538.requestedAtMillis,
+                )
+            ) {
+                acceptedTargets0538++
+            }
+        }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_PULL_REFRESH_ALL_COLLECTOR_0538",
+            context.packageName,
+            "cards=${tripTargetsByCard0432.size} resolvedTargets=${resolvedTargets0538.size} " +
+                "strongTargets=${targets0538.size} acceptedTargets=$acceptedTargets0538 " +
+                "skippedIdentity=${tripTargetsByCard0432.size - resolvedTargets0538.size} " +
+                "deduplicated=${resolvedTargets0538.size - targets0538.size} " +
+                "collectorToAgenda=true directTimelineCollectorRead=false canonicalSecondaryRefresh=true",
+        )
+        invalidateCanonicalTimeline0495("USER_PULL_REFRESH")
     }
     val commandAuditsByCard0432 = remember(tripTargetsByCard0432, commandRevision0407) {
         val statusStore = BlaBlaTripCommandStatusStore0407(context)
