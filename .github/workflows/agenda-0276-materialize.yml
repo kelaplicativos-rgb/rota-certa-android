@@ -1,19 +1,14 @@
-name: Agenda 0.1.281 materialize
+name: Agenda 0.1.541 surgical materialize
 
 on:
   push:
-    branches: [agent/agenda-ux-passenger-publisher-0.1.276]
+    branches: [agent/public-reserve-blablacar-0.1.541]
     paths:
       - '.github/workflows/agenda-0276-materialize.yml'
-      - '.github/scripts/agenda_0281_today_card_sync.py'
   workflow_dispatch:
 
 permissions:
   contents: write
-
-concurrency:
-  group: agenda-0281-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   materialize-test-apk:
@@ -23,58 +18,153 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: agent/agenda-ux-passenger-publisher-0.1.276
 
-      - name: Prove authoritative Agenda baseline
+      - name: Materialize public BlaBlaCar reservation routing
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'Text("Sincronizar só hoje")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          grep -Fq 'pastDateFilter=false fixedTripLimit=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'class BlaBlaDynamicSessionStore' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
-          grep -Fq 'fun parseDate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
-          if ! grep -Fq 'versionName = "0.1.280"' app/build.gradle.kts && ! grep -Fq 'versionName = "0.1.281"' app/build.gradle.kts; then
-            echo 'Unexpected Agenda version baseline.' >&2
-            exit 1
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          app_path = Path('trip-platform/public/app.js')
+          app = app_path.read_text()
+          start = app.index('let agendaChangeCursor0495 = 0;')
+          end = app.index('function agendaExpansionStorageKey0506()', start)
+          replacement = '''let agendaChangeCursor0495 = 0;
+          let agendaChangeWatchRunning0495 = false;
 
-      - name: Protect FAROL and Public Search
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.before
+          function isOfficialBlaBlaHost0541(hostname) {
+            const labels = String(hostname || "").toLowerCase().replace(/^\\.+|\\.+$/g, "").split(".").filter(Boolean);
+            const root = labels[0] === "www" ? labels.slice(1) : labels;
+            if (root[0] !== "blablacar") return false;
+            const suffix = root.slice(1);
+            if (suffix.length === 1) return suffix[0] === "com" || /^[a-z]{2}$/.test(suffix[0]);
+            if (suffix.length === 2) return ["com", "co"].includes(suffix[0]) && /^[a-z]{2}$/.test(suffix[1]);
+            return false;
+          }
 
-      - name: Materialize Agenda 0.1.281
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/agenda_0281_today_card_sync.py
+          function validatedBlaBlaReservationUrl0541(raw) {
+            const value = String(raw || "").trim().slice(0, 1200);
+            if (!value) return "";
+            try {
+              const url = new URL(value);
+              if (url.protocol !== "https:" || !isOfficialBlaBlaHost0541(url.hostname)) return "";
+              if (url.username || url.password || (url.port && url.port !== "443")) return "";
+              const path = url.pathname.replace(/\\/+$/, "").toLowerCase();
+              if (!path.startsWith("/trip/")) return "";
+              const match = url.pathname.match(/\\/trip\\/([^/?#]+)/i);
+              if (!match || !String(match[1] || "").trim()) return "";
+              url.searchParams.delete("search_uuid");
+              url.hash = "";
+              return url.toString();
+            } catch (_) {
+              return "";
+            }
+          }
+
+          function agendaReservationTelemetry0541(eventName, item, reason) {
+            const canonicalTripRef = publicAgendaTripKey0506(item);
+            const detail = {
+              event: eventName,
+              canonicalTripRef: canonicalTripRef || "unavailable",
+              source: "PUBLIC_AGENDA_UI",
+              reason,
+              hasCanonicalBlaBlaPublicUrl: Boolean(validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)),
+              privateDataLogged: false,
+            };
+            console.info("[RotaCertaAgendaReservation0541]", detail);
+            try {
+              window.dispatchEvent(new CustomEvent("rota-certa-agenda-reservation-0541", { detail }));
+            } catch (_) {}
+          }
+
+          '''
+          app = app[:start] + replacement + app[end:]
+          action_start = app.index('    const whatsappHref0519 = driverWhatsappHref0519(item, from, to);')
+          action_end = app.index('    if (full) {', action_start)
+          action = '''    const reservationHref0541 = validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl);
+              const actions0541 = document.createElement("div");
+              actions0541.className = "agendaTripActions0541";
+              if (reservationHref0541) {
+                const reserve0541 = document.createElement("a");
+                reserve0541.className = "agendaReserve0541";
+                reserve0541.href = reservationHref0541;
+                reserve0541.rel = "noopener noreferrer";
+                reserve0541.textContent = "🟢 Reservar vaga";
+                reserve0541.setAttribute("aria-label", "Reservar vaga na publicação BlaBlaCar desta viagem");
+                reserve0541.addEventListener("click", () => {
+                  agendaReservationTelemetry0541("AGENDA_RESERVATION_PUBLICATION_OPENED_0541", item, "CANONICAL_BLABLACAR_PUBLICATION");
+                });
+                actions0541.appendChild(reserve0541);
+              } else {
+                const unavailable0541 = document.createElement("button");
+                unavailable0541.className = "agendaReserve0541 agendaReserveUnavailable0541";
+                unavailable0541.type = "button";
+                unavailable0541.disabled = true;
+                unavailable0541.textContent = "Reserva temporariamente indisponível";
+                unavailable0541.setAttribute("aria-label", "Reserva temporariamente indisponível: publicação BlaBlaCar não validada");
+                actions0541.appendChild(unavailable0541);
+                agendaReservationTelemetry0541("AGENDA_RESERVATION_UNAVAILABLE_0541", item, item?.blablaPublicUrl ? "PUBLICATION_URL_REJECTED" : "PUBLICATION_URL_ABSENT");
+              }
+              card.appendChild(actions0541);
+
+          '''
+          app = app[:action_start] + action + app[action_end:]
+          app = app.replace('  publicDriverWhatsapp0519 = String(body?.driver?.whatsapp || "").trim();\n', '')
+          assert 'https://wa.me/' not in app
+          assert 'driverWhatsappHref0519' not in app
+          assert 'publicDriverWhatsapp0519' not in app
+          app_path.write_text(app)
+
+          html_path = Path('trip-platform/public/index.html')
+          html = html_path.read_text()
+          html = html.replace('.agendaDriverActions0519{', '.agendaTripActions0541{')
+          html = html.replace('.agendaWhatsapp0519{', '.agendaReserve0541{')
+          html = html.replace('.agendaWhatsapp0519:focus-visible{', '.agendaReserve0541:focus-visible{')
+          html = html.replace('.agendaWhatsapp0519:active{', '.agendaReserve0541:active{')
+          html = html.replace('.agendaReserve0541:active{transform:translateY(1px)}', '.agendaReserve0541:active{transform:translateY(1px)}\n    .agendaReserveUnavailable0541{background:#d5d9df;color:#5d626a;border:0;cursor:not-allowed;transform:none}')
+          html = html.replace('/app.js?v=0.1.519-global-extra-seats-whatsapp0519', '/app.js?v=0.1.541-reserve-blablacar0541')
+          html_path.write_text(html)
+
+          test_path = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
+          test = test_path.read_text()
+          test = test.replace('/app\\.js\\?v=0\\.1\\.519-global-extra-seats-whatsapp0519/', '/app\\.js\\?v=0\\.1\\.541-reserve-blablacar0541/')
+          test = test.replace('  assert.match(app, /agendaWhatsapp0519/);\n  assert.match(app, /Fazer reserva com o motorista/);\n  assert.match(app, /https:\\/\\/wa\\.me\\//);\n', '''  assert.match(app, /validatedBlaBlaReservationUrl0541/);
+            assert.match(app, /item\\?\\.blablaPublicUrl/);
+            assert.match(app, /🟢 Reservar vaga/);
+            assert.match(app, /Reserva temporariamente indisponível/);
+            assert.match(app, /AGENDA_RESERVATION_PUBLICATION_OPENED_0541/);
+            assert.match(app, /AGENDA_RESERVATION_UNAVAILABLE_0541/);
+            assert.doesNotMatch(app, /https:\\/\\/wa\\.me\\//);
+            assert.doesNotMatch(app, /Fazer reserva com o motorista/);
+            assert.doesNotMatch(app, /blablacar:\\/\\//i);
+          ''')
+          test = test.replace('"Reservar pelo WhatsApp", "Reservar na BlaBlaCar", "startBooking",', '"Reservar pelo WhatsApp", "startBooking",')
+          test = test.replace('assert.match(gradle, /versionCode = 5823/);', 'assert.match(gradle, /versionCode = 5833/);')
+          test = test.replace('assert.match(gradle, /versionName = "0\\.1\\.531"/);', 'assert.match(gradle, /versionName = "0\\.1\\.541"/);')
+          test_path.write_text(test)
+
+          gradle_path = Path('app/build.gradle.kts')
+          gradle = gradle_path.read_text().replace('versionCode = 5832\n        versionName = "0.1.540"', 'versionCode = 5833\n        versionName = "0.1.541"', 1)
+          gradle_path.write_text(gradle)
+
+          api = Path('trip-platform/functions/index.js').read_text()
+          projection = api[api.index('function publicTripProjection0491'):api.index('async function getPublicDriverAgenda')]
+          assert '"blablaPublicUrl"' in projection
+          assert 'normalizeCanonicalBoundBlaBlaPublicUrl0423' in api
+          PY
           git diff --check
-          grep -Fq 'fun candidatesOnDate(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt
-          grep -Fq 'fun syncToday(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'eligible=${visible.size}' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'noLaterCardsVisited=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BlaBlaDynamicSessionIntents.syncToday' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          grep -Fq 'mhtmlFullAccountSkipped=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          grep -Fq 'Sincronizando somente o card de hoje' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt
-          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTodayCardTraversal0281Test.kt
-          grep -Fq 'versionCode = 5574' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.281"' app/build.gradle.kts
 
-      - name: Verify protected sources after materialization
+      - name: Restore historical workflow and commit tested source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after
-          cmp /tmp/public.before /tmp/public.after
+          git show 13d14ccb49a0d8d26a4004789abe751a05a68aa7:.github/workflows/agenda-0276-materialize.yml > .github/workflows/agenda-0276-materialize.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add trip-platform/public/app.js trip-platform/public/index.html trip-platform/functions/test/agenda-public-read-only-0475.test.js app/build.gradle.kts .github/workflows/agenda-0276-materialize.yml
+          git commit -m 'feat: route public reservation to exact BlaBlaCar publication'
+          git push origin HEAD:agent/public-reserve-blablacar-0.1.541
+          git rev-parse HEAD | tee /tmp/final-sha
 
       - uses: actions/setup-java@v4
         with:
@@ -83,62 +173,31 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests and debug APK
+      - name: Public Agenda contract test
+        run: node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+
+      - name: Android tests and final APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
-
-      - name: Verify APK and protected sources after build
-        shell: bash
-        run: |
-          set -euo pipefail
+          FINAL_SHA="$(cat /tmp/final-sha)"
+          ROTA_CERTA_GIT_SHA="$FINAL_SHA" ROTA_CERTA_GIT_BRANCH="agent/public-reserve-blablacar-0.1.541" ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
-          test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a"
-          sha256sum \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearch.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchActivity.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicSearchUi.kt > /tmp/public.after-build
-          cmp /tmp/public.before /tmp/public.after-build
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
 
-      - name: Commit tested source
+      - name: Evidence
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorCardModule.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollectorUi.kt \
-            app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaTodayCardTraversal0281Test.kt \
-            app/build.gradle.kts
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix(agenda): sync only today BlaBla card 0.1.281'
-            git push origin HEAD:agent/agenda-ux-passenger-publisher-0.1.276
-          fi
-          git rev-parse HEAD | tee /tmp/source-head.txt
-
-      - name: Build evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/agenda-0281
-          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0281/rota-certa-0.1.281-debug.apk
-          cp /tmp/apk.sha256 /tmp/agenda-0281/apk.sha256
-          cp /tmp/source-head.txt /tmp/agenda-0281/source-head.txt
-          printf '%s\n' \
-            'versionName=0.1.281' \
-            'versionCode=5574' \
-            'todayTraversalAuthority=card_date_evidence' \
-            'todayFullMhtmlSkipped=true' \
-            'farolSha256=884c5ae40740df76efd61b22a2bd4200592479a14b03a68cfb65afc75947408a' \
-            > /tmp/agenda-0281/version.txt
+          mkdir -p /tmp/agenda-0541
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0541/rota-certa-0.1.541-debug.apk
+          cp /tmp/final-sha /tmp/agenda-0541/source-head.txt
+          cp /tmp/apk.sha256 /tmp/agenda-0541/apk.sha256
+          printf '%s\n' 'versionName=0.1.541' 'versionCode=5833' 'reservationAuthority=canonical_blablacar_public_url' 'clickMutatesBooking=false' 'whatsappReservation=false' > /tmp/agenda-0541/version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-agenda-0.1.281-${{ github.sha }}
-          path: /tmp/agenda-0281
+          name: rota-certa-public-reserve-0.1.541
+          path: /tmp/agenda-0541
           retention-days: 14
