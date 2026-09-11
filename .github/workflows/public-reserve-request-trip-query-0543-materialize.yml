@@ -26,13 +26,13 @@ jobs:
       EXPECTED_VERSION_NAME: '0.1.543'
 
     steps:
-      - name: Checkout exact triggering branch
+      - name: Checkout exact branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: agent/public-reserve-request-trip-query-0.1.543
 
-      - name: Prove real baseline and protect FAROL
+      - name: Prove baseline and protect FAROL
         shell: bash
         run: |
           set -euo pipefail
@@ -41,14 +41,13 @@ jobs:
           grep -Fq 'versionCode = 5834' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.542-reserve-request0542"' trip-platform/public/index.html
-          grep -Fq 'function validatedBlaBlaReservationUrl0541(raw)' trip-platform/public/app.js
           grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
           grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
           grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1 | tee /tmp/farol-before.sha256
           printf '%s\n' "$START_SHA" > /tmp/start-sha.txt
 
-      - name: Materialize exact query-form reservation fix
+      - name: Materialize 0.1.543 source
         shell: bash
         run: |
           set -euo pipefail
@@ -83,7 +82,7 @@ jobs:
           '''
           new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
           if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one real reservation validator block, got {text.count(old)}')
+              raise SystemExit(f'reservation validator baseline count={text.count(old)}')
           app.write_text(text.replace(old, new, 1))
 
           gradle = Path('app/build.gradle.kts')
@@ -100,86 +99,67 @@ jobs:
               raise SystemExit('unexpected public app cache-buster baseline')
           index.write_text(text.replace(old_cache, new_cache, 1))
 
-          regression = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
-          text = regression.read_text()
-          replacements = (
+          test = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
+          text = test.read_text()
+          changes = [
               (r'app\.js\?v=0\.1\.542-reserve-request0542', r'app\.js\?v=0\.1\.543-reserve-request-trip-query0543', 2),
               ('versionCode = 5834', 'versionCode = 5835', 1),
               (r'versionName = "0\.1\.542"', r'versionName = "0\.1\.543"', 1),
-          )
-          for old_value, new_value, expected_count in replacements:
-              actual = text.count(old_value)
-              if actual != expected_count:
-                  raise SystemExit(f'unexpected regression baseline for {old_value}: {actual} != {expected_count}')
-              text = text.replace(old_value, new_value)
-          regression.write_text(text)
+          ]
+          for before, after, expected in changes:
+              found = text.count(before)
+              if found != expected:
+                  raise SystemExit(f'test baseline mismatch: {before} count={found} expected={expected}')
+              text = text.replace(before, after)
+          test.write_text(text)
           PY
           git diff --check
-          grep -Fq 'if (path === "/trip") {' trip-platform/public/app.js
-          grep -Fq 'url.searchParams.get("id")' trip-platform/public/app.js
-          grep -Fq 'else if (path.startsWith("/trip/")) {' trip-platform/public/app.js
-          grep -Fq 'versionCode = 5835' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.543"' app/build.gradle.kts
-          grep -Fq 'src="/app.js?v=0.1.543-reserve-request-trip-query0543"' trip-platform/public/index.html
-          grep -Fq '0.1.543-reserve-request-trip-query0543' trip-platform/functions/test/agenda-public-read-only-0475.test.js
-          grep -Fq 'versionCode = 5835' trip-platform/functions/test/agenda-public-read-only-0475.test.js
 
-      - name: Prove reservation URL contract
+      - name: Prove URL contract and regression
         shell: bash
         run: |
           set -euo pipefail
+          node --check trip-platform/public/app.js
+          node --check trip-platform/functions/index.js
           node <<'NODE'
           const fs = require('fs');
           const vm = require('vm');
           const src = fs.readFileSync('trip-platform/public/app.js', 'utf8');
           const start = src.indexOf('function isOfficialBlaBlaHost0541');
           const end = src.indexOf('function agendaReservationTelemetry0541');
-          if (start < 0 || end <= start) throw new Error('reservation validator source boundary unavailable');
-          const context = { URL };
-          vm.createContext(context);
-          vm.runInContext(src.slice(start, end), context);
-          const validate = context.validatedBlaBlaReservationUrl0541;
-          const pathUrl = 'https://www.blablacar.com.br/trip/ABCdef_123?search_uuid=volatile';
-          const queryUrl = 'https://www.blablacar.com.br/trip?id=ABCdef_123&search_uuid=volatile';
-          const acceptedPath = validate(pathUrl);
-          const acceptedQuery = validate(queryUrl);
-          if (!acceptedPath.includes('/trip/ABCdef_123')) throw new Error('path-form /trip URL rejected');
-          if (acceptedPath.includes('search_uuid=')) throw new Error('volatile search_uuid leaked from path-form URL');
-          if (!acceptedQuery.includes('/trip?id=ABCdef_123')) throw new Error('query-form /trip?id URL rejected');
-          if (acceptedQuery.includes('search_uuid=')) throw new Error('volatile search_uuid leaked from query-form URL');
+          if (start < 0 || end <= start) throw new Error('validator boundary missing');
+          const ctx = { URL };
+          vm.createContext(ctx);
+          vm.runInContext(src.slice(start, end), ctx);
+          const validate = ctx.validatedBlaBlaReservationUrl0541;
+          const path = validate('https://www.blablacar.com.br/trip/ABCdef_123?search_uuid=volatile');
+          const query = validate('https://www.blablacar.com.br/trip?id=ABCdef_123&search_uuid=volatile');
+          if (!path.includes('/trip/ABCdef_123') || path.includes('search_uuid=')) throw new Error('path-form contract failed');
+          if (!query.includes('/trip?id=ABCdef_123') || query.includes('search_uuid=')) throw new Error('query-form contract failed');
           if (validate('https://evil.example/trip?id=ABCdef_123')) throw new Error('unofficial host accepted');
-          if (validate('https://www.blablacar.com.br/rides/offer/edit/ABCdef_123')) throw new Error('administrative offer URL accepted');
-          if (validate('https://www.blablacar.com.br/trip')) throw new Error('query-form URL without id accepted');
-          if (validate('https://user:pass@www.blablacar.com.br/trip?id=ABCdef_123')) throw new Error('credential-bearing URL accepted');
-          console.log('reservation URL contract: OK');
+          if (validate('https://www.blablacar.com.br/rides/offer/edit/ABCdef_123')) throw new Error('admin URL accepted');
+          if (validate('https://www.blablacar.com.br/trip')) throw new Error('missing query id accepted');
+          if (validate('https://user:pass@www.blablacar.com.br/trip?id=ABCdef_123')) throw new Error('credential URL accepted');
+          console.log('reservation URL contract OK');
           NODE
+          cd trip-platform/functions
+          node --test test/agenda-public-read-only-0475.test.js
 
-      - name: Verify scope and frontend syntax
+      - name: Prove exact source scope
         shell: bash
         run: |
           set -euo pipefail
           test "$(cat /tmp/farol-before.sha256)" = "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)"
-          node --check trip-platform/public/app.js
-          node --check trip-platform/functions/index.js
           START_SHA="$(cat /tmp/start-sha.txt)"
           mapfile -t changed < <(git diff --name-only "$START_SHA" | sort)
           printf '%s\n' "${changed[@]}"
-          for path in "${changed[@]}"; do
-            case "$path" in
-              app/build.gradle.kts|trip-platform/public/app.js|trip-platform/public/index.html|trip-platform/functions/test/agenda-public-read-only-0475.test.js) ;;
-              *) echo "Unexpected changed path before final commit: $path" >&2; exit 1 ;;
-            esac
-          done
           test "${#changed[@]}" -eq 4
+          test "${changed[0]}" = 'app/build.gradle.kts'
+          test "${changed[1]}" = 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
+          test "${changed[2]}" = 'trip-platform/public/app.js'
+          test "${changed[3]}" = 'trip-platform/public/index.html'
 
-      - name: Run public Agenda regression tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd trip-platform/functions
-          node --test test/agenda-public-read-only-0475.test.js
-
-      - name: Commit tested source and remove materializer
+      - name: Commit final source and remove materializer
         id: meta
         shell: bash
         run: |
@@ -195,7 +175,7 @@ jobs:
           printf '%s\n' "$FINAL_SHA" | tee /tmp/final-sha.txt
           echo "final_sha=$FINAL_SHA" >> "$GITHUB_OUTPUT"
           echo "final_short_sha=${FINAL_SHA:0:12}" >> "$GITHUB_OUTPUT"
-          test "$(git status --porcelain | wc -l)" -eq 0
+          test -z "$(git status --porcelain)"
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "$(cat /tmp/farol-before.sha256)"
 
       - name: Set up JDK 17
@@ -205,11 +185,9 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
-
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run Android unit tests
-        shell: bash
+      - name: Unit test Android final SHA
         env:
           ROTA_CERTA_GIT_SHA: ${{ steps.meta.outputs.final_sha }}
           ROTA_CERTA_GIT_BRANCH: agent/public-reserve-request-trip-query-0.1.543
@@ -218,21 +196,18 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
 
-      - name: Assemble final-SHA debug APK
-        shell: bash
+      - name: Assemble final-SHA APK
         env:
           ROTA_CERTA_GIT_SHA: ${{ steps.meta.outputs.final_sha }}
           ROTA_CERTA_GIT_BRANCH: agent/public-reserve-request-trip-query-0.1.543
         run: |
           set -euo pipefail
-          FINAL_SHA="$(cat /tmp/final-sha.txt)"
-          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/final-sha.txt)"
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)" = "$(cat /tmp/farol-before.sha256)"
 
-      - name: Inspect APK identity and final SHA
-        shell: bash
+      - name: Inspect APK identity
         run: |
           set -euo pipefail
           FINAL_SHA="$(cat /tmp/final-sha.txt)"
@@ -247,13 +222,7 @@ jobs:
           grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
           sha256sum "$APK" | tee evidence/apk-sha256.txt
           printf '%s\n' "$FINAL_SHA" | tee evidence/source-head.txt
-          printf '%s\n' \
-            "branch=$TARGET_BRANCH" \
-            "finalSha=$FINAL_SHA" \
-            "versionName=$EXPECTED_VERSION_NAME" \
-            "versionCode=$EXPECTED_VERSION_CODE" \
-            "farolSha256=$(cat /tmp/farol-before.sha256)" \
-            > evidence/build-metadata.txt
+          printf '%s\n' "branch=$TARGET_BRANCH" "finalSha=$FINAL_SHA" "versionName=$EXPECTED_VERSION_NAME" "versionCode=$EXPECTED_VERSION_CODE" "farolSha256=$(cat /tmp/farol-before.sha256)" > evidence/build-metadata.txt
           cp "$APK" "evidence/rota-certa-${EXPECTED_VERSION_NAME}-${EXPECTED_VERSION_CODE}-${FINAL_SHA:0:12}.apk"
 
       - name: Upload final-SHA APK
