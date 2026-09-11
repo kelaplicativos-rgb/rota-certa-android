@@ -45,6 +45,9 @@ jobs:
           grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
           grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
           grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
+          grep -Fq 'app\\.js\\?v=0\\.1\\.542-reserve-request0542' trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'versionCode = 5834' trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'versionName = "0\\.1\\.542"' trip-platform/functions/test/agenda-public-read-only-0475.test.js
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1 | tee /tmp/farol-before.sha256
           printf '%s\n' "$START_SHA" > /tmp/start-sha.txt
 
@@ -101,6 +104,20 @@ jobs:
           if text.count(old_cache) != 1:
               raise SystemExit('unexpected public app cache-buster baseline')
           index.write_text(text.replace(old_cache, new_cache, 1))
+
+          regression = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
+          text = regression.read_text()
+          replacements = (
+              ('app\\.js\\?v=0\\.1\\.542-reserve-request0542', 'app\\.js\\?v=0\\.1\\.543-reserve-request-trip-query0543', 2),
+              ('versionCode = 5834', 'versionCode = 5835', 1),
+              ('versionName = "0\\.1\\.542"', 'versionName = "0\\.1\\.543"', 1),
+          )
+          for old_value, new_value, expected_count in replacements:
+              actual = text.count(old_value)
+              if actual != expected_count:
+                  raise SystemExit(f'unexpected regression baseline for {old_value}: {actual} != {expected_count}')
+              text = text.replace(old_value, new_value)
+          regression.write_text(text)
           PY
           git diff --check
           grep -Fq 'if (path === "/trip") {' trip-platform/public/app.js
@@ -109,6 +126,9 @@ jobs:
           grep -Fq 'versionCode = 5835' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.543"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.543-reserve-request-trip-query0543"' trip-platform/public/index.html
+          grep -Fq 'app\\.js\\?v=0\\.1\\.543-reserve-request-trip-query0543' trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'versionCode = 5835' trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'versionName = "0\\.1\\.543"' trip-platform/functions/test/agenda-public-read-only-0475.test.js
 
       - name: Prove reservation URL contract
         shell: bash
@@ -152,11 +172,11 @@ jobs:
           printf '%s\n' "${changed[@]}"
           for path in "${changed[@]}"; do
             case "$path" in
-              app/build.gradle.kts|trip-platform/public/app.js|trip-platform/public/index.html) ;;
+              app/build.gradle.kts|trip-platform/public/app.js|trip-platform/public/index.html|trip-platform/functions/test/agenda-public-read-only-0475.test.js) ;;
               *) echo "Unexpected changed path before final commit: $path" >&2; exit 1 ;;
             esac
           done
-          test "${#changed[@]}" -eq 3
+          test "${#changed[@]}" -eq 4
 
       - name: Run public Agenda regression tests
         shell: bash
@@ -173,7 +193,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm .github/workflows/public-reserve-request-trip-query-0543-materialize.yml
-          git add app/build.gradle.kts trip-platform/public/app.js trip-platform/public/index.html .github/workflows/public-reserve-request-trip-query-0543-materialize.yml
+          git add app/build.gradle.kts trip-platform/public/app.js trip-platform/public/index.html trip-platform/functions/test/agenda-public-read-only-0475.test.js .github/workflows/public-reserve-request-trip-query-0543-materialize.yml
           git diff --cached --check
           git commit -m 'fix(agenda): accept BlaBlaCar trip query reservation URL 0.1.543'
           git push origin HEAD:"$TARGET_BRANCH"
