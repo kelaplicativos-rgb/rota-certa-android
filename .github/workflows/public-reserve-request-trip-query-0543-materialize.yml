@@ -32,7 +32,7 @@ jobs:
           fetch-depth: 0
           ref: agent/public-reserve-request-trip-query-0.1.543
 
-      - name: Prove baseline and protect FAROL
+      - name: Prove real baseline and protect FAROL
         shell: bash
         run: |
           set -euo pipefail
@@ -41,7 +41,10 @@ jobs:
           grep -Fq 'versionCode = 5834' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.542-reserve-request0542"' trip-platform/public/index.html
-          grep -Fq "if (parts.length !== 2 || parts[0].toLowerCase() !== 'trip') return '';" trip-platform/public/app.js
+          grep -Fq 'function validatedBlaBlaReservationUrl0541(raw)' trip-platform/public/app.js
+          grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
+          grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
+          grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1 | tee /tmp/farol-before.sha256
           printf '%s\n' "$START_SHA" > /tmp/start-sha.txt
 
@@ -54,10 +57,33 @@ jobs:
 
           app = Path('trip-platform/public/app.js')
           text = app.read_text()
-          old = """  const parts = url.pathname.split('/').filter(Boolean);\n  if (parts.length !== 2 || parts[0].toLowerCase() !== 'trip') return '';\n  const publicId = String(parts[1] || '').trim();\n  if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return '';\n  url.hash = '';\n  url.search = '';\n  return url.toString();\n"""
-          new = """  const parts = url.pathname.split('/').filter(Boolean);\n\n  if (parts.length === 2 && parts[0].toLowerCase() === 'trip') {\n    const publicId = String(parts[1] || '').trim();\n    if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return '';\n    url.hash = '';\n    url.search = '';\n    return url.toString();\n  }\n\n  if (parts.length === 1 && parts[0].toLowerCase() === 'trip') {\n    const publicId = String(url.searchParams.get('id') || '').trim();\n    if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return '';\n    url.hash = '';\n    url.search = `?id=${encodeURIComponent(publicId)}`;\n    return url.toString();\n  }\n\n  return '';\n"""
+          old = '''    const path = url.pathname.replace(/\\/+$/, "").toLowerCase();
+              if (!path.startsWith("/trip/")) return "";
+              const match = url.pathname.match(/\\/trip\\/([^/?#]+)/i);
+              if (!match || !String(match[1] || "").trim()) return "";
+              url.searchParams.delete("search_uuid");
+              url.hash = "";
+              return url.toString();
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '''    const path = url.pathname.replace(/\\/+$/, "").toLowerCase();
+              let publicId = "";
+              if (path === "/trip") {
+                publicId = String(url.searchParams.get("id") || "").trim();
+              } else if (path.startsWith("/trip/")) {
+                const match = url.pathname.match(/\\/trip\\/([^/?#]+)/i);
+                publicId = match ? String(match[1] || "").trim() : "";
+              } else {
+                return "";
+              }
+              if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
+              url.searchParams.delete("search_uuid");
+              url.hash = "";
+              return url.toString();
+          '''
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
           if text.count(old) != 1:
-              raise SystemExit(f'expected exactly one reservation validator block, got {text.count(old)}')
+              raise SystemExit(f'expected exactly one real reservation validator block, got {text.count(old)}')
           app.write_text(text.replace(old, new, 1))
 
           gradle = Path('app/build.gradle.kts')
@@ -77,21 +103,48 @@ jobs:
           index.write_text(text.replace(old_cache, new_cache, 1))
           PY
           git diff --check
-          grep -Fq "if (parts.length === 2 && parts[0].toLowerCase() === 'trip')" trip-platform/public/app.js
-          grep -Fq "if (parts.length === 1 && parts[0].toLowerCase() === 'trip')" trip-platform/public/app.js
-          grep -Fq "url.searchParams.get('id')" trip-platform/public/app.js
-          grep -Fq 'url.search = `?id=${encodeURIComponent(publicId)}`;' trip-platform/public/app.js
+          grep -Fq 'if (path === "/trip") {' trip-platform/public/app.js
+          grep -Fq 'url.searchParams.get("id")' trip-platform/public/app.js
+          grep -Fq 'else if (path.startsWith("/trip/")) {' trip-platform/public/app.js
           grep -Fq 'versionCode = 5835' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.543"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.543-reserve-request-trip-query0543"' trip-platform/public/index.html
+
+      - name: Prove reservation URL contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+          const vm = require('vm');
+          const src = fs.readFileSync('trip-platform/public/app.js', 'utf8');
+          const start = src.indexOf('function isOfficialBlaBlaHost0541');
+          const end = src.indexOf('function agendaReservationTelemetry0541');
+          if (start < 0 || end <= start) throw new Error('reservation validator source boundary unavailable');
+          const context = { URL };
+          vm.createContext(context);
+          vm.runInContext(src.slice(start, end), context);
+          const validate = context.validatedBlaBlaReservationUrl0541;
+          const pathUrl = 'https://www.blablacar.com.br/trip/ABCdef_123?search_uuid=volatile';
+          const queryUrl = 'https://www.blablacar.com.br/trip?id=ABCdef_123&search_uuid=volatile';
+          const acceptedPath = validate(pathUrl);
+          const acceptedQuery = validate(queryUrl);
+          if (!acceptedPath.includes('/trip/ABCdef_123')) throw new Error('path-form /trip URL rejected');
+          if (acceptedPath.includes('search_uuid=')) throw new Error('volatile search_uuid leaked from path-form URL');
+          if (!acceptedQuery.includes('/trip?id=ABCdef_123')) throw new Error('query-form /trip?id URL rejected');
+          if (acceptedQuery.includes('search_uuid=')) throw new Error('volatile search_uuid leaked from query-form URL');
+          if (validate('https://evil.example/trip?id=ABCdef_123')) throw new Error('unofficial host accepted');
+          if (validate('https://www.blablacar.com.br/rides/offer/edit/ABCdef_123')) throw new Error('administrative offer URL accepted');
+          if (validate('https://www.blablacar.com.br/trip')) throw new Error('query-form URL without id accepted');
+          if (validate('https://user:pass@www.blablacar.com.br/trip?id=ABCdef_123')) throw new Error('credential-bearing URL accepted');
+          console.log('reservation URL contract: OK');
+          NODE
 
       - name: Verify scope and frontend syntax
         shell: bash
         run: |
           set -euo pipefail
-          BEFORE_FAROL="$(cat /tmp/farol-before.sha256)"
-          AFTER_FAROL="$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)"
-          test "$BEFORE_FAROL" = "$AFTER_FAROL"
+          test "$(cat /tmp/farol-before.sha256)" = "$(sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1)"
           node --check trip-platform/public/app.js
           node --check trip-platform/functions/index.js
           START_SHA="$(cat /tmp/start-sha.txt)"
