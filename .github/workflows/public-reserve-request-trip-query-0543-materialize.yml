@@ -38,7 +38,6 @@ jobs:
           set -euo pipefail
           START_SHA="$(git rev-parse HEAD)"
           test "$START_SHA" = "$GITHUB_SHA"
-          test "$START_SHA" = 'REPLACE_TRIGGER_SHA'
           grep -Fq 'versionCode = 5834' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.542-reserve-request0542"' trip-platform/public/index.html
@@ -98,11 +97,6 @@ jobs:
           START_SHA="$(cat /tmp/start-sha.txt)"
           mapfile -t changed < <(git diff --name-only "$START_SHA" | sort)
           printf '%s\n' "${changed[@]}"
-          expected=(
-            app/build.gradle.kts
-            trip-platform/public/app.js
-            trip-platform/public/index.html
-          )
           for path in "${changed[@]}"; do
             case "$path" in
               app/build.gradle.kts|trip-platform/public/app.js|trip-platform/public/index.html) ;;
