@@ -1,4 +1,4 @@
-name: Verify build public reserve request 0.1.542
+name: Diagnose public BlaBla URL shape 0.1.542
 
 on:
   push:
@@ -12,24 +12,19 @@ permissions:
   contents: read
 
 jobs:
-  verify-preview-build:
+  diagnose-public-url-shape:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 20
     env:
-      TARGET_BRANCH: agent/public-reserve-request-0.1.542
       TARGET_SHA: 45e5c8be37a155567f4e29a0307fa65c52767060
-      BASE_SHA: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
-      ROTA_CERTA_GIT_SHA: 45e5c8be37a155567f4e29a0307fa65c52767060
-      ROTA_CERTA_GIT_BRANCH: agent/public-reserve-request-0.1.542
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      PREVIEW_CHANNEL: reserve-request-0542
-      GOOGLE_MAPS_API_KEY: public_reserve_request_0542_ci_dummy_key
+      PREVIEW_CHANNEL: reserve-request-diag-0542
 
     steps:
-      - name: Checkout exact final SHA
+      - name: Checkout exact 0.1.542 SHA
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_SHA }}
@@ -39,30 +34,16 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prove surgical final source and tests
+      - name: Prove exact source and current validator contract
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          mapfile -t changed < <(git diff --name-only "$BASE_SHA" "$TARGET_SHA")
-          printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 4
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'app/build.gradle.kts'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/functions/test/agenda-public-read-only-0475.test.js'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/public/app.js'
-          printf '%s\n' "${changed[@]}" | grep -Fxq 'trip-platform/public/index.html'
-          test "$(git diff --name-only "$BASE_SHA" "$TARGET_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)" = ''
-          test "$(git diff --name-only "$BASE_SHA" "$TARGET_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt)" = ''
           grep -Fq 'versionCode = 5834' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
-          grep -Fq 'reserve0541.textContent = "Fazer pedido de reserva";' trip-platform/public/app.js
-          ! grep -Fq '🟢 Reservar vaga' trip-platform/public/app.js
-          grep -Fq 'background:#0071eb;color:#fff' trip-platform/public/index.html
-          grep -Fq '/app.js?v=0.1.542-reserve-request0542' trip-platform/public/index.html
-          ! grep -Fq 'https://wa.me/' trip-platform/public/app.js
-          ! grep -Fq 'Fazer reserva com o motorista' trip-platform/public/app.js
-          node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
+          grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
+          grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
 
       - name: Configure Firebase authentication
         shell: bash
@@ -85,7 +66,7 @@ jobs:
             exit 3
           fi
 
-      - name: Redeploy exact final source to preview channel only
+      - name: Deploy exact 0.1.542 source to isolated preview
         shell: bash
         run: |
           set -euo pipefail
@@ -101,124 +82,65 @@ jobs:
           echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
           printf '%s\n' "$PREVIEW_URL" > /tmp/preview-url.txt
 
-      - name: Smoke preview with propagation wait
+      - name: Fetch live public Agenda and classify URL shapes without logging URLs
         shell: bash
         run: |
           set -euo pipefail
           ok=0
           for i in $(seq 1 20); do
-            code="$(curl -L -sS -o /tmp/live-app.js -w '%{http_code}' "$PREVIEW_URL/app.js?sha=$TARGET_SHA" || true)"
-            if [ "$code" = '200' ] && grep -Fq 'reserve0541.textContent = "Fazer pedido de reserva";' /tmp/live-app.js; then
+            code="$(curl -L -sS -o /tmp/agenda.json -w '%{http_code}' "$PREVIEW_URL/v1/public/agenda/ezequiel?diag=$TARGET_SHA" || true)"
+            if [ "$code" = '200' ]; then
               ok=1
               break
             fi
-            echo "preview app.js not ready yet: attempt=$i http=$code"
+            echo "agenda API not ready yet: attempt=$i http=$code"
             sleep 2
           done
           test "$ok" = '1'
-          grep -Fq 'validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)' /tmp/live-app.js
-          ! grep -Fq '🟢 Reservar vaga' /tmp/live-app.js
-          ! grep -Fq 'https://wa.me/' /tmp/live-app.js
-          ! grep -Fq 'Fazer reserva com o motorista' /tmp/live-app.js
-          ok=0
-          for i in $(seq 1 20); do
-            code="$(curl -L -sS -o /tmp/live-index.html -w '%{http_code}' "$PREVIEW_URL/ezequiel?sha=$TARGET_SHA" || true)"
-            if [ "$code" = '200' ] && grep -Fq '/app.js?v=0.1.542-reserve-request0542' /tmp/live-index.html; then
-              ok=1
-              break
-            fi
-            echo "preview index not ready yet: attempt=$i http=$code"
-            sleep 2
-          done
-          test "$ok" = '1'
-          grep -Fq 'background:#0071eb;color:#fff' /tmp/live-index.html
-
-      - name: Configure Firebase Android app for build only
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -s app/google-services.json ]; then
-            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
-            exit 0
-          fi
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
-            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
-            test -n "$APP_ID"
-            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
-          else
-            test -s /tmp/firebase-sa.json
-            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
-            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
-            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
-            test -n "$APP_ID"
-            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
-          fi
-          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - uses: android-actions/setup-android@v3
-
-      - uses: gradle/actions/setup-gradle@v4
-
-      - name: Build exact final-SHA debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          test -s "$APK"
-
-      - name: Verify exact final-SHA APK identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
-          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='5834'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='0.1.542'" <<< "$PACKAGE_LINE"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
-          grep -Fq 'Verified' /tmp/apksigner.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$TARGET_SHA" /tmp/dex-strings.txt
-          sha256sum "$APK" | tee /tmp/apk.sha256
-
-      - name: Package final evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT=/tmp/rota-certa-0.1.542
-          mkdir -p "$OUT"
-          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.542-5834-45e5c8be-debug.apk"
-          cp /tmp/apk.sha256 /tmp/aapt.txt /tmp/apksigner.txt /tmp/preview-url.txt /tmp/firebase-preview.txt "$OUT/"
-          printf '%s\n' \
-            'branch=agent/public-reserve-request-0.1.542' \
-            'sha=45e5c8be37a155567f4e29a0307fa65c52767060' \
-            'versionName=0.1.542' \
-            'versionCode=5834' \
-            'package=br.com.mapeiaia.rotacerta' \
-            'ctaText=Fazer pedido de reserva' \
-            'ctaColor=#0071EB' \
-            'reservationAuthority=BLABLACAR' \
-            'whatsappReservationCta=false' \
-            'productionHosting=UNCHANGED' \
-            "previewUrl=$PREVIEW_URL" \
-            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' \
-            > "$OUT/build-evidence.txt"
+          node <<'JS'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          const stats = {
+            totalTrips: trips.length,
+            blablaPublicUrlPresent: 0,
+            blablaPublicUrlMissing: 0,
+            rootTripWithIdQuery: 0,
+            pathTripToken: 0,
+            otherTripShape: 0,
+            invalidUrl: 0,
+            blablaTripIdPresent: 0,
+          };
+          for (const trip of trips) {
+            if (String(trip?.blablaTripId || '').trim()) stats.blablaTripIdPresent += 1;
+            const raw = String(trip?.blablaPublicUrl || '').trim();
+            if (!raw) {
+              stats.blablaPublicUrlMissing += 1;
+              continue;
+            }
+            stats.blablaPublicUrlPresent += 1;
+            try {
+              const u = new URL(raw);
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              const id = String(u.searchParams.get('id') || '').trim();
+              if (path === '/trip' && id) stats.rootTripWithIdQuery += 1;
+              else if (path.startsWith('/trip/') && path.split('/').filter(Boolean).length >= 2) stats.pathTripToken += 1;
+              else stats.otherTripShape += 1;
+            } catch (_) {
+              stats.invalidUrl += 1;
+            }
+          }
+          fs.writeFileSync('/tmp/agenda-url-shape.json', JSON.stringify(stats, null, 2));
+          console.log(JSON.stringify(stats));
+          if (stats.totalTrips < 1) process.exit(4);
+          JS
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.542-5834-45e5c8be
-          path: /tmp/rota-certa-0.1.542
-          retention-days: 14
+          name: rota-certa-0.1.542-public-url-shape-diagnostic
+          path: |
+            /tmp/agenda-url-shape.json
+            /tmp/preview-url.txt
+            /tmp/firebase-preview.txt
+          retention-days: 3
           if-no-files-found: error
