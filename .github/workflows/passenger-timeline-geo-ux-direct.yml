@@ -1,4 +1,4 @@
-name: Diagnose public BlaBla URL shape 0.1.542
+name: Diagnose persisted BlaBla URL chain 0.1.542
 
 on:
   push:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-public-url-shape:
+  diagnose-persisted-url-chain:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -20,8 +20,6 @@ jobs:
       FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
-      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      PREVIEW_CHANNEL: reserve-request-diag-0542
 
     steps:
       - name: Checkout exact 0.1.542 SHA
@@ -34,113 +32,114 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Prove exact source and current validator contract
+      - name: Prove public failure and server normalization boundary
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           grep -Fq 'versionCode = 5834' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.542"' app/build.gradle.kts
-          grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
-          grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
-          grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
+          grep -Fq 'blablaPublicUrl: normalizeBlaBlaPublicUrl(data.blablaPublicUrl, cleanText(data.blablaTripId, 160)) || null' trip-platform/functions/index.js
+          grep -Fq 'blablaPublicUrl: normalizeCanonicalBoundBlaBlaPublicUrl0423(payload.blablaPublicUrl, cleanText(payload.blablaTripId, 160))' trip-platform/functions/index.js
+          grep -Fq 'blablaPublicUrl = canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PrivateAgendaMirror0434.kt
 
-      - name: Configure Firebase authentication
+      - name: Configure Firebase service account
         shell: bash
         run: |
           set -euo pipefail
           if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
-            chmod 600 /tmp/firebase-sa.json
-            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
-            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
           elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
             printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
-            chmod 600 /tmp/firebase-sa.json
-            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
-            echo "FIREBASE_AUTH_MODE=service-account" >> "$GITHUB_ENV"
-          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
-            echo "FIREBASE_AUTH_MODE=token" >> "$GITHUB_ENV"
           else
-            echo 'Firebase credential is missing.' >&2
+            echo 'Firebase service account credential is missing.' >&2
             exit 3
           fi
+          chmod 600 /tmp/firebase-sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
 
-      - name: Deploy exact 0.1.542 source to isolated preview
+      - name: Install existing Functions dependencies
         shell: bash
         run: |
           set -euo pipefail
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          cd trip-platform
-          if [ "${FIREBASE_AUTH_MODE:-}" = "token" ]; then
-            npx --yes firebase-tools@latest hosting:channel:deploy "$PREVIEW_CHANNEL" --project "$PROJECT" --expires 1d --non-interactive --token "$FIREBASE_TOKEN" | tee /tmp/firebase-preview.txt
-          else
-            npx --yes firebase-tools@latest hosting:channel:deploy "$PREVIEW_CHANNEL" --project "$PROJECT" --expires 1d --non-interactive | tee /tmp/firebase-preview.txt
-          fi
-          PREVIEW_URL="$(grep -oE 'https://[A-Za-z0-9._-]+\.web\.app' /tmp/firebase-preview.txt | tail -1)"
-          test -n "$PREVIEW_URL"
-          echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
-          printf '%s\n' "$PREVIEW_URL" > /tmp/preview-url.txt
+          npm --prefix trip-platform/functions ci --ignore-scripts --no-audit --no-fund
 
-      - name: Fetch live public Agenda and classify URL shapes without logging URLs
+      - name: Classify persisted URL presence without logging URL or identity values
         shell: bash
         run: |
           set -euo pipefail
-          ok=0
-          for i in $(seq 1 20); do
-            code="$(curl -L -sS -o /tmp/agenda.json -w '%{http_code}' "$PREVIEW_URL/v1/public/agenda/ezequiel?diag=$TARGET_SHA" || true)"
-            if [ "$code" = '200' ]; then
-              ok=1
-              break
-            fi
-            echo "agenda API not ready yet: attempt=$i http=$code"
-            sleep 2
-          done
-          test "$ok" = '1'
+          NODE_PATH="$PWD/trip-platform/functions/node_modules" node <<'JS'
+          const fs = require('fs');
+          const { initializeApp, applicationDefault } = require('firebase-admin/app');
+          const { getFirestore } = require('firebase-admin/firestore');
+          initializeApp({ credential: applicationDefault() });
+          const db = getFirestore();
+          const present = (v) => typeof v === 'string' && v.trim().length > 0;
+          (async () => {
+            const tripSnap = await db.collection('trips').where('driverUsername', '==', 'ezequiel').limit(300).get();
+            const mirrorSnap = await db.collection('tripPrivateMirrors0434').where('driverUsername', '==', 'ezequiel').limit(300).get();
+            const stats = {
+              tripsTotal: tripSnap.size,
+              rootBlaBlaTripIdPresent: 0,
+              rootBlaBlaPublicUrlPresent: 0,
+              rootBlaBlaManageUrlPresent: 0,
+              canonicalProjectionPresent: 0,
+              canonicalProjectionBlaBlaTripIdPresent: 0,
+              canonicalProjectionBlaBlaPublicUrlPresent: 0,
+              privateMirrorsTotal: mirrorSnap.size,
+              privateMirrorBlaBlaTripIdPresent: 0,
+              privateMirrorBlaBlaPublicUrlPresent: 0,
+            };
+            for (const doc of tripSnap.docs) {
+              const d = doc.data() || {};
+              if (present(d.blablaTripId)) stats.rootBlaBlaTripIdPresent++;
+              if (present(d.blablaPublicUrl)) stats.rootBlaBlaPublicUrlPresent++;
+              if (present(d.blablaManageUrl)) stats.rootBlaBlaManageUrlPresent++;
+              const p = d.canonicalPublicProjection0434;
+              if (p && typeof p === 'object') {
+                stats.canonicalProjectionPresent++;
+                if (present(p.blablaTripId)) stats.canonicalProjectionBlaBlaTripIdPresent++;
+                if (present(p.blablaPublicUrl)) stats.canonicalProjectionBlaBlaPublicUrlPresent++;
+              }
+            }
+            for (const doc of mirrorSnap.docs) {
+              const d = doc.data() || {};
+              const p = d.payload && typeof d.payload === 'object' ? d.payload : {};
+              if (present(p.blablaTripId)) stats.privateMirrorBlaBlaTripIdPresent++;
+              if (present(p.blablaPublicUrl)) stats.privateMirrorBlaBlaPublicUrlPresent++;
+            }
+            fs.writeFileSync('/tmp/persisted-url-chain.json', JSON.stringify(stats, null, 2));
+            console.log(JSON.stringify(stats));
+            if (stats.tripsTotal < 1) process.exit(4);
+          })().catch((error) => {
+            console.error('diagnostic_failed', error && error.name);
+            process.exit(5);
+          });
+          JS
+
+      - name: Reconfirm live public API absence without logging response body
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --retry 5 --retry-delay 2 --fail --silent --show-error 'https://rota-certa-7ccc8.web.app/v1/public/agenda/ezequiel?diag=0542-persisted-chain' -o /tmp/live-agenda.json
           node <<'JS'
           const fs = require('fs');
-          const body = JSON.parse(fs.readFileSync('/tmp/agenda.json','utf8'));
+          const body = JSON.parse(fs.readFileSync('/tmp/live-agenda.json','utf8'));
           const trips = Array.isArray(body.trips) ? body.trips : [];
           const stats = {
             totalTrips: trips.length,
-            blablaPublicUrlPresent: 0,
-            blablaPublicUrlMissing: 0,
-            rootTripWithIdQuery: 0,
-            pathTripToken: 0,
-            otherTripShape: 0,
-            invalidUrl: 0,
-            blablaTripIdPresent: 0,
+            publicBlaBlaUrlPresent: trips.filter((t) => String(t?.blablaPublicUrl || '').trim()).length,
           };
-          for (const trip of trips) {
-            if (String(trip?.blablaTripId || '').trim()) stats.blablaTripIdPresent += 1;
-            const raw = String(trip?.blablaPublicUrl || '').trim();
-            if (!raw) {
-              stats.blablaPublicUrlMissing += 1;
-              continue;
-            }
-            stats.blablaPublicUrlPresent += 1;
-            try {
-              const u = new URL(raw);
-              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
-              const id = String(u.searchParams.get('id') || '').trim();
-              if (path === '/trip' && id) stats.rootTripWithIdQuery += 1;
-              else if (path.startsWith('/trip/') && path.split('/').filter(Boolean).length >= 2) stats.pathTripToken += 1;
-              else stats.otherTripShape += 1;
-            } catch (_) {
-              stats.invalidUrl += 1;
-            }
-          }
-          fs.writeFileSync('/tmp/agenda-url-shape.json', JSON.stringify(stats, null, 2));
+          fs.writeFileSync('/tmp/live-public-url-count.json', JSON.stringify(stats, null, 2));
           console.log(JSON.stringify(stats));
-          if (stats.totalTrips < 1) process.exit(4);
+          if (stats.totalTrips < 1) process.exit(6);
           JS
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.542-public-url-shape-diagnostic
+          name: rota-certa-0.1.542-persisted-blablacar-url-chain
           path: |
-            /tmp/agenda-url-shape.json
-            /tmp/preview-url.txt
-            /tmp/firebase-preview.txt
+            /tmp/persisted-url-chain.json
+            /tmp/live-public-url-count.json
           retention-days: 3
           if-no-files-found: error
