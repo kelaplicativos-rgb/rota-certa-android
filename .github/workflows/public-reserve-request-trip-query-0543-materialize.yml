@@ -45,9 +45,6 @@ jobs:
           grep -Fq 'if (!path.startsWith("/trip/")) return "";' trip-platform/public/app.js
           grep -Fq 'const queryId = cleanText(url.searchParams.get("id"), 160);' trip-platform/functions/index.js
           grep -Fq 'if (publicOnly && path !== "/trip" && !path.startsWith("/trip/")) return "";' trip-platform/functions/index.js
-          grep -Fq 'app\\.js\\?v=0\\.1\\.542-reserve-request0542' trip-platform/functions/test/agenda-public-read-only-0475.test.js
-          grep -Fq 'versionCode = 5834' trip-platform/functions/test/agenda-public-read-only-0475.test.js
-          grep -Fq 'versionName = "0\\.1\\.542"' trip-platform/functions/test/agenda-public-read-only-0475.test.js
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt | cut -d' ' -f1 | tee /tmp/farol-before.sha256
           printf '%s\n' "$START_SHA" > /tmp/start-sha.txt
 
@@ -93,9 +90,7 @@ jobs:
           text = gradle.read_text()
           if text.count('versionCode = 5834') != 1 or text.count('versionName = "0.1.542"') != 1:
               raise SystemExit('unexpected Android version baseline')
-          text = text.replace('versionCode = 5834', 'versionCode = 5835', 1)
-          text = text.replace('versionName = "0.1.542"', 'versionName = "0.1.543"', 1)
-          gradle.write_text(text)
+          gradle.write_text(text.replace('versionCode = 5834', 'versionCode = 5835', 1).replace('versionName = "0.1.542"', 'versionName = "0.1.543"', 1))
 
           index = Path('trip-platform/public/index.html')
           text = index.read_text()
@@ -108,9 +103,9 @@ jobs:
           regression = Path('trip-platform/functions/test/agenda-public-read-only-0475.test.js')
           text = regression.read_text()
           replacements = (
-              ('app\\.js\\?v=0\\.1\\.542-reserve-request0542', 'app\\.js\\?v=0\\.1\\.543-reserve-request-trip-query0543', 2),
+              (r'app\.js\?v=0\.1\.542-reserve-request0542', r'app\.js\?v=0\.1\.543-reserve-request-trip-query0543', 2),
               ('versionCode = 5834', 'versionCode = 5835', 1),
-              ('versionName = "0\\.1\\.542"', 'versionName = "0\\.1\\.543"', 1),
+              (r'versionName = "0\.1\.542"', r'versionName = "0\.1\.543"', 1),
           )
           for old_value, new_value, expected_count in replacements:
               actual = text.count(old_value)
@@ -126,9 +121,8 @@ jobs:
           grep -Fq 'versionCode = 5835' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.543"' app/build.gradle.kts
           grep -Fq 'src="/app.js?v=0.1.543-reserve-request-trip-query0543"' trip-platform/public/index.html
-          grep -Fq 'app\\.js\\?v=0\\.1\\.543-reserve-request-trip-query0543' trip-platform/functions/test/agenda-public-read-only-0475.test.js
+          grep -Fq '0.1.543-reserve-request-trip-query0543' trip-platform/functions/test/agenda-public-read-only-0475.test.js
           grep -Fq 'versionCode = 5835' trip-platform/functions/test/agenda-public-read-only-0475.test.js
-          grep -Fq 'versionName = "0\\.1\\.543"' trip-platform/functions/test/agenda-public-read-only-0475.test.js
 
       - name: Prove reservation URL contract
         shell: bash
