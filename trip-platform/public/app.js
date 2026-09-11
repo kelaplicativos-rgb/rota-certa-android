@@ -647,8 +647,8 @@ function renderAgendaCards(entries, container) {
       reserve0541.className = "agendaReserve0541";
       reserve0541.href = reservationHref0541;
       reserve0541.rel = "noopener noreferrer";
-      reserve0541.textContent = "🟢 Reservar vaga";
-      reserve0541.setAttribute("aria-label", "Reservar vaga na publicação BlaBlaCar desta viagem");
+      reserve0541.textContent = "Fazer pedido de reserva";
+      reserve0541.setAttribute("aria-label", "Fazer pedido de reserva na publicação BlaBlaCar desta viagem");
       reserve0541.addEventListener("click", () => {
         agendaReservationTelemetry0541("AGENDA_RESERVATION_PUBLICATION_OPENED_0541", item, "CANONICAL_BLABLACAR_PUBLICATION");
       });
