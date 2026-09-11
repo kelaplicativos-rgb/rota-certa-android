@@ -18,6 +18,11 @@ jobs:
       PARENT_SHA: 13d14ccb49a0d8d26a4004789abe751a05a68aa7
       ROTA_CERTA_GIT_SHA: 0f727e58bf22fd0d6ad9e8e6c58c101c2cf58d3c
       ROTA_CERTA_GIT_BRANCH: agent/public-reserve-blablacar-0.1.541
+      GOOGLE_MAPS_API_KEY: public_reserve_blablacar_0541_ci_dummy_key
+      FIREBASE_PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,10 +53,49 @@ jobs:
           node --check trip-platform/public/app.js
           node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
+      - uses: android-actions/setup-android@v3
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -60,16 +104,39 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
-          test -s app/build/outputs/apk/debug/app-debug.apk
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+
+      - name: Verify exact-SHA APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          test -x "$BUILD_TOOLS/aapt"
+          test -x "$BUILD_TOOLS/apksigner"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5833'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.541'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$TARGET_SHA" /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
 
       - name: Package exact-SHA evidence
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
           mkdir -p /tmp/rota-certa-0.1.541
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/rota-certa-0.1.541/rota-certa-0.1.541-5833-0f727e58-debug.apk
-          sha256sum /tmp/rota-certa-0.1.541/rota-certa-0.1.541-5833-0f727e58-debug.apk | tee /tmp/rota-certa-0.1.541/apk.sha256
+          cp /tmp/apk.sha256 /tmp/aapt.txt /tmp/apksigner.txt /tmp/rota-certa-0.1.541/
           git rev-parse HEAD | tee /tmp/rota-certa-0.1.541/source-head.txt
           printf '%s\n' \
             'branch=agent/public-reserve-blablacar-0.1.541' \
@@ -80,6 +147,8 @@ jobs:
             'reservationAuthority=BLABLACAR' \
             'navigation=https-public-trip-only' \
             'rotaCertaBookingMutation=false' \
+            'publicAgendaReadOnly=true' \
+            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' \
             > /tmp/rota-certa-0.1.541/build-evidence.txt
 
       - uses: actions/upload-artifact@v4
@@ -87,3 +156,4 @@ jobs:
           name: rota-certa-0.1.541-5833-0f727e58
           path: /tmp/rota-certa-0.1.541
           retention-days: 14
+          if-no-files-found: error
