@@ -88,6 +88,10 @@ internal fun distinctTimelineGlobalPullTargets0538(
     .filterNotNull()
     .distinctBy(BlaBlaTripTarget0407::strongIdentityKey)
 
+internal fun timelineGlobalRadarBatchBusy0540(
+    audits: Iterable<BlaBlaCommandAuditSnapshot0407?>,
+): Boolean = audits.any { it?.pending == true }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripTimelineScreen(
@@ -109,6 +113,9 @@ fun TripTimelineScreen(
     listModifier: Modifier = Modifier,
     onFirstUsableFrame: (Int) -> Unit = {},
     manualRefreshToken0499: Int = 0,
+    lastHandledGlobalRefreshToken0540: Int = 0,
+    onGlobalRefreshStarted0540: (Int) -> Unit = {},
+    onGlobalRefreshBusy0540: (Boolean) -> Unit = {},
     onCanonicalRefreshState0499: (Boolean, String?) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
@@ -196,6 +203,8 @@ fun TripTimelineScreen(
         )
     }
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
+    val globalRefreshStartedCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshStarted0540)
+    val globalRefreshBusyCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshBusy0540)
 
     LaunchedEffect(store, trips, bookings, onlineSettings0494.driverDisplayName) {
         localAgendaProjection0515 = withContext(Dispatchers.IO) {
@@ -234,7 +243,7 @@ fun TripTimelineScreen(
     LaunchedEffect(onlineSettings0494.apiBaseUrl, onlineSettings0494.driverUsername) {
         canonicalRefreshSignals0495.collect { reason ->
             canonicalRefreshMutex0495.withLock {
-                val manualPull0499 = reason == "USER_PULL_REFRESH"
+                val manualPull0499 = reason == "USER_PULL_REFRESH" || reason.startsWith("USER_GLOBAL_RADAR_REFRESH_0540")
                 val correlationId0512 = "tl-" + System.nanoTime().toString(36)
                 if (!onlineSettings0494.configured) {
                     localAgendaProjection0515 = withContext(Dispatchers.IO) {
@@ -681,41 +690,91 @@ fun TripTimelineScreen(
         }
     }
     LaunchedEffect(manualRefreshToken0499) {
-        if (manualRefreshToken0499 <= 0) return@LaunchedEffect
-        val resolvedTargets0538 = tripTargetsByCard0432.values.filterNotNull()
-        val targets0538 = distinctTimelineGlobalPullTargets0538(resolvedTargets0538)
-        var acceptedTargets0538 = 0
-        targets0538.forEach { target0538 ->
-            val command0538 = BlaBlaCommand0407.forTarget(
-                target = target0538,
+        if (
+            manualRefreshToken0499 <= 0 ||
+            manualRefreshToken0499 <= lastHandledGlobalRefreshToken0540
+        ) return@LaunchedEffect
+
+        globalRefreshStartedCallback0540.value(manualRefreshToken0499)
+        globalRefreshBusyCallback0540.value(true)
+
+        val resolvedTargets0540 = tripTargetsByCard0432.values.filterNotNull()
+        val targets0540 = distinctTimelineGlobalPullTargets0538(resolvedTargets0540)
+        val statusStore0540 = BlaBlaTripCommandStatusStore0407(context)
+        val alreadyPending0540 = targets0540.count { statusStore0540.get(it)?.pending == true }
+
+        if (targets0540.isEmpty()) {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_GLOBAL_RADAR_EMPTY_0540",
+                context.packageName,
+                "cards=${tripTargetsByCard0432.size} resolvedTargets=0 strongTargets=0 noCollectorWork=true",
+            )
+            globalRefreshBusyCallback0540.value(false)
+            return@LaunchedEffect
+        }
+
+        if (alreadyPending0540 > 0) {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_GLOBAL_RADAR_BLOCKED_0540",
+                context.packageName,
+                "strongTargets=${targets0540.size} pendingTargets=$alreadyPending0540 reason=previous_target_refresh_in_progress",
+            )
+            globalRefreshBusyCallback0540.value(true)
+            return@LaunchedEffect
+        }
+
+        var acceptedTargets0540 = 0
+        targets0540.forEach { target0540 ->
+            val command0540 = BlaBlaCommand0407.forTarget(
+                target = target0540,
                 operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
                 origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION,
             )
             if (
                 AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
                     context = context,
-                    target = target0538,
-                    commandId = command0538.commandId,
-                    requestedAtMillis = command0538.requestedAtMillis,
+                    target = target0540,
+                    commandId = command0540.commandId,
+                    requestedAtMillis = command0540.requestedAtMillis,
                 )
             ) {
-                acceptedTargets0538++
+                acceptedTargets0540++
             }
         }
         UnifiedDebugEventStore.record(
-            "TIMELINE_PULL_REFRESH_ALL_COLLECTOR_0538",
+            "TIMELINE_GLOBAL_RADAR_BATCH_STARTED_0540",
             context.packageName,
-            "cards=${tripTargetsByCard0432.size} resolvedTargets=${resolvedTargets0538.size} " +
-                "strongTargets=${targets0538.size} acceptedTargets=$acceptedTargets0538 " +
-                "skippedIdentity=${tripTargetsByCard0432.size - resolvedTargets0538.size} " +
-                "deduplicated=${resolvedTargets0538.size - targets0538.size} " +
-                "collectorToAgenda=true directTimelineCollectorRead=false canonicalSecondaryRefresh=true",
+            "cards=${tripTargetsByCard0432.size} resolvedTargets=${resolvedTargets0540.size} " +
+                "strongTargets=${targets0540.size} acceptedTargets=$acceptedTargets0540 " +
+                "skippedIdentity=${tripTargetsByCard0432.size - resolvedTargets0540.size} " +
+                "deduplicated=${resolvedTargets0540.size - targets0540.size} " +
+                "collectorToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR",
         )
-        invalidateCanonicalTimeline0495("USER_PULL_REFRESH")
+        if (acceptedTargets0540 == 0) {
+            globalRefreshBusyCallback0540.value(false)
+            return@LaunchedEffect
+        }
+        invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540")
     }
     val commandAuditsByCard0432 = remember(tripTargetsByCard0432, commandRevision0407) {
         val statusStore = BlaBlaTripCommandStatusStore0407(context)
         tripTargetsByCard0432.mapValues { (_, target) -> target?.let(statusStore::get) }
+    }
+    val globalRadarBusyFromStore0540 = remember(commandAuditsByCard0432) {
+        timelineGlobalRadarBatchBusy0540(commandAuditsByCard0432.values)
+    }
+    LaunchedEffect(commandRevision0407) {
+        if (manualRefreshToken0499 <= lastHandledGlobalRefreshToken0540) {
+            globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)
+            if (!globalRadarBusyFromStore0540 && manualRefreshToken0499 > 0) {
+                UnifiedDebugEventStore.record(
+                    "TIMELINE_GLOBAL_RADAR_BATCH_COMPLETE_0540",
+                    context.packageName,
+                    "strongTargets=${distinctTimelineGlobalPullTargets0538(tripTargetsByCard0432.values).size} pendingTargets=0 collectorToAgenda=true directTimelineCollectorRead=false",
+                )
+                invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540_COMPLETE")
+            }
+        }
     }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
         timelineProfileColorSlots(

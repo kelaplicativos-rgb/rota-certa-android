@@ -313,8 +313,9 @@ private fun TripApp(
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
     var reservationPendingOnly by remember { mutableStateOf(initialPendingOnly) }
     var message by remember { mutableStateOf<String?>(null) }
-    var timelinePullRefreshToken0499 by remember { mutableStateOf(0) }
-    var timelinePullRefreshing0499 by remember { mutableStateOf(false) }
+    var timelineGlobalRefreshToken0540 by rememberSaveable { mutableStateOf(0) }
+    var timelineGlobalRefreshHandledToken0540 by rememberSaveable { mutableStateOf(0) }
+    var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }
     val notificationProjection0416 by DriverNotificationProjection0416.state.collectAsState()
     val activeNotificationTenant0416 = RotaCertaTenantRegistry(activity).activeScope().tenantId
     val driverNotifications = if (notificationProjection0416.tenantId == activeNotificationTenant0416) {
@@ -431,15 +432,21 @@ private fun TripApp(
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
     }
-    val requestTimelineCanonicalPullRefresh0499 = {
-        if (!timelinePullRefreshing0499) {
-            timelinePullRefreshing0499 = true
-            timelinePullRefreshToken0499 += 1
-            message = "Atualizando todas as viagens: BlaBlaCar → Agenda → Timeline..."
+    val requestTimelineGlobalRadarRefresh0540 = {
+        if (!timelineGlobalRefreshBusy0540) {
+            timelineGlobalRefreshBusy0540 = true
+            timelineGlobalRefreshToken0540 += 1
+            message = "📡 Atualizando todas as viagens: BlaBlaCar → Agenda → Timeline..."
             UnifiedDebugEventStore.record(
-                "AGENDA_TIMELINE_GLOBAL_PULL_REFRESH_0538",
+                "AGENDA_TIMELINE_GLOBAL_RADAR_REFRESH_0540",
                 activity.packageName,
-                "collectorBatch=true collectorToAgenda=true directTimelineCollectorRead=false canonicalSecondaryRefresh=true collectorFallback=false",
+                "collectorBatch=true collectorToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR repeatedRequestBlocked=true",
+            )
+        } else {
+            UnifiedDebugEventStore.record(
+                "AGENDA_TIMELINE_GLOBAL_RADAR_REFRESH_BLOCKED_0540",
+                activity.packageName,
+                "reason=previous_global_or_target_refresh_pending",
             )
         }
     }
@@ -766,103 +773,91 @@ private fun TripApp(
                         }
                     },
                 )
-                TripScreen.TIMELINE -> TimelineRefreshGestureSurface0388(
+                TripScreen.TIMELINE -> Column(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    refreshing = timelinePullRefreshing0499,
-                    canRefreshAtGestureStart = { !timelineListState.canScrollBackward },
-                    onRefresh = requestTimelineCanonicalPullRefresh0499,
-                    onPointerDown = { position, canRefreshAtStart, refreshRunningAtStart ->
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_PULL_GESTURE_DOWN_0390",
-                            activity.packageName,
-                            "xPx=${position.x.toInt()} yPx=${position.y.toInt()} canRefreshAtStart=$canRefreshAtStart " +
-                                "refreshRunningAtStart=$refreshRunningAtStart firstVisibleItemIndex=${timelineListState.firstVisibleItemIndex} " +
-                                "firstVisibleItemScrollOffset=${timelineListState.firstVisibleItemScrollOffset} canScrollBackward=${timelineListState.canScrollBackward}",
-                        )
-                    },
-                    onPointerEnd = { position, accepted ->
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_PULL_GESTURE_END_0390",
-                            activity.packageName,
-                            "xPx=${position.x.toInt()} yPx=${position.y.toInt()} accepted=$accepted " +
-                                "firstVisibleItemIndex=${timelineListState.firstVisibleItemIndex} " +
-                                "firstVisibleItemScrollOffset=${timelineListState.firstVisibleItemScrollOffset} canScrollBackward=${timelineListState.canScrollBackward}",
-                        )
-                    },
-                    onDecision = { decision ->
-                        UnifiedDebugEventStore.record(
-                            "AGENDA_PULL_GESTURE_DECISION_0390",
-                            activity.packageName,
-                            "outcome=${decision.outcome.name} accepted=${decision.accepted} dyPx=${decision.deltaY.toInt()} dxPx=${decision.deltaX.toInt()} " +
-                                "listAtTop=${decision.eligibleAtStart} blockedByRefresh=${decision.refreshingAtStart}",
-                        )
-                        if (
-                            decision.accepted ||
-                            decision.outcome == AgendaPullRefreshOutcome0388.BLOCKED_REFRESH_RUNNING
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            enabled = !timelineGlobalRefreshBusy0540,
+                            onClick = requestTimelineGlobalRadarRefresh0540,
                         ) {
-                            UnifiedDebugEventStore.record(
-                                "AGENDA_PULL_GESTURE_RECOGNIZED",
-                                activity.packageName,
-                                "accepted=${decision.accepted} dyPx=${decision.deltaY.toInt()} dxPx=${decision.deltaX.toInt()} " +
-                                    "listAtTop=${decision.eligibleAtStart} blockedByRefresh=${decision.refreshingAtStart}",
+                            Text(
+                                if (timelineGlobalRefreshBusy0540) {
+                                    "📡 Atualizando todas…"
+                                } else {
+                                    "📡 Atualizar todas"
+                                },
                             )
                         }
-                    },
-                ) {
+                    }
                     TripTimelineScreen(
-                    trips = trips,
-                    bookings = bookings,
-                    store = store,
-                    onChanged = { text -> refresh(); message = text },
-                    onCreateTripForPassenger = { passengerId ->
-                        pendingCreateForPassengerId = passengerId
-                        parentRootScreen0396 = TripScreen.TIMELINE
-                        screen = TripScreen.CREATE
-                    },
-                    addPassengerResumeToken = addPassengerResumeToken,
-                    addPassengerResumePassengerId = addPassengerResumePassengerId,
-                    addPassengerResumeTripId = addPassengerResumeTripId,
-                    onManageLocal = { tripId ->
-                        selectedId = tripId
-                        parentRootScreen0396 = TripScreen.TIMELINE
-                        screen = TripScreen.LIST
-                    },
-                    uiCommand0396 = timelineUiCommand0396,
-                    uiCommandToken0396 = timelineUiCommandToken0396,
-                    focusedTripId = focusedTripId
-                        ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
-                    focusedBookingId = focusedBookingId,
-                    reservationPendingOnly = reservationPendingOnly,
-                    listState = timelineListState,
-                    listModifier = Modifier.weight(1f),
-                    manualRefreshToken0499 = timelinePullRefreshToken0499,
-                    onCanonicalRefreshState0499 = { refreshing0499, error0499 ->
-                        timelinePullRefreshing0499 = refreshing0499
-                        if (!refreshing0499) {
-                            if (error0499.isNullOrBlank()) {
+                        trips = trips,
+                        bookings = bookings,
+                        store = store,
+                        onChanged = { text -> refresh(); message = text },
+                        onCreateTripForPassenger = { passengerId ->
+                            pendingCreateForPassengerId = passengerId
+                            parentRootScreen0396 = TripScreen.TIMELINE
+                            screen = TripScreen.CREATE
+                        },
+                        addPassengerResumeToken = addPassengerResumeToken,
+                        addPassengerResumePassengerId = addPassengerResumePassengerId,
+                        addPassengerResumeTripId = addPassengerResumeTripId,
+                        onManageLocal = { tripId ->
+                            selectedId = tripId
+                            parentRootScreen0396 = TripScreen.TIMELINE
+                            screen = TripScreen.LIST
+                        },
+                        uiCommand0396 = timelineUiCommand0396,
+                        uiCommandToken0396 = timelineUiCommandToken0396,
+                        focusedTripId = focusedTripId
+                            ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
+                        focusedBookingId = focusedBookingId,
+                        reservationPendingOnly = reservationPendingOnly,
+                        listState = timelineListState,
+                        listModifier = Modifier.weight(1f),
+                        manualRefreshToken0499 = timelineGlobalRefreshToken0540,
+                        lastHandledGlobalRefreshToken0540 = timelineGlobalRefreshHandledToken0540,
+                        onGlobalRefreshStarted0540 = { token0540 ->
+                            timelineGlobalRefreshHandledToken0540 = maxOf(
+                                timelineGlobalRefreshHandledToken0540,
+                                token0540,
+                            )
+                        },
+                        onGlobalRefreshBusy0540 = { busy0540 ->
+                            val wasBusy0540 = timelineGlobalRefreshBusy0540
+                            timelineGlobalRefreshBusy0540 = busy0540
+                            if (wasBusy0540 && !busy0540) {
                                 refresh()
-                                message = "Atualização global solicitada: BlaBlaCar → Agenda → Timeline. O backend canônico permanece secundário."
-                            } else {
-                                message = "Atualização BlaBlaCar → Agenda continua em segundo plano; sincronização canônica secundária indisponível: $error0499"
+                                message = "📡 Atualização global finalizada."
                             }
-                        }
-                    },
-                    onFirstUsableFrame = { renderedItems ->
-                        AgendaTrace.reportTimelineFirstUsableFrame(
-                            activity = activity,
-                            traceId = traceId,
-                            renderedItems = renderedItems,
-                        ) {
-                            if (timelineStartupEnded.compareAndSet(false, true)) {
-                                AgendaTrace.operationEnd(
-                                    activity,
-                                    timelineStartupOperation,
-                                    result = "visual_ready",
-                                    processedCount = renderedItems,
-                                )
+                        },
+                        onCanonicalRefreshState0499 = { refreshing0499, error0499 ->
+                            if (!refreshing0499 && !error0499.isNullOrBlank()) {
+                                message = "Atualização BlaBlaCar → Agenda concluída; sincronização canônica secundária indisponível: $error0499"
                             }
-                        }
-                    },
+                        },
+                        onFirstUsableFrame = { renderedItems ->
+                            AgendaTrace.reportTimelineFirstUsableFrame(
+                                activity = activity,
+                                traceId = traceId,
+                                renderedItems = renderedItems,
+                            ) {
+                                if (timelineStartupEnded.compareAndSet(false, true)) {
+                                    AgendaTrace.operationEnd(
+                                        activity,
+                                        timelineStartupOperation,
+                                        result = "visual_ready",
+                                        processedCount = renderedItems,
+                                    )
+                                }
+                            }
+                        },
                     )
                 }
                 TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(
