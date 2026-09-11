@@ -50,9 +50,10 @@ jobs:
           grep -Fq 'versionCode = 5833' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.541"' app/build.gradle.kts
           grep -Fq '/app.js?v=0.1.541-reserve-blablacar0541' trip-platform/public/index.html
-          grep -Fq 'reserve.textContent = "🟢 Reservar vaga"' trip-platform/public/app.js
-          grep -Fq 'resolveCanonicalBlaBlaReservationUrl(trip)' trip-platform/public/app.js
-          grep -Fq 'navigateToCanonicalBlaBlaReservation(exactReservationUrl)' trip-platform/public/app.js
+          grep -Fq 'reserve0541.textContent = "🟢 Reservar vaga"' trip-platform/public/app.js
+          grep -Fq 'validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)' trip-platform/public/app.js
+          grep -Fq 'reserve0541.href = reservationHref0541' trip-platform/public/app.js
+          grep -Fq 'AGENDA_RESERVATION_PUBLICATION_OPENED_0541' trip-platform/public/app.js
           ! grep -Fq 'Fazer reserva com o motorista' trip-platform/public/app.js
           node --check trip-platform/public/app.js
           node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js
@@ -102,9 +103,10 @@ jobs:
           set -euo pipefail
           test -n "${PREVIEW_URL:-}"
           curl --retry 8 --retry-delay 2 --fail --silent --show-error "$PREVIEW_URL/app.js?sha=$GITHUB_SHA" > /tmp/live-app.js
-          grep -Fq 'reserve.textContent = "🟢 Reservar vaga"' /tmp/live-app.js
-          grep -Fq 'resolveCanonicalBlaBlaReservationUrl(trip)' /tmp/live-app.js
-          grep -Fq 'navigateToCanonicalBlaBlaReservation(exactReservationUrl)' /tmp/live-app.js
+          grep -Fq 'reserve0541.textContent = "🟢 Reservar vaga"' /tmp/live-app.js
+          grep -Fq 'validatedBlaBlaReservationUrl0541(item?.blablaPublicUrl)' /tmp/live-app.js
+          grep -Fq 'reserve0541.href = reservationHref0541' /tmp/live-app.js
+          grep -Fq 'AGENDA_RESERVATION_PUBLICATION_OPENED_0541' /tmp/live-app.js
           ! grep -Fq 'Fazer reserva com o motorista' /tmp/live-app.js
           curl --retry 8 --retry-delay 2 --fail --silent --show-error "$PREVIEW_URL/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
           grep -Fq '/app.js?v=0.1.541-reserve-blablacar0541' /tmp/live-index.html
