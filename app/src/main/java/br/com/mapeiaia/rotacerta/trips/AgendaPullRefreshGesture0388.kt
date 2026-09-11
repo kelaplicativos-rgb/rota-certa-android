@@ -3,11 +3,24 @@ package br.com.mapeiaia.rotacerta.trips
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -20,6 +33,11 @@ internal fun shouldStartAgendaFullRefresh0388(
     timelineActive: Boolean,
     refreshAllRunning: Boolean,
 ): Boolean = timelineActive && !refreshAllRunning
+
+internal fun shouldDispatchAgendaRefreshOnRelease0388(
+    armed: Boolean,
+    refreshRunningAtStart: Boolean,
+): Boolean = armed && !refreshRunningAtStart
 
 internal enum class AgendaPullRefreshOutcome0388 {
     ACCEPTED,
@@ -68,6 +86,21 @@ internal class AgendaPullRefreshGestureGate0388(
         start = position
         eligibleAtStart = canRefreshAtStart
         refreshingAtStart = refreshRunningAtStart
+    }
+
+    fun pullProgress(position: Offset): Float {
+        if (!started || resolved || refreshingAtStart) return 0f
+        val dx = position.x - start.x
+        val dy = position.y - start.y
+        if (dy <= 0f || abs(dy) <= abs(dx) * verticalDominanceRatio) return 0f
+        val slop = touchSlopPx.coerceAtLeast(0f)
+        val triggerPx = if (eligibleAtStart) {
+            slop
+        } else {
+            slop * awayFromTopTriggerMultiplier.coerceAtLeast(1f)
+        }
+        if (triggerPx <= 0f) return 1f
+        return (dy / triggerPx).coerceIn(0f, 1f)
     }
 
     fun onMove(position: Offset): AgendaPullRefreshDecision0388? {
@@ -133,18 +166,63 @@ internal fun TimelineRefreshGestureSurface0388(
     onPointerEnd: (Offset, Boolean) -> Unit = { _, _ -> },
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(
-        modifier = modifier.agendaPullRefreshGestureOwner0388(
-            refreshing = refreshing,
-            canRefreshAtGestureStart = canRefreshAtGestureStart,
-            onRefresh = onRefresh,
-            onDecision = onDecision,
-            onPointerDown = onPointerDown,
-            onPointerEnd = onPointerEnd,
-        ),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        content = content,
-    )
+    var pullProgress0388 by remember { mutableStateOf(0f) }
+    var pullArmed0388 by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .agendaPullRefreshGestureOwner0388(
+                    refreshing = refreshing,
+                    canRefreshAtGestureStart = canRefreshAtGestureStart,
+                    onRefresh = onRefresh,
+                    onDecision = onDecision,
+                    onPointerDown = onPointerDown,
+                    onPointerEnd = onPointerEnd,
+                    onPullProgress = { progress, armed ->
+                        pullProgress0388 = progress
+                        pullArmed0388 = armed
+                    },
+                ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+
+        if (refreshing || pullArmed0388 || pullProgress0388 > 0.05f) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 8.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+                tonalElevation = 6.dp,
+                shadowElevation = 3.dp,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (refreshing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text("Atualizando viagens…", style = MaterialTheme.typography.labelLarge)
+                    } else {
+                        Text(
+                            text = if (pullArmed0388) "↑" else "↓",
+                            style = MaterialTheme.typography.titleLarge,
+                        )
+                        Text(
+                            text = if (pullArmed0388) "Solte para atualizar" else "Puxe para atualizar",
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -155,6 +233,7 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
     onDecision: (AgendaPullRefreshDecision0388) -> Unit = {},
     onPointerDown: (Offset, Boolean, Boolean) -> Unit = { _, _, _ -> },
     onPointerEnd: (Offset, Boolean) -> Unit = { _, _ -> },
+    onPullProgress: (Float, Boolean) -> Unit = { _, _ -> },
 ): Modifier {
     val latestRefreshing by rememberUpdatedState(refreshing)
     val latestCanRefresh by rememberUpdatedState(canRefreshAtGestureStart)
@@ -162,6 +241,7 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
     val latestOnDecision by rememberUpdatedState(onDecision)
     val latestOnPointerDown by rememberUpdatedState(onPointerDown)
     val latestOnPointerEnd by rememberUpdatedState(onPointerEnd)
+    val latestOnPullProgress by rememberUpdatedState(onPullProgress)
     val touchSlop = LocalViewConfiguration.current.touchSlop
 
     return pointerInput(touchSlop) {
@@ -179,6 +259,7 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
                 refreshRunningAtStart = refreshRunningAtStart,
             )
             latestOnPointerDown(down.position, canRefreshAtStart, refreshRunningAtStart)
+            latestOnPullProgress(0f, false)
 
             var accepted = false
             while (true) {
@@ -186,21 +267,30 @@ internal fun Modifier.agendaPullRefreshGestureOwner0388(
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
                 if (!change.pressed) {
                     latestOnPointerEnd(change.position, accepted)
+                    if (shouldDispatchAgendaRefreshOnRelease0388(accepted, refreshRunningAtStart)) {
+                        latestOnRefresh()
+                    }
+                    latestOnPullProgress(0f, false)
                     gate.onUpOrCancel()
                     break
                 }
 
                 if (accepted) {
                     change.consume()
+                    latestOnPullProgress(1f, true)
                     continue
                 }
 
+                val progress = gate.pullProgress(change.position)
+                latestOnPullProgress(progress, progress >= 1f)
                 val decision = gate.onMove(change.position) ?: continue
                 latestOnDecision(decision)
                 if (decision.accepted) {
                     accepted = true
                     change.consume()
-                    latestOnRefresh()
+                    latestOnPullProgress(1f, true)
+                } else {
+                    latestOnPullProgress(0f, false)
                 }
             }
         }

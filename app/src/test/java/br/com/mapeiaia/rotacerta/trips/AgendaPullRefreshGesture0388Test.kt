@@ -109,7 +109,8 @@ class AgendaPullRefreshGesture0388Test {
                 canRefreshAtStart = true,
                 refreshRunningAtStart = refreshRunningAtStart,
             )
-            if (gate.onMove(Offset(0f, 50f))?.accepted == true) {
+            val armed = gate.onMove(Offset(0f, 50f))?.accepted == true
+            if (shouldDispatchAgendaRefreshOnRelease0388(armed, refreshRunningAtStart)) {
                 requestFullTimelineRefresh()
             }
         }
@@ -121,6 +122,26 @@ class AgendaPullRefreshGesture0388Test {
         assertEquals(1, userSyncAllEvents)
         assertEquals(1, pullRequestedEvents)
         assertTrue(refreshAllRunning)
+    }
+
+    @Test
+    fun pullProgressTracksThresholdAtTopAndAwayFromTop() {
+        val topGate = gate(slop = 10f)
+        topGate.onDown(Offset.Zero, canRefreshAtStart = true, refreshRunningAtStart = false)
+        assertEquals(0.5f, topGate.pullProgress(Offset(0f, 5f)))
+        assertEquals(1f, topGate.pullProgress(Offset(0f, 12f)))
+
+        val awayGate = gate(slop = 10f)
+        awayGate.onDown(Offset.Zero, canRefreshAtStart = false, refreshRunningAtStart = false)
+        assertEquals(0.5f, awayGate.pullProgress(Offset(0f, 20f)))
+        assertEquals(1f, awayGate.pullProgress(Offset(0f, 45f)))
+    }
+
+    @Test
+    fun refreshDispatchRequiresReleaseAfterArmingAndNoRunningCycle() {
+        assertFalse(shouldDispatchAgendaRefreshOnRelease0388(armed = false, refreshRunningAtStart = false))
+        assertTrue(shouldDispatchAgendaRefreshOnRelease0388(armed = true, refreshRunningAtStart = false))
+        assertFalse(shouldDispatchAgendaRefreshOnRelease0388(armed = true, refreshRunningAtStart = true))
     }
 
     @Test
