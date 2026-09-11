@@ -72,13 +72,17 @@ jobs:
           const fs = require('fs');
           const { initializeApp, applicationDefault } = require('firebase-admin/app');
           const { getFirestore } = require('firebase-admin/firestore');
-          initializeApp({ credential: applicationDefault() });
+          initializeApp({ credential: applicationDefault(), projectId: 'rota-certa-7ccc8' });
           const db = getFirestore();
           const present = (v) => typeof v === 'string' && v.trim().length > 0;
           (async () => {
-            const tripSnap = await db.collection('trips').where('driverUsername', '==', 'ezequiel').limit(300).get();
-            const mirrorSnap = await db.collection('tripPrivateMirrors0434').where('driverUsername', '==', 'ezequiel').limit(300).get();
+            const [driverSnap, tripSnap, mirrorSnap] = await Promise.all([
+              db.collection('tripDrivers').doc('ezequiel').get(),
+              db.collection('trips').where('driverUsername', '==', 'ezequiel').limit(300).get(),
+              db.collection('tripPrivateMirrors0434').where('driverUsername', '==', 'ezequiel').limit(300).get(),
+            ]);
             const stats = {
+              driverExists: driverSnap.exists,
               tripsTotal: tripSnap.size,
               rootBlaBlaTripIdPresent: 0,
               rootBlaBlaPublicUrlPresent: 0,
@@ -110,7 +114,7 @@ jobs:
             }
             fs.writeFileSync('/tmp/persisted-url-chain.json', JSON.stringify(stats, null, 2));
             console.log(JSON.stringify(stats));
-            if (stats.tripsTotal < 1) process.exit(4);
+            if (!stats.driverExists || stats.tripsTotal < 1) process.exit(4);
           })().catch((error) => {
             console.error('diagnostic_failed', error && error.name);
             process.exit(5);
