@@ -62,7 +62,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm --prefix trip-platform/functions ci --ignore-scripts --no-audit --no-fund
+          npm --prefix trip-platform/functions install --ignore-scripts --no-audit --no-fund --package-lock=false
 
       - name: Classify persisted URL presence without logging URL or identity values
         shell: bash
