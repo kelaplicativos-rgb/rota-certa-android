@@ -26,6 +26,9 @@ class GoogleMapsService(context: Context? = null) {
     private val cachePrefs: SharedPreferences? = context
         ?.applicationContext
         ?.getSharedPreferences(PERSISTENT_CACHE_PREFS, Context.MODE_PRIVATE)
+    private val platformGeocodingService0547: GeocodingService? = context
+        ?.applicationContext
+        ?.let(::GeocodingService)
     private var writesSincePrune = 0
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
@@ -282,27 +285,23 @@ class GoogleMapsService(context: Context? = null) {
 
 
 
-    private fun requestOpenStreetMapAddressRoutes(
+    private suspend fun requestOpenStreetMapAddressRoutes(
         originAddress: String,
         destinations: List<Coordinate>,
     ): List<Double?>? {
         if (originAddress.isBlank() || destinations.isEmpty()) return null
-        val normalizedOrigin = normalizeAddress(originAddress)
-        val originCacheKey = "osm_origin|$normalizedOrigin"
-        val origin = geocodeCache[originCacheKey]
-            ?: readPersistentCoordinate(originCacheKey)?.also { geocodeCache[originCacheKey] = it }
-            ?: requestWithRetry(OSM_GEOCODE_REQUEST_ATTEMPTS) {
-                requestNominatimGeocode(originAddress)
-            }?.also { coordinate ->
-                geocodeCache[originCacheKey] = coordinate
-                persistCoordinate(originCacheKey, coordinate)
-            }
+        val origin = resolveFreePrimaryOrigin0547(originAddress, destinations)
 
         if (origin == null) {
             FarolFlightRecorder0163.record(
                 stage = "OSM_PRIMARY_GEOCODE_FAILED_0546",
                 packageName = null,
-                details = "destinations=${destinations.size}",
+                details = "destinations=${destinations.size}; resolver=0547",
+            )
+            FarolFlightRecorder0163.record(
+                stage = "GEOCODE_RESOLUTION_FAILED_0547",
+                packageName = null,
+                details = "query=${originAddress.take(160)}; destinations=${destinations.size}",
             )
             return null
         }
@@ -315,15 +314,148 @@ class GoogleMapsService(context: Context? = null) {
         FarolFlightRecorder0163.record(
             stage = "OSM_PRIMARY_ROUTE_RESULT_0546",
             packageName = null,
-            details = "resolved=${values.count { it != null }}; destinations=${destinations.size}",
+            details = "resolved=${values.count { it != null }}; destinations=${destinations.size}; geocodeResolver=0547",
         )
         return values.takeIf { list -> list.any { it != null } }
     }
 
-    private fun requestNominatimGeocode(query: String): Coordinate? {
+    private suspend fun resolveFreePrimaryOrigin0547(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): Coordinate? {
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val originCacheKey = "osm_origin|$normalizedOrigin"
+        geocodeCache[originCacheKey]?.let { coordinate ->
+            FarolFlightRecorder0163.record(
+                stage = "GEOCODE_CACHE_HIT_0547",
+                packageName = null,
+                details = "layer=memory",
+            )
+            return coordinate
+        }
+        readPersistentCoordinate(originCacheKey)?.let { coordinate ->
+            geocodeCache[originCacheKey] = coordinate
+            FarolFlightRecorder0163.record(
+                stage = "GEOCODE_CACHE_HIT_0547",
+                packageName = null,
+                details = "layer=persistent",
+            )
+            return coordinate
+        }
+
+        val queries = geocodeQueries0547(originAddress)
+        FarolFlightRecorder0163.record(
+            stage = "GEOCODE_RESOLUTION_START_0547",
+            packageName = null,
+            details = "queries=${queries.size}; destinations=${destinations.size}; malformedParenthesis=${originAddress.count { it == '(' } != originAddress.count { it == ')' }}",
+        )
+
+        queries.forEachIndexed { index, query ->
+            val candidates = requestWithRetry(OSM_GEOCODE_REQUEST_ATTEMPTS) {
+                requestNominatimGeocodeCandidates0547(query)
+            }.orEmpty()
+            val selected = selectNearestGeocodeCandidate0547(candidates, destinations)
+            FarolFlightRecorder0163.record(
+                stage = "GEOCODE_QUERY_RESULT_0547",
+                packageName = null,
+                details = "provider=nominatim; index=$index; candidates=${candidates.size}; selected=${selected != null}; query=${query.take(160)}",
+            )
+            if (selected != null) {
+                geocodeCache[originCacheKey] = selected
+                persistCoordinate(originCacheKey, selected)
+                return selected
+            }
+        }
+
+        val platformGeocoder = platformGeocodingService0547
+        if (platformGeocoder != null) {
+            queries.forEachIndexed { index, query ->
+                val selected = platformGeocoder.geocode(
+                    query = query,
+                    region = DeviceRegion(city = "", country = ""),
+                )
+                FarolFlightRecorder0163.record(
+                    stage = "GEOCODE_ANDROID_FALLBACK_0547",
+                    packageName = null,
+                    details = "index=$index; selected=${selected != null}; query=${query.take(160)}",
+                )
+                if (selected != null) {
+                    geocodeCache[originCacheKey] = selected
+                    persistCoordinate(originCacheKey, selected)
+                    return selected
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * 0.1.547: corrige texto de card antes da geocodificacao sem inventar localidade.
+     * O inDrive pode entregar um parenteses de bairro aberto e sem fechamento, como
+     * "Rua Flores da Primavera, 263 (Conjunto Promorar Rio Claro, São Paulo - SP".
+     * A consulta preserva rua/numero/cidade/UF e oferece uma segunda forma removendo
+     * apenas o bairro. Nunca faz fallback para uma rua nacional sem cidade/UF.
+     */
+    internal fun geocodeQueries0547(originAddress: String): List<String> {
+        val compact = originAddress.trim().replace(Regex("""\s+"""), " ")
+        if (compact.isBlank()) return emptyList()
+
+        val punctuationNormalized = compact
+            .replace('(', ',')
+            .replace(')', ' ')
+            .replace(Regex("""\s*,\s*"""), ", ")
+            .replace(Regex(""",\s*,+"""), ", ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .trimEnd(',')
+
+        val simplified = Regex(
+            """^(.+?,\s*\d+[A-Za-z]?)\s*,?.*?,\s*([^,]+?)\s*-\s*([A-Za-z]{2})\s*$""",
+        ).matchEntire(punctuationNormalized)?.let { match ->
+            val streetAndNumber = match.groupValues[1].trim().trimEnd(',')
+            val city = match.groupValues[2].trim()
+            val state = match.groupValues[3].uppercase(Locale.ROOT)
+            "$streetAndNumber, $city - $state"
+        }
+
+        return linkedSetOf(punctuationNormalized, simplified)
+            .filterNotNull()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+    }
+
+    internal fun selectNearestGeocodeCandidate0547(
+        candidates: List<Coordinate>,
+        destinations: List<Coordinate>,
+    ): Coordinate? {
+        if (candidates.isEmpty()) return null
+        if (destinations.isEmpty()) return candidates.first()
+        return candidates.minByOrNull { candidate ->
+            destinations.minOf { destination -> straightLineKm0547(candidate, destination) }
+        }
+    }
+
+    private fun straightLineKm0547(a: Coordinate, b: Coordinate): Double {
+        val lat1 = Math.toRadians(a.latitude)
+        val lat2 = Math.toRadians(b.latitude)
+        val deltaLat = lat2 - lat1
+        val deltaLon = Math.toRadians(b.longitude - a.longitude)
+        val sinLat = kotlin.math.sin(deltaLat / 2.0)
+        val sinLon = kotlin.math.sin(deltaLon / 2.0)
+        val haversine = sinLat * sinLat +
+            kotlin.math.cos(lat1) * kotlin.math.cos(lat2) * sinLon * sinLon
+        return 2.0 * 6371.0088 * kotlin.math.asin(kotlin.math.sqrt(haversine.coerceIn(0.0, 1.0)))
+    }
+
+    private fun requestNominatimGeocode(query: String): Coordinate? =
+        requestNominatimGeocodeCandidates0547(query)?.firstOrNull()
+
+    private fun requestNominatimGeocodeCandidates0547(query: String): List<Coordinate>? {
         val encodedAddress = URLEncoder.encode(query.trim(), "UTF-8")
         val url = URL(
-            "$OSM_NOMINATIM_URL?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR&q=$encodedAddress",
+            "$OSM_NOMINATIM_URL?format=jsonv2&limit=5&countrycodes=br&accept-language=pt-BR&q=$encodedAddress",
         )
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
@@ -340,20 +472,24 @@ class GoogleMapsService(context: Context? = null) {
                 FarolFlightRecorder0163.record(
                     stage = "OSM_PRIMARY_GEOCODE_HTTP_0546",
                     packageName = null,
-                    details = "code=$code",
+                    details = "code=$code; resolver=0547",
                 )
                 return null
             }
             val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val first = json.parseToJsonElement(body).jsonArray.firstOrNull()?.jsonObject ?: return null
-            val latitude = first["lat"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
-            val longitude = first["lon"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
-            Coordinate(latitude, longitude)
+            json.parseToJsonElement(body).jsonArray.mapNotNull { item ->
+                val objectValue = item.jsonObject
+                val latitude = objectValue["lat"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                    ?: return@mapNotNull null
+                val longitude = objectValue["lon"]?.jsonPrimitive?.content?.toDoubleOrNull()
+                    ?: return@mapNotNull null
+                Coordinate(latitude, longitude)
+            }
         } catch (error: Throwable) {
             FarolFlightRecorder0163.record(
                 stage = "OSM_PRIMARY_GEOCODE_ERROR_0546",
                 packageName = null,
-                details = "error=${error::class.java.simpleName}:${error.message}",
+                details = "error=${error::class.java.simpleName}:${error.message}; resolver=0547",
             )
             null
         } finally {
