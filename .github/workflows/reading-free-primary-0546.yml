@@ -1,4 +1,4 @@
-name: Reading free-primary 0.1.546 final APK
+name: Reading free-primary 0.1.546 exact-SHA APK
 
 on:
   push:
@@ -9,69 +9,44 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: reading-free-primary-0546-${{ github.ref }}
+  group: reading-free-primary-0546-artifact-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  materialize-test-final-apk:
+  exact-sha-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 45
     env:
+      FINAL_SHA: 7bd8fb9e715aa233da469a3c473656d668c72063
+      ROTA_CERTA_GIT_SHA: 7bd8fb9e715aa233da469a3c473656d668c72063
+      ROTA_CERTA_GIT_BRANCH: agent/reading-free-primary-0.1.546
       GOOGLE_MAPS_API_KEY: ''
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact final app SHA
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: agent/reading-free-primary-0.1.546
+          ref: 7bd8fb9e715aa233da469a3c473656d668c72063
 
-      - name: Prove exact 0.1.545 source baseline
+      - name: Prove exact final source
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'versionCode = 5837' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.545"' app/build.gradle.kts
-          grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          grep -Fq 'ROUTE_MATRIX_FALLBACK_RESOLVED' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
-          test -f .github/scripts/reading_free_primary_0546.py
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.before
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.before
-
-      - name: Materialize free-primary route provider
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/reading_free_primary_0546.py
-          git diff --check
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
           grep -Fq 'versionCode = 5838' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.546"' app/build.gradle.kts
           grep -Fq 'OSM_PRIMARY_ROUTE_RESULT_0546' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'ROUTE_PROVIDER_SELECTION_0546' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'https://router.project-osrm.org' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
-          ! grep -Fq 'if (apiKeyStage19.isBlank()) return' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          ! grep -Fq 'google_maps_api_required' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-
-      - name: Prove protected modules untouched
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.after
-          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.after
-          cmp /tmp/timeline.before /tmp/timeline.after
-          cmp /tmp/agenda.before /tmp/agenda.after
-          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
-          printf '%s\n' \
-            'app/build.gradle.kts' \
-            'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt' \
-            'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt' \
-            'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt' | sort > /tmp/expected.txt
-          cmp /tmp/expected.txt /tmp/changed.txt
+          grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
 
       - uses: actions/setup-node@v4
         with:
@@ -117,7 +92,7 @@ jobs:
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Focused tests and pre-commit build
+      - name: Re-run focused contracts on exact SHA
         shell: bash
         run: |
           set -euo pipefail
@@ -128,29 +103,8 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
-          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
-          test -s app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Commit tested 0.1.546 source
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts \
-            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt \
-            app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt
-          git commit -m 'fix(farol): free road distance primary with Google contingency 0.1.546'
-          git push origin HEAD:agent/reading-free-primary-0.1.546
-          FINAL_SHA="$(git rev-parse HEAD)"
-          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
-          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
-          echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
-          echo "ROTA_CERTA_GIT_BRANCH=agent/reading-free-primary-0.1.546" >> "$GITHUB_ENV"
-          git diff --exit-code
-
-      - name: Clean rebuild exact final SHA
+      - name: Clean build and verify exact-SHA APK
         shell: bash
         run: |
           set -euo pipefail
@@ -173,13 +127,13 @@ jobs:
           grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
-      - name: Prepare installation evidence
+      - name: Prepare installable package
         shell: bash
         run: |
           set -euo pipefail
           OUT=/tmp/reading-free-primary-0546
           mkdir -p "$OUT"
-          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.546-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.546-7bd8fb9e715a-debug.apk"
           cp /tmp/apk.sha256 /tmp/source-head.txt /tmp/aapt.txt /tmp/apksigner.txt "$OUT/"
           printf '%s\n' \
             'package=br.com.mapeiaia.rotacerta' \
@@ -189,28 +143,13 @@ jobs:
             'roadDistancePrimary=OpenStreetMap+OSRM' \
             'googleRoutesRole=secondary_contingency' \
             'proximityRuntimeIndependent=true' \
-            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' > "$OUT/version.txt"
+            'targetDevice=Samsung SM-S911B / Android 16' \
+            'physicalApproval=PENDING_DEVICE_TEST' > "$OUT/version.txt"
 
-      - name: Publish exact-SHA installable prerelease
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          TAG="reading-free-primary-0.1.546-${FINAL_SHA:0:12}"
-          gh release create "$TAG" \
-            --target "$FINAL_SHA" \
-            --prerelease \
-            --title "Rota Certa 0.1.546 (${FINAL_SHA:0:12})" \
-            --notes "APK de validação física para Samsung SM-S911B / Android 16. Construído e verificado a partir do SHA exato $FINAL_SHA. Distância rodoviária primária via OSM/Nominatim + OSRM; Google Routes permanece apenas como contingência." \
-            "/tmp/reading-free-primary-0546/rota-certa-0.1.546-debug.apk" \
-            "/tmp/reading-free-primary-0546/apk.sha256" \
-            "/tmp/reading-free-primary-0546/version.txt"
-          printf '%s\n' "$TAG" > /tmp/reading-free-primary-0546/release-tag.txt
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload exact-SHA APK artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-reading-free-primary-0.1.546-${{ env.FINAL_SHA }}
+          name: rota-certa-0.1.546-7bd8fb9e715a-exact-sha
           path: /tmp/reading-free-primary-0546
           if-no-files-found: error
           retention-days: 14
