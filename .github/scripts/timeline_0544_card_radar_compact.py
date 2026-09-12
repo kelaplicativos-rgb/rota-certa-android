@@ -74,7 +74,9 @@ expanded_replacement = '''            if (expanded) {
                     ) {
                         Text(if (reverifyPending0407) "📡 …" else "📡")
                     }
-                    TextButton(onClick = { actionMenuExpanded0407 = true }) { Text("⋮") }
+                    TextButton(
+                        onClick = { actionMenuExpanded0407 = true },
+                    ) { Text("⋮") }
                 }
 
 '''
@@ -88,18 +90,12 @@ ui = replace_once(
     "compact allocation line",
 )
 
-ui = replace_once(
-    ui,
-    '                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")',
-    '                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")',
-    "compact configured occupancy",
-)
-ui = replace_once(
-    ui,
-    '                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")',
-    '                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")',
-    "compact reserved occupancy",
-)
+occupancy_old = '                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")'
+occupancy_new = '                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")'
+if ui.count(occupancy_old) != 2:
+    fail(f"compact occupancy: expected 2 baseline anchors, found {ui.count(occupancy_old)}")
+ui = ui.replace(occupancy_old, occupancy_new)
+
 ui = replace_once(
     ui,
     '                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: $emptyFree $availabilityLabel")',
