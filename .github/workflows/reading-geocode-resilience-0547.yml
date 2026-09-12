@@ -1,0 +1,208 @@
+name: Reading geocode resilience 0.1.547 exact-SHA APK
+
+on:
+  push:
+    branches:
+      - agent/reading-geocode-resilience-0.1.547
+    paths:
+      - '.github/triggers/reading-geocode-resilience-0547.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reading-geocode-resilience-0547-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  materialize-test-final-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ''
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+    steps:
+      - name: Checkout 0.1.546 field-proven baseline
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/reading-geocode-resilience-0.1.547
+
+      - name: Prove exact functional baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 5838' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.546"' app/build.gradle.kts
+          grep -Fq 'OSM_PRIMARY_ROUTE_RESULT_0546' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'OSM_PRIMARY_GEOCODE_FAILED_0546' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test -f .github/scripts/reading_geocode_resilience_0547.py
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/live.before
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.before
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.before
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt > /tmp/android-services.before
+
+      - name: Materialize geocode resilience 0.1.547
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/reading_geocode_resilience_0547.py
+          git diff --check
+          grep -Fq 'versionCode = 5839' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.547"' app/build.gradle.kts
+          grep -Fq 'GEOCODE_RESOLUTION_START_0547' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'GEOCODE_ANDROID_FALLBACK_0547' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'Rua Flores da Primavera, 263' app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
+
+      - name: Prove protected modules untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/live.after
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.after
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.after
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/AndroidServices.kt > /tmp/android-services.after
+          cmp /tmp/live.before /tmp/live.after
+          cmp /tmp/timeline.before /tmp/timeline.after
+          cmp /tmp/agenda.before /tmp/agenda.after
+          cmp /tmp/android-services.before /tmp/android-services.after
+          { git diff --name-only; git ls-files --others --exclude-standard; } | sort -u > /tmp/changed.txt
+          printf '%s\n' \
+            'app/build.gradle.kts' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt' | sort > /tmp/expected.txt
+          cmp /tmp/expected.txt /tmp/changed.txt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for build only
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused geocode and FAROL regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit tested 0.1.547 application source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/build.gradle.kts \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
+          git commit -m 'fix(farol): resilient card geocoding 0.1.547'
+          git push origin HEAD:agent/reading-geocode-resilience-0.1.547
+          FINAL_SHA="$(git rev-parse HEAD)"
+          printf '%s\n' "$FINAL_SHA" | tee /tmp/source-head.txt
+          echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/reading-geocode-resilience-0.1.547" >> "$GITHUB_ENV"
+          git diff --exit-code
+
+      - name: Clean rebuild exact final SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          ./gradlew :app:clean :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5839'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.547'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
+          grep -Fq "$FINAL_SHA" /tmp/dex-strings.txt
+          grep -Fq 'GEOCODE_RESOLUTION_START_0547' /tmp/dex-strings.txt
+          grep -Fq 'GEOCODE_ANDROID_FALLBACK_0547' /tmp/dex-strings.txt
+          grep -Fq 'OSM_PRIMARY_ROUTE_RESULT_0546' /tmp/dex-strings.txt
+          grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' /tmp/dex-strings.txt
+          sha256sum "$APK" | tee /tmp/apk.sha256
+
+      - name: Prepare installable package
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT=/tmp/reading-geocode-resilience-0547
+          mkdir -p "$OUT"
+          cp app/build/outputs/apk/debug/app-debug.apk "$OUT/rota-certa-0.1.547-debug.apk"
+          cp /tmp/apk.sha256 /tmp/source-head.txt /tmp/aapt.txt /tmp/apksigner.txt "$OUT/"
+          printf '%s\n' \
+            'package=br.com.mapeiaia.rotacerta' \
+            'versionName=0.1.547' \
+            'versionCode=5839' \
+            "sourceSha=$FINAL_SHA" \
+            'fixScope=geocode_resilience_only' \
+            'malformedCardAddressNormalization=true' \
+            'nominatimCandidateDisambiguation=nearest_configured_target' \
+            'androidKeylessGeocoderFallback=true' \
+            'googleRoutesRole=secondary_contingency' \
+            'liveRideDecisionUntouched=true' \
+            'proximityRuntimeUntouched=true' \
+            'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' > "$OUT/version.txt"
+
+      - name: Upload exact-SHA APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.547-${{ env.FINAL_SHA }}-exact-sha
+          path: /tmp/reading-geocode-resilience-0547
+          if-no-files-found: error
+          retention-days: 14
