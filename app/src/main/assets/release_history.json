@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "releases": [
+    {
+      "version": "0.1.550",
+      "build": 5842,
+      "commit": null,
+      "branch": null,
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Central de versões e memória técnica dentro de Sobre o Rota Certa.",
+        "Histórico local expansível com filtro dinâmico por módulo e identificação da versão instalada.",
+        "Seção de problemas conhecidos com suporte ao ciclo introduzida → corrigida → validada.",
+        "Relatório sanitizado e copiável da versão instalada."
+      ],
+      "fixed": [],
+      "improved": [
+        "Metadados objetivos da build instalada continuam vindo do BuildConfig por meio de AppBuildInfo.",
+        "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Sobre"
+      ],
+      "detailsComplete": true
+    },
+    {
+      "version": "0.1.549",
+      "build": 5841,
+      "commit": "842e4b9a7ebafbbe4970179030124e2c3d586fe0",
+      "branch": "agent/timeline-agenda-card-parity-0.1.549",
+      "generatedAt": null,
+      "status": null,
+      "implemented": [],
+      "fixed": [],
+      "improved": [],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline"
+      ],
+      "detailsComplete": false
+    },
+    {
+      "version": "0.1.548",
+      "build": 5840,
+      "commit": "27b1a28ac0d3c3220fdca3e0a9116af7af77d29c",
+      "branch": "agent/timeline-temporal-cutoff-0.1.548",
+      "generatedAt": null,
+      "status": null,
+      "implemented": [],
+      "fixed": [],
+      "improved": [],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline"
+      ],
+      "detailsComplete": false
+    }
+  ],
+  "regressions": []
+}
