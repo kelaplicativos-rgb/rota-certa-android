@@ -2001,7 +2001,7 @@ private fun TimelineEntryCard(
         colors = CardDefaults.cardColors(containerColor = profileColors.background),
         border = BorderStroke(1.dp, profileColors.border),
     ) {
-        Column(modifier = Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             val departureDateTime0536 = Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault())
             val arrivalDateTime0536 = entry.arrivalAtMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
             val date0536 = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.getDefault()).format(departureDateTime0536)
@@ -2079,7 +2079,21 @@ private fun TimelineEntryCard(
             }
 
             if (expanded) {
-                Text("RESUMO DA VIAGEM", style = MaterialTheme.typography.labelLarge, color = profileColors.border)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        enabled = tripTarget0407 != null && !reverifyPending0407,
+                        onClick = queueTargetCollectorRefresh0517,
+                    ) {
+                        Text(if (reverifyPending0407) "📡 …" else "📡")
+                    }
+                    TextButton(
+                        onClick = { actionMenuExpanded0407 = true },
+                    ) { Text("⋮") }
+                }
 
             val allocation = tripChannelAllocationBreakdown(
                 entry.capacity,
@@ -2091,7 +2105,7 @@ private fun TimelineEntryCard(
 
             if (allocation.blablaQuota != null || allocation.rotaCertaQuota != null) {
                 Text(
-                    "Cota BlaBlaCar: ${allocation.blablaQuota ?: 0} • Cota Rota Certa: ${allocation.rotaCertaQuota ?: 0} • Inventário operacional: ${allocation.operationalInventory ?: entry.capacity}",
+                    "BlaBlaCar ${allocation.blablaQuota ?: 0} • Rota Certa ${allocation.rotaCertaQuota ?: 0} • Operacional ${allocation.operationalInventory ?: entry.capacity}",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -2109,19 +2123,19 @@ private fun TimelineEntryCard(
             when (timelineOccupancyReadState(entry)) {
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
                     val availabilityLabel = statusMark(entry)
-                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
+                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")
                     if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
                 }
                 TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
                     Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
                 TimelineOccupancyReadState.RESERVED -> {
                     val availabilityLabel = statusMark(entry)
-                    Text("👥 Passageiros confirmados: $passengers • 🪑 Vagas disponíveis: ${free ?: 0} $availabilityLabel")
+                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")
                 }
                 TimelineOccupancyReadState.COMPLETE_EMPTY -> {
                     val emptyFree = free ?: operationalInventory ?: 0
                     val availabilityLabel = statusMark(entry)
-                    Text("👥 Passageiros confirmados: 0 • 🪑 Vagas disponíveis: $emptyFree $availabilityLabel")
+                    Text("👥 0 confirmado(s) • 🪑 $emptyFree vaga(s) $availabilityLabel")
                 }
                 TimelineOccupancyReadState.PENDING ->
                     Text("Ocupação aguardando leitura ${statusMark(entry)}")
@@ -2132,25 +2146,8 @@ private fun TimelineEntryCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val verificationLabel0407 = blaBlaVerificationLabel0407(
-                    audit = commandAudit0407,
-                    lastObservedAtMillis = lastObservedAt0407,
-                    strongTargetAvailable = tripTarget0407 != null,
-                )
-                Text(verificationLabel0407, style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        enabled = tripTarget0407 != null && !reverifyPending0407,
-                        onClick = queueTargetCollectorRefresh0517,
-                    ) { Text("📡") }
-                    if (BlaBlaTripAction0407.REVERIFY in actionPalette0407.primary) {
-                        TextButton(
-                            enabled = !reverifyPending0407,
-                            onClick = queueReverify0407,
-                        ) { Text("🔄 Verificar") }
-                    }
                     Box {
-                        TextButton(onClick = { actionMenuExpanded0407 = true }) { Text("⋮") }
                         DropdownMenu(
                             expanded = actionMenuExpanded0407,
                             onDismissRequest = { actionMenuExpanded0407 = false },
