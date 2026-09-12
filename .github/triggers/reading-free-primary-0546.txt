@@ -1,2 +1,3 @@
-trigger reading-free-primary 0.1.546 exact-SHA build
-retry=5
+trigger reading-free-primary 0.1.546 exact-SHA artifact build
+retry=6
+source=7bd8fb9e715aa233da469a3c473656d668c72063
