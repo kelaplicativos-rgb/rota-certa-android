@@ -12,8 +12,8 @@ permissions:
   contents: write
 
 jobs:
-  materialize-timeline-temporal-cutoff:
-    runs-on: ubuntu-24.04
+  materialize:
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -21,178 +21,25 @@ jobs:
           ref: agent/timeline-temporal-cutoff-0.1.548
           fetch-depth: 1
 
-      - name: Apply surgical Timeline-only temporal cutoff
+      - name: Apply Timeline UI cutoff only
+        run: python3 .github/scripts/materialize-timeline-temporal-cutoff-0548.py
+
+      - name: Prove surgical diff
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              file = Path(path)
-              text = file.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one match, got {count}")
-              file.write_text(text.replace(old, new, 1))
-
-          ui = 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
-          gradle = 'app/build.gradle.kts'
-          helper = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548.kt')
-          test = Path('app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548Test.kt')
-
-          if helper.exists() or test.exists():
-              raise SystemExit('0.1.548 temporal cutoff files already exist; refusing to overwrite')
-
-          replace_once(
-              ui,
-              '''    var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
-    var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
-    val settingsRepository = remember(context) { SettingsRepository(context) }
-''',
-              '''    var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
-    var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
-    var timelineNowMillis0548 by remember { mutableStateOf(System.currentTimeMillis()) }
-    val settingsRepository = remember(context) { SettingsRepository(context) }
-''',
-          )
-
-          replace_once(
-              ui,
-              '''        while (true) {
-            currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
-            delay(30_000L)
-        }
-''',
-              '''        while (true) {
-            timelineNowMillis0548 = System.currentTimeMillis()
-            currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
-            delay(30_000L)
-        }
-''',
-          )
-
-          replace_once(
-              ui,
-              '''    val entries = remember(canonicalProjection0494.entries, archiveRevision, showArchived) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_CANONICAL_SORT_0494", "TripTimelineScreen", traceId)
-        try {
-            canonicalProjection0494.entries
-                .filter { archiveStore.isArchived(it) == showArchived }
-                .sortedBy(TripTimelineEntry::departureAtMillis)
-''',
-              '''    val entries = remember(
-        canonicalProjection0494.entries,
-        archiveRevision,
-        showArchived,
-        timelineNowMillis0548,
-    ) {
-        val operation = AgendaTrace.operationStart(context, "TIMELINE_CANONICAL_SORT_0494", "TripTimelineScreen", traceId)
-        try {
-            canonicalProjection0494.entries
-                .filter { archiveStore.isArchived(it) == showArchived }
-                .filter { entry ->
-                    showArchived || isPassengerTimelineCurrentOrUpcoming0548(
-                        departureAtMillis = entry.departureAtMillis,
-                        arrivalAtMillis = entry.arrivalAtMillis,
-                        nowMillis = timelineNowMillis0548,
-                    )
-                }
-                .sortedBy(TripTimelineEntry::departureAtMillis)
-''',
-          )
-
-          helper.write_text('''package br.com.mapeiaia.rotacerta.trips
-
-/**
- * Operational Timeline temporal cutoff.
- *
- * This is intentionally a render/projection rule only. It never deletes or
- * mutates canonical Agenda data. A trip remains operationally visible while it
- * is in progress and disappears only after its valid arrival boundary passes.
- */
-internal fun isPassengerTimelineCurrentOrUpcoming0548(
-    departureAtMillis: Long,
-    arrivalAtMillis: Long?,
-    nowMillis: Long,
-): Boolean {
-    val validArrivalAtMillis = arrivalAtMillis?.takeIf { arrival ->
-        arrival > 0L && arrival >= departureAtMillis
-    }
-    return validArrivalAtMillis?.let { it >= nowMillis }
-        ?: (departureAtMillis >= nowMillis)
-}
-''')
-
-          test.write_text('''package br.com.mapeiaia.rotacerta.trips
-
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
-
-class PassengerTimelineTemporalCutoff0548Test {
-    private val now = 1_000_000L
-
-    @Test fun endedTripIsHiddenFromOperationalTimeline() {
-        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now - 1L, now))
-    }
-
-    @Test fun ongoingTripRemainsVisibleUntilArrival() {
-        assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now + 20_000L, now))
-    }
-
-    @Test fun futureTripRemainsVisible() {
-        assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now + 20_000L, now + 40_000L, now))
-    }
-
-    @Test fun exactArrivalBoundaryIsStillVisible() {
-        assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now, now))
-    }
-
-    @Test fun oneMillisecondAfterArrivalIsHidden() {
-        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now - 1L, now))
-    }
-
-    @Test fun missingArrivalFallsBackToDeparture() {
-        assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now + 1L, null, now))
-        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(now - 1L, null, now))
-    }
-
-    @Test fun invalidArrivalFallsBackToDepartureWithoutInventingDuration() {
-        assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now + 1L, 1L, now))
-        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(now - 1L, 1L, now))
-    }
-}
-''')
-
-          replace_once(
-              gradle,
-              '        versionCode = 5839\n        versionName = "0.1.547"',
-              '        versionCode = 5840\n        versionName = "0.1.548"',
-          )
-          PY
-
           git diff --check
-          git diff --name-only | tee /tmp/changed.txt
-          test "$(wc -l < /tmp/changed.txt)" -eq 4
-          grep -Fxq 'app/build.gradle.kts' /tmp/changed.txt
-          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt' /tmp/changed.txt
-          grep -Fxq 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548.kt' /tmp/changed.txt
-          grep -Fxq 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548Test.kt' /tmp/changed.txt
+          test "$(git diff --name-only | wc -l)" -eq 1
+          test "$(git diff --name-only)" = "app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt"
           grep -Fq 'timelineNowMillis0548' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'isPassengerTimelineCurrentOrUpcoming0548' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'versionCode = 5840' app/build.gradle.kts
-          grep -Fq 'versionName = "0.1.548"' app/build.gradle.kts
 
-      - name: Persist exact source correction
+      - name: Persist Timeline UI correction
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt \
-                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548.kt \
-                  app/src/test/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548Test.kt
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           git commit -m 'fix(timeline): hide ended trips from operational view 0.1.548'
           git push origin HEAD:agent/timeline-temporal-cutoff-0.1.548
