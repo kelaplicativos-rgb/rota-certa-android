@@ -1,3 +1,4 @@
+import groovy.json.JsonSlurper
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -57,6 +58,8 @@ val buildGeneratedAt = firstNonBlank(System.getenv("ROTA_CERTA_BUILD_TIME")).ifB
 val minimumVersionCode = 5_020
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
 val appVersionCode = ciVersionCode ?: minimumVersionCode
+val releaseVersionCode = 5_842
+val releaseVersionName = "0.1.550"
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
@@ -94,8 +97,8 @@ android {
         applicationId = "br.com.mapeiaia.rotacerta"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5841
-        versionName = "0.1.549"
+        versionCode = releaseVersionCode
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
@@ -139,6 +142,33 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+val releaseHistoryFile = layout.projectDirectory.file("src/main/assets/release_history.json").asFile
+val verifyReleaseHistory by tasks.registering {
+    group = "verification"
+    description = "Verifies that the installed release has exactly one authoritative semantic history record."
+    inputs.file(releaseHistoryFile)
+    doLast {
+        require(releaseHistoryFile.isFile) {
+            "Missing authoritative release history: ${releaseHistoryFile.path}"
+        }
+        val root = JsonSlurper().parse(releaseHistoryFile) as? Map<*, *>
+            ?: error("release_history.json must contain a JSON object")
+        val releases = root["releases"] as? List<*>
+            ?: error("release_history.json must contain a releases array")
+        val matches = releases.mapNotNull { it as? Map<*, *> }.filter { release ->
+            release["version"] == releaseVersionName &&
+                (release["build"] as? Number)?.toInt() == releaseVersionCode
+        }
+        require(matches.size == 1) {
+            "Expected exactly one history record for $releaseVersionName/$releaseVersionCode; found ${matches.size}"
+        }
+    }
+}
+
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn(verifyReleaseHistory)
 }
 
 dependencies {
