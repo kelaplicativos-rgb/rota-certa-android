@@ -34,7 +34,7 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         val base = AppSettings(appEnabled = true, liveReadingEnabled = true)
         val off = FarolManualToggleRuntimeSyncStage43.withEnabled(base, false)
         assertFalse(FarolManualToggleRuntimeSyncStage43.enabled(off))
-        assertFalse(off.appEnabled)
+        assertTrue(off.appEnabled)
         assertFalse(off.liveReadingEnabled)
         val on = FarolManualToggleRuntimeSyncStage43.withEnabled(off, true)
         assertTrue(FarolManualToggleRuntimeSyncStage43.enabled(on))
@@ -76,7 +76,7 @@ class FarolStage43ManualToggleRuntimeSyncTest {
         assertTrue(a >= 0 && b > a)
         val block = s.substring(a, b)
         val assign = block.indexOf("currentSettings = updatedStage43")
-        val runtime = block.indexOf("applyWorkModeRuntime0162(enabledStage43, force0162 = true)")
+        val runtime = block.indexOf("applyManualReadingRuntimeStage43(enabledStage43)")
         assertTrue(assign >= 0)
         assertTrue(runtime > assign)
         assertTrue(block.contains("stage43LastAppliedManualReading"))
@@ -107,8 +107,8 @@ class FarolStage43ManualToggleRuntimeSyncTest {
 
     @Test fun manualOffForcesRealGrayCommitWithoutPremutatingLogicalColor() {
         val s = source("LiveRideAccessibilityService.kt")
-        val a = s.indexOf("    private fun applyWorkModeRuntime0162(")
-        val b = s.indexOf("    private fun ensureDriverCardSession0162(", a)
+        val a = s.indexOf("    private fun applyManualReadingRuntimeStage43(")
+        val b = s.indexOf("    private fun applyWorkModeRuntime0162(", a)
         assertTrue(a >= 0 && b > a)
         val block = s.substring(a, b)
         assertTrue(block.contains("stage36RuntimeAuthority.setManualAuthority(enabled0162)"))
@@ -168,7 +168,7 @@ class FarolStage43ManualToggleRuntimeSyncTest {
 
     @Test fun manualOnKeepsTheNormalNonForcedYellowAuthorityPath() {
         val s = source("LiveRideAccessibilityService.kt")
-        val a = s.indexOf("    private fun applyWorkModeRuntime0162(")
+        val a = s.indexOf("    private fun applyManualReadingRuntimeStage43(")
         val b = s.indexOf("        driverCardSessionGate0162.invalidate()", a)
         val onBlock = s.substring(a, b)
         assertTrue(onBlock.contains("showOverlay(RadarColor.Idle, null)"))

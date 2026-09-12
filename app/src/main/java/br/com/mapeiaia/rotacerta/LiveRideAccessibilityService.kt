@@ -1093,7 +1093,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         traceEvent(
             "stage43.manual_runtime source=$sourceStage43 enabled=$enabledStage43 serial=$stage43ManualTransitionSerial",
         )
-        applyWorkModeRuntime0162(enabledStage43, force0162 = true)
+        applyManualReadingRuntimeStage43(enabledStage43)
     }
 
     private fun applyManualReadingCommandStage43(enabledStage43: Boolean, sourceStage43: String) {
@@ -1102,6 +1102,76 @@ class LiveRideAccessibilityService : AccessibilityService() {
         // is safely deduplicated by stage43LastAppliedManualReading.
         applyPersistedManualReadingStage43(updatedStage43, sourceStage43, forceStage43 = true)
         scope.launch { runCatching { repository.saveSettings(updatedStage43) } }
+    }
+
+
+    private fun applyManualReadingRuntimeStage43(enabledStage43: Boolean) {
+        if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.setManualAuthority(enabledStage43)
+        stage26ReadingActivation.setManualAuthority(enabledStage43)
+        farolRealtimeEventGate0167.reset()
+        if (enabledStage43) {
+            lastRejectedForegroundPackage0162 = null
+            UnifiedDebugEventStore.record(
+                "MANUAL_READING_RUNTIME_STAGE43",
+                packageName,
+                "enabled=true; proximity_runtime_preserved=true",
+            )
+            showOverlay(RadarColor.Idle, null)
+            scheduleVisibleTextAnalysis(delayMs = 0L)
+            return
+        }
+
+        driverCardSessionGate0162.invalidate()
+        clearStage16VisualProof()
+        universalScreenGeneration += 1L
+        universalWindowGeneration += 1L
+        universalRouteJob?.cancel()
+        universalRouteJob = null
+        analyzeJob?.cancel()
+        analyzeJob = null
+        screenshotFallbackJob127?.cancel()
+        screenshotFallbackJob127 = null
+        cancelNotificationWakeup0169()
+        partialReadConfirmationJobChecklist14?.cancel()
+        partialReadConfirmationJobChecklist14 = null
+        liveAnalysisJob?.cancel()
+        liveAnalysisJob = null
+        failedCardAutoCaptureGate0161.reset()
+        lastFailedCardNodes0161 = emptyList()
+        lastFailedCardSignature0161 = null
+        lastFailedCardAccessibilityHash0161 = null
+        lastAccessibilityText = ""
+        lastOcrText = ""
+        universalActiveRidePackageName = null
+        if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.markExplicitOff("manual_reading_disabled_stage43")
+        universalActiveAddressSignature = null
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        shortcutOverlayController.hideAll()
+
+        // Reading OFF is intentionally NOT master work-mode OFF. In particular, do not stop
+        // preciseNavigationTrackerChecklist5, do not hide directionalAlertOverlayChecklist5 and
+        // do not change workModeRuntimeActive0162. Radar/user proximity keep their existing owner.
+        val offRenderBeforeStage43 = stage43OffRenderAppliedSerial
+        showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)
+        val offRenderAppliedStage43 = stage43OffRenderAppliedSerial > offRenderBeforeStage43 &&
+            currentRadarColor == RadarColor.Idle && currentDistanceKm == null
+        FarolManualOffVisualCommitStage43.recordAttempt(offRenderAppliedStage43)
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S43_MANUAL_OFF_RENDER_COMMIT", universalResolvedForegroundPackage(),
+            details = "applied=$offRenderAppliedStage43; proximityPreserved=true; beforeSerial=$offRenderBeforeStage43; afterSerial=$stage43OffRenderAppliedSerial; currentColor=$currentRadarColor; currentDistance=${currentDistanceKm ?: -1.0}",
+        )
+        if (!offRenderAppliedStage43) {
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S43_MANUAL_OFF_RENDER_ANOMALY", universalResolvedForegroundPackage(),
+                details = "logicalOff=true; expected=Idle/no-km/renderApplied; proximityPreserved=true; currentColor=$currentRadarColor; currentDistance=${currentDistanceKm ?: -1.0}; serviceReady=$serviceReady; overlayPresent=${overlayView != null}",
+            )
+        }
+        UnifiedDebugEventStore.record(
+            "MANUAL_READING_RUNTIME_STAGE43",
+            packageName,
+            "enabled=false; proximity_runtime_preserved=true",
+        )
     }
 
     private fun applyWorkModeRuntime0162(enabled0162: Boolean, force0162: Boolean = false) {
@@ -3161,10 +3231,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     FarolForensicCardBlackBoxStage32.markOcrNoCandidate(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())
                                     FarolForensicCaseStoreStage32.persistIfIntensive(applicationContext)
                                     FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "NO_CANDIDATE", cycleIdStage20)
-                                    hardClearUniversalTwoAddress(
-                                        reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23.",
-                                        keepWaitingYellow = true,
+                                    val transientLeaseStage44 = FarolSemanticFinalLeaseStage44.capture(
+                                        currentRadarColor.name,
+                                        currentDistanceKm,
+                                        universalActiveAddressSignature,
                                     )
+                                    val transientPresenceStage44 = observeTargetSurfaceStage46R3(surfaceTokenStage46.packageName)
+                                    if (transientLeaseStage44.activeFinal && transientPresenceStage44.active) {
+                                        FarolMaximumForensicsStage38.record(
+                                            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED", eventPackageStage19,
+                                            cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
+                                            details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${transientLeaseStage44.addressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}",
+                                        )
+                                    } else {
+                                        hardClearUniversalTwoAddress(
+                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa.",
+                                            keepWaitingYellow = true,
+                                        )
+                                    }
                                 }
                             } finally {
                                 FarolForensicTraceStage20.ocrStage(SystemClock.elapsedRealtimeNanos(), serialStage19, "COMPLETE", cycleIdStage20)

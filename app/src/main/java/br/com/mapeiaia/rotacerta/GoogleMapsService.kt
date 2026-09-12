@@ -122,9 +122,14 @@ class GoogleMapsService(context: Context? = null) {
 
         val missingDestinations = missingIndexes.map(destinations::get)
         val body = addressRouteMatrixBody(originAddress, missingDestinations)
-        val fetched = requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
+        val matrixFetched = requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
             requestAddressRouteMatrix(body, apiKey, missingDestinations.size)
         }
+        val fetched = matrixFetched ?: requestAddressRouteFallback(
+            originAddress = originAddress,
+            destinations = missingDestinations,
+            apiKey = apiKey,
+        )
 
         FarolFlightRecorder0163.record(
             stage = "MAPS_ROUTE_NETWORK_RESULT",
@@ -218,6 +223,14 @@ class GoogleMapsService(context: Context? = null) {
                 details = "endpoint=route_matrix; code=$responseCode0163; destinations=$destinationCount; elapsed_us=${(SystemClock.elapsedRealtimeNanos() - requestStartedElapsedNanos0163).coerceAtLeast(0L) / 1_000L}",
             )
             if (responseCode0163 !in 200..299) {
+                val errorBody0163 = runCatching {
+                    connection.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                }.getOrDefault("")
+                FarolFlightRecorder0163.record(
+                    stage = "ROUTE_MATRIX_HTTP_ERROR",
+                    packageName = null,
+                    details = "code=$responseCode0163; destinations=$destinationCount; body=${sanitizeMapsErrorBody(errorBody0163)}",
+                )
                 null
             } else {
                 val response = connection.inputStream.bufferedReader().use { it.readText() }
@@ -240,6 +253,48 @@ class GoogleMapsService(context: Context? = null) {
             connection.disconnect()
         }
     }
+
+
+    private fun requestAddressRouteFallback(
+        originAddress: String,
+        destinations: List<Coordinate>,
+        apiKey: String,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty() || apiKey.isBlank()) return null
+        FarolFlightRecorder0163.record(
+            stage = "ROUTE_MATRIX_FALLBACK_GEOCODE_STARTED",
+            packageName = null,
+            details = "destinations=${destinations.size}",
+        )
+        val origin = requestWithRetry(GEOCODE_REQUEST_ATTEMPTS) {
+            requestGeocode(originAddress, apiKey)
+        } ?: run {
+            FarolFlightRecorder0163.record(
+                stage = "ROUTE_MATRIX_FALLBACK_GEOCODE_FAILED",
+                packageName = null,
+                details = "originResolved=false; destinations=${destinations.size}",
+            )
+            return null
+        }
+        val values = destinations.map { destination ->
+            requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
+                requestDrivingDistance(coordinateRouteBody(origin, destination), apiKey)
+            }
+        }
+        FarolFlightRecorder0163.record(
+            stage = "ROUTE_MATRIX_FALLBACK_RESOLVED",
+            packageName = null,
+            details = "returned=${values.count { it != null }}; destinations=${destinations.size}",
+        )
+        return values
+    }
+
+    private fun sanitizeMapsErrorBody(raw: String): String = raw
+        .replace(Regex("AIza[0-9A-Za-z_-]+"), "<redacted-api-key>")
+        .replace(Regex("(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+"), "Bearer <redacted>")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+        .take(600)
 
     /**
      * Monta consultas sem inventar uma cidade fixa.
