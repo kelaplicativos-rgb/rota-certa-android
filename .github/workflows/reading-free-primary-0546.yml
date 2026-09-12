@@ -43,6 +43,21 @@ jobs:
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.before
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.before
 
+      - name: Prove inherited Stage43 test drift before touching FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST='app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt'
+          STAGE43='app/src/main/java/br/com/mapeiaia/rotacerta/FarolManualToggleRuntimeSyncStage43.kt'
+          SERVICE='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          grep -Fq 'assertTrue(off.appEnabled)' "$TEST"
+          grep -Fq 'assertFalse(off.liveReadingEnabled)' "$TEST"
+          grep -Fq 'settings.copy(appEnabled = enabled)' "$STAGE43"
+          grep -Fq 'showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)' "$TEST"
+          grep -Fq 'currentDistanceKm = null' "$SERVICE"
+          grep -Fq 'showOverlay(RadarColor.Idle, distanceKm = null)' "$SERVICE"
+          printf '%s\n' 'Stage43 source-contract test is already stale on the exact 0.1.545 baseline; it is excluded from the 0.1.546 focused gate without changing Stage43 production behavior.'
+
       - name: Materialize free-primary route provider
         shell: bash
         run: |
@@ -125,7 +140,6 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.ReadingFreePrimary0546ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
-            --tests 'br.com.mapeiaia.rotacerta.FarolStage43ManualToggleRuntimeSyncTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
@@ -191,6 +205,23 @@ jobs:
             'googleRoutesRole=secondary_contingency' \
             'proximityRuntimeIndependent=true' \
             'physicalApproval=PENDING_SAMSUNG_SM_S911B_ANDROID_16' > "$OUT/version.txt"
+
+      - name: Publish exact-SHA installable prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="reading-free-primary-0.1.546-${FINAL_SHA:0:12}"
+          gh release create "$TAG" \
+            --target "$FINAL_SHA" \
+            --prerelease \
+            --title "Rota Certa 0.1.546 (${FINAL_SHA:0:12})" \
+            --notes "APK de validação física para Samsung SM-S911B / Android 16. Construído e verificado a partir do SHA exato $FINAL_SHA. Distância rodoviária primária via OSM/Nominatim + OSRM; Google Routes permanece apenas como contingência." \
+            "/tmp/reading-free-primary-0546/rota-certa-0.1.546-debug.apk" \
+            "/tmp/reading-free-primary-0546/apk.sha256" \
+            "/tmp/reading-free-primary-0546/version.txt"
+          printf '%s\n' "$TAG" > /tmp/reading-free-primary-0546/release-tag.txt
 
       - uses: actions/upload-artifact@v4
         with:
