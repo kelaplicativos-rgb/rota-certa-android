@@ -1,2 +1,2 @@
 trigger reading-geocode-resilience 0.1.547 exact-SHA build
-retry=2
+retry=3
