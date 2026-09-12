@@ -176,6 +176,7 @@ internal fun EnhancedPassengerTimelineSection(
     onAddManualPassenger: (() -> Unit)? = null,
     focusedBookingId: String? = null,
     canonicalBookings0494: List<Booking>? = null,
+    showTripActions0549: Boolean = true,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -264,7 +265,7 @@ internal fun EnhancedPassengerTimelineSection(
     val identityRefresh = identityRevision
     @Suppress("UNUSED_VARIABLE")
     val completionRefresh = completionRevision
-    if (hasExternalTripActionEvidence(entry)) {
+    if (showTripActions0549) {
         TripBlaBlaTripActionRow(entry, onAddManualPassenger)
     }
     if (renderSnapshot == null) return
@@ -1783,9 +1784,11 @@ internal fun hasExternalTripActionEvidence(entry: TripTimelineEntry): Boolean =
         !entry.blablaProfileUuid.isNullOrBlank()
 
 @Composable
-private fun TripBlaBlaTripActionRow(
+internal fun TripBlaBlaTripActionRow(
     entry: TripTimelineEntry,
     onAddManualPassenger: (() -> Unit)?,
+    leadingActions0549: (@Composable () -> Unit)? = null,
+    trailingActions0549: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val target = BlaBlaReliableSeatSyncBridge.targetForTimeline(entry)
@@ -1804,6 +1807,7 @@ private fun TripBlaBlaTripActionRow(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+        leadingActions0549?.invoke()
         if (onAddManualPassenger != null) {
             TextButton(
                 onClick = {
@@ -1832,25 +1836,28 @@ private fun TripBlaBlaTripActionRow(
                 contentPadding = COMPACT_ACTION_PADDING,
             ) { Text("🔗 Público") }
         }
-        IconButton(
-            onClick = {
-                if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
-                    Toast.makeText(
-                        context,
-                        "Link direto da viagem indisponível. A referência será recuperada pela atualização automática quando houver evidência suficiente.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }
-            },
-            modifier = Modifier.size(36.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_blablacar_action),
-                contentDescription = "Abrir viagem no BlaBlaCar",
-                tint = Color.Unspecified,
-                modifier = Modifier.size(24.dp),
-            )
+        if (hasExternalTripActionEvidence(entry)) {
+            IconButton(
+                onClick = {
+                    if (!openExternalTripBlaBla(context, entry.blablaProfileUuid, entry.blablaTripHref)) {
+                        Toast.makeText(
+                            context,
+                            "Link direto da viagem indisponível. A referência será recuperada pela atualização automática quando houver evidência suficiente.",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_blablacar_action),
+                    contentDescription = "Abrir viagem no BlaBlaCar",
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         }
+        trailingActions0549?.invoke()
         }
     }
 }

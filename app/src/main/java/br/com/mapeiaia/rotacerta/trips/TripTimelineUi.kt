@@ -13,20 +13,26 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,6 +41,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -54,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
@@ -2003,165 +2011,81 @@ private fun TimelineEntryCard(
         )
     }
 
+    val publicCapacity0549 = timelinePublicCapacityResolution(entry)
+    val publicLoads0549 = if (entry.canonicalBackendAuthoritative0494) {
+        canonicalSegmentLoads0494
+    } else {
+        seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }.orEmpty()
+    }
+    val minimumAvailable0549 = publicLoads0549.minOfOrNull(SegmentLoad::availableSeats)
+        ?: publicCapacity0549.availableSeats
+    val operationalInventory0549 = publicCapacity0549.operationalInventory
+    val agendaBackground0549 = if (dark) Color(0xFF242628) else Color(0xFFF5F6F7)
+    val agendaBorder0549 = if (dark) Color(0xFF4B4F54) else Color(0xFFD9DCE1)
+    val agendaAccent0549 = if (dark) Color(0xFF72A7D4) else Color(0xFF4F789E)
+    val agendaMuted0549 = if (dark) Color(0xFFB8BDC5) else Color(0xFF646A73)
+    val agendaSeatAccent0549 = Color(0xFF2398D0)
+    val ptBr0549 = Locale("pt", "BR")
+    val departure0549 = Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault())
+    val arrival0549 = entry.arrivalAtMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
+    val agendaDate0549 = DateTimeFormatter
+        .ofPattern("EEEE, d 'de' MMMM 'de' yyyy", ptBr0549)
+        .format(departure0549)
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(ptBr0549) else it.toString() }
+    val clock0549 = DateTimeFormatter.ofPattern("HH:mm", ptBr0549)
+    val departureClock0549 = clock0549.format(departure0549)
+    val arrivalClock0549 = arrival0549?.let(clock0549::format) ?: "—"
+    val duration0549 = timelineDurationLabel0536(entry.departureAtMillis, entry.arrivalAtMillis)
+    val observedClock0549 = lastObservedAt0407.takeIf { it > 0L }?.let {
+        clock0549.format(Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()))
+    }
+    val openManualPassenger0549: () -> Unit = {
+        when {
+            entry.canonicalBackendAuthoritative0494 && trip != null -> directPassengerTrip = trip
+            else -> runCatching { prepareTimelineTripForPassenger(entry, store) }
+                .onSuccess { preparation -> directPassengerTrip = preparation.trip }
+                .onFailure { error ->
+                    onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
+                }
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(vertical = 8.dp)
             .clickable(
-                onClickLabel = if (expanded) "Fechar viagem" else "Abrir viagem",
+                onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
                 onClick = onToggleExpanded,
             ),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = profileColors.background),
-        border = BorderStroke(1.dp, profileColors.border),
+        shape = RoundedCornerShape(26.dp),
+        colors = CardDefaults.cardColors(containerColor = agendaBackground0549),
+        border = BorderStroke(1.dp, agendaBorder0549),
     ) {
-        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            val departureDateTime0536 = Instant.ofEpochMilli(entry.departureAtMillis).atZone(ZoneId.systemDefault())
-            val arrivalDateTime0536 = entry.arrivalAtMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
-            val date0536 = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.getDefault()).format(departureDateTime0536)
-            val clockFormatter0536 = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
-            val startTime0536 = clockFormatter0536.format(departureDateTime0536)
-            val endTime0536 = arrivalDateTime0536?.let(clockFormatter0536::format) ?: "—"
-            val duration0536 = timelineDurationLabel0536(entry.departureAtMillis, entry.arrivalAtMillis)
-            val passengerCount0536 = maxOf(
-                entry.maximumOccupiedSeats,
-                entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) },
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    date0536.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                Text(
-                    text = "●",
-                    color = publicMirrorDotColor0417(trip),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier
-                        .clickable { showMirrorDiagnostic0417 = true }
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
-                )
-            }
-            timelineDirectionDisplayLabel(direction)?.let { label ->
-                val chipColor = when (direction) {
-                    TimelineDirectionState.OUTBOUND -> if (dark) Color(0xFF285A34) else Color(0xFFB8E6C4)
-                    TimelineDirectionState.INBOUND -> if (dark) Color(0xFF6A3A23) else Color(0xFFFFD1B8)
-                    TimelineDirectionState.NEUTRAL,
-                    TimelineDirectionState.UNKNOWN,
-                    -> MaterialTheme.colorScheme.surfaceVariant
-                }
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier
-                        .background(chipColor, RoundedCornerShape(999.dp))
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                )
-            }
-            Text("👤 $profileDisplayLabel", style = MaterialTheme.typography.titleMedium)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("$startTime0536  saída", style = MaterialTheme.typography.bodyMedium)
-                Text("$duration0536  duração", style = MaterialTheme.typography.bodySmall)
-                Text("$endTime0536  chegada", style = MaterialTheme.typography.bodyMedium)
-            }
-            Text("●  ${entry.origin}", style = MaterialTheme.typography.titleMedium)
-            Text("│", style = MaterialTheme.typography.bodyMedium, color = profileColors.border)
-            Text("●  ${entry.destination}", style = MaterialTheme.typography.titleMedium)
-            entry.blablaPrice?.takeIf(String::isNotBlank)?.let { price0536 ->
-                Text(price0536, style = MaterialTheme.typography.bodySmall)
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("👥 $passengerCount0536 passageiro(s)", style = MaterialTheme.typography.bodySmall)
-                Text("🚗", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = if (expanded) "▲ Toque para fechar" else "▼ Toque para abrir",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-
-            if (expanded) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // 0.1.549: every card-level driver shortcut owns the first/top row.
+            TripBlaBlaTripActionRow(
+                entry = entry,
+                onAddManualPassenger = openManualPassenger0549,
+                leadingActions0549 = {
                     TextButton(
                         enabled = tripTarget0407 != null && !reverifyPending0407,
                         onClick = queueTargetCollectorRefresh0517,
                     ) {
                         Text(if (reverifyPending0407) "📡 …" else "📡")
                     }
-                    TextButton(
-                        onClick = { actionMenuExpanded0407 = true },
-                    ) { Text("⋮") }
-                }
-
-            val allocation = tripChannelAllocationBreakdown(
-                entry.capacity,
-                entry.blablaPublishedSeats,
-                entry.rotaCertaSeatAllocation,
-            )
-            val passengers = entry.sourcePassengerSeats.values.sumOf { it.coerceAtLeast(0) }
-            val blocked = entry.operationalBlockedSeats.coerceAtLeast(0)
-
-            if (allocation.blablaQuota != null || allocation.rotaCertaQuota != null) {
-                Text(
-                    "BlaBlaCar ${allocation.blablaQuota ?: 0} • Rota Certa ${allocation.rotaCertaQuota ?: 0} • Operacional ${allocation.operationalInventory ?: entry.capacity}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-
-            val publicCapacity = timelinePublicCapacityResolution(entry)
-            val publicLoads = if (entry.canonicalBackendAuthoritative0494) {
-                canonicalSegmentLoads0494
-            } else {
-                seatPlan?.let { plan -> timelinePublicSegmentLoads(entry, plan.loads) }.orEmpty()
-            }
-            val segmentFree = publicLoads.minOfOrNull(SegmentLoad::availableSeats)
-                ?: publicCapacity.availableSeats
-            val free = segmentFree
-            val operationalInventory = publicCapacity.operationalInventory
-            when (timelineOccupancyReadState(entry)) {
-                TimelineOccupancyReadState.CAPACITY_CONFIGURED -> {
-                    val availabilityLabel = statusMark(entry)
-                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")
-                    if (blocked > 0) Text("🚫 Vagas bloqueadas: $blocked", style = MaterialTheme.typography.bodySmall)
-                }
-                TimelineOccupancyReadState.CAPACITY_CONFIGURED_ROSTER_PENDING ->
-                    Text("Inventário da viagem: ${operationalInventory ?: entry.capacity} • passageiros aguardando leitura ⏳")
-                TimelineOccupancyReadState.RESERVED -> {
-                    val availabilityLabel = statusMark(entry)
-                    Text("👥 $passengers confirmado(s) • 🪑 ${free ?: 0} vaga(s) $availabilityLabel")
-                }
-                TimelineOccupancyReadState.COMPLETE_EMPTY -> {
-                    val emptyFree = free ?: operationalInventory ?: 0
-                    val availabilityLabel = statusMark(entry)
-                    Text("👥 0 confirmado(s) • 🪑 $emptyFree vaga(s) $availabilityLabel")
-                }
-                TimelineOccupancyReadState.PENDING ->
-                    Text("Ocupação aguardando leitura ${statusMark(entry)}")
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.primary) {
+                        TextButton(onClick = { showSeatDetails = true }) {
+                            Text(if (minimumAvailable0549 != null) "💺 $minimumAvailable0549" else "💺")
+                        }
+                    }
+                },
+                trailingActions0549 = {
                     Box {
+                        TextButton(onClick = { actionMenuExpanded0407 = true }) { Text("⋮") }
                         DropdownMenu(
                             expanded = actionMenuExpanded0407,
                             onDismissRequest = { actionMenuExpanded0407 = false },
@@ -2176,15 +2100,13 @@ private fun TimelineEntryCard(
                                     },
                                 )
                             }
-                            if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.overflow) {
-                                DropdownMenuItem(
-                                    text = { Text("🪑 Vagas por trecho") },
-                                    onClick = {
-                                        actionMenuExpanded0407 = false
-                                        showSeatDetails = true
-                                    },
-                                )
-                            }
+                            DropdownMenuItem(
+                                text = { Text("🪑 Vagas por trecho") },
+                                onClick = {
+                                    actionMenuExpanded0407 = false
+                                    showSeatDetails = true
+                                },
+                            )
                             DropdownMenuItem(
                                 text = { Text("Agenda pública: online/offline") },
                                 enabled = trip?.remoteId?.isNotBlank() == true || trip?.publicToken?.isNotBlank() == true,
@@ -2244,94 +2166,187 @@ private fun TimelineEntryCard(
                             }
                         }
                     }
-                }
-            }
-
-            if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.primary) {
-                TextButton(onClick = { showSeatDetails = true }) {
-                    Text(if (free != null) "💺 $free" else "💺 ⏳")
-                }
-            }
-
-            val sourceLine = entry.sourcePassengerSeats.filterValues { it > 0 }.entries.joinToString(" • ") { (source, seats) ->
-                "${sourceShort(source)} $seats"
-            }
-            if (sourceLine.isNotBlank()) Text(sourceLine, style = MaterialTheme.typography.bodySmall)
-
-            when {
-                TripTimelineIssue.OVERBOOKING in entry.issues -> Text("❌ URGENTE: passageiros confirmados + vagas bloqueadas ultrapassam o inventário operacional da viagem.")
-                TripTimelineIssue.PHYSICAL_CONFLICT in entry.issues -> Text("❌ Conflito real de horário/local.")
-                TripTimelineIssue.PROFILE_CONTINUITY in entry.issues -> Text("⚠️ Próxima origem não bate com a chegada anterior.")
-                TripTimelineIssue.REVISION_INCOMPATIBLE in entry.issues -> Text("⚠️ Revisão canônica incompatível; o snapshot íntegro anterior deve ser preservado.")
-                TripTimelineIssue.PASSENGER_PROJECTION_INCOMPLETE in entry.issues -> Text("⚠️ Projeção canônica de passageiros incompleta.")
-                TripTimelineIssue.PRIVATE_PROJECTION_STALE in entry.issues -> Text("⚠️ Dados privados operacionais ainda não alcançaram a revisão canônica atual.")
-                TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues -> Text("⚠️ Identidade externa em conflito; confira esta publicação.")
-                TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE in entry.issues -> Text("⚠️ Identidade externa incompleta; a viagem continua operacional pela identidade canônica. Ações BlaBlaCar podem ficar limitadas.")
-                TripTimelineIssue.VALIDATION_PENDING in entry.issues -> Text("⏳ Falta confirmar a origem dos dados.")
-            }
-
-            EnhancedPassengerTimelineSection(
-                entry = entry,
-                trip = trip,
-                store = store,
-                currentCoordinate = currentCoordinate,
-                onChanged = onChanged,
-                focusedBookingId = focusedBookingId,
-                canonicalBookings0494 = bookingsSnapshot0432,
-                onAddManualPassenger = {
-                    when {
-                        entry.canonicalBackendAuthoritative0494 && trip != null -> directPassengerTrip = trip
-                        else -> runCatching { prepareTimelineTripForPassenger(entry, store) }
-                            .onSuccess { preparation -> directPassengerTrip = preparation.trip }
-                            .onFailure { error ->
-                                onChanged(error.message ?: "Não foi possível preparar este card para adicionar passageiro.")
-                            }
-                    }
                 },
             )
 
-            val canCompleteRemoteTrip =
-                trip?.remoteId != null &&
-                    entry.departureAtMillis <= System.currentTimeMillis() &&
-                    trip.status !in setOf(TripStatus.COMPLETED, TripStatus.CANCELLED)
-            ResponsiveTripActions(
-                buildList {
-                    add(ResponsiveTripAction(if (archived) "Restaurar" else "Arquivar") { onArchive() })
-                    if (canCompleteRemoteTrip) {
-                        add(
-                            ResponsiveTripAction("Concluir viagem") {
-                                val target = trip
-                                val settings = store.onlineSettings()
-                                when {
-                                    target == null -> onChanged("Viagem não identificada para conclusão.")
-                                    !settings.configured -> onChanged("Integração online necessária para concluir a viagem.")
-                                    else -> scope.launch {
-                                        runCatching {
-                                            val remoteId0494 = target.remoteId?.takeIf(String::isNotBlank)
-                                                ?: error("Viagem sem identidade remota canônica.")
-                                            TripRemoteApi(settings).update(
-                                                target.copy(
-                                                    remoteId = remoteId0494,
-                                                    status = TripStatus.COMPLETED,
-                                                ),
-                                            )
-                                        }.onSuccess { response0494 ->
-                                            UnifiedDebugEventStore.record(
-                                                "TIMELINE_CANONICAL_TRIP_COMPLETED_0494",
-                                                context.packageName,
-                                                "canonicalTripId=${seatSyncDiagnosticKey(target.id)} entityRevision=${response0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
-                                            )
-                                            onChanged("Viagem concluída no backend canônico. Timeline e Agenda receberão a nova revisão.")
-                                        }.onFailure { error ->
-                                            onChanged("Nada foi alterado: ${error.message ?: "falha no backend canônico"}")
+            Text(
+                text = agendaDate0549,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Viagens com $profileDisplayLabel",
+                style = MaterialTheme.typography.bodyMedium,
+                color = agendaMuted0549,
+            )
+
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.width(76.dp)) {
+                    Text(departureClock0549, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(duration0549, style = MaterialTheme.typography.bodySmall, color = agendaMuted0549)
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(arrivalClock0549, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                Column(
+                    modifier = Modifier.width(34.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text("○", color = agendaAccent0549, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    Text("│", color = agendaAccent0549, style = MaterialTheme.typography.headlineSmall)
+                    Text("○", color = agendaAccent0549, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(entry.origin, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(34.dp))
+                    Text(entry.destination, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (expanded) {
+                HorizontalDivider(color = agendaBorder0549)
+                Text("Vagas por trecho", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+
+                if (publicLoads0549.isEmpty()) {
+                    Text(
+                        "Disponibilidade por trecho aguardando o estado canônico da Agenda.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = agendaMuted0549,
+                    )
+                } else {
+                    publicLoads0549.forEach { load0549 ->
+                        val seatCount0549 = (
+                            load0549.passengerSeats + load0549.blockedSeats + load0549.availableSeats
+                        ).coerceAtLeast(1).coerceAtMost(8)
+                        val occupied0549 = (seatCount0549 - load0549.availableSeats).coerceIn(0, seatCount0549)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "${load0549.from.name} → ${load0549.to.name}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                repeat(seatCount0549) { seatIndex0549 ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(25.dp)
+                                            .border(2.dp, agendaSeatAccent0549, CircleShape),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (seatIndex0549 < occupied0549) {
+                                            Text("●", color = Color(0xFF9AA5B1), style = MaterialTheme.typography.labelSmall)
                                         }
                                     }
                                 }
-                            },
-                        )
+                            }
+                            Text(
+                                "${load0549.availableSeats} vagas",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
                     }
-                },
+                }
+
+                HorizontalDivider(color = agendaBorder0549)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("🚙", style = MaterialTheme.typography.headlineSmall)
+                    Column(horizontalAlignment = Alignment.End) {
+                        minimumAvailable0549?.let { free0549 ->
+                            Text(
+                                if (free0549 == 1) "1 vaga disponível" else "$free0549 vagas disponíveis",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        observedClock0549?.let { observed0549 ->
+                            Text("Atualizado às $observed0549", style = MaterialTheme.typography.bodySmall, color = agendaMuted0549)
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = if (expanded) "Recolher trajeto" else "Ver trajeto",
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelLarge,
+                color = agendaSeatAccent0549,
+                fontWeight = FontWeight.Bold,
             )
+
+            if (expanded && minimumAvailable0549 != null) {
+                Text(
+                    text = if (minimumAvailable0549 == 0) "LOTADO" else "$minimumAvailable0549 VAGA(S)",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = agendaMuted0549,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            if (expanded) {
+                HorizontalDivider(color = agendaBorder0549)
+                EnhancedPassengerTimelineSection(
+                    entry = entry,
+                    trip = trip,
+                    store = store,
+                    currentCoordinate = currentCoordinate,
+                    onChanged = onChanged,
+                    focusedBookingId = focusedBookingId,
+                    canonicalBookings0494 = bookingsSnapshot0432,
+                    showTripActions0549 = false,
+                    onAddManualPassenger = openManualPassenger0549,
+                )
+
+                val canCompleteRemoteTrip0549 =
+                    trip?.remoteId != null &&
+                        entry.departureAtMillis <= System.currentTimeMillis() &&
+                        trip.status !in setOf(TripStatus.COMPLETED, TripStatus.CANCELLED)
+                ResponsiveTripActions(
+                    buildList {
+                        add(ResponsiveTripAction(if (archived) "Restaurar" else "Arquivar") { onArchive() })
+                        if (canCompleteRemoteTrip0549) {
+                            add(
+                                ResponsiveTripAction("Concluir viagem") {
+                                    val target0549 = trip
+                                    val settings0549 = store.onlineSettings()
+                                    when {
+                                        target0549 == null -> onChanged("Viagem não identificada para conclusão.")
+                                        !settings0549.configured -> onChanged("Integração online necessária para concluir a viagem.")
+                                        else -> scope.launch {
+                                            runCatching {
+                                                val remoteId0549 = target0549.remoteId?.takeIf(String::isNotBlank)
+                                                    ?: error("Viagem sem identidade remota canônica.")
+                                                TripRemoteApi(settings0549).update(
+                                                    target0549.copy(
+                                                        remoteId = remoteId0549,
+                                                        status = TripStatus.COMPLETED,
+                                                    ),
+                                                )
+                                            }.onSuccess { response0549 ->
+                                                UnifiedDebugEventStore.record(
+                                                    "TIMELINE_CANONICAL_TRIP_COMPLETED_0494",
+                                                    context.packageName,
+                                                    "canonicalTripId=${seatSyncDiagnosticKey(target0549.id)} entityRevision=${response0549.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                                                )
+                                                onChanged("Viagem concluída no backend canônico. Timeline e Agenda receberão a nova revisão.")
+                                            }.onFailure { error0549 ->
+                                                onChanged("Nada foi alterado: ${error0549.message ?: "falha no backend canônico"}")
+                                            }
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    },
+                )
             }
         }
     }
