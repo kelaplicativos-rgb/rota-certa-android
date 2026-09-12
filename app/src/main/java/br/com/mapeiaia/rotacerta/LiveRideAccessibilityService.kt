@@ -3546,7 +3546,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             settingsStage19.googleMapsApiKey,
             BuildConfig.GOOGLE_MAPS_API_KEY,
         )
-        if (apiKeyStage19.isBlank()) return
         val targetsStage19 = fastWorkRegionTargetsChecklist13(settingsStage19)
         if (targetsStage19.destinations.isEmpty()) return
         FarolForensicTraceStage20.routeCallStarted(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), fieldsStage19.destination.orEmpty())
@@ -5261,11 +5260,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             settingsChecklist13.googleMapsApiKey,
             BuildConfig.GOOGLE_MAPS_API_KEY,
         )
-        if (apiKeyChecklist13.isBlank()) {
-            rememberBubbleReason("google_maps_api_required", "Destino confirmado, mas a Chave Google Maps API está ausente.")
-            showOverlay(RadarColor.Default, distanceKm = null)
-            return
-        }
         val targetsChecklist13 = fastWorkRegionTargetsChecklist13(settingsChecklist13)
         if (targetsChecklist13.destinations.isEmpty()) {
             rememberBubbleReason("work_region_missing", "Destino confirmado, mas falta Casa ou alfinete com coordenada validada.")
@@ -5536,7 +5530,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         settings: AppSettings,
     ): List<Double?> {
         val apiKey = settings.googleMapsApiKey.ifBlank { BuildConfig.GOOGLE_MAPS_API_KEY }
-        return if (originAddress.isNotBlank() && destinations.isNotEmpty() && apiKey.isNotBlank()) {
+        return if (originAddress.isNotBlank() && destinations.isNotEmpty()) {
             googleMapsService.drivingDistancesFromAddressKm(originAddress, destinations, apiKey)
         } else {
             List(destinations.size) { null }

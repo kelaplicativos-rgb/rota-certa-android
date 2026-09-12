@@ -79,7 +79,7 @@ class GoogleMapsService(context: Context? = null) {
         destinations: List<Coordinate>,
         apiKey: String,
     ): List<Double?> = withContext(Dispatchers.IO) {
-        if (originAddress.isBlank() || destinations.isEmpty() || apiKey.isBlank()) {
+        if (originAddress.isBlank() || destinations.isEmpty()) {
             return@withContext List(destinations.size) { null }
         }
 
@@ -121,14 +121,40 @@ class GoogleMapsService(context: Context? = null) {
         }
 
         val missingDestinations = missingIndexes.map(destinations::get)
-        val body = addressRouteMatrixBody(originAddress, missingDestinations)
-        val matrixFetched = requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
-            requestAddressRouteMatrix(body, apiKey, missingDestinations.size)
-        }
-        val fetched = matrixFetched ?: requestAddressRouteFallback(
+
+        // 0.1.546: free road-routing is the primary authority for card distance.
+        // Google remains a secondary contingency only for entries the free provider
+        // could not resolve. The decision engine still receives road distance in km;
+        // no green/red threshold or rendering rule is changed here.
+        val osmFetched = requestOpenStreetMapAddressRoutes(
             originAddress = originAddress,
             destinations = missingDestinations,
-            apiKey = apiKey,
+        )
+        val unresolvedIndexes = missingDestinations.indices
+            .filter { index -> osmFetched?.getOrNull(index) == null }
+        val googleFallbackByMissingIndex = mutableMapOf<Int, Double?>()
+        if (unresolvedIndexes.isNotEmpty() && apiKey.isNotBlank()) {
+            val googleDestinations = unresolvedIndexes.map(missingDestinations::get)
+            val body = addressRouteMatrixBody(originAddress, googleDestinations)
+            val matrixFetched = requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
+                requestAddressRouteMatrix(body, apiKey, googleDestinations.size)
+            }
+            val googleFetched = matrixFetched ?: requestAddressRouteFallback(
+                originAddress = originAddress,
+                destinations = googleDestinations,
+                apiKey = apiKey,
+            )
+            unresolvedIndexes.forEachIndexed { googleIndex, originalMissingIndex ->
+                googleFallbackByMissingIndex[originalMissingIndex] = googleFetched?.getOrNull(googleIndex)
+            }
+        }
+        val fetched = missingDestinations.indices.map { index ->
+            osmFetched?.getOrNull(index) ?: googleFallbackByMissingIndex[index]
+        }
+        FarolFlightRecorder0163.record(
+            stage = "ROUTE_PROVIDER_SELECTION_0546",
+            packageName = null,
+            details = "osmResolved=${osmFetched?.count { it != null } ?: 0}; googleFallbackRequested=${unresolvedIndexes.size}; googleKeyPresent=${apiKey.isNotBlank()}; finalResolved=${fetched.count { it != null }}; destinations=${missingDestinations.size}",
         )
 
         FarolFlightRecorder0163.record(
@@ -254,6 +280,136 @@ class GoogleMapsService(context: Context? = null) {
         }
     }
 
+
+
+    private fun requestOpenStreetMapAddressRoutes(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val originCacheKey = "osm_origin|$normalizedOrigin"
+        val origin = geocodeCache[originCacheKey]
+            ?: readPersistentCoordinate(originCacheKey)?.also { geocodeCache[originCacheKey] = it }
+            ?: requestWithRetry(OSM_GEOCODE_REQUEST_ATTEMPTS) {
+                requestNominatimGeocode(originAddress)
+            }?.also { coordinate ->
+                geocodeCache[originCacheKey] = coordinate
+                persistCoordinate(originCacheKey, coordinate)
+            }
+
+        if (origin == null) {
+            FarolFlightRecorder0163.record(
+                stage = "OSM_PRIMARY_GEOCODE_FAILED_0546",
+                packageName = null,
+                details = "destinations=${destinations.size}",
+            )
+            return null
+        }
+
+        val values = destinations.map { destination ->
+            requestWithRetry(OSM_ROUTE_REQUEST_ATTEMPTS) {
+                requestOsrmDrivingDistance(origin, destination)
+            }
+        }
+        FarolFlightRecorder0163.record(
+            stage = "OSM_PRIMARY_ROUTE_RESULT_0546",
+            packageName = null,
+            details = "resolved=${values.count { it != null }}; destinations=${destinations.size}",
+        )
+        return values.takeIf { list -> list.any { it != null } }
+    }
+
+    private fun requestNominatimGeocode(query: String): Coordinate? {
+        val encodedAddress = URLEncoder.encode(query.trim(), "UTF-8")
+        val url = URL(
+            "$OSM_NOMINATIM_URL?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR&q=$encodedAddress",
+        )
+        val connection = (url.openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = OSM_CONNECT_TIMEOUT_MS
+            readTimeout = OSM_READ_TIMEOUT_MS
+            useCaches = false
+            setRequestProperty("Connection", "keep-alive")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "RotaCerta/${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+        }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                FarolFlightRecorder0163.record(
+                    stage = "OSM_PRIMARY_GEOCODE_HTTP_0546",
+                    packageName = null,
+                    details = "code=$code",
+                )
+                return null
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val first = json.parseToJsonElement(body).jsonArray.firstOrNull()?.jsonObject ?: return null
+            val latitude = first["lat"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
+            val longitude = first["lon"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return null
+            Coordinate(latitude, longitude)
+        } catch (error: Throwable) {
+            FarolFlightRecorder0163.record(
+                stage = "OSM_PRIMARY_GEOCODE_ERROR_0546",
+                packageName = null,
+                details = "error=${error::class.java.simpleName}:${error.message}",
+            )
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun requestOsrmDrivingDistance(origin: Coordinate, destination: Coordinate): Double? {
+        val routeUrl = String.format(
+            Locale.US,
+            "%s/route/v1/driving/%.7f,%.7f;%.7f,%.7f?overview=false&alternatives=false&steps=false",
+            OSRM_ROUTE_URL,
+            origin.longitude,
+            origin.latitude,
+            destination.longitude,
+            destination.latitude,
+        )
+        val connection = (URL(routeUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = OSM_CONNECT_TIMEOUT_MS
+            readTimeout = OSM_READ_TIMEOUT_MS
+            useCaches = false
+            setRequestProperty("Connection", "keep-alive")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "RotaCerta/${BuildConfig.VERSION_NAME} (${BuildConfig.APPLICATION_ID})")
+        }
+        return try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                FarolFlightRecorder0163.record(
+                    stage = "OSM_PRIMARY_ROUTE_HTTP_0546",
+                    packageName = null,
+                    details = "code=$code",
+                )
+                return null
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val root = json.parseToJsonElement(body).jsonObject
+            if (root["code"]?.jsonPrimitive?.content != "Ok") return null
+            val distanceMeters = root["routes"]?.jsonArray
+                ?.firstOrNull()?.jsonObject
+                ?.get("distance")?.jsonPrimitive
+                ?.doubleOrNull
+                ?: return null
+            (distanceMeters / 1000.0).takeIf { it >= 0.0 }
+        } catch (error: Throwable) {
+            FarolFlightRecorder0163.record(
+                stage = "OSM_PRIMARY_ROUTE_ERROR_0546",
+                packageName = null,
+                details = "error=${error::class.java.simpleName}:${error.message}",
+            )
+            null
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun requestAddressRouteFallback(
         originAddress: String,
@@ -537,6 +693,12 @@ class GoogleMapsService(context: Context? = null) {
     private companion object {
         const val ROUTES_COMPUTE_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
         const val ROUTE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix"
+        const val OSM_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+        const val OSRM_ROUTE_URL = "https://router.project-osrm.org"
+        const val OSM_CONNECT_TIMEOUT_MS = 900
+        const val OSM_READ_TIMEOUT_MS = 1_200
+        const val OSM_GEOCODE_REQUEST_ATTEMPTS = 1
+        const val OSM_ROUTE_REQUEST_ATTEMPTS = 1
         const val CONNECT_TIMEOUT_MS = 350 // subsecond_connect_budget_checklist_6
         const val READ_TIMEOUT_MS = 600 // subsecond_read_budget_checklist_6
         const val ROUTE_REQUEST_ATTEMPTS = 1 // single_route_attempt_checklist_6
