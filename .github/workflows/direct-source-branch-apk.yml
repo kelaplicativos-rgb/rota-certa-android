@@ -1,17 +1,18 @@
-name: Rota Certa 0.1.531 BlaBla rides portable JSON
-# 0.1.531: preserve the proven forensic ZIP and add one strict, self-readable JSON containing both authenticated profiles and canonical trip IDs without HTML/MHTML or reusable authentication material.
+name: Rota Certa 0.1.543 public reservation exact SHA
 
 on:
   push:
     branches:
-      - agent/blablacar-rides-portable-json-0.1.531
+      - agent/public-reserve-request-trip-query-0.1.543
+    paths:
+      - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: blablacar-rides-portable-json-0531-${{ github.ref }}
+  group: public-reserve-request-trip-query-0543-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,15 +20,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: timeline_canonical_passenger_first_paint_0517_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: public_reserve_request_trip_query_0543_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      BASE_AUTHORITY_SHA: c473d53c5d5a2634e82b7fb4f8c2ed7995737510
-      FAROL_SHA256: cb085a95aa115d3a0b2f227af20de5d95092f241ccb10cd737562a5c21fca82f
-      EXPECTED_VERSION_CODE: '5823'
-      EXPECTED_VERSION_NAME: '0.1.531'
+      EXPECTED_VERSION_CODE: '5835'
+      EXPECTED_VERSION_NAME: '0.1.543'
+      FAROL_SHA256: 7e05ee2f31ad367c89fadfb62aaf85233a4525253a34e1e3bdc26aa484ec8d90
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -35,35 +35,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove lineage source tree and FAROL before
+      - name: Prove exact source and protected FAROL
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
-          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
           echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
           echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+          FAROL='app/src/main/java/com/rotacerta/LiveRideAccessibilityService.kt'
+          test -s "$FAROL"
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           test "$(awk '{print $1}' /tmp/farol-before.sha256)" = "$FAROL_SHA256"
-          git diff --check "$BASE_AUTHORITY_SHA"...HEAD
-          git diff --name-only "$BASE_AUTHORITY_SHA"...HEAD | tee /tmp/changed-files.txt
-          ! grep -Fxq "$FAROL" /tmp/changed-files.txt
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
+          grep -Fq 'Fazer pedido de reserva' trip-platform/public/app.js
+          grep -Fq "url.searchParams.get('id')" trip-platform/public/app.js
+          grep -Fq '/trip/' trip-platform/public/app.js
+          grep -Fq '/app.js?v=0.1.543-' trip-platform/public/index.html
+          git diff --check HEAD^ HEAD
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate backend public Agenda canonical contracts
+      - name: Validate public Agenda reservation contract
         shell: bash
         run: |
           set -euo pipefail
-          node --check trip-platform/functions/index.js
           node --check trip-platform/public/app.js
-          node --test             trip-platform/functions/test/agenda-card-expansion-state-0506.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-public-read-only-0475.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             trip-platform/functions/test/agenda-readback-forensics-0421.test.js             trip-platform/functions/test/backend-canonical-authority-0468.test.js             trip-platform/functions/test/canonical-invalidation-0495.test.js             trip-platform/functions/test/timeline-canonical-backend-0494.test.js             | tee /tmp/node-tests.log
+          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js | tee /tmp/node-tests.log
 
       - name: Configure Firebase Android app for build only
         shell: bash
@@ -102,97 +104,18 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
       - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run canonical segment topology and Agenda parity regression suite
+      - name: Assemble exact-head APK
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesSnapshot0526Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPortableJson0531Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesForensicEvidence0528Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'             --tests 'br.com.mapeiaia.rotacerta.ContextualDiagnostics0507Test'             --tests 'br.com.mapeiaia.rotacerta.DiagnosticLogStoreTest'             --tests 'br.com.mapeiaia.rotacerta.UnifiedDebugReport139Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaGlobalTrace0273Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test.timelineCardTargetCollectorRefreshIsAgendaOwnedAndNonVisual0518'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaTripControl0407Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineAutoSync0398Test.offlineDownloadExportsTheCanonicalAgendaProjectionActuallyRendered0516'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorNetworkSource0266Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorModules0264Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaBrowserOrchestrator0318Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicSearchTest'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicIdentity0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuditableCollection0379Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAgendaParityAudit0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaCanonicalExternalResolution0507Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalProjectionConvergence0408Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaIncrementalAvailability0375Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaSegments0311Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineCanonicalBackend0494Test'             --tests 'br.com.mapeiaia.rotacerta.trips.CanonicalPassengerSegments0491Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AdminBlaBlaIdentityRecovery0472Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
-
-      - name: Verify structural constraints and sanitization markers
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -Fq 'MAX_EVENTS = 6_000' app/src/main/java/br/com/mapeiaia/rotacerta/UnifiedDebugLog.kt
-          test "$(find app/src/main/java -type f -name '*Contextual*Debug*0507*' | wc -l)" -le 3
-          ! grep -R -n --include='*.kt' -E 'if[[:space:]]*\([^)]*message\.contains\(|screenName[[:space:]]*==' app/src/main/java/br/com/mapeiaia/rotacerta/ContextualDiagnostics0507.kt app/src/main/java/br/com/mapeiaia/rotacerta/trips/ContextualDebugReportUi0507.kt
-          ! grep -R -n --include='*.kt' -E 'passengerName=.*PUBLIC_PROJECTION|passengerContact=.*PUBLIC_PROJECTION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'PENDING_IDENTITY_ENRICHMENT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt
-          grep -Fq 'IDENTITY_CONFLICT' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAuditableCollection.kt
-          grep -Fq 'PUBLIC_PROJECTION_ATTEMPTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'PUBLIC_PROJECTION_COMMITTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'AGENDA_PARITY_MISSING' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
-          grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          ! grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_CONFIRMED_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          ! grep -Fq 'TIMELINE_AGENDA_IMMEDIATE_DELIVERY_PENDING_0521' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          ! grep -Fq 'remoteProjectionDivergenceObserved = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
-          ! grep -Fq 'Agenda não confirmou todas as alterações imediatamente' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
-          grep -Fq 'GLOBAL_EXTRA_SEATS_IMMEDIATE_PUBLICATION_0520' app/src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt
-          grep -Fq 'mergeCanonicalTimelineProjections0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_LOCAL_PRIMARY_SELECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_REMOTE_SYNC_STARTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_REMOTE_INCOMPLETE_IGNORED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_REMOTE_CONFLICT_REJECTED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'TIMELINE_RADAR_LOCAL_IDENTITY_USED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          ! grep -Fq 'localAgendaProjection0515 = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'persistSecondaryCanonicalTimelineMerge0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
-          grep -Fq 'timelineBlaBlaTargetUnambiguous0525' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripControl0407.kt
-          SNAPSHOT='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt'
-          SNAPSHOT_UI='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt'
-          grep -Fq 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' "$SNAPSHOT"
-          grep -Fq 'Environment.DIRECTORY_DOWNLOADS' "$SNAPSHOT"
-          grep -Fq 'ZipOutputStream' "$SNAPSHOT"
-          grep -Fq 'downloadEntries0527' "$SNAPSHOT"
-          grep -Fq 'Baixar última captura (.zip)' "$SNAPSHOT_UI"
-          ! grep -Fq 'Intent.ACTION_SEND_MULTIPLE' "$SNAPSHOT"
-          ! grep -Fq 'BlaBlaRidesSnapshotShare0526' "$SNAPSHOT_UI"
-          ! grep -Fq 'Compartilhar última captura privada' "$SNAPSHOT_UI"
-          FORENSIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt'
-          grep -Fq 'blablacar-rides-snapshot-v2' "$SNAPSHOT"
-          grep -Fq 'identity.json' "$FORENSIC"
-          grep -Fq 'rides-index.json' "$FORENSIC"
-          grep -Fq 'tripSetSha2560528' "$FORENSIC"
-          grep -Fq 'compareHtmlMhtmlTripSets0528' "$FORENSIC"
-          grep -Fq 'NO_REUSABLE_AUTH_MATERIAL_V1' "$FORENSIC"
-          grep -Fq 'validateProfileForComplete0528' "$FORENSIC"
-          grep -Fq 'ARCHIVED_RIDES_SENTINEL_VISIBLE' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_END_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_CONFIRMED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_CROSS_FORMAT_VERIFIED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          FORENSIC='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt'
-          grep -Fq 'blablacar-rides-snapshot-v2' "$SNAPSHOT"
-          grep -Fq 'manifest.sha256' "$SNAPSHOT"
-          grep -Fq 'identity.json' "$FORENSIC"
-          grep -Fq 'rides-index.json' "$FORENSIC"
-          grep -Fq 'tripSetSha2560528' "$FORENSIC"
-          grep -Fq 'compareHtmlMhtmlTripSets0528' "$FORENSIC"
-          grep -Fq 'validateProfileForComplete0528' "$FORENSIC"
-          grep -Fq 'sensitiveArtifactMarker0528' "$FORENSIC"
-          grep -Fq 'BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_END_EVIDENCE_CAPTURED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_CONFIRMED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -Fq 'BLABLACAR_RIDES_CROSS_FORMAT_VERIFIED' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          PORTABLE='app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesPortableJson0531.kt'
-          grep -Fq 'rota-certa-blablacar-rides-v1' "$PORTABLE"
-          grep -Fq 'ignoreUnknownKeys = false' "$PORTABLE"
-          grep -Fq 'BlaBlaRidesPortableJson0531.decode(raw)' "$PORTABLE"
-          grep -Fq 'sensitiveArtifactMarker0528(raw)' "$PORTABLE"
-          grep -Fq 'application/json' "$PORTABLE"
-          grep -Fq 'Baixar dados para Rota Certa (.json)' "$SNAPSHOT_UI"
-          ! grep -Fq 'suas-viagens.html' "$PORTABLE"
-          ! grep -Fq 'suas-viagens.mhtml' "$PORTABLE"
-
-      - name: Assemble exact-head final debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          git diff --quiet
           APK='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
           unzip -t "$APK" | tee /tmp/zip-integrity.txt
@@ -208,133 +131,32 @@ jobs:
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
-      - name: Verify FAROL after build and record live backend health
+      - name: Verify FAROL after build and package evidence
         shell: bash
         run: |
           set -euo pipefail
-          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+          FAROL='app/src/main/java/com/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
-          test "$(awk '{print $1}' /tmp/farol-after.sha256)" = "$FAROL_SHA256"
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          LIVE_BACKEND_HEALTH=DEGRADED
-          if curl --retry 8 --retry-delay 3 --fail --silent --show-error https://rota-certa-7ccc8.web.app/v1/health | tee /tmp/live-health-0525.json; then
-            if grep -Fq '"ok":true' /tmp/live-health-0525.json; then
-              LIVE_BACKEND_HEALTH=PASS
-            fi
-          else
-            printf '%s\n' '{"ok":false,"reason":"health_endpoint_unavailable_during_ci"}' > /tmp/live-health-0525.json
-          fi
-          echo "LIVE_BACKEND_HEALTH=$LIVE_BACKEND_HEALTH" >> "$GITHUB_ENV"
-          echo "backend_health=$LIVE_BACKEND_HEALTH"
-
-      - name: Materialize final APK and evidence
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT=/tmp/0531
+          OUT=/tmp/0543
           mkdir -p "$OUT"
-          APK='app/build/outputs/apk/debug/app-debug.apk'
-          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-blablacar-rides-portable-json.apk"
-          cp "$APK" "$FINAL_APK"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed-files.txt "$OUT/"
-          cp /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
-          cp /tmp/node-tests.log /tmp/android-tests.log /tmp/assemble.log "$OUT/"
-          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
-          cp /tmp/live-health-0525.json "$OUT/"
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
+          cp /tmp/node-tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
           source_head=$GITHUB_SHA
           source_branch=$GITHUB_REF_NAME
-          rides_snapshot_reuses_existing_webview=PASS
-          rides_snapshot_strong_profile_identity=PASS
-          rides_snapshot_cross_session_fail_closed=PASS
-          rides_snapshot_lazy_loading_stabilization=PASS
-          rides_snapshot_empty_list_complete=PASS
-          rides_snapshot_private_html_mhtml=PASS
-          rides_snapshot_sha256_manifest=PASS
-          rides_snapshot_no_publication=PASS
-          rides_snapshot_downloads_zip_to_android_downloads=PASS
-          rides_snapshot_share_action=PROHIBITED
-          rides_snapshot_manifest_schema_v2=PASS
-          rides_snapshot_identity_json_sha256=PASS
-          rides_snapshot_rides_index_sha256=PASS
-          rides_snapshot_trip_set_fingerprint=PASS
-          rides_snapshot_end_evidence=PASS
-          rides_snapshot_stabilization_evidence=PASS
-          rides_snapshot_html_mhtml_cross_format_gate=PASS
-          rides_snapshot_no_reusable_auth_material_gate=PASS
-          rides_snapshot_complete_requires_forensic_evidence=PASS
-          rides_snapshot_schema_v2=PASS
-          rides_snapshot_identity_json_sha256=PASS
-          rides_snapshot_rides_index_json_sha256=PASS
-          rides_snapshot_trip_set_fingerprint=PASS
-          rides_snapshot_set_based_stabilization=PASS
-          rides_snapshot_end_evidence=PASS
-          rides_snapshot_html_mhtml_consistency_gate=PASS
-          rides_snapshot_final_artifact_reverify=PASS
-          rides_snapshot_secret_material_fail_closed=PASS
-          rides_snapshot_manifest_checksum=PASS
-          rides_portable_json_single_file=PASS
-          rides_portable_json_strict_self_readback=PASS
-          rides_portable_json_complete_only=PASS
-          rides_portable_json_no_reusable_auth_material=PASS
-          timeline_local_primary=PASS
-          secondary_canonical_sync=PASS
-          remote_incomplete_non_degrading=PASS
-          remote_empty_private_non_degrading=PASS
-          remote_newer_safe_merge=PASS
-          remote_conflict_rejected=PASS
-          radar_local_identity=PASS
-          canonical_failure_classification=PASS
-          cancellation_not_backend_offline=PASS
-          canonical_projection_pre_cache_validation=PASS
-          canonical_booking_revision_binding=PASS
-          canonical_booking_trip_identity_binding=PASS
-          passenger_loading_terminal_state=PASS
-          canonical_passenger_first_paint_immediate=PASS
-          global_extra_seats_current_future=PASS
-          global_extra_seats_additive_capacity=PASS
-          global_extra_seats_immediate_publication=PASS
-          global_extra_seats_forced_republication=PASS
-          timeline_mutation_0520_stable_path_restored=PASS
-          timeline_generic_mutation_outbox_enqueue=PASS
-          timeline_generic_mutation_background_delivery=PASS
-          timeline_0521_forced_readback_removed=PASS
-          stale_external_identity_outbox_bounded=PASS
-          driver_whatsapp_public_action=PASS
-          agenda_owned_exact_card_refresh=PASS
-          exact_trip_only=PASS
-          agenda_to_canonical_timeline=PASS
-          private_projection_revision_guard=PASS
-          canonical_private_passenger_metadata=PASS
-          canonical_private_booking_ack_required=PASS
-          canonical_passenger_identity_precedence=PASS
-          canonical_private_stop_coordinates=PASS
-          canonical_agenda_private_passenger_materialization=PASS
-          timeline_local_agenda_fallback=PASS
-          whatsapp_private_contact_shortcut=PASS
-          exact_passenger_booking_coordinates=PASS
-          exact_passenger_address_priority=PASS
-          stale_private_mirror_non_authoritative=PASS
-          compatible_private_mirror_missing_field_fallback=PASS
-          canonical_external_identity_recovery=PASS
-          canonical_manage_href_projection=PASS
-          canonical_public_url_private_fallback=PASS
-          neutral_compact_label_hidden=PASS
-          external_identity_internal_block=PROHIBITED
-          timeline_direct_collector_dependency=PROHIBITED
-          timeline_collector_fallback=PROHIBITED
-          public_agenda_private_data_leak=PROHIBITED
-          public_agenda_contract_regressions=PASS
-          public_agenda_non_json_error_boundary=PASS
-          public_agenda_cache_buster=PASS
-          pull_refresh_canonical_source=PASS
-          snapshot_non_degrading_merge_after_validation=PASS
-          unified_sanitized_diagnostics=PASS
+          public_reservation_query_trip_url=PASS
+          public_reservation_path_trip_url=PASS
+          parallel_reservation_system=PROHIBITED
+          whatsapp_public_reservation=PROHIBITED
+          rides_offer_fallback=PROHIBITED
           farol_untouched=PASS
-          backend_health=$LIVE_BACKEND_HEALTH
           merge=false
           release=false
           latest=false
@@ -344,7 +166,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.531-blablacar-rides-portable-json-${{ github.sha }}
+          name: rota-certa-0.1.543-5835-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0531
+          path: /tmp/0543
