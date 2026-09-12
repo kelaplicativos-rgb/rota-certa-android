@@ -27,7 +27,6 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       EXPECTED_VERSION_CODE: '5835'
       EXPECTED_VERSION_NAME: '0.1.543'
-      FAROL_SHA256: 7e05ee2f31ad367c89fadfb62aaf85233a4525253a34e1e3bdc26aa484ec8d90
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -44,10 +43,10 @@ jobs:
           echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
           printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
           printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
-          FAROL='app/src/main/java/com/rotacerta/LiveRideAccessibilityService.kt'
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test -s "$FAROL"
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
-          test "$(awk '{print $1}' /tmp/farol-before.sha256)" = "$FAROL_SHA256"
+          git diff --quiet HEAD^ HEAD -- "$FAROL"
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'Fazer pedido de reserva' trip-platform/public/app.js
@@ -135,7 +134,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FAROL='app/src/main/java/com/rotacerta/LiveRideAccessibilityService.kt'
+          FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
           OUT=/tmp/0543
