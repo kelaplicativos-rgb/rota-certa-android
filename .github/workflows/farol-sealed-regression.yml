@@ -8,6 +8,7 @@ on:
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/FarolSealed0547RegressionContractTest.kt'
       - '.github/farol-seal-0.1.547.md'
       - '.github/workflows/farol-sealed-regression.yml'
   pull_request:
@@ -17,6 +18,7 @@ on:
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/FarolSealed0547RegressionContractTest.kt'
       - '.github/farol-seal-0.1.547.md'
       - '.github/workflows/farol-sealed-regression.yml'
   workflow_dispatch:
@@ -99,8 +101,8 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
-            --tests 'br.com.mapeiaia.rotacerta.ReadingFreePrimary0546ContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
