@@ -152,6 +152,7 @@ fun TripTimelineScreen(
     var expandedTripIds0536 by remember { mutableStateOf<Set<String>>(emptySet()) }
     var referenceOrigin by remember { mutableStateOf<TripReferenceOrigin?>(null) }
     var currentCoordinate by remember { mutableStateOf<Coordinate?>(null) }
+    var timelineNowMillis0548 by remember { mutableStateOf(System.currentTimeMillis()) }
     val settingsRepository = remember(context) { SettingsRepository(context) }
     val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
     val settingsLoaded = appSettingsState != null
@@ -174,6 +175,7 @@ fun TripTimelineScreen(
     LaunchedEffect(Unit) {
         referenceOrigin = withContext(Dispatchers.IO) { referenceStore.read() }
         while (true) {
+            timelineNowMillis0548 = System.currentTimeMillis()
             currentCoordinate = runCatching { locationService.currentCoordinate() }.getOrNull()
             delay(30_000L)
         }
@@ -545,11 +547,23 @@ fun TripTimelineScreen(
     val directionReference = remember(referenceOrigin, appSettings.homeCoordinate, appSettings.homeRadiusKm) {
         timelineDirectionReference(referenceOrigin, appSettings)
     }
-    val entries = remember(canonicalProjection0494.entries, archiveRevision, showArchived) {
+    val entries = remember(
+        canonicalProjection0494.entries,
+        archiveRevision,
+        showArchived,
+        timelineNowMillis0548,
+    ) {
         val operation = AgendaTrace.operationStart(context, "TIMELINE_CANONICAL_SORT_0494", "TripTimelineScreen", traceId)
         try {
             canonicalProjection0494.entries
                 .filter { archiveStore.isArchived(it) == showArchived }
+                .filter { entry ->
+                    showArchived || isPassengerTimelineCurrentOrUpcoming0548(
+                        departureAtMillis = entry.departureAtMillis,
+                        arrivalAtMillis = entry.arrivalAtMillis,
+                        nowMillis = timelineNowMillis0548,
+                    )
+                }
                 .sortedBy(TripTimelineEntry::departureAtMillis)
                 .also { AgendaTrace.operationEnd(context, operation, processedCount = it.size) }
         } catch (error: Throwable) {
