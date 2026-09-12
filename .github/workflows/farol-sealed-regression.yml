@@ -32,6 +32,8 @@ jobs:
     timeout-minutes: 45
     env:
       SEALED_SHA: 535ad0217c38c7bd98c6eea7f839a94c64b5c2dd
+      EXPECTED_VERSION_CODE: '5839'
+      EXPECTED_VERSION_NAME: '0.1.547'
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
@@ -42,22 +44,29 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove immutable sealed files
+      - name: Prove exact HEAD and immutable sealed files
         shell: bash
         run: |
           set -euo pipefail
+          SOURCE_HEAD="$(git rev-parse HEAD)"
+          test "$SOURCE_HEAD" = "$GITHUB_SHA"
           git cat-file -e "${SEALED_SHA}^{commit}"
           grep -Fq "$SEALED_SHA" .github/farol-seal-0.1.547.md
+          grep -Fq 'versionCode = 5839' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.547"' app/build.gradle.kts
           git diff --exit-code "$SEALED_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt
           git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt
           git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
+          mkdir -p evidence
+          printf '%s\n' "$SOURCE_HEAD" | tee evidence/source-head.txt
+          printf '%s\n' "$GITHUB_REF_NAME" | tee evidence/source-branch.txt
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Configure Firebase Android app for tests
+      - name: Configure Firebase Android app for tests and build
         shell: bash
         run: |
           set -euo pipefail
@@ -106,3 +115,44 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Assemble exact-head debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify installable APK identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" > evidence/aapt-badging.txt
+          PACKAGE_LINE="$(grep '^package:' evidence/aapt-badging.txt | head -n1)"
+          echo "$PACKAGE_LINE"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          test "$(cat evidence/source-head.txt)" = "$GITHUB_SHA"
+          sha256sum "$APK" | tee evidence/apk-sha256.txt
+          grep -E 'version(Code|Name) = ' app/build.gradle.kts | tee evidence/app-version.txt
+          cp "$APK" evidence/rota-certa-0.1.547-reading-geocode-resilience.apk
+
+      - name: Upload exact-head APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.547-reading-geocode-resilience-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            evidence/rota-certa-0.1.547-reading-geocode-resilience.apk
+            evidence/source-head.txt
+            evidence/source-branch.txt
+            evidence/aapt-badging.txt
+            evidence/apk-sha256.txt
+            evidence/app-version.txt
