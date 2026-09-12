@@ -251,7 +251,7 @@ replacement = r'''
     }
 
     private fun requestOsrmDrivingDistance('''
-service, count = pattern.subn(replacement, service, count=1)
+service, count = pattern.subn(lambda _match: replacement, service, count=1)
 if count != 1:
     raise SystemExit(f"OSM resolver block replacement count={count}")
 
