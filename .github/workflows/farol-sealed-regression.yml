@@ -1,0 +1,106 @@
+name: FAROL sealed regression gate
+
+on:
+  push:
+    paths:
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt'
+      - '.github/farol-seal-0.1.547.md'
+      - '.github/workflows/farol-sealed-regression.yml'
+  pull_request:
+    paths:
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt'
+      - '.github/farol-seal-0.1.547.md'
+      - '.github/workflows/farol-sealed-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sealed-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SEALED_SHA: 535ad0217c38c7bd98c6eea7f839a94c64b5c2dd
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove immutable sealed files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${SEALED_SHA}^{commit}"
+          grep -Fq "$SEALED_SHA" .github/farol-seal-0.1.547.md
+          git diff --exit-code "$SEALED_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt
+          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt
+          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app for tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then exit 0; fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run permanent FAROL regression contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingFreePrimary0546ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
