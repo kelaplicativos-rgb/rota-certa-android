@@ -42,6 +42,7 @@ jobs:
           grep -Fq 'OSM_PRIMARY_GEOCODE_FAILED_0546' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'MANUAL_READING_RUNTIME_STAGE43' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
           test -f .github/scripts/reading_geocode_resilience_0547.py
+          test -f .github/scripts/reading_geocode_resilience_0547_compilefix.py
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > /tmp/live.before
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt > /tmp/timeline.before
           sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt > /tmp/agenda.before
@@ -52,11 +53,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/reading_geocode_resilience_0547.py
+          python3 .github/scripts/reading_geocode_resilience_0547_compilefix.py
           git diff --check
           grep -Fq 'versionCode = 5839' app/build.gradle.kts
           grep -Fq 'versionName = "0.1.547"' app/build.gradle.kts
           grep -Fq 'GEOCODE_RESOLUTION_START_0547' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'GEOCODE_ANDROID_FALLBACK_0547' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'DeviceRegion(city = "", country = "")' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
           grep -Fq 'Rua Flores da Primavera, 263' app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
 
       - name: Prove protected modules untouched
