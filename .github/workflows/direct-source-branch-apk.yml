@@ -50,7 +50,7 @@ jobs:
           grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
           grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
           grep -Fq 'Fazer pedido de reserva' trip-platform/public/app.js
-          grep -Fq "url.searchParams.get('id')" trip-platform/public/app.js
+          grep -Fq 'searchParams.get("id")' trip-platform/public/app.js
           grep -Fq '/trip/' trip-platform/public/app.js
           grep -Fq '/app.js?v=0.1.543-' trip-platform/public/index.html
           git diff --check HEAD^ HEAD
