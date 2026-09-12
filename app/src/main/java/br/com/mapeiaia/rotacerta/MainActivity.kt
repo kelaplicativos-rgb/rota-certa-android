@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticStore
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -3012,6 +3013,9 @@ private suspend fun buildManualSupportReport(
         appendLine()
         appendLine("--- EVENTOS UNIFICADOS DA EXECUÇÃO ---")
         appendLine(UnifiedDebugEventStore.dump())
+        appendLine()
+        appendLine("--- BLABLACAR NETWORK-FIRST ANONIMIZADO ---")
+        appendLine(BlaBlaNetworkDiagnosticStore.exportLatest(context))
         appendLine()
         appendLine("--- EVENTOS TÉCNICOS COMPLEMENTARES ---")
         appendLine(complementaryEvents.ifBlank { "sem eventos complementares" })

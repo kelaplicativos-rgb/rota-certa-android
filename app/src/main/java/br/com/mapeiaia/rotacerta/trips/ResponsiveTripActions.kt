@@ -11,12 +11,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
 data class ResponsiveTripAction(
     val label: String,
     val outlined: Boolean = true,
     val enabled: Boolean = true,
+    val traceKey: String? = null,
     val onClick: () -> Unit,
 )
 
@@ -24,15 +26,20 @@ data class ResponsiveTripAction(
 @Composable
 fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifier = Modifier) {
     if (actions.isEmpty()) return
+    val context = LocalContext.current
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val narrow = maxWidth < 360.dp || actions.size > 2
         if (narrow) {
             Column(verticalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
                 actions.forEach { action ->
+                    val tracedClick = {
+                        AgendaTrace.action(context, action.traceKey, action.label)
+                        action.onClick()
+                    }
                     if (action.outlined) {
-                        OutlinedButton(action.onClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                        OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
                     } else {
-                        Button(action.onClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
+                        Button(tracedClick, enabled = action.enabled, modifier = Modifier.fillMaxWidth()) { Text(action.label, maxLines = 1) }
                     }
                 }
             }
@@ -41,10 +48,14 @@ fun ResponsiveTripActions(actions: List<ResponsiveTripAction>, modifier: Modifie
             val width = (maxWidth - gap * (actions.size - 1)) / actions.size
             Row(horizontalArrangement = Arrangement.spacedBy(gap), modifier = Modifier.fillMaxWidth()) {
                 actions.forEach { action ->
+                    val tracedClick = {
+                        AgendaTrace.action(context, action.traceKey, action.label)
+                        action.onClick()
+                    }
                     if (action.outlined) {
-                        OutlinedButton(action.onClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                        OutlinedButton(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
                     } else {
-                        Button(action.onClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
+                        Button(tracedClick, enabled = action.enabled, modifier = Modifier.width(width)) { Text(action.label, maxLines = 1) }
                     }
                 }
             }

@@ -196,7 +196,11 @@ class TripRemoteApi(
     }
 }
 
-fun RemoteBooking.toLocalBooking(localTripId: String): Booking = Booking(
+/**
+ * Server contract does not yet carry passengerId/fare/exact-address fields.
+ * Preserve those local-only values when a remote refresh updates the same Booking.
+ */
+fun RemoteBooking.toLocalBooking(localTripId: String, existingLocal: Booking? = null): Booking = Booking(
     id = id,
     tripId = localTripId,
     passengerName = passengerName,
@@ -212,4 +216,9 @@ fun RemoteBooking.toLocalBooking(localTripId: String): Booking = Booking(
     capacityClaimType = capacityClaimType,
     sourceReference = sourceReference,
     occupancyGroupId = occupancyGroupId,
+    passengerId = existingLocal?.passengerId.orEmpty(),
+    fareMinorUnits = existingLocal?.fareMinorUnits,
+    fareCurrencyCode = existingLocal?.fareCurrencyCode.orEmpty(),
+    boardingAddress = existingLocal?.boardingAddress.orEmpty(),
+    dropoffAddress = existingLocal?.dropoffAddress.orEmpty(),
 )

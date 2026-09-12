@@ -67,10 +67,10 @@ fun BlaBlaCollectorPanel(
     fun publishCombined(messagePrefix: String) {
         val accounts = registry.list()
         val response = sessionStore.combinedResponse(accounts)
-        stateStore.saveResponse(response)
-        onResult(response)
+        val published = stateStore.saveResponse(response)
+        onResult(published)
         refresh()
-        message = "$messagePrefix • ${response.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${response.trips.size} viagens."
+        message = "$messagePrefix • ${published.coverage.validated_queries}/${accounts.size} contas UUID-confirmadas • ${published.trips.size} viagens."
         onChanged(message.orEmpty())
     }
 
@@ -135,9 +135,9 @@ fun BlaBlaCollectorPanel(
             ?: if (result.resultCode == Activity.RESULT_OK) "Sincronizado externamente ✅" else "Sincronização externa pendente ⚠️"
         message = seatMessage
         onChanged(seatMessage)
-        if (result.resultCode == Activity.RESULT_OK && accountId != null) {
-            // Read-after-write: after the dedicated options page verified the new value,
-            // refresh the exact authenticated account and harvest its MHTML evidence.
+        if (result.resultCode == Activity.RESULT_OK && !accountId.isNullOrBlank()) {
+            // Read-after-write: after the exact options page verified the new value,
+            // refresh only the authenticated account that owns that publication.
             syncQueue = listOf(accountId)
             syncCursor = 0
             syncing = true
@@ -148,13 +148,39 @@ fun BlaBlaCollectorPanel(
     @Suppress("UNUSED_VARIABLE") val refreshKey = revision
     val accounts = registry.list()
 
+    fun pendingSeatTarget(): Pair<BlaBlaManualSeatSyncRequest, BlaBlaDynamicAccount>? {
+        val pending = manualSeatStore.peek() ?: return null
+        val target = accounts.singleOrNull { account ->
+            account.profileUuid?.equals(pending.profileUuid, ignoreCase = true) == true
+        } ?: return null
+        return pending to target
+    }
+
+    fun launchPendingSeatSync(origin: String): Boolean {
+        val (pending, target) = pendingSeatTarget() ?: return false
+        manualSeatSyncing = true
+        message = if (pending.seatDelta < 0) {
+            "Ajustando ${-pending.seatDelta} vaga(s) na publicação correta…"
+        } else {
+            "Devolvendo ${pending.seatDelta} vaga(s) à publicação correta…"
+        }
+        onChanged(message.orEmpty())
+        UnifiedDebugEventStore.record(
+            "EXTERNAL_SEAT_SYNC_RELIABLE_LAUNCH",
+            context.packageName,
+            "origin=$origin request=${pending.id} delta=${pending.seatDelta} profileUuidPresent=true tripIdPresent=true",
+        )
+        seatSyncLauncher.launch(BlaBlaReliableSeatSyncIntents.seatSync(context, target))
+        return true
+    }
+
     // Discard snapshots from the old hard-coded two-account candidate. The
     // dynamic registry is authoritative from this version onward and starts empty.
     LaunchedEffect(Unit) {
         if (currentResponse != null && currentResponse.strategy != DYNAMIC_STRATEGY) {
             val clean = sessionStore.combinedResponse(registry.list())
-            stateStore.saveResponse(clean)
-            onResult(clean)
+            val published = stateStore.saveResponse(clean, preserveOnPartial = false)
+            onResult(published)
         }
     }
 
@@ -172,15 +198,12 @@ fun BlaBlaCollectorPanel(
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_SEAT_SYNC_PENDING",
                     context.packageName,
-                    "reason=target_profile_unresolved request=${pendingManualSeat.id} manual=true",
+                    "reason=target_profile_unresolved request=${pendingManualSeat.id} manual=true retained=true",
                 )
                 return@LaunchedEffect
             }
             handledAutoSyncToken = autoSyncToken
-            manualSeatSyncing = true
-            message = "Passageiro manual salvo • abrindo Lugares da publicação correta…"
-            onChanged(message.orEmpty())
-            seatSyncLauncher.launch(BlaBlaManualSeatAutomationIntents.seatSync(context, target))
+            launchPendingSeatSync("automatic_after_booking_change")
             return@LaunchedEffect
         }
 
@@ -274,12 +297,14 @@ fun BlaBlaCollectorPanel(
             Button(
                 enabled = !syncing && !archiving && !manualSeatSyncing && accounts.isNotEmpty(),
                 onClick = {
-                    syncQueue = accounts.map { it.id }
-                    syncCursor = 0
-                    syncing = true
-                    archiving = false
-                    message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
-                    onChanged(message.orEmpty())
+                    if (!launchPendingSeatSync("manual_sync_button")) {
+                        syncQueue = accounts.map { it.id }
+                        syncCursor = 0
+                        syncing = true
+                        archiving = false
+                        message = "Sincronizando ${accounts.size} conta(s), uma por vez…"
+                        onChanged(message.orEmpty())
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -288,6 +313,7 @@ fun BlaBlaCollectorPanel(
                         manualSeatSyncing -> "Sincronizando lugares…"
                         archiving -> "Baixando MHTMLs…"
                         syncing -> "Sincronizando…"
+                        manualSeatStore.peek() != null -> "Tentar vagas pendentes"
                         else -> "Sincronizar todas as contas"
                     },
                 )

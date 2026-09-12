@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.location.Geocoder
+import android.location.Location
 import android.net.Uri
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
@@ -30,6 +31,13 @@ data class OcrTextBlock0188(
 data class OcrStructuredText0188(
     val text: String,
     val blocks: List<OcrTextBlock0188>,
+)
+
+data class DeviceLocationFix(
+    val coordinate: Coordinate,
+    val accuracyMeters: Float?,
+    val capturedAtMillis: Long,
+    val fromCachedLocation: Boolean,
 )
 
 class OcrService(private val context: Context) {
@@ -72,23 +80,71 @@ class OcrService(private val context: Context) {
 class DeviceLocationService(private val context: Context) {
     private val client = LocationServices.getFusedLocationProviderClient(context)
 
+    /** Existing operational position lookup. A cached fix is acceptable for passive timeline progress. */
     suspend fun currentCoordinate(): Coordinate? {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) return null
-
+        if (!hasLocationPermission()) return null
         val location = client
             .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, CancellationTokenSource().token)
             .await()
             ?: client.lastLocation.await()
             ?: return null
-
-        return Coordinate(location.latitude, location.longitude)
+        return location.toCoordinate()
     }
+
+    /**
+     * Captures a reference point that may persist for days. A stale or very imprecise
+     * cached fix is rejected instead of silently redefining the driver's origin.
+     */
+    suspend fun freshReferenceFix(
+        maxAgeMillis: Long = 2L * 60L * 1_000L,
+        maxAccuracyMeters: Float = 1_500f,
+    ): DeviceLocationFix? {
+        if (!hasLocationPermission()) return null
+        val now = System.currentTimeMillis()
+        val current = client
+            .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, CancellationTokenSource().token)
+            .await()
+        current?.takeIf { usableReferenceFix(it, now, maxAgeMillis, maxAccuracyMeters) }?.let {
+            return it.toFix(fromCachedLocation = false)
+        }
+        val cached = client.lastLocation.await()
+        return cached
+            ?.takeIf { usableReferenceFix(it, now, maxAgeMillis, maxAccuracyMeters) }
+            ?.toFix(fromCachedLocation = true)
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
+        return fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun usableReferenceFix(
+        location: Location,
+        nowMillis: Long,
+        maxAgeMillis: Long,
+        maxAccuracyMeters: Float,
+    ): Boolean {
+        if (!location.latitude.isFinite() || !location.longitude.isFinite()) return false
+        if (location.latitude !in -90.0..90.0 || location.longitude !in -180.0..180.0) return false
+        val age = (nowMillis - location.time).coerceAtLeast(0L)
+        if (location.time <= 0L || age > maxAgeMillis) return false
+        if (location.hasAccuracy() && (!location.accuracy.isFinite() || location.accuracy > maxAccuracyMeters)) return false
+        return true
+    }
+
+    private fun Location.toCoordinate(): Coordinate = Coordinate(latitude, longitude)
+
+    private fun Location.toFix(fromCachedLocation: Boolean): DeviceLocationFix = DeviceLocationFix(
+        coordinate = toCoordinate(),
+        accuracyMeters = accuracy.takeIf { hasAccuracy() && it.isFinite() },
+        capturedAtMillis = time,
+        fromCachedLocation = fromCachedLocation,
+    )
 }
 
 class GeocodingService(private val context: Context) {
-    private val geocoder = Geocoder(context, Locale("pt", "BR"))
+    private val geocoder = Geocoder(context, Locale.getDefault())
 
     suspend fun geocode(query: String, region: DeviceRegion): Coordinate? = withContext(Dispatchers.IO) {
         if (query.isBlank()) return@withContext null

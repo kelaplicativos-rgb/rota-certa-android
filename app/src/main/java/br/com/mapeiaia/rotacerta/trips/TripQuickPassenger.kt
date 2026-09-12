@@ -6,9 +6,14 @@ import java.util.UUID
 data class QuickPassengerRequest(
     val passengerName: String,
     val passengerContact: String = "",
+    val passengerId: String = "",
     val boardingStopId: String,
     val dropoffStopId: String,
     val seats: Int = 1,
+    val fareMinorUnits: Long? = null,
+    val fareCurrencyCode: String = "",
+    val boardingAddress: String = "",
+    val dropoffAddress: String = "",
     val source: BookingSource = BookingSource.PRIVATE,
     val sourceReference: String = "",
     /** Optional source where the same physical seat is already blocked/reserved. */
@@ -39,6 +44,10 @@ object QuickPassengerEngine {
     ): QuickPassengerPlan {
         require(request.passengerName.isNotBlank()) { "Informe o nome do passageiro." }
         require(request.seats in 1..trip.capacity) { "Quantidade de vagas inválida." }
+        require(request.fareMinorUnits == null || request.fareMinorUnits > 0L) { "Valor da reserva inválido." }
+        require(request.fareCurrencyCode.isBlank() || request.fareCurrencyCode.matches(Regex("[A-Za-z]{3}"))) {
+            "Moeda da reserva inválida."
+        }
         require(request.mirrorSource == null || request.mirrorSource != request.source) {
             "A vaga espelho deve usar outra origem."
         }
@@ -65,9 +74,6 @@ object QuickPassengerEngine {
             require(linked.seats == request.seats) { "A vaga vinculada precisa ter a mesma quantidade de lugares." }
         }
 
-        // If the passenger is naming an already blocked RESERVED_SEAT, that seat is
-        // temporarily removed from the availability check because the plan will link
-        // both records into the same physical occupancy group instead of adding a seat.
         val availabilityBase = if (linked == null) existingBookings else existingBookings.filterNot { it.id == linked.id }
         val availability = SeatAvailabilityEngine.availability(
             trip = trip,
@@ -86,15 +92,22 @@ object QuickPassengerEngine {
             request.mirrorSource != null -> "seat-${idFactory()}"
             else -> null
         }
-        val passengerId = idFactory()
+        val canonicalPassengerId = request.passengerId.trim().takeIf(String::isNotEmpty) ?: idFactory()
+        val bookingId = idFactory()
         val passenger = Booking(
-            id = passengerId,
+            id = bookingId,
             tripId = trip.id,
             passengerName = request.passengerName.trim(),
             passengerContact = request.passengerContact.trim(),
+            passengerId = canonicalPassengerId,
             boardingStopId = request.boardingStopId,
             dropoffStopId = request.dropoffStopId,
             seats = request.seats,
+            fareMinorUnits = request.fareMinorUnits,
+            fareCurrencyCode = request.fareCurrencyCode.trim().uppercase(),
+            boardingAddress = request.boardingAddress.trim(),
+            dropoffAddress = request.dropoffAddress.trim(),
+            localMetadataTouched = true,
             status = BookingStatus.CONFIRMED,
             source = request.source,
             capacityClaimType = CapacityClaimType.PASSENGER,
@@ -125,8 +138,6 @@ object QuickPassengerEngine {
         val linkedUpdate = linked?.copy(occupancyGroupId = groupId, updatedAtMillis = nowMillis)
         val plan = QuickPassengerPlan(passenger, mirror, linkedUpdate)
 
-        // Final guard: the whole plan must still fit the physical vehicle. Mirror/link
-        // records share the same occupancyGroupId and therefore cannot double count.
         val projected = existingBookings
             .filterNot { existing -> linkedUpdate != null && existing.id == linkedUpdate.id }
             .plus(plan.writes())

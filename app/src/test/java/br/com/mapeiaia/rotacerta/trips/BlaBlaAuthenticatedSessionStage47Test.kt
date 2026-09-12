@@ -33,7 +33,8 @@ class BlaBlaAuthenticatedSessionStage47Test {
 
         val definition = assertNotNull(account.verifiedDefinition())
         assertEquals("7371f028-9c55-4903-8444-308015823efd", definition.uuid)
-        assertEquals("Nome público", definition.label)
+        assertEquals("Minha conta", definition.label)
+        assertEquals("Nome público", account.profileName)
         assertEquals("local-account-id", definition.slot)
     }
 

@@ -45,8 +45,8 @@ class MessageTemplatesActivity : ComponentActivity() {
 @Composable
 private fun MessageTemplatesScreen0172(onClose: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var trip by remember { mutableStateOf(MessageTemplateStore0172.readTrip(context)) }
-    var value by remember { mutableStateOf(MessageTemplateStore0172.readValue(context)) }
+    var trip by remember { mutableStateOf(TenantMessageTemplateStore.readTrip(context)) }
+    var value by remember { mutableStateOf(TenantMessageTemplateStore.readValue(context)) }
     var editingTrip by remember { mutableStateOf(false) }
     var editingValue by remember { mutableStateOf(false) }
 
@@ -58,14 +58,14 @@ private fun MessageTemplatesScreen0172(onClose: () -> Unit) {
             Text("Frases predefinidas", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             OutlinedButton(onClick = onClose) { Text("Voltar") }
         }
-        Text("Estas frases são usadas pelas bolinhas Copiar viagem e Valor.", style = MaterialTheme.typography.bodySmall)
+        Text("Estas frases são usadas pelas bolinhas Copiar viagem e Valor e permanecem isoladas por usuário do Rota Certa.", style = MaterialTheme.typography.bodySmall)
         TemplateCard0172("Copiar viagem", trip, "{saudacao}, {nome}, {origem}, {destino}, {dia_semana}, {dia}, {mes}, {horario}") { editingTrip = true }
         TemplateCard0172("Valor", value, "{nome}, {lugares}, {origem}, {destino}, {valor}") { editingValue = true }
         OutlinedButton(
             onClick = {
-                MessageTemplateStore0172.restoreDefaults(context)
-                trip = MessageTemplateStore0172.readTrip(context)
-                value = MessageTemplateStore0172.readValue(context)
+                TenantMessageTemplateStore.restoreDefaults(context)
+                trip = TenantMessageTemplateStore.readTrip(context)
+                value = TenantMessageTemplateStore.readValue(context)
             },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Restaurar frases originais") }
@@ -76,8 +76,8 @@ private fun MessageTemplatesScreen0172(onClose: () -> Unit) {
             title = "Editar frase de viagem",
             initial = trip,
             onSave = { saved ->
-                MessageTemplateStore0172.saveTrip(context, saved)
-                trip = MessageTemplateStore0172.readTrip(context)
+                TenantMessageTemplateStore.saveTrip(context, saved)
+                trip = TenantMessageTemplateStore.readTrip(context)
                 editingTrip = false
             },
             onDismiss = { editingTrip = false },
@@ -88,8 +88,8 @@ private fun MessageTemplatesScreen0172(onClose: () -> Unit) {
             title = "Editar frase de valor",
             initial = value,
             onSave = { saved ->
-                MessageTemplateStore0172.saveValue(context, saved)
-                value = MessageTemplateStore0172.readValue(context)
+                TenantMessageTemplateStore.saveValue(context, saved)
+                value = TenantMessageTemplateStore.readValue(context)
                 editingValue = false
             },
             onDismiss = { editingValue = false },

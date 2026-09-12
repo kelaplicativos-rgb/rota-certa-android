@@ -16,7 +16,6 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.File
-import java.net.URI
 import java.text.Normalizer
 import java.time.Instant
 import java.time.ZoneId
@@ -331,13 +330,13 @@ private data class PassengerTarget(
     val requiresSemanticProof: Boolean = false,
 ) {
     val externalPassengerKey: String
-        get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card:$cardIndex"
+        get() = href.takeIf(String::isNotBlank)?.let(BlaBlaCollectorUrlModule::passengerIdentityKey) ?: "card:$cardIndex"
     val discoveryKey: String
-        get() = href.takeIf(String::isNotBlank)?.let(::canonicalHref) ?: "card:$cardIndex"
+        get() = href.takeIf(String::isNotBlank)?.let(BlaBlaCollectorUrlModule::canonical) ?: "card:$cardIndex"
     val scopedEvidenceKey: String
         get() = BlaBlaHarvestAssociation.passengerEvidenceKey(accountId, tripId, externalPassengerKey)
     val archiveKey: String
-        get() = href.takeIf(String::isNotBlank)?.let(::passengerKey) ?: "card-${cardIndex + 1}"
+        get() = href.takeIf(String::isNotBlank)?.let(BlaBlaCollectorUrlModule::passengerIdentityKey) ?: "card-${cardIndex + 1}"
 }
 
 class BlaBlaMhtmlHarvestActivity : Activity() {
@@ -406,7 +405,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (!isBlaBla(url)) return
+                if (!BlaBlaCollectorUrlModule.isAllowed(url)) return
                 scheduleCurrentPage(view, url)
             }
         }
@@ -420,7 +419,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         if (!url.startsWith("tel:", ignoreCase = true)) return false
         val target = passengerTargets.getOrNull(passengerIndex)
         val pageUrl = if (::webView.isInitialized) webView.url.orEmpty() else ""
-        val phone = normalizeCapturedPhone(url.substringAfter(':').substringBefore('?'))
+        val phone = BlaBlaCollectorPassengerModule.normalizePhone(url.substringAfter(':').substringBefore('?'))
         if (
             phase == Phase.PASSENGER &&
             target != null &&
@@ -482,10 +481,10 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 return@evaluate
             }
             val targets = result.tripHrefs
-                .filter(::isSpecificTripHref)
+                .filter(BlaBlaCollectorUrlModule::isSpecificTrip)
                 .mapNotNull { raw ->
-                    val href = absoluteBlaBlaHref(raw)
-                    tripIdFromHref(href)?.let { tripId -> TripTarget(account.id, tripId, href) }
+                    val href = BlaBlaCollectorUrlModule.absolute(raw)
+                    BlaBlaCollectorUrlModule.tripId(href)?.let { tripId -> TripTarget(account.id, tripId, href) }
                 }
                 .distinctBy { it.tripId }
                 .take(MAX_TRIPS)
@@ -539,7 +538,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 retryCurrentOrAdvanceTrip(target, "trip_unreadable")
                 return@evaluate
             }
-            val capturedTripId = tripIdFromHref(result.pageUrl)
+            val capturedTripId = BlaBlaCollectorUrlModule.tripId(result.pageUrl)
             if (capturedTripId != target.tripId) {
                 recordPageIdentityMismatch("trip_after_evaluate", target.tripId, result.pageUrl)
                 busy = false
@@ -567,8 +566,11 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
             }
             val realEdit = result.editHref
                 .takeIf(String::isNotBlank)
-                ?.let(::absoluteBlaBlaHref)
-                ?.takeIf { href -> tripIdFromEditHref(href) == target.tripId && !isOptionsHref(href) }
+                ?.let(BlaBlaCollectorUrlModule::absolute)
+                ?.takeIf { href ->
+                    BlaBlaCollectorUrlModule.editTripId(href) == target.tripId &&
+                        BlaBlaCollectorUrlModule.optionsTripId(href) == null
+                }
             if (realEdit != null) {
                 editTargetByTrip[target.tripId] = target.copy(href = realEdit)
             } else if (result.editHref.isNotBlank()) {
@@ -601,8 +603,8 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         fun fromPassenger(index: Int, passenger: BlaBlaCollectorPassenger, hrefOverride: String? = null): PassengerTarget {
             val realHref = (hrefOverride ?: passenger.booking_href)
                 ?.takeIf(String::isNotBlank)
-                ?.let(::absoluteBlaBlaHref)
-                ?.takeIf(::isPassengerHref)
+                ?.let(BlaBlaCollectorUrlModule::absolute)
+                ?.takeIf(BlaBlaCollectorUrlModule::isPassenger)
                 .orEmpty()
             return PassengerTarget(
                 accountId = account.id,
@@ -630,10 +632,13 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                     discovered.putIfAbsent(passengerTarget.discoveryKey, passengerTarget)
                 }
                 else -> {
-                    val passengerHref = absoluteBlaBlaHref(raw).takeIf(::isPassengerHref) ?: return@forEach
-                    val canonical = canonicalHref(passengerHref)
+                    val passengerHref = BlaBlaCollectorUrlModule.absolute(raw)
+                        .takeIf(BlaBlaCollectorUrlModule::isPassenger) ?: return@forEach
+                    val canonical = BlaBlaCollectorUrlModule.canonical(passengerHref)
                     val matchIndex = result.passengers.indexOfFirst { passenger ->
-                        passenger.booking_href?.let(::absoluteBlaBlaHref)?.let(::canonicalHref) == canonical
+                        passenger.booking_href
+                            ?.let(BlaBlaCollectorUrlModule::absolute)
+                            ?.let(BlaBlaCollectorUrlModule::canonical) == canonical
                     }
                     val passengerTarget = if (matchIndex >= 0) {
                         fromPassenger(matchIndex, result.passengers[matchIndex], passengerHref)
@@ -736,16 +741,16 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
         val current = passengerTargets.getOrNull(expectedIndex) ?: return false
         if (current.tripId != expectedTripId || current.accountId != account.id) return false
         if (current.href.isNotBlank()) return passengerPageMatchesTarget(current, webView.url.orEmpty())
-        val actualHref = webView.url.orEmpty().takeIf(::isPassengerHref) ?: run {
+        val actualHref = webView.url.orEmpty().takeIf(BlaBlaCollectorUrlModule::isPassenger) ?: run {
             recordPageIdentityMismatch("passenger_bind_url", expectedTripId, webView.url.orEmpty())
             return false
         }
-        val actualKey = passengerKey(actualHref)
+        val actualKey = BlaBlaCollectorUrlModule.passengerIdentityKey(actualHref)
         val duplicate = passengerTargets.withIndex().any { (index, other) ->
             index != expectedIndex &&
                 other.tripId == expectedTripId &&
                 other.href.isNotBlank() &&
-                passengerKey(other.href) == actualKey
+                BlaBlaCollectorUrlModule.passengerIdentityKey(other.href) == actualKey
         }
         if (duplicate) {
             UnifiedDebugEventStore.record(
@@ -809,7 +814,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 advancePassenger(expectedIndex, "passenger_semantic_mismatch")
                 return@evaluate
             }
-            val directPhone = normalizeCapturedPhone(result?.phone)
+            val directPhone = BlaBlaCollectorPassengerModule.normalizePhone(result?.phone)
             val capturedPhone = directPhone ?: interceptedPassengerPhone
             if (capturedPhone == null && result?.callActionPresent == true && !passengerCallActionTriggered) {
                 passengerCallActionTriggered = true
@@ -873,7 +878,7 @@ class BlaBlaMhtmlHarvestActivity : Activity() {
                 UnifiedDebugEventStore.record(
                     "HARVEST_PASSENGER_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} parentTripId=${target.tripId} enrichedTripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${normalizeCapturedPhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()} callActionPresent=${evidence.callActionPresent} identityMatch=true",
+                    "account=${account.displayLabel} parentTripId=${target.tripId} enrichedTripId=${target.tripId} passengerKey=${target.externalPassengerKey} index=${expectedIndex + 1}/${passengerTargets.size} namePresent=${evidence.visibleName.isNotBlank()} phonePresent=${BlaBlaCollectorPassengerModule.normalizePhone(evidence.phone) != null} seats=${evidence.seats.coerceAtLeast(1)} routePresent=${evidence.boarding.isNotBlank() && evidence.dropoff.isNotBlank()} callActionPresent=${evidence.callActionPresent} identityMatch=true",
                 )
                 passengerIndex = expectedIndex + 1
                 resetPassengerReadState()
@@ -960,9 +965,8 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
             val evidence = result
             val options = evidence.optionsHref
                 .takeIf(String::isNotBlank)
-                ?.let(::absoluteBlaBlaHref)
-                ?.takeIf(::isOptionsHref)
-                ?.takeIf { optionHref -> tripIdFromOptionsHref(optionHref) == target.tripId }
+                ?.let(BlaBlaCollectorUrlModule::absolute)
+                ?.takeIf { optionHref -> BlaBlaCollectorUrlModule.optionsTripId(optionHref) == target.tripId }
             if (options != null) {
                 optionTargetByTrip[target.tripId] = target.copy(href = options)
             } else {
@@ -989,7 +993,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
                 UnifiedDebugEventStore.record(
                     "HARVEST_EDIT_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${tripIdFromEditHref(evidence.pageUrl).orEmpty()} optionsLinkPresent=${options != null} html=true mhtml=${saved != null} identityMatch=true",
+                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${BlaBlaCollectorUrlModule.editTripId(evidence.pageUrl).orEmpty()} optionsLinkPresent=${options != null} html=true mhtml=${saved != null} identityMatch=true",
                 )
                 editIndex = expectedIndex + 1
                 busy = false
@@ -1041,7 +1045,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
                 UnifiedDebugEventStore.record(
                     "SEAT_OPTIONS_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${tripIdFromOptionsHref(state.pageUrl).orEmpty()} publishedSeats=${state.seats} canAdd=${state.canAdd} canRemove=${state.canRemove} savePresent=${state.savePresent} html=true mhtml=${saved != null} identityMatch=true",
+                    "account=${account.displayLabel} expectedTripId=${target.tripId} capturedTripId=${BlaBlaCollectorUrlModule.optionsTripId(state.pageUrl).orEmpty()} publishedSeats=${state.seats} canAdd=${state.canAdd} canRemove=${state.canRemove} savePresent=${state.savePresent} html=true mhtml=${saved != null} identityMatch=true",
                 )
                 optionIndex = expectedIndex + 1
                 busy = false
@@ -1215,7 +1219,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
     }
 
     private fun passengerPageMatchesTarget(target: PassengerTarget, url: String): Boolean {
-        if (!isPassengerHref(url)) return false
+        if (!BlaBlaCollectorUrlModule.isPassenger(url)) return false
         if (target.href.isBlank()) return true
         return BlaBlaHarvestAssociation.passengerPageMatches(target.externalPassengerKey, url)
     }
@@ -1232,7 +1236,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
         UnifiedDebugEventStore.record(
             "HARVEST_PAGE_IDENTITY_MISMATCH",
             packageName,
-            "account=${account.displayLabel} reason=$reason phase=${phase.name.lowercase()} expectedTripId=$expectedTripId expectedUrl=${sanitizeHarvestUrl(expectedNavigationUrl)} capturedUrl=${sanitizeHarvestUrl(capturedUrl)} action=reject",
+            "account=${account.displayLabel} reason=$reason phase=${phase.name.lowercase()} expectedTripId=$expectedTripId expectedUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(expectedNavigationUrl)} capturedUrl=${BlaBlaCollectorUrlModule.sanitizeForLog(capturedUrl)} action=reject",
         )
     }
 
@@ -1274,94 +1278,91 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
 
     private fun applyHarvestToSession(): Pair<Int, Int> {
         val snapshot = sessionStore.read(account) ?: return 0 to 0
+        val previousEvidenceByTripId = harvestStore.read(account.id).associateBy(BlaBlaHarvestTripEvidence::tripId)
         val persistedEvidence = mutableListOf<BlaBlaHarvestTripEvidence>()
+        val touchedEvidenceTripIds = mutableSetOf<String>()
         var enrichedTrips = 0
         var enrichedPassengers = 0
         val updatedTrips = snapshot.trips.map { trip ->
             val tripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty)
-                ?: trip.trip_href?.let(::tripIdFromHref)
-                ?: return@map trip.copy(passengers = emptyList(), booked_seats = 0, passenger_roster_complete = false)
+                ?: trip.trip_href?.let(BlaBlaCollectorUrlModule::tripId)
+                ?: run {
+                    UnifiedDebugEventStore.record(
+                        "HARVEST_TRIP_AWAITING_READ",
+                        packageName,
+                        "account=${account.displayLabel} tripId=missing action=preserve_last_confirmed reason=trip_identity_missing",
+                    )
+                    return@map trip
+                }
+            touchedEvidenceTripIds += tripId
+            val previousEvidence = previousEvidenceByTripId[tripId]
             val summary = tripEvidence[tripId]
-            val mergedPassengers = summary?.passengers.orEmpty().map { passenger -> enrichPassenger(tripId, passenger) }
-            val rosterComplete = summary != null && (summary.rosterComplete || summary.explicitEmptyRoster)
-            val stops = summary?.itineraryStops.orEmpty()
-            val occupied = if (summary == null) 0 else occupiedSeatsForTimeline(mergedPassengers, stops)
-            val publishedSeats = publishedSeatsByTrip[tripId]
-            val views = summary?.views?.takeIf { it >= 0 }
+            if (summary == null) {
+                previousEvidence?.let(persistedEvidence::add)
+                UnifiedDebugEventStore.record(
+                    "HARVEST_TRIP_AWAITING_READ",
+                    packageName,
+                    "account=${account.displayLabel} tripId=$tripId action=preserve_last_confirmed rosterComplete=${trip.passenger_roster_complete} passengers=${trip.passengers.size}",
+                )
+                return@map trip
+            }
+            val mergedPassengers = summary.passengers.map { passenger -> enrichPassenger(tripId, passenger) }
+            val rosterComplete = summary.rosterComplete || summary.explicitEmptyRoster
+            val stops = summary.itineraryStops.ifEmpty { previousEvidence?.itineraryStops.orEmpty() }
+            val occupied = occupiedSeatsForTimeline(mergedPassengers, stops)
+            val publishedSeats = publishedSeatsByTrip[tripId] ?: previousEvidence?.publishedSeats
+            val views = summary.views.takeIf { it >= 0 } ?: previousEvidence?.views
+            val capturedTrip = trip.copy(
+                passengers = mergedPassengers,
+                booked_seats = occupied,
+                passenger_roster_complete = rosterComplete,
+            )
+            val monotonicTrip = BlaBlaCollectorPassengerModule.mergeMonotonic(
+                previous = trip,
+                current = capturedTrip,
+            )
             persistedEvidence += BlaBlaHarvestTripEvidence(
                 tripId = tripId,
                 publishedSeats = publishedSeats,
                 views = views,
                 itineraryStops = stops,
-                passengers = mergedPassengers,
-                passengerRosterComplete = rosterComplete,
+                passengers = monotonicTrip.passengers,
+                passengerRosterComplete = monotonicTrip.passenger_roster_complete,
             )
-            if (summary != null || publishedSeats != null) enrichedTrips++
-            enrichedPassengers += mergedPassengers.size
-            if (summary == null) {
-                UnifiedDebugEventStore.record(
-                    "HARVEST_TRIP_AWAITING_READ",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$tripId action=clear_unproven_roster rosterComplete=false",
-                )
-            }
+            enrichedTrips++
+            enrichedPassengers += monotonicTrip.passengers.size
             UnifiedDebugEventStore.record(
                 "HARVEST_TRIP_ENRICHED",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId passengers=${mergedPassengers.size} phones=${mergedPassengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${mergedPassengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=$occupied publishedSeats=${publishedSeats ?: -1} rosterComplete=$rosterComplete stops=${stops.size} views=${views ?: -1} deterministicJoin=true phoneEvidenceScoped=true",
+                "account=${account.displayLabel} tripId=$tripId passengers=${monotonicTrip.passengers.size} phones=${monotonicTrip.passengers.count { !it.phone.isNullOrBlank() }} totalPassengerSeats=${monotonicTrip.passengers.sumOf { it.seats.coerceAtLeast(1) }} bookedSeats=${monotonicTrip.booked_seats} publishedSeats=${publishedSeats ?: -1} rosterComplete=${monotonicTrip.passenger_roster_complete} stops=${stops.size} views=${views ?: -1} deterministicJoin=true phoneEvidenceScoped=true monotonic=true",
             )
-            trip.copy(
-                passengers = mergedPassengers,
-                booked_seats = occupied,
-                passenger_roster_complete = rosterComplete,
-            )
+            monotonicTrip
         }
+        persistedEvidence += previousEvidenceByTripId
+            .filterKeys { it !in touchedEvidenceTripIds }
+            .values
         harvestStore.replace(account.id, persistedEvidence)
-        saveDeterministicSnapshot(snapshot, updatedTrips)
+        sessionStore.saveHarvestTrips(account, updatedTrips)
         return enrichedTrips to enrichedPassengers
-    }
-
-    private fun saveDeterministicSnapshot(
-        previous: BlaBlaDynamicSessionSnapshot,
-        trips: List<BlaBlaCollectorTrip>,
-    ) {
-        val target = File(filesDir, "blablacar-dynamic-session-${account.id}.json")
-        val temp = File(target.parentFile, target.name + ".harvest.tmp")
-        val replacement = previous.copy(
-            profileUuid = account.profileUuid,
-            profileLabel = account.displayLabel,
-            lastUrl = previous.lastUrl,
-            updatedAtMillis = System.currentTimeMillis(),
-            trips = trips,
-        )
-        temp.writeText(json.encodeToString(replacement), Charsets.UTF_8)
-        if (!temp.renameTo(target)) {
-            target.writeText(temp.readText(Charsets.UTF_8), Charsets.UTF_8)
-            temp.delete()
-        }
-        UnifiedDebugEventStore.record(
-            "SNAPSHOT_SAVED",
-            packageName,
-            "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${trips.size} rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=${trips.count { !it.passenger_roster_complete }} preservedIncomplete=0 skipped=${previous.skippedTrips} identityVerified=${previous.identityVerified} deterministicHarvest=true",
-        )
     }
 
     private fun enrichPassenger(tripId: String, passenger: BlaBlaCollectorPassenger): BlaBlaCollectorPassenger {
         val href = passenger.booking_href?.trim()?.takeIf(String::isNotEmpty)
             ?: return passenger.copy(phone = null)
-        val absoluteHref = absoluteBlaBlaHref(href)
-        val key = BlaBlaHarvestAssociation.passengerEvidenceKey(account.id, tripId, passengerKey(absoluteHref))
+        val absoluteHref = BlaBlaCollectorUrlModule.absolute(href)
+        val passengerIdentity = BlaBlaCollectorUrlModule.passengerIdentityKey(absoluteHref)
+        val key = BlaBlaHarvestAssociation.passengerEvidenceKey(account.id, tripId, passengerIdentity)
         val evidence = passengerEvidence[key]
             ?: return passenger.copy(phone = null, booking_href = absoluteHref)
-        if (!BlaBlaHarvestAssociation.passengerPageMatches(passengerKey(absoluteHref), evidence.pageUrl)) {
+        if (!BlaBlaHarvestAssociation.passengerPageMatches(passengerIdentity, evidence.pageUrl)) {
             UnifiedDebugEventStore.record(
                 "association_conflict",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId passengerKey=${passengerKey(absoluteHref)} reason=evidence_page_mismatch action=reject",
+                "account=${account.displayLabel} tripId=$tripId passengerKey=$passengerIdentity reason=evidence_page_mismatch action=reject",
             )
             return passenger.copy(phone = null, booking_href = absoluteHref)
         }
-        val phone = normalizeCapturedPhone(evidence.phone)
+        val phone = BlaBlaCollectorPassengerModule.normalizePhone(evidence.phone)
         return passenger.copy(
             name = passenger.name.ifBlank { evidence.visibleName.trim() },
             seats = maxOf(passenger.seats.coerceAtLeast(1), evidence.seats.coerceAtLeast(1)),
@@ -1787,7 +1788,7 @@ return BlaBlaHarvestAssociation.passengerEvidenceAccepted(canonicalIdentityProve
 }
 
 @Serializable
-private data class SeatOptionState(
+internal data class SeatOptionState(
     val seats: Int = -1,
     val canAdd: Boolean = false,
     val canRemove: Boolean = false,
@@ -1839,7 +1840,7 @@ class BlaBlaManualSeatSyncActivity : Activity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (!isBlaBla(url) || busy) return
+                if (!BlaBlaCollectorUrlModule.isAllowed(url) || busy) return
                 view.postDelayed({ handlePage() }, 650)
             }
         }
@@ -2032,135 +2033,78 @@ private fun configureProfiledWebView(webView: WebView, account: BlaBlaDynamicAcc
     }
 }
 
-private fun normalizeCapturedPhone(raw: String?): String? {
-    val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-    val hasPlus = value.startsWith("+")
-    val digits = value.filter(Char::isDigit)
-    if (digits.length !in 8..15) return null
-    return if (hasPlus) "+$digits" else digits
-}
-
-private fun isBlaBla(url: String): Boolean = url.startsWith("https://www.blablacar.com.br/")
-
-private fun absoluteBlaBlaHref(href: String): String {
-    val value = href.trim()
-    if (value.startsWith("https://www.blablacar.com.br/")) return value
-    if (value.startsWith('/')) return "https://www.blablacar.com.br$value"
-    return value
-}
-
-private fun canonicalHref(href: String): String = absoluteBlaBlaHref(href)
-    .substringBefore("&search_uuid=")
-    .substringBefore('#')
-
-private fun isSpecificTripHref(href: String): Boolean =
-    absoluteBlaBlaHref(href).contains("blablacar.com.br") && tripIdFromHref(href) != null
-
-private fun isPassengerHref(href: String): Boolean {
-    val value = absoluteBlaBlaHref(href)
-    return value.startsWith("https://www.blablacar.com.br/") &&
-        (value.contains("/passenger/") || value.contains("/booking/"))
-}
-
-private fun isOptionsHref(href: String): Boolean = Regex("/rides/offer/edit/[^/?#]+/options", RegexOption.IGNORE_CASE)
-    .containsMatchIn(absoluteBlaBlaHref(href))
-
 private fun editUrlForTrip(tripId: String): String =
-    "https://www.blablacar.com.br/rides/offer/edit/${tripId.trim()}"
+    "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}"
 
 private fun optionsUrlForTrip(tripId: String): String =
-    "https://www.blablacar.com.br/rides/offer/edit/${tripId.trim()}/options"
-
-private fun tripIdFromHref(href: String): String? {
-    queryId(href)?.let { return it }
-    val path = runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault("")
-    Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
-        .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
-    Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
-        .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
-    return null
-}
-
-private fun tripIdFromEditHref(href: String): String? = Regex(
-    "/rides/offer/edit/([^/?#]+)(?:$|[/?#])",
-    RegexOption.IGNORE_CASE,
-).find(runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault(""))
-    ?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
-
-private fun tripIdFromOptionsHref(href: String): String? = Regex(
-    "/rides/offer/edit/([^/?#]+)/options",
-    RegexOption.IGNORE_CASE,
-).find(runCatching { URI(absoluteBlaBlaHref(href)).path.orEmpty() }.getOrDefault(""))
-    ?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
-
-private fun passengerKey(href: String): String {
-    val value = absoluteBlaBlaHref(href)
-    val fromPath = Regex("/(?:passenger|booking)/([^/?#]+)", RegexOption.IGNORE_CASE)
-        .find(value)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)
-    return (fromPath ?: queryId(value) ?: value.substringAfterLast('/').substringBefore('?'))
-        .take(80)
-        .ifBlank { "passenger" }
-}
-
-private fun queryId(href: String): String? = runCatching {
-    URI(absoluteBlaBlaHref(href)).rawQuery.orEmpty().split('&')
-        .mapNotNull { part -> part.substringBefore('=', "").takeIf { it == "id" }?.let { part.substringAfter('=', "") } }
-        .firstOrNull()
-        ?.trim()
-        ?.takeIf(String::isNotEmpty)
-}.getOrNull()
-
-private fun sanitizeHarvestUrl(url: String): String = url.substringBefore('#').take(240)
+    "${BlaBlaCollectorUrlModule.ORIGIN}/rides/offer/edit/${tripId.trim()}/options"
 
 internal object BlaBlaHarvestAssociation {
     fun passengerEvidenceKey(accountId: String, tripId: String, passengerKey: String): String =
         "${accountId.trim()}|${tripId.trim()}|${passengerKey.trim()}"
 
-    fun ridesPageMatches(url: String): Boolean = runCatching {
-        val uri = URI(absoluteBlaBlaHref(url))
-        uri.host.equals("www.blablacar.com.br", ignoreCase = true) && uri.path.trimEnd('/') == "/rides"
-    }.getOrDefault(false)
+    fun ridesPageMatches(url: String): Boolean = BlaBlaCollectorUrlModule.ridesPageMatches(url)
 
     fun tripPageMatches(expectedTripId: String, url: String): Boolean =
-        expectedTripId.isNotBlank() && tripIdFromHref(url) == expectedTripId
+        expectedTripId.isNotBlank() &&
+            BlaBlaCollectorUrlModule.isSpecificTrip(url) &&
+            BlaBlaCollectorUrlModule.tripId(url) == expectedTripId
 
     fun editPageMatches(expectedTripId: String, url: String): Boolean =
-        expectedTripId.isNotBlank() && tripIdFromEditHref(url) == expectedTripId && !isOptionsHref(url)
+        expectedTripId.isNotBlank() &&
+            BlaBlaCollectorUrlModule.editTripId(url) == expectedTripId &&
+            BlaBlaCollectorUrlModule.optionsTripId(url) == null
 
     fun optionsPageMatches(expectedTripId: String, url: String): Boolean =
-        expectedTripId.isNotBlank() && tripIdFromOptionsHref(url) == expectedTripId
+        expectedTripId.isNotBlank() && BlaBlaCollectorUrlModule.optionsTripId(url) == expectedTripId
 
     fun passengerPageMatches(expectedPassengerKey: String, url: String): Boolean =
-        expectedPassengerKey.isNotBlank() && isPassengerHref(url) && passengerKey(url) == expectedPassengerKey
+        expectedPassengerKey.isNotBlank() &&
+            BlaBlaCollectorUrlModule.isPassenger(url) &&
+            BlaBlaCollectorUrlModule.passengerIdentityKey(url) == expectedPassengerKey
 
     fun passengerCanonicalIdentityProven(expectedPassengerKey: String, expectedUrl: String, capturedUrl: String): Boolean =
         expectedUrl.isNotBlank() &&
             capturedUrl.isNotBlank() &&
             passengerPageMatches(expectedPassengerKey, expectedUrl) &&
             passengerPageMatches(expectedPassengerKey, capturedUrl) &&
-            canonicalHref(expectedUrl) == canonicalHref(capturedUrl)
+            BlaBlaCollectorUrlModule.canonical(expectedUrl) == BlaBlaCollectorUrlModule.canonical(capturedUrl)
 
     fun passengerEvidenceAccepted(canonicalIdentityProven: Boolean): Boolean = canonicalIdentityProven
 }
 
-private val SEAT_OPTIONS_READ_JS = """
+internal val SEAT_OPTIONS_READ_JS = """
     (function() {
       const clean = (v) => (v || '').replace(/\s+/g, ' ').trim();
-      const remove = document.querySelector('button[aria-label="Remover um lugar"]');
-      const add = document.querySelector('button[aria-label="Adicionar um lugar"]');
-      let root = remove && remove.parentElement;
-      while (root && add && !root.contains(add)) root = root.parentElement;
-      root = root || (add && add.parentElement) || document.body;
+      const marker = (node) => clean(
+        ((node && node.getAttribute && node.getAttribute('data-testid')) || '') + ' ' +
+        ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
+        ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
+        ((node && node.innerText) || '')
+      ).toLowerCase();
+      const buttons = Array.from(document.querySelectorAll('button, [role="button"]'));
+      let remove = buttons.find((node) => /decrement|decrease|remove|minus/.test(marker(node)) || /^[−–-]$/.test(clean(node.innerText)));
+      let add = buttons.find((node) => /increment|increase|add|plus/.test(marker(node)) || /^\+$/.test(clean(node.innerText)));
+      let root = (remove && remove.parentElement) || (add && add.parentElement) || null;
+      while (root && root !== document.body && root.querySelectorAll('button, [role="button"]').length < 2) root = root.parentElement;
+      const groupedButtons = root ? Array.from(root.querySelectorAll('button, [role="button"]')) : [];
+      if (!remove && groupedButtons.length >= 2) remove = groupedButtons[0];
+      if (!add && groupedButtons.length >= 2) add = groupedButtons[groupedButtons.length - 1];
+      root = root || document.querySelector('[data-testid*="seat"], [data-testid*="capacity"], [role="spinbutton"]') || document.body;
+      const numericControl = root.querySelector('input[type="number"], [role="spinbutton"], select');
+      const controlledValue = numericControl && clean(
+        numericControl.value || numericControl.getAttribute('aria-valuenow') || numericControl.getAttribute('value') || ''
+      );
       const leaves = Array.from(root.querySelectorAll('span, p, div'))
         .filter((node) => node.children.length === 0)
         .map((node) => clean(node.innerText))
         .filter((text) => /^\d{1,3}$/.test(text));
-      let seats = leaves.length ? parseInt(leaves[0], 10) : -1;
+      let seats = /^\d{1,3}$/.test(controlledValue || '') ? parseInt(controlledValue, 10) : (leaves.length ? parseInt(leaves[0], 10) : -1);
       if (seats < 0) {
         const all = clean(root.innerText).match(/(?:^|\s)(\d{1,3})(?:\s|$)/);
         seats = all ? parseInt(all[1], 10) : -1;
       }
-      const save = Array.from(document.querySelectorAll('button')).find((button) => /^Salvar$/i.test(clean(button.innerText)));
+      const save = document.querySelector('button[type="submit"], [data-testid*="save"], [data-testid*="submit"]');
       const clone = document.documentElement.cloneNode(true);
       clone.querySelectorAll('script, style, noscript').forEach((node) => node.remove());
       clone.querySelectorAll('input, textarea').forEach((node) => { node.removeAttribute('value'); node.textContent = ''; });

@@ -40,8 +40,12 @@ class TripTimelineCardNavigationStage47Step7Test {
         assertEquals("https://www.blablacar.com.br/trip?source=CARPOOLING&id=trip-123&search_uuid=abc", card.blablaTripHref)
         assertEquals("7371f028-9c55-4903-8444-308015823efd", card.blablaProfileUuid)
         assertEquals("R$ 89,00", card.blablaPrice)
-        assertEquals("Santo André, SP", card.origin)
-        assertEquals("Três Corações, MG", card.destination)
+        // Once an external publication is reconciled to an existing local trip, the local
+        // route remains the geography authority. External metadata/link still enriches the
+        // same card, but generic or differently formatted public place labels must not
+        // overwrite the driver's precise local route definition.
+        assertEquals("Santo André", card.origin)
+        assertEquals("Três Corações", card.destination)
         assertEquals(1, card.sourcePassengerSeats[BookingSource.PRIVATE])
         assertFalse(TripTimelineIssue.DUPLICATE in card.issues)
     }

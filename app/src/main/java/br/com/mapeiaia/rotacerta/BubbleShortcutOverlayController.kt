@@ -322,7 +322,10 @@ class BubbleShortcutOverlayController(
                         singleAction = {
                             hideShortcuts()
                             trace("bubble.shortcut.clicked entry=${entry0179.entryId} id=${entry0179.spec.id}")
-                            onShortcut(entry0179)
+                            val handledAsCleanPrint0267 =
+                                entry0179.spec.action == BubbleShortcutAction.SaveScreenPrint &&
+                                    OverlayFreeScreenPrint0267.captureIfSupported(context, trace)
+                            if (!handledAsCleanPrint0267) onShortcut(entry0179)
                         },
                         longAction = {
                             hideShortcuts()
