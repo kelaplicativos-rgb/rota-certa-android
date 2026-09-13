@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TimelineLocalPrimary0525Test {
@@ -13,24 +12,8 @@ class TimelineLocalPrimary0525Test {
         originAddress: String = "Rua Origem, 10",
         destinationAddress: String = "Rua Destino, 20",
     ) = listOf(
-        TripStop(
-            id = "stop-origin",
-            order = 0,
-            name = "Origem",
-            address = originAddress,
-            latitude = -23.50,
-            longitude = -46.60,
-            plannedDepartureMillis = 1_000L,
-        ),
-        TripStop(
-            id = "stop-destination",
-            order = 1,
-            name = "Destino",
-            address = destinationAddress,
-            latitude = -22.20,
-            longitude = -45.90,
-            plannedArrivalMillis = 2_000L,
-        ),
+        TripStop(id = "stop-origin", order = 0, name = "Origem", address = originAddress, latitude = -23.50, longitude = -46.60, plannedDepartureMillis = 1_000L),
+        TripStop(id = "stop-destination", order = 1, name = "Destino", address = destinationAddress, latitude = -22.20, longitude = -45.90, plannedArrivalMillis = 2_000L),
     )
 
     private fun trip(
@@ -56,11 +39,7 @@ class TimelineLocalPrimary0525Test {
         blablaPublicUrl = publicUrl,
         publishedSeats = capacity,
         capacityReliable = true,
-        recordOrigin = if (!profileUuid.isNullOrBlank() && !providerTripId.isNullOrBlank()) {
-            TripRecordOrigin.EXTERNAL_BACKING
-        } else {
-            TripRecordOrigin.LOCAL
-        },
+        recordOrigin = if (!profileUuid.isNullOrBlank() && !providerTripId.isNullOrBlank()) TripRecordOrigin.EXTERNAL_BACKING else TripRecordOrigin.LOCAL,
         canonicalRevision = revision,
         publicationRevision = revision,
         tripKey = tripKey,
@@ -78,6 +57,8 @@ class TimelineLocalPrimary0525Test {
         boardingLatitude: Double? = -23.501,
         boardingLongitude: Double? = -46.601,
         updatedAtMillis: Long = 10_000L,
+        seats: Int = 1,
+        status: BookingStatus = BookingStatus.CONFIRMED,
     ) = Booking(
         id = id,
         tripId = tripId,
@@ -86,12 +67,12 @@ class TimelineLocalPrimary0525Test {
         passengerContact = contact,
         boardingStopId = "stop-origin",
         dropoffStopId = "stop-destination",
-        seats = 1,
-        status = BookingStatus.CONFIRMED,
+        seats = seats,
+        status = status,
         operationalStatus = PassengerOperationalStatus.CONFIRMED,
         paymentStatus = PassengerPaymentStatus.PAID,
         source = BookingSource.BLABLACAR,
-        sourceReference = "BLABLACAR_SYNC:passenger-1",
+        sourceReference = "BLABLACAR_SYNC:$passengerId",
         fareMinorUnits = 4_200L,
         fareCurrencyCode = "BRL",
         boardingAddress = boardingAddress,
@@ -111,12 +92,7 @@ class TimelineLocalPrimary0525Test {
         issues: Set<TripTimelineIssue> = emptySet(),
         occupancyRevision: Long? = null,
     ): CanonicalTimelineProjection0494 {
-        val base = localAgendaTimelineProjection0515(
-            trips = listOf(trip),
-            bookings = bookings,
-            localProfileLabel = "Agenda",
-            nowMillis = 50_000L,
-        )
+        val base = localAgendaTimelineProjection0515(listOf(trip), bookings, localProfileLabel = "Agenda", nowMillis = 50_000L)
         if (!remote) return base
         val entry = base.entries.single().copy(
             canonicalBackendAuthoritative0494 = true,
@@ -131,11 +107,7 @@ class TimelineLocalPrimary0525Test {
 
     @Test
     fun scenarioA_backendOfflineLocalProjectionKeepsOperationalCardAndPrivatePassengerData() {
-        val localTrip = trip()
-        val localBooking = booking()
-        val local = projection(localTrip, listOf(localBooking))
-
-        assertEquals(1, local.entries.size)
+        val local = projection(trip(), listOf(booking()))
         val entry = local.entries.single()
         assertEquals("profile-a", entry.blablaProfileUuid)
         assertEquals("trip-b", entry.blablaTripId)
@@ -150,24 +122,10 @@ class TimelineLocalPrimary0525Test {
     @Test
     fun scenarioB_incompleteRemoteCannotEraseCompleteLocalIdentityOrDisableRadar() {
         val local = projection(trip())
-        val remoteTrip = trip(
-            revision = 11L,
-            profileUuid = "profile-a",
-            providerTripId = null,
-            manageUrl = null,
-            publicUrl = null,
-            tripKey = "",
-        )
-        val remote = projection(
-            trip = remoteTrip,
-            remote = true,
-            issues = setOf(TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE),
-        )
-
+        val remote = projection(trip(revision = 11L, profileUuid = "profile-a", providerTripId = null, manageUrl = null, publicUrl = null, tripKey = ""), remote = true, issues = setOf(TripTimelineIssue.EXTERNAL_IDENTITY_INCOMPLETE))
         val result = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L)
         val mergedTrip = result.projection.trips.single()
         val entry = result.projection.entries.single()
-
         assertEquals("profile-a", mergedTrip.blablaProfileUuid)
         assertEquals("trip-b", mergedTrip.blablaTripId)
         assertEquals("https://www.blablacar.com.br/rides/offer/trip-b", mergedTrip.blablaManageUrl)
@@ -179,25 +137,8 @@ class TimelineLocalPrimary0525Test {
 
     @Test
     fun scenarioC_newerCompleteRemoteAdvancesRevisionWithoutBlankingProtectedLocalFields() {
-        val local = projection(
-            trip(
-                revision = 10L,
-                capacity = 4,
-                status = TripStatus.PUBLISHED,
-            ),
-        )
-        val remote = projection(
-            trip(
-                revision = 11L,
-                manageUrl = null,
-                publicUrl = null,
-                capacity = 6,
-                status = TripStatus.ACTIVE,
-            ),
-            remote = true,
-            occupancyRevision = 11L,
-        )
-
+        val local = projection(trip(revision = 10L, capacity = 4, status = TripStatus.PUBLISHED))
+        val remote = projection(trip(revision = 11L, manageUrl = null, publicUrl = null, capacity = 6, status = TripStatus.ACTIVE), remote = true, occupancyRevision = 11L)
         val result = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L)
         val merged = result.projection.trips.single()
         assertEquals(11L, merged.canonicalRevision)
@@ -210,34 +151,12 @@ class TimelineLocalPrimary0525Test {
 
     @Test
     fun scenarioD_remoteEmptyPrivateFieldsNeverEraseLocalWhatsappAddressGpsOrFare() {
-        val localBooking = booking()
-        val local = projection(trip(), listOf(localBooking))
-        val remoteBooking = booking(
-            id = "remote-booking-id",
-            contact = "",
-            boardingAddress = "",
-            dropoffAddress = "",
-            boardingLatitude = null,
-            boardingLongitude = null,
-            updatedAtMillis = 20_000L,
-        ).copy(
-            tripId = "canonical-a",
-            fareMinorUnits = null,
-            fareCurrencyCode = "",
-            dropoffLatitude = null,
-            dropoffLongitude = null,
-            localMetadataTouched = false,
+        val local = projection(trip(), listOf(booking()))
+        val remoteBooking = booking(id = "remote-booking-id", contact = "", boardingAddress = "", dropoffAddress = "", boardingLatitude = null, boardingLongitude = null, updatedAtMillis = 20_000L).copy(
+            tripId = "canonical-a", fareMinorUnits = null, fareCurrencyCode = "", dropoffLatitude = null, dropoffLongitude = null, localMetadataTouched = false,
         )
-        val remote = projection(
-            trip = trip(revision = 11L),
-            bookings = listOf(remoteBooking),
-            remote = true,
-            occupancyRevision = 11L,
-        )
-
-        val result = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L)
-        val merged = result.projection.bookings.single()
-
+        val remote = projection(trip(revision = 11L), listOf(remoteBooking), remote = true, occupancyRevision = 11L)
+        val merged = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L).projection.bookings.single()
         assertEquals("booking-local", merged.id)
         assertEquals("5511999999999", merged.passengerContact)
         assertEquals("Embarque exato, 123", merged.boardingAddress)
@@ -251,27 +170,57 @@ class TimelineLocalPrimary0525Test {
     @Test
     fun scenarioE_realExternalIdentityConflictPreservesLocalAndBlocksAmbiguousAction() {
         val local = projection(trip())
-        val remote = projection(
-            trip(
-                revision = 11L,
-                profileUuid = "profile-a",
-                providerTripId = "trip-c",
-                manageUrl = "https://www.blablacar.com.br/rides/offer/trip-c",
-                publicUrl = null,
-                tripKey = "tripkey-conflicting",
-            ),
-            remote = true,
-        )
-
+        val remote = projection(trip(revision = 11L, profileUuid = "profile-a", providerTripId = "trip-c", manageUrl = "https://www.blablacar.com.br/rides/offer/trip-c", publicUrl = null, tripKey = "tripkey-conflicting"), remote = true)
         val result = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L)
         val merged = result.projection.trips.single()
         val entry = result.projection.entries.single()
-
         assertEquals("trip-b", merged.blablaTripId)
         assertEquals("https://www.blablacar.com.br/rides/offer/trip-b", merged.blablaManageUrl)
         assertEquals(1, result.conflictsRejected)
         assertTrue(TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues)
         assertFalse(timelineBlaBlaTargetUnambiguous0525(entry))
+    }
+
+    @Test
+    fun scenarioG_localCanonicalAgendaMaterializesAvailabilityAndTimelineConsumesSameSegments() {
+        val local = projection(trip(capacity = 4), listOf(booking(seats = 3)))
+        val entry = local.entries.single()
+        assertTrue(entry.canonicalBackendAuthoritative0494)
+        assertEquals(listOf(3), entry.canonicalSegmentLoads0494)
+        assertEquals(listOf(3), entry.canonicalSegmentPassengerLoads0494)
+        assertEquals(listOf(0), entry.canonicalSegmentBlockedLoads0494)
+        assertEquals(listOf(1), entry.canonicalSegmentAvailableSeats0494)
+        assertEquals(1, entry.canonicalAvailableSeatsMinimum0494)
+        assertEquals(1, entry.canonicalAvailableSeatsMaximum0494)
+        val rendered = canonicalTimelineSegmentLoads0494(entry, local.trips.single())
+        assertEquals(1, rendered.single().availableSeats)
+        assertEquals(3, rendered.single().occupiedSeats)
+    }
+
+    @Test
+    fun scenarioH_remoteWithSameCanonicalIdButDifferentProfileUuidIsRejected() {
+        val local = projection(trip(profileUuid = "profile-a", providerTripId = "trip-b"))
+        val remote = projection(
+            trip(revision = 11L, profileUuid = "profile-b", providerTripId = "trip-b", tripKey = "tripkey-stable"),
+            remote = true,
+        )
+        val result = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L)
+        val merged = result.projection.trips.single()
+        val entry = result.projection.entries.single()
+        assertEquals("profile-a", merged.blablaProfileUuid)
+        assertEquals("trip-b", merged.blablaTripId)
+        assertEquals(1, result.conflictsRejected)
+        assertTrue(TripTimelineIssue.EXTERNAL_IDENTITY_CONFLICT in entry.issues)
+    }
+
+    @Test
+    fun scenarioI_equalOrOlderRemoteCannotEraseLocalCanonicalSegmentAvailability() {
+        val local = projection(trip(revision = 10L, capacity = 4), listOf(booking(seats = 3)))
+        val remote = projection(trip(revision = 10L, capacity = 4), listOf(booking(seats = 3)), remote = true)
+        val entry = mergeCanonicalTimelineProjections0525(local, remote, nowMillis = 70_000L).projection.entries.single()
+        assertEquals(listOf(3), entry.canonicalSegmentLoads0494)
+        assertEquals(listOf(1), entry.canonicalSegmentAvailableSeats0494)
+        assertEquals(1, entry.canonicalAvailableSeatsMinimum0494)
     }
 
     @Test
@@ -281,7 +230,6 @@ class TimelineLocalPrimary0525Test {
         val end = timeline.indexOf("if (showMirrorDiagnostic0417)", start)
         assertTrue(start >= 0 && end > start)
         val radar = timeline.substring(start, end)
-
         assertTrue(radar.contains("AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517"))
         assertTrue(radar.contains("TIMELINE_RADAR_LOCAL_IDENTITY_USED"))
         assertFalse(radar.contains("TripRemoteApi"))
