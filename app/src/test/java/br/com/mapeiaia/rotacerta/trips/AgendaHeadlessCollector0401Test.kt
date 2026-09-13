@@ -85,13 +85,17 @@ class AgendaHeadlessCollector0401Test {
     fun publicAgendaUsesCanonicalTripStoreProjectionAndCanonicalStopIdsFirst() {
         assertFalse(publicAgenda.contains("BlaBlaCollectorStateStore(context).lastResponseRecoveringDynamicSessions()"))
         assertTrue(publicAgenda.contains("PUBLIC_AGENDA_CANONICAL_SOURCE_0406"))
-        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_REUSED_0401"))
-        assertTrue(publicAgenda.contains("firstRequestUsesCanonical=true"))
-        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_SERVER_SHAPE_REUSED_0402"))
+        assertTrue(publicAgenda.contains("val canonicalExternalTrips = persistedTrips"))
+        assertTrue(publicAgenda.contains("toCanonicalExternalProjection0406("))
+        assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_CANONICAL_SHAPE_0434"))
+        assertTrue(publicAgenda.contains("action=canonical_overrides_remote_shape"))
         assertTrue(publicAgenda.contains("PUBLIC_CAPACITY_REMOTE_REVISION_NO_OP_0402"))
-        val preserve = publicAgenda.indexOf("val authoritativeStops0402")
-        val request = publicAgenda.indexOf("suspend fun reconcile(): DriverCapacitySnapshotResponse", startIndex = preserve.coerceAtLeast(0))
-        assertTrue(preserve >= 0 && request > preserve)
+        val canonicalShape = publicAgenda.indexOf("val remoteStopIds0434")
+        val request = publicAgenda.indexOf(
+            "suspend fun reconcile(): DriverCapacitySnapshotResponse",
+            startIndex = canonicalShape.coerceAtLeast(0),
+        )
+        assertTrue(canonicalShape >= 0 && request > canonicalShape)
     }
 
     @Test
