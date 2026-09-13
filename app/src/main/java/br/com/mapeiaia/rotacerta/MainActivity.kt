@@ -1957,26 +1957,7 @@ private fun DiagnosticExpander(
 
 @Composable
 private fun AboutRotaCertaCard() {
-    val context = LocalContext.current
-    ExpandableCard(title = "Sobre o Rota Certa", initiallyExpanded = false) {
-        Text("Versão: ${AppBuildInfo.versionName}")
-        Text("Build: ${AppBuildInfo.versionCode}")
-        Text("Commit: ${AppBuildInfo.commitShort}")
-        Text("Branch: ${AppBuildInfo.branch}")
-        Text("Build gerada em: ${AppBuildInfo.buildGeneratedAt}")
-        OutlinedButton(
-            onClick = {
-                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                clipboard.setPrimaryClip(
-                    ClipData.newPlainText("Versão do Rota Certa", AppBuildInfo.copyText()),
-                )
-                Toast.makeText(context, "Informações da versão copiadas.", Toast.LENGTH_SHORT).show()
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Copiar informações da versão")
-        }
-    }
+    br.com.mapeiaia.rotacerta.versioncenter.VersionCenterCard()
 }
 
 @Composable
