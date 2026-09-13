@@ -14,7 +14,9 @@
         "Seção de problemas conhecidos com suporte ao ciclo introduzida → corrigida → validada.",
         "Relatório sanitizado e copiável da versão instalada."
       ],
-      "fixed": [],
+      "fixed": [
+        "Corrigida a compilação Compose da Central de Versões: rememberScrollState passou a usar o pacote correto, o peso desnecessário do título foi removido e a renderização de regressões passou a invocar composables por lambda."
+      ],
       "improved": [
         "Metadados objetivos da build instalada continuam vindo do BuildConfig por meio de AppBuildInfo.",
         "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build.",
