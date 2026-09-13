@@ -1590,6 +1590,20 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
+            val sessionHealth0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
+                context = this,
+                account = account,
+                actualProfileUuid = resolution.authenticatedProfileUuid,
+                operation = "RIDES_SNAPSHOT_IDENTITY",
+            )
+            if (sessionHealth0553.state != BlaBlaSessionState0552.VALID) {
+                failRidesSnapshot0526(
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                    errorCode = "SESSION_" + sessionHealth0553.state.name,
+                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                )
+                return@evaluateRequest
+            }
             identityConfirmedThisSync = true
             ridesSnapshotIdentityAttempts0526 = 0
             val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid).orEmpty()
@@ -2437,6 +2451,18 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 } else {
                     bindIdentityFromLinks(it.profileLinks, it.visibleName)?.let { updated -> account = updated }
                 }
+                val observedSessionUuid0553 = when {
+                    identityConfirmedThisSync && !account.profileUuid.isNullOrBlank() -> account.profileUuid
+                    observedUuids.size == 1 -> observedUuids.single()
+                    else -> null
+                }
+                val sessionHealth0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
+                    context = this,
+                    account = account,
+                    actualProfileUuid = observedSessionUuid0553,
+                    operation = "SESSION_IDENTITY_SYNC",
+                )
+                identityConfirmedThisSync = sessionHealth0553.state == BlaBlaSessionState0552.VALID
                 if (identityConfirmedThisSync) persistPublicProfileEvidence(it)
                 UnifiedDebugEventStore.record(
                     "IDENTITY_EVIDENCE",
@@ -3134,6 +3160,19 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     }
                 }
             }
+            val observedDriverUuid0553 = when {
+                identityConfirmedThisSync && !account.profileUuid.isNullOrBlank() -> account.profileUuid
+                driverUuids.size == 1 -> driverUuids.single()
+                else -> null
+            }
+            val tripIdentityHealth0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
+                context = this,
+                account = account,
+                actualProfileUuid = observedDriverUuid0553,
+                operation = "TRIP_DETAIL_IDENTITY",
+            )
+            identityConfirmedThisSync =
+                identityConfirmedThisSync && tripIdentityHealth0553.state == BlaBlaSessionState0552.VALID
 
             if (!identityConfirmedThisSync || account.verifiedDefinition() == null) {
                 skipped++
@@ -4579,17 +4618,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private fun bindIdentityFromLinks(links: List<String>, visibleName: String): BlaBlaDynamicAccount? {
         val found = BlaBlaCollectorIdentityModule.uuids(links)
         val currentUuid = account.profileUuid?.lowercase()
-        return when {
-            currentUuid != null && currentUuid in found -> {
-                identityConfirmedThisSync = true
+        val updated = when {
+            currentUuid != null && currentUuid in found ->
                 registry.bindIdentity(account.id, currentUuid, visibleName)
-            }
-            currentUuid == null && found.size == 1 -> {
-                identityConfirmedThisSync = true
+            currentUuid == null && found.size == 1 ->
                 registry.bindIdentity(account.id, found.single(), visibleName)
-            }
             else -> null
         }
+        val identityAccount0553 = updated ?: account
+        val observedUuid0553 = when {
+            updated != null -> identityAccount0553.profileUuid
+            found.size == 1 -> found.single()
+            else -> null
+        }
+        val health0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
+            context = this,
+            account = identityAccount0553,
+            actualProfileUuid = observedUuid0553,
+            operation = "PROFILE_LINK_IDENTITY",
+        )
+        identityConfirmedThisSync = updated != null && health0553.state == BlaBlaSessionState0552.VALID
+        return updated
     }
 
     private fun browserExecutionContext(): BlaBlaBrowserExecutionContext {
@@ -4774,7 +4823,16 @@ internal class BlaBlaDynamicAccountSessionController0401(
         networkDiagnosticRecorder?.finishFirstCard("host_closed")
         networkDiagnosticRecorder?.close()
         headlessDelayedHandler0405.removeCallbacksAndMessages(null)
-        if (::webView.isInitialized) webView.destroy()
+        if (::webView.isInitialized) {
+            val browserToDestroy0553 = webView
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                browserToDestroy0553.destroy()
+            } else {
+                Handler(Looper.getMainLooper()).post {
+                    runCatching { browserToDestroy0553.destroy() }
+                }
+            }
+        }
         syncCrashGuard?.close()
     }
 

@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.553",
+      "build": 5845,
+      "commit": null,
+      "branch": "agent/session-hardening-0.1.553",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [],
+      "fixed": [
+        "Saúde da sessão BlaBlaCar passa a operar fail-closed: somente UUID positivamente validado autoriza operação autenticada.",
+        "LOGIN_REQUIRED, EXPIRED e PROFILE_MISMATCH permanecem bloqueados até nova confirmação positiva da identidade esperada.",
+        "Confirmações de identidade do SESSION_IDENTITY, captura de Suas viagens e detalhe da viagem agora alimentam o SessionKeeper central."
+      ],
+      "improved": [
+        "Falhas de rede preservam cookies/WebStorage e não são promovidas a autenticação válida nem convertidas indevidamente em logout.",
+        "Destruição da WebView é confinada à main thread para evitar encerramento inseguro do perfil persistente.",
+        "A interface continua distinguindo sessão saudável, sessão preservada em revalidação e conta realmente desconectada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Contas externas",
+        "Sessão multiperfil"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.552",
       "build": 5844,
       "commit": null,

@@ -159,7 +159,7 @@ internal object BlaBlaCarSessionKeeper0552 {
 
     fun observeAcquire(context: Context, account: BlaBlaDynamicAccount, operation: String) {
         val current = runtimeByAccount[account.id]
-        if (current?.state.isStickyFailure()) {
+        if (current != null && current.state.isStickyFailure()) {
             record(
                 context,
                 "SESSION_ACQUIRE_BLOCKED",
@@ -190,7 +190,7 @@ internal object BlaBlaCarSessionKeeper0552 {
         }
 
         val current = runtimeByAccount[account.id]
-        if (current?.state.isStickyFailure()) {
+        if (current != null && current.state.isStickyFailure()) {
             record(
                 context,
                 "SESSION_REVALIDATE",
@@ -230,7 +230,7 @@ internal object BlaBlaCarSessionKeeper0552 {
                 actualProfileUuid = actual,
                 explanation = "UUID da sessão confirmado.",
             )
-            current?.state.isStickyFailure() -> current.copy(
+            current != null && current.state.isStickyFailure() -> current.copy(
                 atMillis = System.currentTimeMillis(),
                 explanation = "A sessão continua bloqueada até uma confirmação positiva do UUID esperado.",
             )
@@ -261,7 +261,7 @@ internal object BlaBlaCarSessionKeeper0552 {
 
     fun observeNetworkError(context: Context, account: BlaBlaDynamicAccount, operation: String) {
         val current = runtimeByAccount[account.id]
-        if (current?.state.isStickyFailure()) {
+        if (current != null && current.state.isStickyFailure()) {
             runtimeByAccount[account.id] = current.copy(atMillis = System.currentTimeMillis())
             record(
                 context,
