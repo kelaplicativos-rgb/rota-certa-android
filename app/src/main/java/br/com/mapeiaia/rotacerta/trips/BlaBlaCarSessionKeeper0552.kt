@@ -13,6 +13,11 @@ import java.util.concurrent.ConcurrentHashMap
  * Canonical account identity remains the confirmed external UUID. This class only projects and
  * records the health of that existing session and delegates persistence of observed navigation
  * to [BlaBlaDynamicSessionStore].
+ *
+ * 0.1.553 hardening rule: only a positively validated UUID match authorizes an authenticated
+ * operation. A login-required/profile-mismatch observation is sticky and cannot be cleared by
+ * merely navigating away from a login URL. Network failures preserve storage, but never become
+ * implicit proof of authentication.
  */
 internal enum class BlaBlaSessionState0552 {
     VALID,
@@ -44,12 +49,13 @@ internal data class BlaBlaSessionHealth0552(
     val lossCause: BlaBlaSessionLossCause0552 = BlaBlaSessionLossCause0552.NONE,
     val explanation: String = "",
 ) {
+    /**
+     * Fail closed for any operation that requires a currently authenticated external session.
+     * Read-only canonical projections may still render their last complete local snapshot while
+     * the session is SUSPECTED/REVALIDATING/NETWORK_ERROR; that is a separate presentation rule.
+     */
     val blocksAuthenticatedOperation: Boolean
-        get() = state in setOf(
-            BlaBlaSessionState0552.EXPIRED,
-            BlaBlaSessionState0552.LOGIN_REQUIRED,
-            BlaBlaSessionState0552.PROFILE_MISMATCH,
-        )
+        get() = state != BlaBlaSessionState0552.VALID
 }
 
 internal object BlaBlaCarSessionKeeper0552 {
@@ -152,6 +158,16 @@ internal object BlaBlaCarSessionKeeper0552 {
     }
 
     fun observeAcquire(context: Context, account: BlaBlaDynamicAccount, operation: String) {
+        val current = runtimeByAccount[account.id]
+        if (current?.state.isStickyFailure()) {
+            record(
+                context,
+                "SESSION_ACQUIRE_BLOCKED",
+                account,
+                "operation=${safe(operation)} state=${current.state.name} awaitingPositiveIdentity=true",
+            )
+            return
+        }
         runtimeByAccount[account.id] = RuntimeObservation(
             state = BlaBlaSessionState0552.REVALIDATING,
             explanation = "Validando a sessão antes de $operation.",
@@ -170,13 +186,25 @@ internal object BlaBlaCarSessionKeeper0552 {
                 explanation = "BlaBlaCar apresentou uma tela explícita de autenticação.",
             )
             record(context, "SESSION_LOGIN_REQUIRED", account, "cause=SERVER_SESSION_EXPIRED")
-        } else {
-            runtimeByAccount[account.id] = RuntimeObservation(
-                state = BlaBlaSessionState0552.REVALIDATING,
-                explanation = "Navegação preservada; aguardando confirmação do UUID.",
-            )
-            record(context, "SESSION_REVALIDATE", account, "loginPage=false")
+            return
         }
+
+        val current = runtimeByAccount[account.id]
+        if (current?.state.isStickyFailure()) {
+            record(
+                context,
+                "SESSION_REVALIDATE",
+                account,
+                "loginPage=false stickyState=${current.state.name} awaitingPositiveIdentity=true",
+            )
+            return
+        }
+
+        runtimeByAccount[account.id] = RuntimeObservation(
+            state = BlaBlaSessionState0552.REVALIDATING,
+            explanation = "Navegação preservada; aguardando confirmação do UUID.",
+        )
+        record(context, "SESSION_REVALIDATE", account, "loginPage=false awaitingPositiveIdentity=true")
     }
 
     fun observeIdentity(
@@ -188,6 +216,8 @@ internal object BlaBlaCarSessionKeeper0552 {
         val expected = normalizeUuid(account.profileUuid)
         val actual = normalizeUuid(actualProfileUuid)
         val mismatch = expected.isNotBlank() && actual.isNotBlank() && expected != actual
+        val exactMatch = expected.isNotBlank() && actual.isNotBlank() && expected == actual
+        val current = runtimeByAccount[account.id]
         val observation = when {
             mismatch -> RuntimeObservation(
                 state = BlaBlaSessionState0552.PROFILE_MISMATCH,
@@ -195,32 +225,76 @@ internal object BlaBlaCarSessionKeeper0552 {
                 cause = BlaBlaSessionLossCause0552.PROFILE_MISMATCH,
                 explanation = "UUID encontrado pertence a outra sessão; operação bloqueada.",
             )
-            actual.isBlank() -> RuntimeObservation(
-                state = BlaBlaSessionState0552.SUSPECTED,
-                explanation = "A página não comprovou identidade suficiente.",
-            )
-            else -> RuntimeObservation(
+            exactMatch -> RuntimeObservation(
                 state = BlaBlaSessionState0552.VALID,
                 actualProfileUuid = actual,
                 explanation = "UUID da sessão confirmado.",
             )
+            current?.state.isStickyFailure() -> current.copy(
+                atMillis = System.currentTimeMillis(),
+                explanation = "A sessão continua bloqueada até uma confirmação positiva do UUID esperado.",
+            )
+            else -> RuntimeObservation(
+                state = BlaBlaSessionState0552.SUSPECTED,
+                actualProfileUuid = actual,
+                explanation = if (expected.isBlank()) {
+                    "A conta ainda não possui UUID autoritativo confirmado."
+                } else {
+                    "A página não comprovou identidade suficiente."
+                },
+            )
         }
         runtimeByAccount[account.id] = observation
+        val event = when {
+            mismatch -> "SESSION_PROFILE_MISMATCH"
+            exactMatch -> "SESSION_VALID"
+            else -> "SESSION_SUSPECTED"
+        }
         record(
             context,
-            if (mismatch) "SESSION_PROFILE_MISMATCH" else if (actual.isNotBlank()) "SESSION_VALID" else "SESSION_SUSPECTED",
+            event,
             account,
-            "operation=${safe(operation)} actualPresent=${actual.isNotBlank()} match=${!mismatch}",
+            "operation=${safe(operation)} actualPresent=${actual.isNotBlank()} expectedPresent=${expected.isNotBlank()} match=$exactMatch state=${observation.state.name}",
         )
         return health(account, BlaBlaDynamicSessionStore(context).read(account))
     }
 
     fun observeNetworkError(context: Context, account: BlaBlaDynamicAccount, operation: String) {
+        val current = runtimeByAccount[account.id]
+        if (current?.state.isStickyFailure()) {
+            runtimeByAccount[account.id] = current.copy(atMillis = System.currentTimeMillis())
+            record(
+                context,
+                "SESSION_SUSPECTED",
+                account,
+                "operation=${safe(operation)} cause=NETWORK_ERROR preservedState=${current.state.name} destructiveRecovery=false",
+            )
+            return
+        }
         runtimeByAccount[account.id] = RuntimeObservation(
             state = BlaBlaSessionState0552.NETWORK_ERROR,
             explanation = "Falha de rede; cookies e armazenamento da sessão foram preservados.",
         )
         record(context, "SESSION_SUSPECTED", account, "operation=${safe(operation)} cause=NETWORK_ERROR destructiveRecovery=false")
+    }
+
+    fun requireValidated(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        operation: String,
+    ): BlaBlaSessionHealth0552 {
+        val result = health(account, BlaBlaDynamicSessionStore(context).read(account))
+        if (result.blocksAuthenticatedOperation) {
+            record(
+                context,
+                "SESSION_OPERATION_BLOCKED",
+                account,
+                "operation=${safe(operation)} state=${result.state.name} cause=${result.lossCause.name}",
+            )
+        } else {
+            record(context, "SESSION_REUSE", account, "operation=${safe(operation)} state=VALID")
+        }
+        return result
     }
 
     fun clearRuntime(accountId: String) {
@@ -242,6 +316,12 @@ internal object BlaBlaCarSessionKeeper0552 {
             path.contains("/auth/login") ||
             path.contains("/authentication/login")
     }
+
+    private fun BlaBlaSessionState0552?.isStickyFailure(): Boolean = this in setOf(
+        BlaBlaSessionState0552.EXPIRED,
+        BlaBlaSessionState0552.LOGIN_REQUIRED,
+        BlaBlaSessionState0552.PROFILE_MISMATCH,
+    )
 
     private fun normalizeUuid(value: String?): String = value?.trim()?.lowercase().orEmpty()
 
