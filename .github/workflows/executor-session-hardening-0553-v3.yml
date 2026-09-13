@@ -1,18 +1,18 @@
-name: Executor Session Hardening 0.1.553 v3
+name: Executor Canonical Agenda Timeline Parity 0.1.554
 
 on:
   push:
     branches:
-      - agent/session-hardening-0.1.553
+      - agent/canonical-agenda-timeline-parity-0.1.554
     paths:
       - .github/workflows/executor-session-hardening-0553-v3.yml
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-session-hardening-0553-v3:
+  verify-canonical-parity-0554:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -20,7 +20,7 @@ jobs:
       - name: Checkout exact feature branch
         uses: actions/checkout@v4
         with:
-          ref: agent/session-hardening-0.1.553
+          ref: agent/canonical-agenda-timeline-parity-0.1.554
           fetch-depth: 0
 
       - name: Set up Java 17
@@ -32,66 +32,44 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Apply SessionKeeper compiler fix
+      - name: Verify exact source identity
+        shell: bash
         run: |
           set -euo pipefail
-          python3 tools/executor_fix_sessionkeeper_0553_v2.py
-          grep -F 'current != null && current.state.isStickyFailure()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCarSessionKeeper0552.kt
-          ! grep -F 'current?.state.isStickyFailure()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCarSessionKeeper0552.kt
-
-      - name: Materialize 0.1.553 source
-        run: |
-          set -euo pipefail
-          python3 tools/executor_session_hardening_0553.py
           git diff --check
-          grep -F 'val releaseVersionCode = 5_845' app/build.gradle.kts
-          grep -F 'val releaseVersionName = "0.1.553"' app/build.gradle.kts
-          grep -F 'operation = "SESSION_IDENTITY_SYNC"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -F 'operation = "RIDES_SNAPSHOT_IDENTITY"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -F 'operation = "TRIP_DETAIL_IDENTITY"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -F 'operation = "PROFILE_LINK_IDENTITY"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          grep -F 'browserToDestroy0553' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-
-      - name: Commit exact materialized source locally
-        run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            app/build.gradle.kts \
-            app/src/main/assets/release_history.json \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCarSessionKeeper0552.kt \
-            app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
-          if ! git diff --cached --quiet; then
-            git commit -m 'build: materialize session hardening 0.1.553 [materialized-0553]'
-          fi
+          grep -F 'val releaseVersionCode = 5_846' app/build.gradle.kts
+          grep -F 'val releaseVersionName = "0.1.554"' app/build.gradle.kts
+          grep -F 'canonicalSegmentAvailableSeats0494' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -F 'localAgendaMaterializesCanonicalSegmentAvailability' app/src/test/java/br/com/mapeiaia/rotacerta/trips/TimelineLocalPrimary0525Test.kt
           FINAL_SHA="$(git rev-parse HEAD)"
           echo "FINAL_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
           echo "ROTA_CERTA_GIT_SHA=$FINAL_SHA" >> "$GITHUB_ENV"
-          echo 'ROTA_CERTA_GIT_BRANCH=agent/session-hardening-0.1.553' >> "$GITHUB_ENV"
+          echo 'ROTA_CERTA_GIT_BRANCH=agent/canonical-agenda-timeline-parity-0.1.554' >> "$GITHUB_ENV"
 
-      - name: Focused release tests
+      - name: Focused canonical parity tests
+        shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew --no-daemon :app:testDebugUnitTest \
-            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaCarSessionKeeper0552Test \
-            --tests br.com.mapeiaia.rotacerta.trips.CentralDoDia0552Test \
-            --tests br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorPublicLinkProof0551Test
+            --tests br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test
 
       - name: Inherited full unit suite
         id: full_tests
         continue-on-error: true
+        shell: bash
         run: |
           set -o pipefail
           ./gradlew --no-daemon :app:testDebugUnitTest | tee full-unit-suite.log
 
       - name: Assemble debug APK
+        shell: bash
         run: |
           set -euo pipefail
           ./gradlew --no-daemon :app:assembleDebug
 
-      - name: Verify APK identity
+      - name: Verify APK identity and evidence
+        shell: bash
         run: |
           set -euo pipefail
           APK='app/build/outputs/apk/debug/app-debug.apk'
@@ -99,31 +77,26 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee aapt-badging.txt
-          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5845' versionName='0.1.553'" aapt-badging.txt
-          mkdir -p release-0553
-          cp "$APK" "release-0553/rota-certa-0.1.553-build-5845-${FINAL_SHA}.apk"
-          sha256sum release-0553/*.apk | tee release-0553/apk-sha256.txt
-          cp aapt-badging.txt release-0553/aapt-badging.txt
-          cp full-unit-suite.log release-0553/full-unit-suite.log || true
+          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5846' versionName='0.1.554'" aapt-badging.txt
+          mkdir -p release-0554
+          cp "$APK" "release-0554/rota-certa-0.1.554-build-5846-${FINAL_SHA}.apk"
+          sha256sum release-0554/*.apk | tee release-0554/apk-sha256.txt
+          cp aapt-badging.txt release-0554/aapt-badging.txt
+          cp full-unit-suite.log release-0554/full-unit-suite.log || true
           {
-            echo "versionName=0.1.553"
-            echo "versionCode=5845"
-            echo "branch=agent/session-hardening-0.1.553"
+            echo "versionName=0.1.554"
+            echo "versionCode=5846"
+            echo "branch=agent/canonical-agenda-timeline-parity-0.1.554"
             echo "source_head=${FINAL_SHA}"
-            echo "focused_tests=PASS"
+            echo "focused_canonical_parity_tests=PASS"
             echo "full_unit_suite=${{ steps.full_tests.outcome }}"
             echo "physical_device_validation=PENDING_SAMSUNG_SM-S911B_ANDROID_16"
-          } | tee release-0553/build-evidence.txt
-
-      - name: Push exact tested source
-        run: |
-          set -euo pipefail
-          git push origin HEAD:agent/session-hardening-0.1.553
+          } | tee release-0554/build-evidence.txt
 
       - name: Upload verified APK and evidence
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.553-build-5845-session-hardening
-          path: release-0553/
+          name: rota-certa-0.1.554-build-5846-canonical-parity
+          path: release-0554/
           if-no-files-found: error
           retention-days: 14
