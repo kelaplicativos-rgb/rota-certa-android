@@ -6,13 +6,12 @@ import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.rememberScrollState
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -211,11 +210,15 @@ private fun ReleaseDetails(
 
         regressions.filter { it.regressionId in release.regressions }.takeIf { it.isNotEmpty() }?.let { items ->
             Text("⚠️ Regressões conhecidas", fontWeight = FontWeight.Bold)
-            items.forEach(::RegressionDetails)
+            items.forEach { regression ->
+                RegressionDetails(regression)
+            }
         }
         regressions.filter { it.regressionId in release.resolvedRegressions }.takeIf { it.isNotEmpty() }?.let { items ->
             Text("✅ Regressões resolvidas", fontWeight = FontWeight.Bold)
-            items.forEach(::RegressionDetails)
+            items.forEach { regression ->
+                RegressionDetails(regression)
+            }
         }
     }
 }
@@ -258,7 +261,7 @@ private fun VersionCenterSection(
                     .clickable { expanded = !expanded },
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(title, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(title, fontWeight = FontWeight.Bold)
                 Text(if (expanded) "▼" else "▶")
             }
             if (expanded) content()
