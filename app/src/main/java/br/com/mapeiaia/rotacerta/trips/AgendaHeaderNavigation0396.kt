@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 internal enum class AgendaRootSection0396(val label: String) {
+    CENTRAL_DAY("Central do Dia"),
     ALL_TRIPS("Todas as viagens"),
     ASSISTANT("Assistente Rota Certa"),
     AUTOMATIC_SYNC("BlaBlaCar"),
@@ -91,6 +92,7 @@ internal fun AgendaModuleDrawer0396(
                 }
                 HorizontalDivider()
                 listOf(
+                    AgendaRootSection0396.CENTRAL_DAY,
                     AgendaRootSection0396.ALL_TRIPS,
                     AgendaRootSection0396.AUTOMATIC_SYNC,
                     AgendaRootSection0396.SCRIPTS,

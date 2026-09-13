@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.552",
+      "build": 5844,
+      "commit": null,
+      "branch": "agent/central-day-session-0.1.552",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Central do Dia como read model sobre Agenda canônica e projeção existente da Timeline, sem novo store autoritativo.",
+        "Semáforo de integridade, diagnóstico estruturado, próxima ação e continuidade física por perfil.",
+        "SessionKeeper central de saúde de sessão multiperfil sobre o perfil WebView persistente existente."
+      ],
+      "fixed": [
+        "Contas com UUID histórico não são mais apresentadas automaticamente como Conectado quando a WebView está exigindo login.",
+        "Remoção de conta/sessão passou a exigir confirmação destrutiva explícita na tela de Contas e navegadores."
+      ],
+      "improved": [
+        "Correção individual da Central reutiliza AgendaBackgroundSync0392 e a identidade forte existente, sem escrita paralela.",
+        "Falha de rede é registrada como sessão preservada e não é convertida automaticamente em LOGIN_REQUIRED.",
+        "Perfil WebView deixa de ser a informação principal da conta e passa a aparecer apenas como diagnóstico."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Contas externas"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.551",
       "build": 5843,
       "commit": null,

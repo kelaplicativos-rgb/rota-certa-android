@@ -133,7 +133,7 @@ internal object CentralDayReadModelBuilder0552 {
             bookings = bookings,
             localProfileLabel = localProfileLabel,
         )
-        val timelineIds = timelineProjection.entries.flatMap { entry -> listOf(entry.tripId, entry.localTripId) }.filter(String::isNotBlank).toSet()
+        val timelineIds = timelineProjection.entries.flatMap { entry -> listOfNotNull(entry.tripId, entry.localTripId) }.filter { it.isNotBlank() }.toSet()
 
         val mutable = canonicalTrips.map { trip ->
             val tripBookings = byTrip[trip.id].orEmpty()

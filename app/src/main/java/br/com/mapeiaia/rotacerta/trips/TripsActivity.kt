@@ -129,10 +129,11 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
+private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
-    this == TripScreen.TIMELINE ||
+    this == TripScreen.CENTRAL_DAY ||
+        this == TripScreen.TIMELINE ||
         this == TripScreen.ASSISTANT ||
         this == TripScreen.PUBLIC_SEARCH ||
         this == TripScreen.PASSENGERS ||
@@ -142,6 +143,7 @@ private fun TripScreen.isAgendaRoot0396(): Boolean =
         this == TripScreen.SCRIPTS
 
 private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (this) {
+    TripScreen.CENTRAL_DAY -> AgendaRootSection0396.CENTRAL_DAY
     TripScreen.ASSISTANT -> AgendaRootSection0396.ASSISTANT
     TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
     TripScreen.SCRIPTS -> AgendaRootSection0396.SCRIPTS
@@ -153,6 +155,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 }
 
 private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this) {
+    TripScreen.CENTRAL_DAY -> DiagnosticModule0507.ALL_TRIPS
     TripScreen.TIMELINE -> DiagnosticModule0507.ALL_TRIPS
     TripScreen.ASSISTANT -> DiagnosticModule0507.ASSISTANT
     TripScreen.AUTO_SYNC -> DiagnosticModule0507.BLABLACAR
@@ -193,6 +196,7 @@ private fun recordModuleObservation0507(
 }
 
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
+    TripScreen.CENTRAL_DAY -> "Central do Dia"
     TripScreen.TIMELINE -> "Todas as viagens"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
@@ -637,6 +641,11 @@ private fun TripApp(
         },
         onSelect = { section ->
             when (section) {
+                AgendaRootSection0396.CENTRAL_DAY -> {
+                    parentRootScreen0396 = TripScreen.CENTRAL_DAY
+                    passengerSubscreenOpen0396 = false
+                    screen = TripScreen.CENTRAL_DAY
+                }
                 AgendaRootSection0396.ALL_TRIPS -> {
                     parentRootScreen0396 = TripScreen.TIMELINE
                     passengerSubscreenOpen0396 = false
@@ -724,6 +733,20 @@ private fun TripApp(
                 }
             }
             when (screen) {
+                TripScreen.CENTRAL_DAY -> CentralDoDiaScreen0552(
+                    trips = trips,
+                    bookings = bookings,
+                    localProfileLabel = drawerOnlineSettings0397.driverDisplayName.ifBlank { "Agenda" },
+                    onRefreshLocal = { refresh() },
+                    onOpenTimeline = { tripId, bookingId ->
+                        focusedTripId = tripId
+                        focusedBookingId = bookingId
+                        reservationPendingOnly = false
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.TIMELINE
+                    },
+                    onMessage = { message = it },
+                )
                 TripScreen.DEBUG_REPORT -> ContextualDebugReportScreen0507(activeDebugModule0507)
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,

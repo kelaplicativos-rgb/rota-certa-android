@@ -693,6 +693,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         mode = intent?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_MODE) ?: BlaBlaDynamicSessionIntents.MODE_LOGIN
+        BlaBlaCarSessionKeeper0552.observeAcquire(this, account, mode)
         ridesSnapshotCaptureId0526 = intent?.getStringExtra(
             BlaBlaDynamicSessionIntents.EXTRA_RIDES_SNAPSHOT_CAPTURE_ID_0526,
         )?.trim().orEmpty()
@@ -894,6 +895,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
+                BlaBlaCarSessionKeeper0552.observeNavigation(this@BlaBlaDynamicAccountSessionController0401, account, url)
                 captureAuthoritativePublicTripNavigation0443(url)
             }
 
@@ -1228,6 +1230,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     }
 
     private fun handleMainFrameTransportFailure0426(errorCode: Int, targetUrl: String) {
+        BlaBlaCarSessionKeeper0552.observeNetworkError(this, account, phase.name)
         if (phase == Phase.IDLE) {
             statusView.text =
                 account.displayLabel + " • BlaBlaCar não carregou. Use a navegação novamente quando a conexão estiver disponível."

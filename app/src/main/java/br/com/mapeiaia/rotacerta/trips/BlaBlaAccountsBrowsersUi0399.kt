@@ -48,6 +48,7 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
     var revision by remember { mutableIntStateOf(0) }
     var showAddAccount by remember { mutableStateOf(false) }
     var newAccountLabel by remember { mutableStateOf("") }
+    var pendingRemovalAccountId0552 by remember { mutableStateOf<String?>(null) }
     var ridesSnapshotRunning0526 by remember { mutableStateOf(false) }
     var ridesSnapshotDownloadRunning0527 by remember { mutableStateOf(false) }
     var ridesSnapshotJsonDownloadRunning0531 by remember { mutableStateOf(false) }
@@ -104,16 +105,11 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                         onOpen = {
                             sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account))
                         },
-                        onRemove = {
-                            registry.remove(account.id)
-                            val reconciled = sessionStore.combinedResponse(registry.list())
-                            BlaBlaCollectorStateStore(context).saveResponse(
-                                response = reconciled,
-                                preserveOnPartial = false,
-                            )
-                            revision++
-                        },
+                        onRemove = { pendingRemovalAccountId0552 = account.id },
                         showBrowserDetails = true,
+                        onVerify = {
+                            sessionLauncher.launch(BlaBlaDynamicSessionIntents.profile(context, account))
+                        },
                     )
                 }
             }
@@ -355,6 +351,38 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 TextButton(onClick = { showAddAccount = false }) { Text("Cancelar") }
             },
         )
+    }
+
+
+    pendingRemovalAccountId0552?.let { accountId ->
+        registry.get(accountId)?.let { account ->
+            AlertDialog(
+                onDismissRequest = { pendingRemovalAccountId0552 = null },
+                title = { Text("Remover conta e sessão deste aparelho?") },
+                text = {
+                    Text(
+                        "Esta ação é destrutiva: remove o cadastro local da conta, o snapshot privado e o perfil WebView persistente. " +
+                            "Ela é diferente de Refazer login e não será executada automaticamente."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        BlaBlaCarSessionKeeper0552.clearRuntime(account.id)
+                        registry.remove(account.id)
+                        val reconciled = sessionStore.combinedResponse(registry.list())
+                        BlaBlaCollectorStateStore(context).saveResponse(
+                            response = reconciled,
+                            preserveOnPartial = false,
+                        )
+                        pendingRemovalAccountId0552 = null
+                        revision++
+                    }) { Text("Remover conta e sessão") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingRemovalAccountId0552 = null }) { Text("Cancelar") }
+                },
+            )
+        } ?: run { pendingRemovalAccountId0552 = null }
     }
 
     externalTimeline0535?.takeIf { showExternalTimeline0535 }?.let { projection ->

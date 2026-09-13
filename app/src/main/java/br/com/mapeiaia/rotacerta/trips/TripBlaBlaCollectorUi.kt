@@ -632,9 +632,7 @@ fun BlaBlaCollectorPanel(
                             snapshot = sessionStore.read(account),
                             onOpen = { sessionLauncher.launch(BlaBlaDynamicSessionIntents.login(context, account)) },
                             onRemove = {
-                                registry.remove(account.id)
-                                refresh()
-                                publishCombined("Conta removida")
+                                publishCombined("Remova a conta em Contas e navegadores, onde a limpeza destrutiva exige confirmação explícita.")
                             },
                         )
                     }
@@ -971,35 +969,47 @@ internal fun DynamicAccountRow(
     onOpen: () -> Unit,
     onRemove: () -> Unit,
     showBrowserDetails: Boolean = false,
+    onVerify: (() -> Unit)? = null,
 ) {
-    val connected = snapshot?.identityVerified == true && !account.profileUuid.isNullOrBlank()
+    val health = BlaBlaCarSessionKeeper0552.health(account, snapshot)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(Modifier.weight(1f)) {
             Text(account.displayLabel)
             Text(account.profileUuid ?: "UUID será descoberto após login/validação")
             Text(
-                when {
-                    snapshot?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED ->
-                        "BlaBlaCar temporariamente restrito • últimos dados preservados ⚠️"
-                    connected -> "Conectado • UUID confirmado ✅"
-                    snapshot != null -> "Sessão salva • UUID pendente ⏳"
-                    else -> "Ainda não conectado"
+                when (health.state) {
+                    BlaBlaSessionState0552.VALID -> "Sessão 🟢 Saudável • UUID confirmado ✅"
+                    BlaBlaSessionState0552.LOGIN_REQUIRED,
+                    BlaBlaSessionState0552.EXPIRED -> "🔴 Desconectado • login necessário"
+                    BlaBlaSessionState0552.PROFILE_MISMATCH -> "🔴 Identidade divergente • operação bloqueada"
+                    BlaBlaSessionState0552.NETWORK_ERROR -> "🟡 Rede indisponível • sessão preservada"
+                    BlaBlaSessionState0552.REVALIDATING -> "⏳ Verificando sessão…"
+                    BlaBlaSessionState0552.SUSPECTED -> "🟡 Sessão preservada • validação necessária"
                 },
             )
             if (snapshot != null) Text("Última leitura local: ${snapshot.trips.size} viagens")
-            if (snapshot?.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED) {
-                Text("Abra esta conta quando quiser revalidar a sessão. O Rota Certa não ficará tentando em segundo plano.")
+            if (health.lastValidatedAtMillis > 0L) {
+                val formatted = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+                    .withZone(java.time.ZoneId.systemDefault())
+                    .format(java.time.Instant.ofEpochMilli(health.lastValidatedAtMillis))
+                Text("Última validação: $formatted")
+            }
+            if (health.explanation.isNotBlank()) {
+                Text(health.explanation, style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
             }
             if (showBrowserDetails) {
-                Text("Perfil do navegador: ${account.webProfileName}")
-                Text("Sessão isolada: ${if (snapshot == null) "ainda não iniciada" else "salva no aparelho"}")
+                Text("Sessão neste aparelho: ${if (snapshot == null) "não iniciada" else "✅ Persistente"}")
+                Text("Perfil WebView (diagnóstico): ${account.webProfileName}", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
             }
         }
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             OutlinedButton(onClick = onOpen) {
-                Text(if (snapshot == null) "Entrar" else if (showBrowserDetails) "Abrir navegador" else "Abrir")
+                Text(if (health.state in setOf(BlaBlaSessionState0552.LOGIN_REQUIRED, BlaBlaSessionState0552.EXPIRED)) "Refazer login" else "Abrir conta")
             }
-            TextButton(onClick = onRemove) { Text("Remover") }
+            if (onVerify != null) {
+                OutlinedButton(onClick = onVerify) { Text("Verificar sessão") }
+            }
+            TextButton(onClick = onRemove) { Text("Remover conta") }
         }
     }
 }
