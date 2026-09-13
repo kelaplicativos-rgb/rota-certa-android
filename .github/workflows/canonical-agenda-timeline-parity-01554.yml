@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: canonical-agenda-timeline-parity-01554
+  cancel-in-progress: false
+
 jobs:
   verify:
     runs-on: ubuntu-latest
