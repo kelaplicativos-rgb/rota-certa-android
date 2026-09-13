@@ -1,0 +1,119 @@
+name: Rota Certa 0.1.551 exact-head APK
+
+on:
+  push:
+    branches: [agent/public-trip-proof-0.1.551]
+    paths:
+      - '.github/workflows/public-trip-proof-0551-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-trip-proof-0551-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: ci_dummy_key
+      APPLICATION_SOURCE_SHA: 15a5a82e77fbb2c2d150687884d1bec8c5304cf2
+      EXPECTED_VERSION_CODE: '5843'
+      EXPECTED_VERSION_NAME: '0.1.551'
+
+    steps:
+      - name: Checkout exact triggering HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: agent/public-trip-proof-0.1.551
+          fetch-depth: 0
+
+      - name: Prove exact application source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_HEAD="$(git rev-parse HEAD)"
+          test "$SOURCE_HEAD" = "$GITHUB_SHA"
+          git cat-file -e "$APPLICATION_SOURCE_SHA^{commit}"
+          mapfile -t delta < <(git diff --name-only "$APPLICATION_SOURCE_SHA"..HEAD)
+          if [[ ${#delta[@]} -ne 1 || "${delta[0]}" != '.github/workflows/public-trip-proof-0551-build.yml' ]]; then
+            printf 'Unexpected application delta from source SHA:\n%s\n' "${delta[*]}" >&2
+            exit 1
+          fi
+          grep -Fq 'val releaseVersionCode = 5_843' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.551"' app/build.gradle.kts
+          grep -Fq 'validatedCollectorPublicTripHref0551' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPassengerModule.kt
+          test -s app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorPublicLinkProof0551Test.kt
+          printf '%s\n' "$SOURCE_HEAD" > source_head.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run public-link proof tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorPublicLinkProof0551Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Run inherited unit suite for regression evidence
+        id: inherited_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Assemble exact-head debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify APK identity and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT='/tmp/public-trip-proof-0551'
+          mkdir -p "$OUT"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          "$AAPT" dump badging "$APK" > "$OUT/aapt-badging.txt"
+          PACKAGE_LINE="$(grep '^package:' "$OUT/aapt-badging.txt" | head -n1)"
+          echo "$PACKAGE_LINE"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          FINAL_APK="$OUT/rota-certa-${EXPECTED_VERSION_NAME}-build-${EXPECTED_VERSION_CODE}-${GITHUB_SHA}.apk"
+          cp "$APK" "$FINAL_APK"
+          sha256sum "$FINAL_APK" | tee "$OUT/apk-sha256.txt"
+          cp source_head.txt "$OUT/source_head.txt"
+          printf '%s\n' \
+            "versionName=$EXPECTED_VERSION_NAME" \
+            "versionCode=$EXPECTED_VERSION_CODE" \
+            "package=br.com.mapeiaia.rotacerta" \
+            "branch=$GITHUB_REF_NAME" \
+            "finalSha=$GITHUB_SHA" \
+            "applicationSourceSha=$APPLICATION_SOURCE_SHA" \
+            "focusedPublicLinkTests=success" \
+            "inheritedUnitSuite=${{ steps.inherited_tests.outcome }}" \
+            > "$OUT/build-evidence.txt"
+
+      - name: Upload exact-head APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.551-build-5843-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: /tmp/public-trip-proof-0551/
