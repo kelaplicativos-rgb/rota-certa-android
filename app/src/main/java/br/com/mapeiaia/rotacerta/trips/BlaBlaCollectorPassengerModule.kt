@@ -9,6 +9,27 @@ internal enum class BlaBlaDirectRosterState {
     COMPLETE_WITH_PASSENGERS,
 }
 
+/**
+ * Proof boundary for passenger-facing BlaBlaCar URLs carried by collector state.
+ *
+ * `exact_public_search` is only discovery evidence: route/profile/time similarity does not prove
+ * that a different public token belongs to the administrative trip. It therefore survives the
+ * canonical merge only when the URL itself resolves to the same external trip id.
+ *
+ * Network and exact orchestrator-navigation bindings keep their existing authoritative contract;
+ * those acquisition paths already prove which administrative trip produced the public permalink.
+ */
+internal fun validatedCollectorPublicTripHref0551(
+    raw: String?,
+    expectedTripId: String?,
+    source: String?,
+    binding: String?,
+): String? = if (source?.trim().equals("exact_public_search", ignoreCase = true)) {
+    BlaBlaCollectorUrlModule.publicTrip(raw, expectedTripId)
+} else {
+    BlaBlaCollectorUrlModule.publicTripForCollectorState(raw, expectedTripId, binding)
+}
+
 /** Passenger roster, names and monotonic merge decisions. */
 internal object BlaBlaCollectorPassengerModule {
     fun normalizePhone(raw: String?): String? {
@@ -149,15 +170,17 @@ internal object BlaBlaCollectorPassengerModule {
             ?: previous?.trip_id?.trim()?.takeIf(String::isNotEmpty)
         val currentRawHref = current.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
         val previousRawHref = previous?.public_trip_href?.trim()?.takeIf(String::isNotEmpty)
-        val currentHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
-            currentRawHref,
-            expectedTripId,
-            current.public_trip_href_binding,
+        val currentHref = validatedCollectorPublicTripHref0551(
+            raw = currentRawHref,
+            expectedTripId = expectedTripId,
+            source = current.public_trip_href_source,
+            binding = current.public_trip_href_binding,
         )
-        val previousHref = BlaBlaCollectorUrlModule.publicTripForCollectorState(
-            previousRawHref,
-            expectedTripId,
-            previous?.public_trip_href_binding,
+        val previousHref = validatedCollectorPublicTripHref0551(
+            raw = previousRawHref,
+            expectedTripId = expectedTripId,
+            source = previous?.public_trip_href_source,
+            binding = previous?.public_trip_href_binding,
         )
         val keepsCurrentHref = currentHref != null
         if (currentRawHref != null && currentHref == null) {
@@ -166,8 +189,17 @@ internal object BlaBlaCollectorPassengerModule {
                 "br.com.mapeiaia.rotacerta",
                 "tripId=" + expectedTripId.orEmpty() +
                     " source=" + current.public_trip_href_source.ifBlank { "collector_snapshot" } +
-                    " reason=invalid_or_unbound_observation previousValid=" + (previousHref != null) +
+                    " reason=invalid_or_unproven_exact_trip_binding previousValid=" + (previousHref != null) +
                     " action=" + if (previousHref != null) "preserve_previous" else "keep_unavailable",
+            )
+        }
+        if (previousRawHref != null && previousHref == null && currentHref == null) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_STALE_REJECTED_0551",
+                "br.com.mapeiaia.rotacerta",
+                "tripId=" + expectedTripId.orEmpty() +
+                    " previousSource=" + previous?.public_trip_href_source.orEmpty().ifBlank { "collector_snapshot" } +
+                    " reason=legacy_weak_binding_not_preserved action=keep_unavailable",
             )
         }
         fun observed(currentValue: String?, previousValue: String?): String? =
@@ -207,13 +239,17 @@ internal object BlaBlaCollectorPassengerModule {
             public_trip_href = currentHref ?: previousHref,
             public_trip_href_source = if (keepsCurrentHref) {
                 current.public_trip_href_source
-            } else {
+            } else if (previousHref != null) {
                 previous?.public_trip_href_source.orEmpty()
+            } else {
+                ""
             },
             public_trip_href_binding = if (keepsCurrentHref) {
                 current.public_trip_href_binding
-            } else {
+            } else if (previousHref != null) {
                 previous?.public_trip_href_binding.orEmpty()
+            } else {
+                ""
             },
             // A partial/reloaded snapshot cannot erase the last seat-editor value
             // confirmed for this same strong trip identity.
