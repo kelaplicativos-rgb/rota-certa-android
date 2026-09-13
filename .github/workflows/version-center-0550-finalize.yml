@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA='222d88dfff1f86e8a5fc44ebb50aacda3d84bb19'
+          SOURCE_SHA='7a76c427695311e5e0f1588d4c3d1111aef40cdb'
           git cat-file -e "$SOURCE_SHA^{commit}"
           mapfile -t delta < <(git diff --name-only "$SOURCE_SHA"..HEAD)
           if [[ ${#delta[@]} -ne 1 || "${delta[0]}" != '.github/workflows/version-center-0550-finalize.yml' ]]; then
@@ -33,6 +33,8 @@ jobs:
           grep -Fq 'br.com.mapeiaia.rotacerta.versioncenter.VersionCenterCard()' app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt
           grep -Fq 'val releaseVersionName = "0.1.550"' app/build.gradle.kts
           grep -Fq 'val releaseVersionCode = 5_842' app/build.gradle.kts
+          grep -Fq 'id("com.google.gms.google-services") apply false' app/build.gradle.kts
+          grep -Fq 'if (googleServicesConfigFile.isFile)' app/build.gradle.kts
           grep -Fq '"version": "0.1.550"' app/src/main/assets/release_history.json
           grep -Fq '"build": 5842' app/src/main/assets/release_history.json
           test ! -e app/google-services.json
@@ -47,41 +49,42 @@ jobs:
       - name: Unit tests
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 222d88dfff1f86e8a5fc44ebb50aacda3d84bb19
+          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest -x :app:processDebugGoogleServices --no-daemon --stacktrace
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Lint
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 222d88dfff1f86e8a5fc44ebb50aacda3d84bb19
+          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
-          ./gradlew :app:lintDebug -x :app:processDebugGoogleServices --no-daemon --stacktrace
+          ./gradlew :app:lintDebug --no-daemon --stacktrace
 
       - name: Assemble compile-validation APK
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 222d88dfff1f86e8a5fc44ebb50aacda3d84bb19
+          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug -x :app:processDebugGoogleServices --no-daemon --stacktrace
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           mkdir -p /tmp/version-center-0550-validation
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk
           sha256sum /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk > /tmp/version-center-0550-validation/apk.sha256
           cat > /tmp/version-center-0550-validation/evidence.txt <<'EOF'
           purpose=compile-validation-only
-          googleServicesTaskExecuted=false
+          googleServicesConfigPresent=false
+          googleServicesPluginApplied=false
           productionArtifact=false
           versionName=0.1.550
           versionCode=5842
-          applicationSourceSha=222d88dfff1f86e8a5fc44ebb50aacda3d84bb19
+          applicationSourceSha=7a76c427695311e5e0f1588d4c3d1111aef40cdb
           branch=agent/version-center-0.1.550
           EOF
 
