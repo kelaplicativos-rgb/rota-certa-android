@@ -17,12 +17,14 @@
       "fixed": [],
       "improved": [
         "Metadados objetivos da build instalada continuam vindo do BuildConfig por meio de AppBuildInfo.",
-        "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build."
+        "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build.",
+        "Google Services passa a ser aplicado pelo Gradle somente quando google-services.json estiver presente, preservando builds operacionais configurados e permitindo validação de código sem credenciais versionadas."
       ],
       "regressions": [],
       "resolvedRegressions": [],
       "modulesAffected": [
-        "Sobre"
+        "Sobre",
+        "Build"
       ],
       "detailsComplete": true
     },
