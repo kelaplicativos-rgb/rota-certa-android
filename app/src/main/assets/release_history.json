@@ -2,6 +2,28 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.554",
+      "build": 5846,
+      "commit": null,
+      "branch": "agent/canonical-agenda-timeline-parity-0.1.554",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [],
+      "fixed": [
+        "A projeção local autoritativa da Agenda passa a transportar ocupação e disponibilidade canônicas por trecho até a Timeline, sem cálculo paralelo de UI.",
+        "O merge local-first deixa de apagar segmentLoads, segmentPassengerLoads, segmentBlockedLoads e segmentAvailableSeats quando o backend remoto não possui revisão mais nova.",
+        "Conflitos de identidade forte profileUuid + tripId permanecem fail-closed e não podem trocar o motorista de uma mesma viagem canônica."
+      ],
+      "improved": [
+        "A Timeline consome uma projeção operacional canônica completa tanto no modo local quanto após sincronização remota.",
+        "Testes de regressão cobrem 1 vaga por trecho, preservação dos vetores canônicos e conflito de profileUuid para o mesmo canonicalTripId."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Agenda", "Timeline", "Identidade canônica", "Vagas por trecho"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.553",
       "build": 5845,
       "commit": null,
@@ -21,11 +43,7 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": [
-        "BlaBlaCar",
-        "Contas externas",
-        "Sessão multiperfil"
-      ],
+      "modulesAffected": ["BlaBlaCar", "Contas externas", "Sessão multiperfil"],
       "detailsComplete": true
     },
     {
@@ -51,13 +69,7 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": [
-        "BlaBlaCar",
-        "Agenda",
-        "Timeline",
-        "Central do Dia",
-        "Contas externas"
-      ],
+      "modulesAffected": ["BlaBlaCar", "Agenda", "Timeline", "Central do Dia", "Contas externas"],
       "detailsComplete": true
     },
     {
@@ -68,9 +80,7 @@
       "generatedAt": null,
       "status": "EM_VALIDACAO",
       "implemented": [],
-      "fixed": [
-        "Fechado o caminho fraco que permitia persistir como canônico um link público BlaBlaCar de token diferente usando apenas correspondência de perfil, rota e horário da consulta pública."
-      ],
+      "fixed": ["Fechado o caminho fraco que permitia persistir como canônico um link público BlaBlaCar de token diferente usando apenas correspondência de perfil, rota e horário da consulta pública."],
       "improved": [
         "Links descobertos por exact_public_search agora só sobrevivem ao merge canônico quando a própria URL comprova o mesmo trip_id administrativo.",
         "Bindings autoritativos capturados diretamente pela rede ou por navegação exata originada da viagem continuam aceitando permalinks públicos legítimos cujo token difere do identificador administrativo.",
@@ -78,11 +88,7 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": [
-        "BlaBlaCar",
-        "Agenda",
-        "Timeline"
-      ],
+      "modulesAffected": ["BlaBlaCar", "Agenda", "Timeline"],
       "detailsComplete": true
     },
     {
@@ -98,9 +104,7 @@
         "Seção de problemas conhecidos com suporte ao ciclo introduzida → corrigida → validada.",
         "Relatório sanitizado e copiável da versão instalada."
       ],
-      "fixed": [
-        "Corrigida a compilação Compose da Central de Versões: rememberScrollState passou a usar o pacote correto, o peso desnecessário do título foi removido e a renderização de regressões passou a invocar composables por lambda."
-      ],
+      "fixed": ["Corrigida a compilação Compose da Central de Versões: rememberScrollState passou a usar o pacote correto, o peso desnecessário do título foi removido e a renderização de regressões passou a invocar composables por lambda."],
       "improved": [
         "Metadados objetivos da build instalada continuam vindo do BuildConfig por meio de AppBuildInfo.",
         "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build.",
@@ -108,10 +112,7 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": [
-        "Sobre",
-        "Build"
-      ],
+      "modulesAffected": ["Sobre", "Build"],
       "detailsComplete": true
     },
     {
@@ -121,15 +122,8 @@
       "branch": "agent/timeline-agenda-card-parity-0.1.549",
       "generatedAt": null,
       "status": null,
-      "implemented": [],
-      "fixed": [],
-      "improved": [],
-      "regressions": [],
-      "resolvedRegressions": [],
-      "modulesAffected": [
-        "Timeline"
-      ],
-      "detailsComplete": false
+      "implemented": [], "fixed": [], "improved": [], "regressions": [], "resolvedRegressions": [],
+      "modulesAffected": ["Timeline"], "detailsComplete": false
     },
     {
       "version": "0.1.548",
@@ -138,15 +132,8 @@
       "branch": "agent/timeline-temporal-cutoff-0.1.548",
       "generatedAt": null,
       "status": null,
-      "implemented": [],
-      "fixed": [],
-      "improved": [],
-      "regressions": [],
-      "resolvedRegressions": [],
-      "modulesAffected": [
-        "Timeline"
-      ],
-      "detailsComplete": false
+      "implemented": [], "fixed": [], "improved": [], "regressions": [], "resolvedRegressions": [],
+      "modulesAffected": ["Timeline"], "detailsComplete": false
     }
   ],
   "regressions": []
