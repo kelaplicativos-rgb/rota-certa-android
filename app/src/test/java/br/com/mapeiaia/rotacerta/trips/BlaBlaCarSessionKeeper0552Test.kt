@@ -29,6 +29,12 @@ class BlaBlaCarSessionKeeper0552Test {
 
         assertEquals(BlaBlaSessionState0552.LOGIN_REQUIRED, health.state)
         assertTrue(health.blocksAuthenticatedOperation)
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                snapshot,
+            ),
+        )
     }
 
     @Test
@@ -47,6 +53,13 @@ class BlaBlaCarSessionKeeper0552Test {
 
         assertEquals(BlaBlaSessionState0552.SUSPECTED, health.state)
         assertTrue(health.blocksAuthenticatedOperation)
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                snapshot,
+                now,
+            ),
+        )
     }
 
     @Test
@@ -69,12 +82,19 @@ class BlaBlaCarSessionKeeper0552Test {
             profileLabel = "Outro perfil",
             identityVerified = true,
             lastUrl = "https://www.blablacar.com.br/rides",
+            lastValidSyncAtMillis0426 = System.currentTimeMillis(),
         )
 
         val health = BlaBlaCarSessionKeeper0552.health(account, snapshot)
 
         assertEquals(BlaBlaSessionState0552.PROFILE_MISMATCH, health.state)
         assertTrue(health.blocksAuthenticatedOperation)
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                snapshot,
+            ),
+        )
     }
 
     @Test
@@ -93,6 +113,104 @@ class BlaBlaCarSessionKeeper0552Test {
 
         assertEquals(BlaBlaSessionState0552.VALID, health.state)
         assertFalse(health.blocksAuthenticatedOperation)
+        assertTrue(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                snapshot,
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun identityEvidenceHasThreeExplicitStates() {
+        assertEquals(
+            BlaBlaIdentityEvidenceState0555.MATCH,
+            BlaBlaCarSessionKeeper0552.classifyIdentityEvidence0555(
+                expectedProfileUuid = account.profileUuid,
+                actualProfileUuid = account.profileUuid,
+            ),
+        )
+        assertEquals(
+            BlaBlaIdentityEvidenceState0555.CONFLICT,
+            BlaBlaCarSessionKeeper0552.classifyIdentityEvidence0555(
+                expectedProfileUuid = account.profileUuid,
+                actualProfileUuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+            ),
+        )
+        assertEquals(
+            BlaBlaIdentityEvidenceState0555.NOT_OBSERVABLE,
+            BlaBlaCarSessionKeeper0552.classifyIdentityEvidence0555(
+                expectedProfileUuid = account.profileUuid,
+                actualProfileUuid = null,
+            ),
+        )
+    }
+
+    @Test
+    fun notObservableIdentityCanReuseOnlyRecentVerifiedSameProfileProof() {
+        val now = 2_000_000_000_000L
+        val recentSameProfile = BlaBlaDynamicSessionSnapshot(
+            accountId = account.id,
+            profileUuid = account.profileUuid,
+            profileLabel = account.displayLabel,
+            identityVerified = true,
+            lastUrl = "https://www.blablacar.com.br/rides",
+            lastValidSyncAtMillis0426 = now - 10_000L,
+        )
+        val unverified = recentSameProfile.copy(identityVerified = false)
+        val wrongProfile = recentSameProfile.copy(profileUuid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+
+        assertTrue(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                recentSameProfile,
+                now,
+            ),
+        )
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                unverified,
+                now,
+            ),
+        )
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                wrongProfile,
+                now,
+            ),
+        )
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                null,
+                now,
+            ),
+        )
+    }
+
+    @Test
+    fun temporaryRestrictionNeverBecomesImplicitAuthenticationProof() {
+        val now = 2_000_000_000_000L
+        val snapshot = BlaBlaDynamicSessionSnapshot(
+            accountId = account.id,
+            profileUuid = account.profileUuid,
+            profileLabel = account.displayLabel,
+            identityVerified = true,
+            lastUrl = "https://www.blablacar.com.br/rides",
+            lastValidSyncAtMillis0426 = now - 10_000L,
+            sourceAccessStatus0426 = BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED,
+        )
+
+        assertFalse(
+            BlaBlaCarSessionKeeper0552.canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                account,
+                snapshot,
+                now,
+            ),
+        )
     }
 
     @Test
