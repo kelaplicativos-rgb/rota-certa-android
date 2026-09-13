@@ -32,7 +32,7 @@ class BlaBlaCarSessionKeeper0552Test {
     }
 
     @Test
-    fun oldVerifiedSnapshotIsNotPresentedAsCurrentlyConnected() {
+    fun oldVerifiedSnapshotIsNotPresentedAsCurrentlyConnectedAndBlocksFreshAuthenticatedWork() {
         val now = 2_000_000_000_000L
         val snapshot = BlaBlaDynamicSessionSnapshot(
             accountId = account.id,
@@ -46,7 +46,19 @@ class BlaBlaCarSessionKeeper0552Test {
         val health = BlaBlaCarSessionKeeper0552.health(account, snapshot, now)
 
         assertEquals(BlaBlaSessionState0552.SUSPECTED, health.state)
-        assertFalse(health.blocksAuthenticatedOperation)
+        assertTrue(health.blocksAuthenticatedOperation)
+    }
+
+    @Test
+    fun onlyValidStateAuthorizesAuthenticatedOperation() {
+        BlaBlaSessionState0552.entries.forEach { state ->
+            val health = BlaBlaSessionHealth0552(state = state)
+            assertEquals(
+                state != BlaBlaSessionState0552.VALID,
+                health.blocksAuthenticatedOperation,
+                "state=$state",
+            )
+        }
     }
 
     @Test
@@ -63,6 +75,24 @@ class BlaBlaCarSessionKeeper0552Test {
 
         assertEquals(BlaBlaSessionState0552.PROFILE_MISMATCH, health.state)
         assertTrue(health.blocksAuthenticatedOperation)
+    }
+
+    @Test
+    fun recentExactVerifiedSnapshotRemainsValidWhenThereIsNoContradictingRuntimeObservation() {
+        val now = 2_000_000_000_000L
+        val snapshot = BlaBlaDynamicSessionSnapshot(
+            accountId = account.id,
+            profileUuid = account.profileUuid,
+            profileLabel = account.displayLabel,
+            identityVerified = true,
+            lastUrl = "https://www.blablacar.com.br/rides",
+            lastValidSyncAtMillis0426 = now - 1_000L,
+        )
+
+        val health = BlaBlaCarSessionKeeper0552.health(account, snapshot, now)
+
+        assertEquals(BlaBlaSessionState0552.VALID, health.state)
+        assertFalse(health.blocksAuthenticatedOperation)
     }
 
     @Test
