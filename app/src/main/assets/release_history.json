@@ -2,12 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.551",
+      "build": 5843,
+      "commit": null,
+      "branch": "agent/public-trip-proof-0.1.551",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [],
+      "fixed": [
+        "Fechado o caminho fraco que permitia persistir como canônico um link público BlaBlaCar de token diferente usando apenas correspondência de perfil, rota e horário da consulta pública."
+      ],
+      "improved": [
+        "Links descobertos por exact_public_search agora só sobrevivem ao merge canônico quando a própria URL comprova o mesmo trip_id administrativo.",
+        "Bindings autoritativos capturados diretamente pela rede ou por navegação exata originada da viagem continuam aceitando permalinks públicos legítimos cujo token difere do identificador administrativo.",
+        "Snapshots antigos com vínculo fraco de consulta pública deixam de ser perpetuados no próximo merge; um vínculo autoritativo anterior válido continua preservado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.550",
       "build": 5842,
       "commit": null,
       "branch": null,
       "generatedAt": null,
-      "status": "EM_VALIDACAO",
+      "status": null,
       "implemented": [
         "Central de versões e memória técnica dentro de Sobre o Rota Certa.",
         "Histórico local expansível com filtro dinâmico por módulo e identificação da versão instalada.",
