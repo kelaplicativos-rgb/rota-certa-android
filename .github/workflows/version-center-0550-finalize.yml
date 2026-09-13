@@ -23,7 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA='7a76c427695311e5e0f1588d4c3d1111aef40cdb'
+          SOURCE_SHA='4029da184bd7656293e5a8be58753f4a123d8643'
           git cat-file -e "$SOURCE_SHA^{commit}"
           mapfile -t delta < <(git diff --name-only "$SOURCE_SHA"..HEAD)
           if [[ ${#delta[@]} -ne 1 || "${delta[0]}" != '.github/workflows/version-center-0550-finalize.yml' ]]; then
@@ -35,6 +35,11 @@ jobs:
           grep -Fq 'val releaseVersionCode = 5_842' app/build.gradle.kts
           grep -Fq 'id("com.google.gms.google-services") apply false' app/build.gradle.kts
           grep -Fq 'if (googleServicesConfigFile.isFile)' app/build.gradle.kts
+          grep -Fq 'import androidx.compose.foundation.rememberScrollState' app/src/main/java/br/com/mapeiaia/rotacerta/versioncenter/VersionCenterCard.kt
+          if grep -Fq 'items.forEach(::RegressionDetails)' app/src/main/java/br/com/mapeiaia/rotacerta/versioncenter/VersionCenterCard.kt; then
+            echo 'Stale non-composable function reference remains.' >&2
+            exit 1
+          fi
           grep -Fq '"version": "0.1.550"' app/src/main/assets/release_history.json
           grep -Fq '"build": 5842' app/src/main/assets/release_history.json
           test ! -e app/google-services.json
@@ -49,7 +54,7 @@ jobs:
       - name: Unit tests
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
@@ -59,7 +64,7 @@ jobs:
       - name: Lint
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
@@ -68,7 +73,7 @@ jobs:
       - name: Assemble compile-validation APK
         shell: bash
         env:
-          ROTA_CERTA_GIT_SHA: 7a76c427695311e5e0f1588d4c3d1111aef40cdb
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
           ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
         run: |
           set -euo pipefail
@@ -84,7 +89,7 @@ jobs:
           productionArtifact=false
           versionName=0.1.550
           versionCode=5842
-          applicationSourceSha=7a76c427695311e5e0f1588d4c3d1111aef40cdb
+          applicationSourceSha=4029da184bd7656293e5a8be58753f4a123d8643
           branch=agent/version-center-0.1.550
           EOF
 
