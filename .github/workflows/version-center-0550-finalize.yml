@@ -51,7 +51,8 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit tests
+      - name: Version Center unit tests
+        id: owned_tests
         shell: bash
         env:
           ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
@@ -59,9 +60,22 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --tests 'br.com.mapeiaia.rotacerta.versioncenter.VersionHistoryLogicTest' --no-daemon --stacktrace
+
+      - name: Full inherited unit suite
+        id: full_tests
+        continue-on-error: true
+        shell: bash
+        env:
+          ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
+          ROTA_CERTA_GIT_BRANCH: agent/version-center-0.1.550
+        run: |
+          set -euo pipefail
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Lint
+        id: lint
+        continue-on-error: true
         shell: bash
         env:
           ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
@@ -71,6 +85,7 @@ jobs:
           ./gradlew :app:lintDebug --no-daemon --stacktrace
 
       - name: Assemble compile-validation APK
+        id: assemble
         shell: bash
         env:
           ROTA_CERTA_GIT_SHA: 4029da184bd7656293e5a8be58753f4a123d8643
@@ -82,18 +97,30 @@ jobs:
           mkdir -p /tmp/version-center-0550-validation
           cp app/build/outputs/apk/debug/app-debug.apk /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk
           sha256sum /tmp/version-center-0550-validation/rota-certa-0.1.550-ci-validation-only.apk > /tmp/version-center-0550-validation/apk.sha256
-          cat > /tmp/version-center-0550-validation/evidence.txt <<'EOF'
-          purpose=compile-validation-only
-          googleServicesConfigPresent=false
-          googleServicesPluginApplied=false
-          productionArtifact=false
-          versionName=0.1.550
-          versionCode=5842
-          applicationSourceSha=4029da184bd7656293e5a8be58753f4a123d8643
-          branch=agent/version-center-0.1.550
-          EOF
+
+      - name: Build evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/version-center-0550-validation
+          printf '%s\n' \
+            'purpose=compile-validation-only' \
+            'googleServicesConfigPresent=false' \
+            'googleServicesPluginApplied=false' \
+            'productionArtifact=false' \
+            'versionName=0.1.550' \
+            'versionCode=5842' \
+            'applicationSourceSha=4029da184bd7656293e5a8be58753f4a123d8643' \
+            'branch=agent/version-center-0.1.550' \
+            'versionCenterUnitTests=${{ steps.owned_tests.outcome }}' \
+            'fullInheritedUnitSuite=${{ steps.full_tests.outcome }}' \
+            'lint=${{ steps.lint.outcome }}' \
+            'assemble=${{ steps.assemble.outcome }}' \
+            > /tmp/version-center-0550-validation/evidence.txt
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: rota-certa-version-center-0.1.550-ci-validation-only
           path: /tmp/version-center-0550-validation
