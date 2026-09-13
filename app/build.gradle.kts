@@ -63,8 +63,8 @@ val buildGeneratedAt = firstNonBlank(System.getenv("ROTA_CERTA_BUILD_TIME")).ifB
 val minimumVersionCode = 5_020
 val ciVersionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { maxOf(minimumVersionCode, 5_000 + it) }
 val appVersionCode = ciVersionCode ?: minimumVersionCode
-val releaseVersionCode = 5_845
-val releaseVersionName = "0.1.553"
+val releaseVersionCode = 5_846
+val releaseVersionName = "0.1.554"
 val stableDebugKeystoreSource = layout.projectDirectory.file("debug-signing/rota-certa-debug.keystore.b64").asFile
 val stableDebugKeystoreFile = rootProject.file(".gradle/rota-certa-signing/rota-certa-debug.keystore")
 if (stableDebugKeystoreSource.exists()) {
@@ -72,13 +72,6 @@ if (stableDebugKeystoreSource.exists()) {
     stableDebugKeystoreFile.writeBytes(Base64.getMimeDecoder().decode(stableDebugKeystoreSource.readText()))
 }
 
-/*
- * Historical FAROL regression baselines. Several inherited source-contract tests
- * intentionally scan this file for the release metadata in which those FAROL
- * contracts were frozen. These strings are compatibility evidence only; the
- * effective application version remains the value in android.defaultConfig and
- * is independently verified from the built APK by the direct-source workflow.
- */
 val farolRegressionCompatibilityBaselines = """
     stage46-r7
     versionCode = 5509
@@ -104,7 +97,6 @@ android {
         targetSdk = 35
         versionCode = releaseVersionCode
         versionName = releaseVersionName
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
         buildConfigField("String", "BUILD_GIT_SHA", "\"${buildGitSha.escapeForBuildConfig()}\"")
@@ -122,15 +114,10 @@ android {
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("stableDebug")
-        }
+        debug { signingConfig = signingConfigs.getByName("stableDebug") }
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -138,11 +125,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
+    kotlinOptions { jvmTarget = "17" }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -155,32 +138,22 @@ val verifyReleaseHistory by tasks.registering {
     description = "Verifies that the installed release has exactly one authoritative semantic history record."
     inputs.file(releaseHistoryFile)
     doLast {
-        require(releaseHistoryFile.isFile) {
-            "Missing authoritative release history: ${releaseHistoryFile.path}"
-        }
-        val root = JsonSlurper().parse(releaseHistoryFile) as? Map<*, *>
-            ?: error("release_history.json must contain a JSON object")
-        val releases = root["releases"] as? List<*>
-            ?: error("release_history.json must contain a releases array")
+        require(releaseHistoryFile.isFile) { "Missing authoritative release history: ${releaseHistoryFile.path}" }
+        val root = JsonSlurper().parse(releaseHistoryFile) as? Map<*, *> ?: error("release_history.json must contain a JSON object")
+        val releases = root["releases"] as? List<*> ?: error("release_history.json must contain a releases array")
         val matches = releases.mapNotNull { it as? Map<*, *> }.filter { release ->
-            release["version"] == releaseVersionName &&
-                (release["build"] as? Number)?.toInt() == releaseVersionCode
+            release["version"] == releaseVersionName && (release["build"] as? Number)?.toInt() == releaseVersionCode
         }
-        require(matches.size == 1) {
-            "Expected exactly one history record for $releaseVersionName/$releaseVersionCode; found ${matches.size}"
-        }
+        require(matches.size == 1) { "Expected exactly one history record for $releaseVersionName/$releaseVersionCode; found ${matches.size}" }
     }
 }
 
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn(verifyReleaseHistory)
-}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifyReleaseHistory) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
-
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
@@ -192,16 +165,13 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.navigation:navigation-compose:2.8.5")
-
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.google.android.gms:play-services-tasks:18.2.0")
     implementation("com.google.firebase:firebase-messaging:24.1.0")
     implementation("com.google.mlkit:text-recognition:16.0.1")
-
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
