@@ -14,10 +14,15 @@ import java.util.concurrent.ConcurrentHashMap
  * records the health of that existing session and delegates persistence of observed navigation
  * to [BlaBlaDynamicSessionStore].
  *
- * 0.1.553 hardening rule: only a positively validated UUID match authorizes an authenticated
+ * 0.1.553 hardening rule: a positively validated UUID match authorizes an authenticated
  * operation. A login-required/profile-mismatch observation is sticky and cannot be cleared by
  * merely navigating away from a login URL. Network failures preserve storage, but never become
  * implicit proof of authentication.
+ *
+ * 0.1.555 correction: a page that simply does not expose any usable UUID is NOT evidence of
+ * logout or profile mismatch. In that NOT_OBSERVABLE case only, a recent persisted proof for the
+ * same authoritative UUID may be reused for the current isolated WebView session. Explicit login,
+ * positive UUID conflict, stale proof, temporary restriction and missing proof remain fail-closed.
  */
 internal enum class BlaBlaSessionState0552 {
     VALID,
@@ -29,16 +34,10 @@ internal enum class BlaBlaSessionState0552 {
     NETWORK_ERROR,
 }
 
-internal enum class BlaBlaSessionLossCause0552 {
-    NONE,
-    SERVER_SESSION_EXPIRED,
-    LOCAL_STORAGE_LOST,
-    COOKIE_LOST,
-    PROFILE_RECREATED,
-    PROFILE_MISMATCH,
-    APP_UPDATE_MIGRATION,
-    MANUAL_LOGOUT,
-    UNKNOWN,
+internal enum class BlaBlaIdentityEvidenceState0555 {
+    MATCH,
+    CONFLICT,
+    NOT_OBSERVABLE,
 }
 
 internal data class BlaBlaSessionHealth0552(
@@ -56,6 +55,18 @@ internal data class BlaBlaSessionHealth0552(
      */
     val blocksAuthenticatedOperation: Boolean
         get() = state != BlaBlaSessionState0552.VALID
+}
+
+internal enum class BlaBlaSessionLossCause0552 {
+    NONE,
+    SERVER_SESSION_EXPIRED,
+    LOCAL_STORAGE_LOST,
+    COOKIE_LOST,
+    PROFILE_RECREATED,
+    PROFILE_MISMATCH,
+    APP_UPDATE_MIGRATION,
+    MANUAL_LOGOUT,
+    UNKNOWN,
 }
 
 internal object BlaBlaCarSessionKeeper0552 {
@@ -215,17 +226,26 @@ internal object BlaBlaCarSessionKeeper0552 {
     ): BlaBlaSessionHealth0552 {
         val expected = normalizeUuid(account.profileUuid)
         val actual = normalizeUuid(actualProfileUuid)
-        val mismatch = expected.isNotBlank() && actual.isNotBlank() && expected != actual
-        val exactMatch = expected.isNotBlank() && actual.isNotBlank() && expected == actual
+        val evidenceState = classifyIdentityEvidence0555(expected, actual)
         val current = runtimeByAccount[account.id]
+        val sessionStore = BlaBlaDynamicSessionStore(context)
+        val snapshot = sessionStore.read(account)
+        val reusableNotObservableProof =
+            evidenceState == BlaBlaIdentityEvidenceState0555.NOT_OBSERVABLE &&
+                current?.state.isStickyFailure() != true &&
+                canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+                    account = account,
+                    snapshot = snapshot,
+                )
+
         val observation = when {
-            mismatch -> RuntimeObservation(
+            evidenceState == BlaBlaIdentityEvidenceState0555.CONFLICT -> RuntimeObservation(
                 state = BlaBlaSessionState0552.PROFILE_MISMATCH,
                 actualProfileUuid = actual,
                 cause = BlaBlaSessionLossCause0552.PROFILE_MISMATCH,
                 explanation = "UUID encontrado pertence a outra sessão; operação bloqueada.",
             )
-            exactMatch -> RuntimeObservation(
+            evidenceState == BlaBlaIdentityEvidenceState0555.MATCH -> RuntimeObservation(
                 state = BlaBlaSessionState0552.VALID,
                 actualProfileUuid = actual,
                 explanation = "UUID da sessão confirmado.",
@@ -233,6 +253,11 @@ internal object BlaBlaCarSessionKeeper0552 {
             current != null && current.state.isStickyFailure() -> current.copy(
                 atMillis = System.currentTimeMillis(),
                 explanation = "A sessão continua bloqueada até uma confirmação positiva do UUID esperado.",
+            )
+            reusableNotObservableProof -> RuntimeObservation(
+                state = BlaBlaSessionState0552.VALID,
+                actualProfileUuid = expected,
+                explanation = "UUID não observável nesta página; prova recente do mesmo perfil isolado foi preservada.",
             )
             else -> RuntimeObservation(
                 state = BlaBlaSessionState0552.SUSPECTED,
@@ -246,17 +271,18 @@ internal object BlaBlaCarSessionKeeper0552 {
         }
         runtimeByAccount[account.id] = observation
         val event = when {
-            mismatch -> "SESSION_PROFILE_MISMATCH"
-            exactMatch -> "SESSION_VALID"
+            evidenceState == BlaBlaIdentityEvidenceState0555.CONFLICT -> "SESSION_PROFILE_MISMATCH"
+            evidenceState == BlaBlaIdentityEvidenceState0555.MATCH -> "SESSION_VALID"
+            reusableNotObservableProof -> "SESSION_IDENTITY_NOT_OBSERVABLE_REUSED_0555"
             else -> "SESSION_SUSPECTED"
         }
         record(
             context,
             event,
             account,
-            "operation=${safe(operation)} actualPresent=${actual.isNotBlank()} expectedPresent=${expected.isNotBlank()} match=$exactMatch state=${observation.state.name}",
+            "operation=${safe(operation)} actualPresent=${actual.isNotBlank()} expectedPresent=${expected.isNotBlank()} evidence=${evidenceState.name} reusedRecentProof=$reusableNotObservableProof state=${observation.state.name}",
         )
-        return health(account, BlaBlaDynamicSessionStore(context).read(account))
+        return health(account, snapshot)
     }
 
     fun observeNetworkError(context: Context, account: BlaBlaDynamicAccount, operation: String) {
@@ -299,6 +325,40 @@ internal object BlaBlaCarSessionKeeper0552 {
 
     fun clearRuntime(accountId: String) {
         runtimeByAccount.remove(accountId)
+    }
+
+    internal fun classifyIdentityEvidence0555(
+        expectedProfileUuid: String?,
+        actualProfileUuid: String?,
+    ): BlaBlaIdentityEvidenceState0555 {
+        val expected = normalizeUuid(expectedProfileUuid)
+        val actual = normalizeUuid(actualProfileUuid)
+        return when {
+            expected.isBlank() || actual.isBlank() -> BlaBlaIdentityEvidenceState0555.NOT_OBSERVABLE
+            expected == actual -> BlaBlaIdentityEvidenceState0555.MATCH
+            else -> BlaBlaIdentityEvidenceState0555.CONFLICT
+        }
+    }
+
+    internal fun canReuseRecentVerifiedSnapshotWhenIdentityNotObservable0555(
+        account: BlaBlaDynamicAccount,
+        snapshot: BlaBlaDynamicSessionSnapshot?,
+        nowMillis: Long = System.currentTimeMillis(),
+    ): Boolean {
+        val expected = normalizeUuid(account.profileUuid)
+        val snapshotUuid = normalizeUuid(snapshot?.profileUuid)
+        val validatedAt = snapshot?.lastValidSyncAtMillis0426 ?: 0L
+        val recentlyValidated =
+            validatedAt > 0L &&
+                nowMillis >= validatedAt &&
+                nowMillis - validatedAt <= VALID_SESSION_DISPLAY_WINDOW_MILLIS
+        return expected.isNotBlank() &&
+            snapshot != null &&
+            snapshot.identityVerified &&
+            snapshotUuid == expected &&
+            recentlyValidated &&
+            !isExplicitLoginUrl(snapshot.lastUrl) &&
+            snapshot.sourceAccessStatus0426 != BlaBlaSourceAccessStatus0426.TEMPORARILY_RESTRICTED
     }
 
     internal fun isExplicitLoginUrl(raw: String?): Boolean {
