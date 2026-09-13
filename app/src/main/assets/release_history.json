@@ -2,6 +2,29 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.555",
+      "build": 5847,
+      "commit": null,
+      "branch": "agent/session-identity-proof-0.1.555",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [],
+      "fixed": [
+        "A ausência de UUID observável no DOM deixa de ser tratada automaticamente como logout: MATCH, CONFLICT e NOT_OBSERVABLE passam a ter semânticas distintas no SessionKeeper.",
+        "NOT_OBSERVABLE pode reutilizar somente uma prova persistida recente, verificada e do mesmo profileUuid, impedindo o falso AUTH_REQUIRED que abortava o refresh direcionado antes de TRIP_DETAIL/TRIP_ITINERARY.",
+        "Login explícito, UUID conflitante, prova antiga, perfil diferente e restrição temporária continuam bloqueando operação autenticada em modo fail-closed."
+      ],
+      "improved": [
+        "A sessão WebView isolada preserva uma confirmação recente do mesmo perfil quando a página atual não expõe links/UUID suficientes para reprovar a identidade.",
+        "Telemetria diferencia reutilização segura de prova recente por SESSION_IDENTITY_NOT_OBSERVABLE_REUSED_0555.",
+        "Testes cobrem os três estados de evidência de identidade e os limites de reutilização da prova persistida."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["BlaBlaCar", "Contas externas", "Sessão multiperfil", "Atualização individual da viagem"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.554",
       "build": 5846,
       "commit": null,
