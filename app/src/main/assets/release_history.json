@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.556",
+      "build": 5848,
+      "commit": null,
+      "branch": "agent/forensic-execution-trace-0.1.556",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage38 passa a manter cadeia criptográfica SHA-256 encadeada, sequência global, sessionId, attemptId, probeId e origem de código capturada somente em tentativa forense ativa.",
+        "FORENSIC_MAX no APK debug acrescenta checkpoint de silêncio causal de 100 ms observado no próximo evento real, sem timer, polling, OCR, screenshot ou rede criados pelo gravador.",
+        "Envelopes binários registram comprimento, tipo, encoding e SHA-256 sem persistir payload; comparação byte a byte produz faixas exatas de divergência.",
+        "Detector estrutural de gaps aponta ausência de OCR/screenshot, resposta de rota e pedido de pintura quando etapas posteriores comprovam que o fluxo avançou sem a evidência esperada."
+      ],
+      "fixed": [
+        "Eventos críticos de uma tentativa ativa deixam de competir no mesmo anel com telemetria regular: Stage38 mantém buffers separados e marca TRACE_INCOMPLETE se qualquer canal descartar evidência.",
+        "Exportação forense preserva hashes e identidade causal enquanto mascara texto de acessibilidade, telefone, e-mail, URL e segredos conhecidos."
+      ],
+      "improved": [
+        "Taxonomia diagnóstica explícita diferencia falhas de captura, acessibilidade, OCR, parser, destino, rota, decisão, pintura, pixel e timeout sem transformar diagnóstico em autoridade funcional.",
+        "Snapshots chave-valor ganham serialização determinística e hash estável para comparação reprodutível independente da ordem do Map.",
+        "Testes unitários cobrem encadeamento criptográfico, heartbeat event-driven, envelopes/diffs de bytes, snapshots determinísticos, gaps, privacidade e modo OFF."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Leitura", "Stage38", "Depuração", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.555",
       "build": 5847,
       "commit": null,
