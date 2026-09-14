@@ -24,12 +24,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,8 +75,6 @@ class AgendaScriptsHubActivity0560 : ComponentActivity() {
                         startActivity(Intent(this, AgendaTripScriptExecutorActivity0558::class.java))
                     },
                     onOpenBrowserWorkspace = {
-                        // O TripsActivity já ficou posicionado em TripScreen.SCRIPTS antes deste hub abrir.
-                        // Fechar o hub revela o workspace legado sem duplicar sua lógica aqui.
                         finish()
                     },
                 )
@@ -149,7 +148,7 @@ private fun AgendaScriptsHubScreen0560(
                         }
                     }
                 }
-                HorizontalDivider(modifier = Modifier.width(1.dp).fillMaxHeight())
+                VerticalDivider(modifier = Modifier.fillMaxHeight())
                 Column(
                     modifier = Modifier
                         .weight(1f)
