@@ -98,10 +98,6 @@
                 <data android:scheme="rotacerta" android:host="trips" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".trips.AgendaScriptsHubActivity0560"
-            android:exported="false"
-            android:label="Scripts" />
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="dataSync"
