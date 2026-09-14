@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +32,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -71,11 +73,20 @@ internal fun AgendaModuleDrawer0396(
     onOpenPublicAgenda: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit,
 ) {
+    val context = LocalContext.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val openDrawer = {
         scope.launch { drawerState.open() }
         Unit
+    }
+
+    fun selectSection(section: AgendaRootSection0396) {
+        onSelect(section)
+        scope.launch { drawerState.close() }
+        if (section == AgendaRootSection0396.SCRIPTS) {
+            context.startActivity(Intent(context, AgendaScriptsHubActivity0560::class.java))
+        }
     }
 
     ModalNavigationDrawer(
@@ -100,10 +111,7 @@ internal fun AgendaModuleDrawer0396(
                     NavigationDrawerItem(
                         label = { Text(section.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         selected = section == currentSection,
-                        onClick = {
-                            onSelect(section)
-                            scope.launch { drawerState.close() }
-                        },
+                        onClick = { selectSection(section) },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     )
                 }
@@ -127,10 +135,7 @@ internal fun AgendaModuleDrawer0396(
                     NavigationDrawerItem(
                         label = { Text(section.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         selected = section == currentSection,
-                        onClick = {
-                            onSelect(section)
-                            scope.launch { drawerState.close() }
-                        },
+                        onClick = { selectSection(section) },
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
                     )
                 }
