@@ -163,6 +163,9 @@
             android:name=".trips.AgendaBatchPublisherActivity"
             android:exported="false" />
         <activity
+            android:name=".trips.AgendaBatchPublisherActivity0559"
+            android:exported="false" />
+        <activity
             android:name=".trips.AgendaTripScriptExecutorActivity0558"
             android:exported="true"
             android:label="Rota Certa • Criar por script">
