@@ -1,4 +1,4 @@
-name: Verify Scripts submenu correction 0.1.560
+name: Verify Scripts current JSON editor 0.1.560
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: scripts-submenu-fix-01560-${{ github.ref }}
+  group: scripts-current-json-01560-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,14 +27,15 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Test Executor and canonical regressions
+      - name: Test Executor editor and canonical regressions
         run: |
           ./gradlew testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTripScriptExecutor0558Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaScriptEditorPolicy0561Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'
 
-      - name: Verify Scripts stays in existing submenu
+      - name: Verify Scripts stays in submenu and editor starts blank
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -44,17 +45,24 @@ jobs:
           manifest = manifest_path.read_text()
           nav = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt').read_text()
           trips = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt').read_text()
+          executor = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripScriptExecutorActivity0558.kt').read_text()
+          policy = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaScriptEditorPolicy0561.kt').read_text()
           obsolete_hub = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaScriptsHubActivity0560.kt')
 
-          assert not obsolete_hub.exists(), 'separate Scripts hub must be removed'
+          assert not obsolete_hub.exists(), 'separate Scripts hub must stay removed'
           assert 'AgendaScriptsHubActivity0560' not in manifest, 'manifest must not expose obsolete Scripts hub'
           assert 'AgendaScriptsHubActivity0560' not in nav, 'drawer must not launch obsolete Scripts hub'
           assert 'Executar script da Agenda' in nav, 'existing Scripts overflow must expose Agenda executor'
           assert 'AgendaTripScriptExecutorActivity0558::class.java' in nav, 'submenu must open the declarative executor'
           assert 'BlaBlaScriptsScreen0486(' in trips, 'existing Scripts workspace must remain the screen body'
-          assert 'AgendaHeaderAction0396("Novo script")' in trips, 'existing Novo script action must remain'
-          assert 'AgendaHeaderAction0396("Restaurar seleção padrão")' in trips, 'existing restore action must remain'
-          assert 'AgendaHeaderAction0396("Relatório de depuração")' in trips, 'existing debug report action must remain'
+
+          assert 'AgendaScriptEditorPolicy0561.initialEditorText(active)' in executor, 'executor must explicitly apply blank-editor policy'
+          assert 'input.setText(active.rawScript)' in executor, 'pending script must remain manually loadable'
+          assert 'PENDING_SCRIPT_LOADED_MANUALLY' in executor, 'manual recovery must be observable'
+          assert 'editorPrefilled=false' in executor, 'recovery must prove it did not prefill editor'
+          assert 'Novo JSON' in executor and 'Carregar execução pendente' in executor, 'explicit editor controls required'
+          assert 'fun initialEditorText(active: AgendaTripExecution0558?): String = ""' in policy, 'pending execution must never define initial editor text'
+          assert 'executionGate(store.active(), plan.script.scriptHash)' in executor, 'current JSON must be parsed before live-execution gate'
 
           ns = {'android': 'http://schemas.android.com/apk/res/android'}
           root = ET.parse(manifest_path).getroot()
@@ -74,6 +82,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-scripts-submenu-fix-0.1.560-debug
+          name: rota-certa-current-json-editor-0.1.560-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
