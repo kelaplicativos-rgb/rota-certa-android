@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import android.content.SharedPreferences
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import org.json.JSONArray
 import org.json.JSONObject
@@ -57,7 +58,7 @@ internal object AgendaScriptPendingQueue0561 {
 
     fun migrateCancelledActiveIfSafe(context: Context): AgendaScriptPendingRelease0561? = synchronized(lock) {
         val storage = storage(context)
-        val raw = storage.prefs.getString(storage.key(KEY_ACTIVE), null) ?: return@synchronized null
+        val raw = storage.prefs.getString(storage.activeKey, null) ?: return@synchronized null
         val execution = decodeExecution(raw) ?: return@synchronized null
         if (!execution.cancelled) return@synchronized null
         releaseRaw(storage, raw, execution)
@@ -65,7 +66,7 @@ internal object AgendaScriptPendingQueue0561 {
 
     fun releaseCancelledActive(context: Context): AgendaScriptPendingRelease0561 = synchronized(lock) {
         val storage = storage(context)
-        val raw = storage.prefs.getString(storage.key(KEY_ACTIVE), null)
+        val raw = storage.prefs.getString(storage.activeKey, null)
             ?: return@synchronized AgendaScriptPendingRelease0561(false, false, pendingCount(storage), "Nenhuma execução ativa para liberar.")
         val execution = decodeExecution(raw)
             ?: return@synchronized AgendaScriptPendingRelease0561(false, false, pendingCount(storage), "A execução ativa não pôde ser lida; o estado foi preservado.")
@@ -84,10 +85,10 @@ internal object AgendaScriptPendingQueue0561 {
     fun containsAnyFingerprint(context: Context, fingerprints: Collection<String>): Boolean = synchronized(lock) {
         if (fingerprints.isEmpty()) return@synchronized false
         val wanted = fingerprints.toHashSet()
-        pendingObjects(storage(context)).any { execution ->
-            val items = execution.optJSONArray("items") ?: JSONArray()
-            (0 until items.length()).any { index ->
-                val item = items.optJSONObject(index) ?: return@any false
+        pendingObjects(storage(context)).any pendingExecution@{ execution ->
+            val items = execution.optJSONArray("items") ?: return@pendingExecution false
+            (0 until items.length()).any pendingItem@{ index ->
+                val item = items.optJSONObject(index) ?: return@pendingItem false
                 val state = runCatching { AgendaTripScriptState0558.valueOf(item.optString("state")) }.getOrNull()
                 state != null && AgendaScriptPendingPolicy0561.isReconcileState(state) && item.optString("fingerprint") in wanted
             }
@@ -136,8 +137,8 @@ internal object AgendaScriptPendingQueue0561 {
         val existingHistory = historyObjects(storage)
         val nextHistory = (resolvedForHistory + existingHistory).take(MAX_HISTORY)
         val editor = storage.prefs.edit()
-            .putString(storage.key(KEY_PENDING), toArray(stillPending).toString())
-            .putString(storage.key(KEY_HISTORY), toArray(nextHistory).toString())
+            .putString(storage.pendingKey, toArray(stillPending).toString())
+            .putString(storage.historyKey, toArray(nextHistory).toString())
         require(editor.commit()) { "Falha ao persistir reconciliação pendente." }
 
         val remaining = stillPending.size
@@ -169,8 +170,8 @@ internal object AgendaScriptPendingQueue0561 {
                 val nextPending = pending.take(MAX_PENDING)
                 require(
                     storage.prefs.edit()
-                        .putString(storage.key(KEY_PENDING), toArray(nextPending).toString())
-                        .remove(storage.key(KEY_ACTIVE))
+                        .putString(storage.pendingKey, toArray(nextPending).toString())
+                        .remove(storage.activeKey)
                         .commit(),
                 ) { "Falha ao mover execução para reconciliação pendente." }
                 AgendaScriptPendingRelease0561(
@@ -184,8 +185,8 @@ internal object AgendaScriptPendingQueue0561 {
                 val nextHistory = (listOf(JSONObject(raw)) + historyObjects(storage)).take(MAX_HISTORY)
                 require(
                     storage.prefs.edit()
-                        .putString(storage.key(KEY_HISTORY), toArray(nextHistory).toString())
-                        .remove(storage.key(KEY_ACTIVE))
+                        .putString(storage.historyKey, toArray(nextHistory).toString())
+                        .remove(storage.activeKey)
                         .commit(),
                 ) { "Falha ao arquivar execução cancelada." }
                 AgendaScriptPendingRelease0561(
@@ -199,27 +200,32 @@ internal object AgendaScriptPendingQueue0561 {
     }
 
     private data class Storage(
-        val prefs: android.content.SharedPreferences,
-        val scope: br.com.mapeiaia.rotacerta.RotaCertaTenantScope,
-    ) {
-        fun key(name: String): String = scope.key(name)
-    }
+        val prefs: SharedPreferences,
+        val activeKey: String,
+        val historyKey: String,
+        val pendingKey: String,
+    )
 
     private fun storage(context: Context): Storage {
         val app = context.applicationContext
         val scope = RotaCertaTenantRegistry(app).activeScope()
-        return Storage(app.getSharedPreferences(PREFS, Context.MODE_PRIVATE), scope)
+        return Storage(
+            prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE),
+            activeKey = scope.key(KEY_ACTIVE),
+            historyKey = scope.key(KEY_HISTORY),
+            pendingKey = scope.key(KEY_PENDING),
+        )
     }
 
     private fun pendingCount(storage: Storage): Int = pendingObjects(storage).size
 
     private fun pendingObjects(storage: Storage): List<JSONObject> = runCatching {
-        val array = JSONArray(storage.prefs.getString(storage.key(KEY_PENDING), "[]"))
+        val array = JSONArray(storage.prefs.getString(storage.pendingKey, "[]"))
         (0 until array.length()).mapNotNull { array.optJSONObject(it) }
     }.getOrDefault(emptyList())
 
     private fun historyObjects(storage: Storage): List<JSONObject> = runCatching {
-        val array = JSONArray(storage.prefs.getString(storage.key(KEY_HISTORY), "[]"))
+        val array = JSONArray(storage.prefs.getString(storage.historyKey, "[]"))
         (0 until array.length()).mapNotNull { array.optJSONObject(it) }
     }.getOrDefault(emptyList())
 
