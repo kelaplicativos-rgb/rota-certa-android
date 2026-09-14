@@ -31,13 +31,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: Verify script executor and canonical regressions
+      - name: Verify script executor and relevant canonical regressions
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTripScriptExecutor0558Test'
-          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'
           --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'
           --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.strongExternalIdentityUsesTenantAccountProfileAndTripOnly'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.canonicalExternalSnapshotIdentityAllowsExistingTripKeyBeforePublicBinding'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.durableExternalOutboxRecoversOnlyUniqueProfileAccountWhenStoredIdIsMissing'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.publicationIdempotencyKeyContainsTenantTripAndRevision'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.deliveredSemanticEventIsNotEternalProofWhenRemoteProjectionDiverges'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.staleRejectedExternalIdentityIsSupersededAfterBoundedRetries0520'
+          --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test.outboxIsDurableTenantScopedAndSupportsRetryRebaseAndSupersede'
           --stacktrace --no-daemon
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
