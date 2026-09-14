@@ -162,6 +162,21 @@
         <activity
             android:name=".trips.AgendaBatchPublisherActivity"
             android:exported="false" />
+        <activity
+            android:name=".trips.AgendaTripScriptExecutorActivity0558"
+            android:exported="true"
+            android:label="Rota Certa • Criar por script">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rotacerta" android:host="trips" android:path="/script-executor" />
+            </intent-filter>
+        </activity>
 
         <!-- PUBLIC_SEARCH: isolated read-only public BlaBlaCar search, no authenticated account reuse. -->
         <activity
