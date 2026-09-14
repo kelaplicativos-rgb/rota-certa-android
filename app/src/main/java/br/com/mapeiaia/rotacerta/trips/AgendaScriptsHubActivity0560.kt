@@ -183,7 +183,7 @@ private fun ExecutorPanel0560(
     active?.let {
         StatusCard0560(
             title = "Execução pendente",
-            body = "${safeId0560(it.scriptId)} • ${it.stateSummary0560()}\nAtualizada em ${formatTimestamp0560(it.updatedAt)}",
+            body = "${safeId0560(it.scriptId)} • ${it.stateSummary0560()}\nAtualizada em ${formatTimestamp0560(it.updatedAtMillis)}",
         )
     }
     Button(onClick = onOpenExecutor, modifier = Modifier.fillMaxWidth()) {
@@ -279,7 +279,7 @@ private fun ExecutionCard0560(execution: AgendaTripExecution0558) {
             Text(safeId0560(execution.scriptId), fontWeight = FontWeight.Bold)
             Text("Execução ${execution.executionId.take(8)} • hash ${execution.scriptHash.take(12)}", style = MaterialTheme.typography.bodySmall)
             Text(execution.stateSummary0560(), style = MaterialTheme.typography.bodySmall)
-            Text("Atualizada ${formatTimestamp0560(execution.updatedAt)}", style = MaterialTheme.typography.bodySmall)
+            Text("Atualizada ${formatTimestamp0560(execution.updatedAtMillis)}", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
