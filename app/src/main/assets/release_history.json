@@ -2,6 +2,54 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.560",
+      "build": 5851,
+      "commit": null,
+      "branch": "agent/agenda-scripts-hub-0.1.560",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Scripts passa a ter uma central integrada à navegação de Viagens com submenus Executor, Em andamento, Histórico, Navegador e Diagnóstico.",
+        "O Executor declarativo da Agenda fica acessível por Rota Certa → Viagens → Scripts, sem depender de um segundo ícone do aplicativo.",
+        "Em andamento e Histórico leem o estado durável já persistido pelo AgendaTripScriptStore, sem criar nova fonte de verdade."
+      ],
+      "fixed": [
+        "Removido o launcher secundário do AgendaTripScriptExecutor; o deep link técnico continua disponível e o launcher oficial permanece único.",
+        "O workspace legado de scripts do navegador permanece separado do Executor declarativo e continua acessível pelo submenu Navegador."
+      ],
+      "improved": [
+        "Diagnóstico do módulo explicita a barreira de reconciliação e a proibição de registrar CPF, senhas, cookies ou tokens.",
+        "A navegação preserva o workspace BlaBlaCar existente por baixo da central, evitando regressão funcional ao abrir Scripts."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Agenda", "Scripts", "Executor de Script", "BlaBlaCar", "Navegação", "Build"],
+      "detailsComplete": true
+    },
+    {
+      "version": "0.1.559",
+      "build": 5850,
+      "commit": "1098c3108a8d11bbde249e3fde3bcc4f799683cc",
+      "branch": "agent/agenda-publisher-real-flow-0.1.559",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Classificador explícito do fluxo real de publicação BlaBlaCar para origem, destino, trajeto, cidades intermediárias, paradas, data, horário, vagas, reserva, preço, retorno, verificação humana e confirmação.",
+        "Verificações humanas como CPF passam a pausar o publicador sem leitura, preenchimento, armazenamento ou registro do dado sensível."
+      ],
+      "fixed": [
+        "Tela não classificada deixa de acionar fallback genérico em Publicar.",
+        "Suas viagens deixa de ser tratado isoladamente como prova de publicação concluída."
+      ],
+      "improved": [
+        "A confirmação visual permanece subordinada à reconciliação externa e canônica antes de o Executor marcar a viagem como sincronizada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Agenda", "Executor de Script", "BlaBlaCar", "Publicador"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.558",
       "build": 5849,
       "commit": null,
