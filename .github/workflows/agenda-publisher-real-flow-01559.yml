@@ -31,10 +31,43 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
-      - name: Stamp release version 0.1.559
+      - name: Stamp release version and history 0.1.559
         run: |
           sed -i 's/val releaseVersionCode = 5_849/val releaseVersionCode = 5_850/' app/build.gradle.kts
           sed -i 's/val releaseVersionName = "0.1.558"/val releaseVersionName = "0.1.559"/' app/build.gradle.kts
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('app/src/main/assets/release_history.json')
+          data = json.loads(p.read_text())
+          releases = data['releases']
+          if not any(r.get('version') == '0.1.559' and r.get('build') == 5850 for r in releases):
+              releases.insert(0, {
+                  'version': '0.1.559',
+                  'build': 5850,
+                  'commit': None,
+                  'branch': 'agent/agenda-publisher-real-flow-0.1.559',
+                  'generatedAt': None,
+                  'status': 'EM_VALIDACAO',
+                  'implemented': [
+                      'Publicador em máquina de estados explícita baseada nas telas reais observadas no fluxo BlaBlaCar.',
+                      'Reconhecimento dedicado de origem, destino, trajeto, cidades de passagem, paradas, data, horário, vagas, reserva, preço, retorno, comentário e confirmação.'
+                  ],
+                  'fixed': [
+                      'Suas viagens deixa de ser considerado prova de publicação e não existe mais clique genérico em Publicar para tela não classificada.',
+                      'Verificação de CPF/data de nascimento pausa para interação humana sem leitura, persistência ou log do dado sensível.'
+                  ],
+                  'improved': [
+                      'Tela desconhecida opera fail-closed com ação NONE e telemetria sanitizada por screenClass.',
+                      'Executor continua tratando retorno visual como estado ambíguo e exige reconciliação externa mais canônica antes de SYNCED.'
+                  ],
+                  'regressions': [],
+                  'resolvedRegressions': [],
+                  'modulesAffected': ['Agenda', 'Executor de Script', 'BlaBlaCar', 'Publicação', 'Build'],
+                  'detailsComplete': True
+              })
+          p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+          PY
           grep -n 'releaseVersionCode\|releaseVersionName' app/build.gradle.kts | head -2
       - name: Verify real publisher flow and executor regressions
         run: >-
