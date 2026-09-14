@@ -35,9 +35,10 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Verify canonical and session regressions
+      - name: Verify forensic and canonical regressions
         run: >-
           ./gradlew :app:testDebugUnitTest
+          --tests 'br.com.mapeiaia.rotacerta.FarolMaximumForensicsStage38Test'
           --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCarSessionKeeper0552Test'
           --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAuthenticatedSessionStage47Test'
           --tests 'br.com.mapeiaia.rotacerta.trips.AgendaHeadlessCollector0401Test'
