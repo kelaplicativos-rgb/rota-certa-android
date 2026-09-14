@@ -183,9 +183,9 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
         AgendaTripScriptTrace0558.record(this, "CREATE_TRIP_OPENED", execution.executionId, execution.scriptId, item.instruction.index,
             "attempt=${creating.attempts} sequential=true")
         AgendaTripScriptTrace0558.record(this, "PUBLISH_SUBMITTED", execution.executionId, execution.scriptId, item.instruction.index,
-            "publisher=AgendaBatchPublisherActivity evidencePending=true")
+            "publisher=AgendaBatchPublisherActivity0559 evidencePending=true")
         output.text = "Executando script\nViagem ${item.instruction.index} de ${execution.items.size}\n${item.instruction.origin} → ${item.instruction.destination}\n${item.instruction.date} • ${item.instruction.departureTime}\nEstado: publicando…"
-        startActivityForResult(Intent(this, AgendaBatchPublisherActivity::class.java), REQUEST_PUBLISH)
+        startActivityForResult(Intent(this, AgendaBatchPublisherActivity0559::class.java), REQUEST_PUBLISH)
     }
 
     @Deprecated("Existing publisher Activity contract")
@@ -216,7 +216,7 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
                 "canonicalTripIdPresent=true")
             startNext(next)
         } else {
-            val message = data?.getStringExtra(AgendaBatchPublisherActivity.EXTRA_MESSAGE).orEmpty()
+            val message = data?.getStringExtra(AgendaBatchPublisherActivity0559.EXTRA_MESSAGE).orEmpty()
             output.text = "Publicação enviada; confirmação ainda insuficiente ⚠️\n${summary(next)}\n${message.take(240)}\nO executor NÃO republicará esta viagem. Sincronize a Agenda e use Reconciliar / retomar."
         }
     }
