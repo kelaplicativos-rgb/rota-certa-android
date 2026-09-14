@@ -131,7 +131,7 @@ class FarolMaximumForensicsStage38Test {
             stage = "S38_OCR_REQUEST",
             packageName = "com.example.ride",
             traceId = "trace-private",
-            details = "eventText=Joao 11999998888; email=person@example.com; token=super-secret",
+            details = "note=11999998888; eventText=Joao; email=person@example.com; token=super-secret",
         )
 
         val report = FarolMaximumForensicsStage38.exportReport()
