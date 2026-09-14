@@ -73,7 +73,6 @@ internal fun AgendaModuleDrawer0396(
     onOpenPublicAgenda: () -> Unit,
     content: @Composable (openDrawer: () -> Unit) -> Unit,
 ) {
-    val context = LocalContext.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val openDrawer = {
@@ -84,9 +83,6 @@ internal fun AgendaModuleDrawer0396(
     fun selectSection(section: AgendaRootSection0396) {
         onSelect(section)
         scope.launch { drawerState.close() }
-        if (section == AgendaRootSection0396.SCRIPTS) {
-            context.startActivity(Intent(context, AgendaScriptsHubActivity0560::class.java))
-        }
     }
 
     ModalNavigationDrawer(
@@ -156,11 +152,32 @@ internal fun AgendaModuleHeader0396(
     onNotificationsClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var overflowExpanded by remember { mutableStateOf(false) }
     val navigationDescription = if (root) {
         "Abrir navegação da Agenda de Viagens"
     } else {
         "Voltar para a tela anterior"
+    }
+    val effectiveOverflowActions = if (root && sectionLabel == AgendaRootSection0396.SCRIPTS.label) {
+        val executorAction = AgendaHeaderAction0396("Executar script da Agenda") {
+            context.startActivity(Intent(context, AgendaTripScriptExecutorActivity0558::class.java))
+        }
+        if (overflowActions.any { it.label == executorAction.label }) {
+            overflowActions
+        } else {
+            buildList {
+                if (overflowActions.isNotEmpty()) {
+                    add(overflowActions.first())
+                    add(executorAction)
+                    addAll(overflowActions.drop(1))
+                } else {
+                    add(executorAction)
+                }
+            }
+        }
+    } else {
+        overflowActions
     }
 
     Surface(modifier = modifier.fillMaxWidth()) {
@@ -239,7 +256,7 @@ internal fun AgendaModuleHeader0396(
             }
             IconButton(
                 onClick = { overflowExpanded = true },
-                enabled = overflowActions.isNotEmpty(),
+                enabled = effectiveOverflowActions.isNotEmpty(),
                 modifier = Modifier.semantics { contentDescription = "Mais ações desta tela" },
             ) {
                 Text("⋮", style = MaterialTheme.typography.titleLarge)
@@ -248,7 +265,7 @@ internal fun AgendaModuleHeader0396(
                 expanded = overflowExpanded,
                 onDismissRequest = { overflowExpanded = false },
             ) {
-                overflowActions.forEach { action ->
+                effectiveOverflowActions.forEach { action ->
                     DropdownMenuItem(
                         text = { Text(action.label) },
                         enabled = action.enabled,
