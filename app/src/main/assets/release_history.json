@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.561",
+      "build": 5852,
+      "commit": null,
+      "branch": "agent/script-pending-queue-0.1.561",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Publicações de resultado ambíguo passam a usar uma fila durável de reconciliação separada do slot de execução ativa do Executor.",
+        "O Executor solicita coleta BlaBlaCar fresca antes de decidir se a mesma viagem pode ser tentada novamente; ausência externa só libera retry quando há cobertura completa comprovada do perfil.",
+        "Recuperação após interrupção converte CREATING sem retorno em PUBLISHED_AMBIGUOUS, preservando a barreira contra republicação cega."
+      ],
+      "fixed": [
+        "Cancelar uma execução ambígua deixa de manter indefinidamente o registro active, que bloqueava todos os JSONs posteriores mesmo após EXECUTION_CANCEL_REQUESTED.",
+        "O JSON atual deixa de ficar preso entre validação bem-sucedida e início da execução por causa de uma publicação antiga cancelada.",
+        "Execuções canceladas sem ação externa pendente são arquivadas e liberam imediatamente o Executor; ações externas ainda em voo permanecem protegidas até retornarem."
+      ],
+      "improved": [
+        "Conflito de scriptHash/fingerprint com publicação ambígua dispara reconciliação fresca e nunca autoriza duplicidade com snapshot externo antigo ou parcial.",
+        "Histórico passa a informar a quantidade de publicações ambíguas separadas, enquanto o editor continua disponível para novos JSONs não conflitantes.",
+        "Testes cobrem liberação do slot ativo, preservação de ação externa em voo, fila ambígua e exigência de cobertura completa para retry após ausência externa."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.560: execução cancelada em PUBLISHED_AMBIGUOUS permanecia eternamente no slot active e impedia o Executor de iniciar o JSON atual."
+      ],
+      "modulesAffected": ["Agenda", "Scripts", "Executor de Script", "BlaBlaCar", "Reconciliação", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.560",
       "build": 5851,
       "commit": null,
