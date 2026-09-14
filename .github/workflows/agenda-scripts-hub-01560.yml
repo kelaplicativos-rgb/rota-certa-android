@@ -39,10 +39,22 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          manifest = Path('app/src/main/AndroidManifest.xml').read_text()
+          import xml.etree.ElementTree as ET
+          android = '{http://schemas.android.com/apk/res/android}'
+          manifest_path = Path('app/src/main/AndroidManifest.xml')
+          root = ET.parse(manifest_path).getroot()
+          app = root.find('application')
+          launchers = []
+          for activity in app.findall('activity'):
+              for intent_filter in activity.findall('intent-filter'):
+                  actions = {node.get(android + 'name') for node in intent_filter.findall('action')}
+                  categories = {node.get(android + 'name') for node in intent_filter.findall('category')}
+                  if 'android.intent.action.MAIN' in actions and 'android.intent.category.LAUNCHER' in categories:
+                      launchers.append(activity.get(android + 'name'))
+          assert launchers == ['.MainActivity'], f'exactly MainActivity must be launcher; found {launchers}'
           nav = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt').read_text()
           hub = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaScriptsHubActivity0560.kt').read_text()
-          assert manifest.count('android.intent.category.LAUNCHER') == 1, 'APK must expose exactly one launcher'
+          manifest = manifest_path.read_text()
           assert '.trips.AgendaScriptsHubActivity0560' in manifest, 'Scripts hub activity missing from manifest'
           assert 'AgendaScriptsHubActivity0560::class.java' in nav, 'Trips drawer does not route Scripts to hub'
           for label in ['Executor', 'Em andamento', 'Histórico', 'Navegador', 'Diagnóstico']:
