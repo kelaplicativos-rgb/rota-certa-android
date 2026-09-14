@@ -29,33 +29,80 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
         root.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
         body.addView(TextView(this).apply { text = "Criar viagens por script"; textSize = 22f })
         body.addView(TextView(this).apply {
-            text = "Contrato semântico da Agenda. Não executa JavaScript, shell ou código arbitrário. A publicação é sequencial e só é concluída com evidência externa + canônica."
+            text = "Cole o JSON atual que deseja executar. Uma execução anterior nunca preenche este editor automaticamente. O contrato é tratado como dados e não executa JavaScript, shell ou código arbitrário."
         })
         input = EditText(this).apply {
-            hint = "Cole aqui o JSON gerado pela Agenda"; minLines = 10; maxLines = 22; setHorizontallyScrolling(false)
+            hint = "Cole aqui o JSON atual gerado pela Agenda"; minLines = 10; maxLines = 22; setHorizontallyScrolling(false)
         }
         body.addView(input)
+        button(body, "Novo JSON", ::newJson)
+        button(body, "Carregar execução pendente", ::loadPendingScript)
         button(body, "Validar", ::validateOnly)
         button(body, "Pré-visualizar", ::preview)
         button(body, "Simular execução", ::dryRun)
         button(body, "Executar", ::executeNew)
-        button(body, "Reconciliar / retomar", ::resumeAndReconcile)
-        button(body, "Cancelar execução", ::cancelExecution)
+        button(body, "Reconciliar / retomar pendente", ::resumeAndReconcile)
+        button(body, "Cancelar execução pendente", ::cancelExecution)
         button(body, "Histórico", ::showHistory)
-        button(body, "Limpar") { input.setText(""); output.text = "" }
+        button(body, "Limpar editor") { newJson() }
         output = TextView(this).apply { setPadding(0, 18, 0, 40); setTextIsSelectable(true) }
         body.addView(output)
         setContentView(root)
 
-        store.active()?.let { active ->
-            input.setText(active.rawScript)
-            output.text = "Execução interrompida encontrada.\n${summary(active)}\nUse Reconciliar / retomar."
-            AgendaTripScriptTrace0558.record(this, "EXECUTION_RECOVERED", active.executionId, active.scriptId, detail = "items=${active.items.size}")
+        val active = store.active()
+        input.setText(AgendaScriptEditorPolicy0561.initialEditorText(active))
+        if (active != null) {
+            output.text = AgendaScriptEditorPolicy0561.recoveredExecutionMessage(active) + "\n\n" + summary(active)
+            AgendaTripScriptTrace0558.record(
+                this,
+                "EXECUTION_RECOVERED",
+                active.executionId,
+                active.scriptId,
+                detail = "items=${active.items.size} editorPrefilled=false",
+            )
+        } else {
+            output.text = "Editor pronto para receber um novo JSON."
         }
     }
 
     private fun button(parent: LinearLayout, label: String, action: () -> Unit) {
         parent.addView(Button(this).apply { text = label; setOnClickListener { action() } })
+    }
+
+    private fun newJson() {
+        input.setText("")
+        input.requestFocus()
+        val active = store.active()
+        output.text = if (active == null) {
+            "Editor limpo. Cole o JSON atual."
+        } else {
+            "Editor limpo para um novo JSON. A execução pendente continua preservada separadamente e não foi alterada."
+        }
+        AgendaTripScriptTrace0558.record(
+            this,
+            "EDITOR_NEW_JSON",
+            executionId = active?.executionId,
+            scriptId = active?.scriptId,
+            detail = "activePreserved=${active != null} editorPrefilled=false",
+        )
+    }
+
+    private fun loadPendingScript() {
+        val active = store.active() ?: run {
+            output.text = "Não existe execução pendente para carregar."
+            return
+        }
+        input.setText(active.rawScript)
+        input.setSelection(input.text.length)
+        input.requestFocus()
+        output.text = "Script pendente carregado manualmente.\n${summary(active)}"
+        AgendaTripScriptTrace0558.record(
+            this,
+            "PENDING_SCRIPT_LOADED_MANUALLY",
+            active.executionId,
+            active.scriptId,
+            detail = "bytes=${active.rawScript.toByteArray().size}",
+        )
     }
 
     private fun parseAndPlan(): AgendaTripScriptPlan0558? = try {
@@ -80,6 +127,7 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
             append("Viagens: ${plan.items.size}\nProntas para criar: ${plan.readyCount}\n")
             append("Já existentes/concluídas: ${plan.skippedCount}\nErros bloqueantes: ${plan.blockingIssues.size}\n")
             plan.issues.forEach { append(if (it.blocking) "❌ " else "⚠️ ").append(it.instructionIndex?.let { n -> "Viagem $n — " }.orEmpty()).append(it.message).append('\n') }
+            store.active()?.let { append("\n⚠️ Existe uma execução pendente preservada. Isso não impede validar, pré-visualizar ou simular este JSON; apenas uma nova execução real fica bloqueada até resolver a pendência.\n") }
         }
     }
 
@@ -109,8 +157,18 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
     }
 
     private fun executeNew() {
-        if (store.active() != null) { output.text = "Execução já em andamento. Use Reconciliar / retomar."; return }
         val plan = parseAndPlan() ?: return
+        when (AgendaScriptEditorPolicy0561.executionGate(store.active(), plan.script.scriptHash)) {
+            AgendaScriptExecutionGate0561.RESUME_SAME -> {
+                output.text = "Este JSON corresponde à execução pendente já persistida. Por segurança ele não será iniciado novamente. Use Reconciliar / retomar pendente."
+                return
+            }
+            AgendaScriptExecutionGate0561.BLOCKED_BY_OTHER_ACTIVE -> {
+                output.text = "O JSON atual foi validado, mas existe outra execução pendente. Validação, pré-visualização e simulação continuam disponíveis; para executar este novo JSON de verdade, primeiro reconcilie ou encerre com segurança a execução pendente."
+                return
+            }
+            AgendaScriptExecutionGate0561.ALLOW_NEW -> Unit
+        }
         if (plan.blockingIssues.isNotEmpty()) {
             output.text = "Execução bloqueada ❌\n" + plan.blockingIssues.joinToString("\n") { "Viagem ${it.instructionIndex ?: "?"}: ${it.message}" }
             return
@@ -158,7 +216,7 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
         val barrier = execution.items.firstOrNull { it.state in RECONCILE_STATES }
         if (barrier != null) {
             store.save(execution)
-            output.text = "Execução parcialmente concluída ⚠️\n${summary(execution)}\nViagem ${barrier.instruction.index} aguarda reconciliação. Por segurança ela NÃO será republicada. Sincronize a Agenda/coletor e use Reconciliar / retomar."
+            output.text = "Execução parcialmente concluída ⚠️\n${summary(execution)}\nViagem ${barrier.instruction.index} aguarda reconciliação. Por segurança ela NÃO será republicada. Sincronize a Agenda/coletor e use Reconciliar / retomar pendente."
             return
         }
         val pair = execution.items.withIndex().firstOrNull { it.value.state == AgendaTripScriptState0558.READY }
@@ -217,7 +275,7 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
             startNext(next)
         } else {
             val message = data?.getStringExtra(AgendaBatchPublisherActivity0559.EXTRA_MESSAGE).orEmpty()
-            output.text = "Publicação enviada; confirmação ainda insuficiente ⚠️\n${summary(next)}\n${message.take(240)}\nO executor NÃO republicará esta viagem. Sincronize a Agenda e use Reconciliar / retomar."
+            output.text = "Publicação enviada; confirmação ainda insuficiente ⚠️\n${summary(next)}\n${message.take(240)}\nO executor NÃO republicará esta viagem. Sincronize a Agenda e use Reconciliar / retomar pendente."
         }
     }
 
