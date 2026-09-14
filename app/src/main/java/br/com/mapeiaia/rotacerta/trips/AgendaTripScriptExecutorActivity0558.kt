@@ -81,8 +81,8 @@ class AgendaTripScriptExecutorActivity0558 : Activity() {
         AgendaTripScriptTrace0558.record(
             this,
             "EDITOR_NEW_JSON",
-            executionId = active?.executionId,
-            scriptId = active?.scriptId,
+            executionId = active?.executionId.orEmpty(),
+            scriptId = active?.scriptId.orEmpty(),
             detail = "activePreserved=${active != null} editorPrefilled=false",
         )
     }
