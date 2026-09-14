@@ -2,6 +2,33 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.558",
+      "build": 5849,
+      "commit": null,
+      "branch": "agent/agenda-trip-script-executor-0.1.558",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Executor de Script da Agenda com contrato JSON semântico V1 compatível com CREATE_TRIPS, envelope batch, validação fail-closed, preview e dry-run.",
+        "Execução sequencial por viagem reutilizando AgendaBatchPublisherActivity, com profileUuid obrigatório e confirmação de sessão antes de cada publicação.",
+        "Estado durável por instrução, scriptId separado de executionId, hash SHA-256 canônico, fingerprint tenant/profile/viagem e histórico de execuções.",
+        "Retomada após fechamento/process death, cancelamento seguro e barreira de reconciliação para publicação externa de resultado ambíguo."
+      ],
+      "fixed": [
+        "Resultado visual SUCCESS do publicador deixa de poder ser tratado como prova suficiente pelo novo executor; somente evidência externa mais vínculo canônico permitem SYNCED.",
+        "Retry após publicação ambígua fica fail-closed e não republica automaticamente antes de reconciliação, prevenindo duplicidade por timeout ou perda de confirmação."
+      ],
+      "improved": [
+        "Whitelist explícita rejeita campos desconhecidos e não oferece execução arbitrária de JavaScript, shell, arquivos, intents, banco ou sistema operacional.",
+        "Telemetria sanitizada registra recebimento, validação, perfil, publicação, reconciliação, identidade externa, persistência canônica e retomada sem cookies/tokens/senhas.",
+        "Testes unitários cobrem contrato, versionamento, datas/horários/vagas, campos proibidos, batch, ida/volta, hash canônico e fingerprint de idempotência."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": ["Agenda", "Executor de Script", "BlaBlaCar", "Identidade canônica", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.556",
       "build": 5848,
       "commit": null,
