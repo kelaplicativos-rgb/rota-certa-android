@@ -60,6 +60,17 @@ internal object BlaBlaDateScopeScriptCatalog0449 {
             ),
         ),
         BlaBlaScriptGroup0449(
+            title = "Boost",
+            description = "Leitura, navegação e escrita controlada do Boost. Fora da coleta por data por padrão.",
+            requests = listOf(
+                BlaBlaBrowserRequest.BOOST_STATE,
+                BlaBlaBrowserRequest.BOOST_OPEN_EDIT,
+                BlaBlaBrowserRequest.BOOST_OPEN_SECTION,
+                BlaBlaBrowserRequest.BOOST_SET_STATE,
+                BlaBlaBrowserRequest.BOOST_SAVE,
+            ),
+        ),
+        BlaBlaScriptGroup0449(
             title = "Pesquisa pública BlaBlaCar",
             description = "Busca pública, abertura de resultado e perfil público.",
             requests = listOf(
@@ -137,14 +148,26 @@ internal object BlaBlaDateScopeScriptCatalog0449 {
     )
 
     /**
+     * Boost is a high-impact exact-trip mutation flow. It is never part of a
+     * generic date/period collection unless a caller explicitly selects it.
+     */
+    val boostFlowRequests0562: Set<BlaBlaBrowserRequest> = setOf(
+        BlaBlaBrowserRequest.BOOST_STATE,
+        BlaBlaBrowserRequest.BOOST_OPEN_EDIT,
+        BlaBlaBrowserRequest.BOOST_OPEN_SECTION,
+        BlaBlaBrowserRequest.BOOST_SET_STATE,
+        BlaBlaBrowserRequest.BOOST_SAVE,
+    )
+
+    /**
      * Safe default for date/period collection.
      *
      * The public Agenda card is materialized from trip/passenger/canonical evidence. Seat management
-     * remains available explicitly through the toggles and the dedicated seat-sync flow, but an absent
-     * BlaBlaCar options link must not quarantine an otherwise valid trip.
+     * and Boost remain available only through their dedicated flows; neither is allowed to enter a
+     * normal date/period refresh simply because the browser request exists in the registry.
      */
     val dateScopeDefaultRequests0478: Set<BlaBlaBrowserRequest> by lazy {
-        all - seatFlowRequests0478
+        all - seatFlowRequests0478 - boostFlowRequests0562
     }
 
     val coreTripRequests: Set<BlaBlaBrowserRequest> = setOf(
@@ -155,9 +178,10 @@ internal object BlaBlaDateScopeScriptCatalog0449 {
     )
 
     init {
-        check(selectableRequests.size == 32) { "Expected 32 orchestrator scripts, got ${selectableRequests.size}" }
+        check(selectableRequests.size == 37) { "Expected 37 orchestrator scripts, got ${selectableRequests.size}" }
         check(selectableRequests.distinct().size == selectableRequests.size) { "Duplicate orchestrator script in UI catalog" }
         check(all == BlaBlaBrowserRequest.values().toSet()) { "UI catalog must expose every registered browser request" }
+        check(dateScopeDefaultRequests0478.none(boostFlowRequests0562::contains)) { "Boost must stay outside date-scope defaults" }
     }
 
     fun label(request: BlaBlaBrowserRequest): String = when (request) {
@@ -180,6 +204,11 @@ internal object BlaBlaDateScopeScriptCatalog0449 {
         BlaBlaBrowserRequest.SEAT_OPTIONS -> "Vagas publicadas"
         BlaBlaBrowserRequest.SEAT_CHANGE -> "Alterar vagas"
         BlaBlaBrowserRequest.SEAT_SAVE -> "Salvar alteração de vagas"
+        BlaBlaBrowserRequest.BOOST_STATE -> "Estado do Boost"
+        BlaBlaBrowserRequest.BOOST_OPEN_EDIT -> "Abrir edição para Boost"
+        BlaBlaBrowserRequest.BOOST_OPEN_SECTION -> "Abrir seção Boost"
+        BlaBlaBrowserRequest.BOOST_SET_STATE -> "Alterar estado do Boost"
+        BlaBlaBrowserRequest.BOOST_SAVE -> "Salvar Boost"
         BlaBlaBrowserRequest.PUBLIC_SEARCH_FORM -> "Formulário da busca pública"
         BlaBlaBrowserRequest.PUBLIC_SEARCH_SCROLL -> "Scroll da busca pública"
         BlaBlaBrowserRequest.PUBLIC_SEARCH_RESULTS -> "Resultados da busca pública"
