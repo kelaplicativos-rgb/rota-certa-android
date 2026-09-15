@@ -41,6 +41,14 @@ internal enum class BlaBlaBrowserRequest(
     SEAT_CHANGE("seat_change.js", BlaBlaBrowserOperation.REMOTE_WRITE),
     SEAT_SAVE("seat_save.js", BlaBlaBrowserOperation.REMOTE_WRITE),
 
+    // 0.1.562: SET_TRIP_BOOST is a structured business command. These assets are
+    // internal, whitelisted browser operations; user JSON never supplies code.
+    BOOST_STATE("boost_state.js"),
+    BOOST_OPEN_EDIT("boost_open_edit.js", BlaBlaBrowserOperation.NAVIGATION),
+    BOOST_OPEN_SECTION("boost_open_section.js", BlaBlaBrowserOperation.NAVIGATION),
+    BOOST_SET_STATE("boost_set_state.js", BlaBlaBrowserOperation.REMOTE_WRITE),
+    BOOST_SAVE("boost_save.js", BlaBlaBrowserOperation.REMOTE_WRITE),
+
     PUBLIC_SEARCH_FORM("public_search_form.js", BlaBlaBrowserOperation.NAVIGATION),
     PUBLIC_SEARCH_SCROLL("public_search_scroll.js", BlaBlaBrowserOperation.NAVIGATION),
     PUBLIC_SEARCH_RESULTS("public_search_results.js"),
