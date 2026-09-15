@@ -31,18 +31,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'val releaseVersionCode = 5_852' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.561"' app/build.gradle.kts
-          grep -Fq 'var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          grep -Fq '"📡 Atualizando todas…"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
-          grep -Fq '): Boolean = audits.any { it?.pending == true }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'origin = BlaBlaCommandOrigin0407.CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562.kt
-          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562Test.kt
-          grep -Fq 'activeSingleTripOperationId: String?' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562.kt
-          ! grep -Fq '"version": "0.1.562"' app/src/main/assets/release_history.json
+          python3 - <<'PY'
+          from pathlib import Path
+          build = Path('app/build.gradle.kts').read_text()
+          activity = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt').read_text()
+          timeline = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt').read_text()
+          scope = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562.kt').read_text()
+          history = Path('app/src/main/assets/release_history.json').read_text()
+          checks = {
+              'baseline version code': 'val releaseVersionCode = 5_852' in build,
+              'baseline version name': 'val releaseVersionName = "0.1.561"' in build,
+              'old boolean owner': 'var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }' in activity,
+              'global header': '📡 Atualizando todas…' in activity,
+              'raw any-pending root cause': '): Boolean = audits.any { it?.pending == true }' in timeline,
+              'raw global callback': 'globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)' in timeline,
+              'card origin': 'origin = BlaBlaCommandOrigin0407.CARD' in timeline,
+              'global origin': 'origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION' in timeline,
+              'explicit single ownership model': 'activeSingleTripOperationId: String?' in scope,
+              'no 0.1.562 history yet': '"version": "0.1.562"' not in history,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          if failed:
+              raise SystemExit('baseline invariant failed: ' + ', '.join(failed))
+          print('baseline invariants: PASS')
+          PY
 
       - name: Materialize scoped synchronization state
         shell: bash
@@ -51,21 +63,41 @@ jobs:
           python3 .github/scripts/agenda_0562_sync_ui_scope.py
           python3 .github/scripts/agenda_0562_sync_ui_scope_finalize.py
           git diff --check
-          grep -Fq 'val releaseVersionCode = 5_853' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.562"' app/build.gradle.kts
-          grep -Fq '"version": "0.1.562"' app/src/main/assets/release_history.json
-          test "$(grep -c '"'"'"version"'"'": "'"'"0.1.562"'"'"' app/src/main/assets/release_history.json)" -eq 1
-          grep -Fq 'activeGlobalOperationId0562' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'acceptedCommandIds0562 += command0540.commandId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'freshGlobalAudits0562' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'activeSingleTripOperationId0562 = command.commandId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'activeSingleTripOperationId = activeSingleTripOperationId0562' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq 'Text(if (singleTripRefreshPending0562) "📡 …" else "📡")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq '"AGENDA_EXACT_CARD_SYNC_STARTED"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq '"scope=SINGLE_TRIP tripIdentityPresent=true "' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq '"scope=ALL_TRIPS trigger=REFRESH_ALL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          grep -Fq '"scope=IDLE trigger=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
-          test "$(git diff --name-only | sort)" = $'app/build.gradle.kts\napp/src/main/assets/release_history.json\napp/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          build = Path('app/build.gradle.kts').read_text()
+          timeline = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt').read_text()
+          history = Path('app/src/main/assets/release_history.json').read_text()
+          checks = {
+              'version code 5853': 'val releaseVersionCode = 5_853' in build,
+              'version name 0.1.562': 'val releaseVersionName = "0.1.562"' in build,
+              'one history record': history.count('"version": "0.1.562"') == 1,
+              'global operation authority': 'activeGlobalOperationId0562' in timeline,
+              'accepted global command ownership': 'acceptedCommandIds0562 += command0540.commandId' in timeline,
+              'durable global readback': 'freshGlobalAudits0562' in timeline,
+              'single accepted command ownership': 'activeSingleTripOperationId0562 = command.commandId' in timeline,
+              'single scope matching': 'activeSingleTripOperationId = activeSingleTripOperationId0562' in timeline,
+              'local single indicator': 'Text(if (singleTripRefreshPending0562) "📡 …" else "📡")' in timeline,
+              'exact card event': 'AGENDA_EXACT_CARD_SYNC_STARTED' in timeline,
+              'single state log': 'scope=SINGLE_TRIP tripIdentityPresent=true' in timeline,
+              'global state log': 'scope=ALL_TRIPS trigger=REFRESH_ALL' in timeline,
+              'idle state log': 'scope=IDLE trigger=' in timeline,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          expected = {
+              'app/build.gradle.kts',
+              'app/src/main/assets/release_history.json',
+              'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt',
+          }
+          if changed != expected:
+              failed.append(f'changed files mismatch expected={sorted(expected)} actual={sorted(changed)}')
+          if failed:
+              raise SystemExit('materialized invariant failed: ' + '; '.join(failed))
+          print('materialized invariants: PASS')
+          print('changed files:', *sorted(changed), sep='\n- ')
+          PY
 
       - uses: actions/setup-java@v4
         with:
