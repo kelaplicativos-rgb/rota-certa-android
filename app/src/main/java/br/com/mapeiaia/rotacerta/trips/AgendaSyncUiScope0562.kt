@@ -38,12 +38,20 @@ internal fun agendaGlobalSyncBusy0562(
     }
 }
 
+/**
+ * SINGLE_TRIP exists only when the exact pending command is explicitly owned by the user's
+ * card-level refresh action. A pending command created by polling, reconciliation or other
+ * infrastructure is deliberately NONE from the manual UI point of view.
+ */
 internal fun agendaSingleTripScope0562(
     target: BlaBlaTripTarget0407?,
     audit: BlaBlaCommandAuditSnapshot0407?,
+    activeSingleTripOperationId: String?,
     activeGlobalCommandIds: Set<String> = emptySet(),
 ): AgendaSyncUiScope0562 = when {
     target == null || audit?.pending != true -> AgendaSyncUiScope0562.None
+    activeSingleTripOperationId.isNullOrBlank() -> AgendaSyncUiScope0562.None
+    audit.commandId != activeSingleTripOperationId -> AgendaSyncUiScope0562.None
     audit.commandId in activeGlobalCommandIds -> AgendaSyncUiScope0562.None
     else -> AgendaSyncUiScope0562.SingleTrip(
         tripIdentity = target,
