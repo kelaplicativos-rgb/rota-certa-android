@@ -1,0 +1,151 @@
+name: Agenda 0.1.562 sync UI scope
+
+on:
+  push:
+    branches:
+      - agent/agenda-sync-visual-scope-0.1.562
+    paths:
+      - '.github/workflows/agenda-0562-sync-ui-scope.yml'
+      - '.github/scripts/agenda_0562_sync_ui_scope.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: agenda-0562-sync-ui-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch-test-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/agenda-sync-visual-scope-0.1.562
+
+      - name: Prove exact 0.1.561 baseline and root-cause anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'val releaseVersionCode = 5_852' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.561"' app/build.gradle.kts
+          grep -Fq 'var timelineGlobalRefreshBusy0540 by rememberSaveable { mutableStateOf(false) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq '"📡 Atualizando todas…"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq '): Boolean = audits.any { it?.pending == true }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'origin = BlaBlaCommandOrigin0407.CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562.kt
+          test -f app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaSyncUiScope0562Test.kt
+
+      - name: Materialize scoped synchronization state
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/agenda_0562_sync_ui_scope.py
+          git diff --check
+          grep -Fq 'val releaseVersionCode = 5_853' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.562"' app/build.gradle.kts
+          grep -Fq 'activeGlobalOperationId0562' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'scope = manualSyncUiScope0562' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'acceptedCommandIds0562 += command0540.commandId' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq 'agendaSingleTripScope0562(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '"AGENDA_EXACT_CARD_SYNC_STARTED"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '"scope=SINGLE_TRIP tripIdentityPresent=true "' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '"scope=ALL_TRIPS trigger=REFRESH_ALL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          grep -Fq '"scope=IDLE trigger=' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          test "$(git diff --name-only | sort)" = $'app/build.gradle.kts\napp/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Focused synchronization-scope tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests br.com.mapeiaia.rotacerta.trips.AgendaSyncUiScope0562Test \
+            --no-daemon --stacktrace
+
+      - name: Full unit suite and debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
+
+      - name: Scoped lint safety check
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          ./gradlew :app:lintDebug --no-daemon --stacktrace
+          lint_exit=$?
+          set -e
+          lint_txt='app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt'
+          if [ "$lint_exit" -ne 0 ]; then
+            test -s "$lint_txt"
+            if grep -E '(AgendaSyncUiScope0562|TripTimelineUi)\.kt:[0-9]+: Error:' "$lint_txt"; then
+              echo 'ERROR: lint found an error inside sync-scope correction' >&2
+              exit 1
+            fi
+          fi
+
+      - name: Write validation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo 'ROTA CERTA 0.1.562 — AGENDA SYNC UI SCOPE'
+            echo 'scopeModel=NONE|SINGLE_TRIP|ALL_TRIPS'
+            echo 'globalAuthority=explicit user refresh-all operation'
+            echo 'globalMembership=accepted commandId set'
+            echo 'singleIdentity=BlaBlaTripTarget0407.strongIdentityKey'
+            echo 'backgroundPromotesGlobal=false'
+            echo 'cardPendingPromotesGlobal=false'
+            echo 'globalOwnPendingKeepsHeader=true'
+            echo 'globalIgnoresUnrelatedPending=true'
+            echo 'focusedTests=PASS'
+            echo 'fullUnitSuite=PASS'
+            echo 'assembleDebug=PASS'
+            cat /tmp/apk.sha256
+          } | tee /tmp/agenda-0562-validation.txt
+
+      - name: Commit tested source and remove one-shot materializer
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/scripts/agenda_0562_sync_ui_scope.py .github/workflows/agenda-0562-sync-ui-scope.yml
+          git add app/build.gradle.kts \
+                  app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
+          git commit -m 'fix(agenda): scope sync indicator by operation 0.1.562'
+          git push origin HEAD:agent/agenda-sync-visual-scope-0.1.562
+          git rev-parse HEAD | tee /tmp/source-head.txt
+
+      - name: Package validation artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/agenda-0562
+          cp app/build/outputs/apk/debug/app-debug.apk /tmp/agenda-0562/rota-certa-0.1.562-debug.apk
+          cp /tmp/apk.sha256 /tmp/agenda-0562/apk.sha256
+          cp /tmp/agenda-0562-validation.txt /tmp/agenda-0562/validation.txt
+          cp /tmp/source-head.txt /tmp/agenda-0562/source-head.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.562-sync-ui-scope
+          path: /tmp/agenda-0562
+          if-no-files-found: error
+          retention-days: 14
