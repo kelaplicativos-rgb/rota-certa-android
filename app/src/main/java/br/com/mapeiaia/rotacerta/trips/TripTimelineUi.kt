@@ -96,9 +96,18 @@ internal fun distinctTimelineGlobalPullTargets0538(
     .filterNotNull()
     .distinctBy(BlaBlaTripTarget0407::strongIdentityKey)
 
+/**
+ * Legacy raw audit helper retained for source compatibility only. User-facing global state must
+ * use the scoped overload below so an unrelated card command cannot become ALL_TRIPS.
+ */
 internal fun timelineGlobalRadarBatchBusy0540(
     audits: Iterable<BlaBlaCommandAuditSnapshot0407?>,
 ): Boolean = audits.any { it?.pending == true }
+
+internal fun timelineGlobalRadarBatchBusy0540(
+    scope: AgendaSyncUiScope0562,
+    audits: Iterable<BlaBlaCommandAuditSnapshot0407?>,
+): Boolean = agendaGlobalSyncBusy0562(scope, audits)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -215,6 +224,32 @@ fun TripTimelineScreen(
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
     val globalRefreshStartedCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshStarted0540)
     val globalRefreshBusyCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshBusy0540)
+
+    // Persist only explicit USER ALL-TRIPS ownership. Network, canonical, polling and card-level
+    // activity never write these fields. The typed scope is derived from saveable primitives so
+    // Activity recreation cannot turn infrastructure activity into a global manual indicator.
+    var activeGlobalOperationId0562 by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf("")
+    }
+    var activeGlobalCommandIds0562 by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(arrayListOf<String>())
+    }
+    var activeGlobalTrigger0562 by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf("")
+    }
+    var activeGlobalCommandRevisionAtStart0562 by androidx.compose.runtime.saveable.rememberSaveable {
+        mutableStateOf(0L)
+    }
+    val manualSyncUiScope0562: AgendaSyncUiScope0562 = if (activeGlobalOperationId0562.isBlank()) {
+        AgendaSyncUiScope0562.None
+    } else {
+        AgendaSyncUiScope0562.AllTrips(
+            operationId = activeGlobalOperationId0562,
+            commandIds = activeGlobalCommandIds0562.toSet(),
+            trigger = activeGlobalTrigger0562.ifBlank { "REFRESH_ALL" },
+            commandRevisionAtStart = activeGlobalCommandRevisionAtStart0562,
+        )
+    }
 
     LaunchedEffect(store, trips, bookings, onlineSettings0494.driverDisplayName) {
         localAgendaProjection0515 = withContext(Dispatchers.IO) {
@@ -717,6 +752,12 @@ fun TripTimelineScreen(
             manualRefreshToken0499 <= lastHandledGlobalRefreshToken0540
         ) return@LaunchedEffect
 
+        val operationId0562 = "all-${manualRefreshToken0499}-${System.nanoTime().toString(36)}"
+        val revisionAtStart0562 = commandRevision0407
+        activeGlobalOperationId0562 = operationId0562
+        activeGlobalCommandIds0562 = arrayListOf()
+        activeGlobalTrigger0562 = "REFRESH_ALL"
+        activeGlobalCommandRevisionAtStart0562 = revisionAtStart0562
         globalRefreshStartedCallback0540.value(manualRefreshToken0499)
         globalRefreshBusyCallback0540.value(true)
 
@@ -725,13 +766,26 @@ fun TripTimelineScreen(
         val statusStore0540 = BlaBlaTripCommandStatusStore0407(context)
         val alreadyPending0540 = targets0540.count { statusStore0540.get(it)?.pending == true }
 
+        fun finishWithoutGlobalWork0562(result: String) {
+            activeGlobalOperationId0562 = ""
+            activeGlobalCommandIds0562 = arrayListOf()
+            activeGlobalTrigger0562 = ""
+            activeGlobalCommandRevisionAtStart0562 = 0L
+            globalRefreshBusyCallback0540.value(false)
+            UnifiedDebugEventStore.record(
+                "AGENDA_SYNC_UI_STATE_CHANGED",
+                context.packageName,
+                "scope=IDLE trigger=REFRESH_ALL operationId=${seatSyncDiagnosticKey(operationId0562)} result=$result privateValuesLogged=false",
+            )
+        }
+
         if (targets0540.isEmpty()) {
             UnifiedDebugEventStore.record(
                 "TIMELINE_GLOBAL_RADAR_EMPTY_0540",
                 context.packageName,
                 "cards=${tripTargetsByCard0432.size} resolvedTargets=0 strongTargets=0 noCollectorWork=true",
             )
-            globalRefreshBusyCallback0540.value(false)
+            finishWithoutGlobalWork0562("EMPTY")
             return@LaunchedEffect
         }
 
@@ -741,11 +795,14 @@ fun TripTimelineScreen(
                 context.packageName,
                 "strongTargets=${targets0540.size} pendingTargets=$alreadyPending0540 reason=previous_target_refresh_in_progress",
             )
-            globalRefreshBusyCallback0540.value(true)
+            // A pre-existing SINGLE_TRIP operation must never be absorbed into a new ALL_TRIPS
+            // visual operation. The global request is rejected instead of exaggerating its scope.
+            finishWithoutGlobalWork0562("BLOCKED_BY_EXISTING_TARGET")
             return@LaunchedEffect
         }
 
         var acceptedTargets0540 = 0
+        val acceptedCommandIds0562 = linkedSetOf<String>()
         targets0540.forEach { target0540 ->
             val command0540 = BlaBlaCommand0407.forTarget(
                 target = target0540,
@@ -761,8 +818,10 @@ fun TripTimelineScreen(
                 )
             ) {
                 acceptedTargets0540++
+                acceptedCommandIds0562 += command0540.commandId
             }
         }
+        activeGlobalCommandIds0562 = ArrayList(acceptedCommandIds0562)
         UnifiedDebugEventStore.record(
             "TIMELINE_GLOBAL_RADAR_BATCH_STARTED_0540",
             context.packageName,
@@ -773,29 +832,53 @@ fun TripTimelineScreen(
                 "collectorToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR",
         )
         if (acceptedTargets0540 == 0) {
-            globalRefreshBusyCallback0540.value(false)
+            finishWithoutGlobalWork0562("NO_TARGET_ACCEPTED")
             return@LaunchedEffect
         }
+        UnifiedDebugEventStore.record(
+            "AGENDA_SYNC_UI_STATE_CHANGED",
+            context.packageName,
+            "scope=ALL_TRIPS trigger=REFRESH_ALL operationId=${seatSyncDiagnosticKey(operationId0562)} commandCount=${acceptedCommandIds0562.size} result=STARTED privateValuesLogged=false",
+        )
         invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540")
     }
     val commandAuditsByCard0432 = remember(tripTargetsByCard0432, commandRevision0407) {
         val statusStore = BlaBlaTripCommandStatusStore0407(context)
         tripTargetsByCard0432.mapValues { (_, target) -> target?.let(statusStore::get) }
     }
-    val globalRadarBusyFromStore0540 = remember(commandAuditsByCard0432) {
-        timelineGlobalRadarBatchBusy0540(commandAuditsByCard0432.values)
-    }
-    LaunchedEffect(commandRevision0407) {
-        if (manualRefreshToken0499 <= lastHandledGlobalRefreshToken0540) {
-            globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)
-            if (!globalRadarBusyFromStore0540 && manualRefreshToken0499 > 0) {
-                UnifiedDebugEventStore.record(
-                    "TIMELINE_GLOBAL_RADAR_BATCH_COMPLETE_0540",
-                    context.packageName,
-                    "strongTargets=${distinctTimelineGlobalPullTargets0538(tripTargetsByCard0432.values).size} pendingTargets=0 collectorToAgenda=true directTimelineCollectorRead=false",
-                )
-                invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540_COMPLETE")
-            }
+    LaunchedEffect(commandRevision0407, manualSyncUiScope0562) {
+        val globalScope0562 = manualSyncUiScope0562 as? AgendaSyncUiScope0562.AllTrips
+            ?: return@LaunchedEffect
+        if (globalScope0562.commandIds.isEmpty()) return@LaunchedEffect
+
+        // Read durable command status again at the decision boundary. This avoids a stale Compose
+        // snapshot prematurely completing ALL_TRIPS and also makes Activity recreation/foreground
+        // restoration independent from the process-local revision counter.
+        val statusStore0562 = BlaBlaTripCommandStatusStore0407(context)
+        val freshGlobalAudits0562 = tripTargetsByCard0432.values
+            .filterNotNull()
+            .map(statusStore0562::get)
+        val globalRadarBusyFromStore0540 = timelineGlobalRadarBatchBusy0540(
+            scope = globalScope0562,
+            audits = freshGlobalAudits0562,
+        )
+        globalRefreshBusyCallback0540.value(globalRadarBusyFromStore0540)
+        if (!globalRadarBusyFromStore0540) {
+            UnifiedDebugEventStore.record(
+                "TIMELINE_GLOBAL_RADAR_BATCH_COMPLETE_0540",
+                context.packageName,
+                "strongTargets=${distinctTimelineGlobalPullTargets0538(tripTargetsByCard0432.values).size} pendingTargets=0 collectorToAgenda=true directTimelineCollectorRead=false",
+            )
+            UnifiedDebugEventStore.record(
+                "AGENDA_SYNC_UI_STATE_CHANGED",
+                context.packageName,
+                "scope=IDLE trigger=${globalScope0562.trigger} operationId=${seatSyncDiagnosticKey(globalScope0562.operationId)} result=SUCCESS privateValuesLogged=false",
+            )
+            activeGlobalOperationId0562 = ""
+            activeGlobalCommandIds0562 = arrayListOf()
+            activeGlobalTrigger0562 = ""
+            activeGlobalCommandRevisionAtStart0562 = 0L
+            invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540_COMPLETE")
         }
     }
     val profileColorSlots = remember(entries, registeredProfileUuids) {
@@ -985,6 +1068,9 @@ fun TripTimelineScreen(
                             entry.blablaProfileUuid?.trim()?.lowercase().orEmpty() + "|" + entry.blablaTripId?.trim().orEmpty()
                         ],
                         passiveCommandAudit0407 = commandAuditsByCard0432[timelineLazyItemKey0380(entry)],
+                        activeGlobalCommandIds0562 = (manualSyncUiScope0562 as? AgendaSyncUiScope0562.AllTrips)
+                            ?.commandIds
+                            .orEmpty(),
                         focusedBookingId = focusedBookingId,
                     ) {
                         archiveStore.setArchived(entry, !archived)
@@ -1872,6 +1958,7 @@ private fun TimelineEntryCard(
     passiveTripTarget0407: BlaBlaTripTarget0407?,
     passiveSeatCapabilityState0407: BlaBlaPublicationSeatSyncState?,
     passiveCommandAudit0407: BlaBlaCommandAuditSnapshot0407?,
+    activeGlobalCommandIds0562: Set<String> = emptySet(),
     focusedBookingId: String? = null,
     onArchive: () -> Unit,
 ) {
@@ -1922,7 +2009,49 @@ private fun TimelineEntryCard(
     }
     var actionMenuExpanded0407 by remember(entry.tripId) { mutableStateOf(false) }
     val commandAudit0407 = passiveCommandAudit0407
+    var activeSingleTripOperationId0562 by androidx.compose.runtime.saveable.rememberSaveable(entry.tripId) {
+        mutableStateOf("")
+    }
+    val cardSyncUiScope0562 = remember(
+        tripTarget0407,
+        commandAudit0407,
+        activeSingleTripOperationId0562,
+        activeGlobalCommandIds0562,
+    ) {
+        agendaSingleTripScope0562(
+            target = tripTarget0407,
+            audit = commandAudit0407,
+            activeSingleTripOperationId = activeSingleTripOperationId0562,
+            activeGlobalCommandIds = activeGlobalCommandIds0562,
+        )
+    }
+    val singleTripRefreshPending0562 = cardSyncUiScope0562 is AgendaSyncUiScope0562.SingleTrip
     val reverifyPending0407 = commandAudit0407?.pending == true
+    LaunchedEffect(
+        activeSingleTripOperationId0562,
+        commandAudit0407?.commandId,
+        commandAudit0407?.pending,
+        commandAudit0407?.status,
+    ) {
+        val operationId0562 = activeSingleTripOperationId0562
+        val completedAudit0562 = commandAudit0407
+        if (
+            operationId0562.isNotBlank() &&
+            completedAudit0562 != null &&
+            completedAudit0562.commandId == operationId0562 &&
+            !completedAudit0562.pending
+        ) {
+            UnifiedDebugEventStore.record(
+                "AGENDA_SYNC_UI_STATE_CHANGED",
+                context.packageName,
+                "scope=IDLE trigger=EXACT_CARD_REFRESH " +
+                    "operationId=${seatSyncDiagnosticKey(operationId0562)} " +
+                    "durationMs=${(completedAudit0562.finishedAtMillis - completedAudit0562.requestedAtMillis).coerceAtLeast(0L)} " +
+                    "result=${completedAudit0562.status.name} privateValuesLogged=false",
+            )
+            activeSingleTripOperationId0562 = ""
+        }
+    }
     val lastObservedAt0407 = trip?.lastObservedAtMillis ?: 0L
     val queueReverify0407: () -> Unit = {
         val target = tripTarget0407
@@ -1975,6 +2104,22 @@ private fun TimelineEntryCard(
                     requestedAtMillis = command.requestedAtMillis,
                 )
             ) {
+                activeSingleTripOperationId0562 = command.commandId
+                UnifiedDebugEventStore.record(
+                    "AGENDA_EXACT_CARD_SYNC_STARTED",
+                    context.packageName,
+                    "directTarget=true scope=SINGLE_TRIP tripIdentityPresent=true " +
+                        "tripKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                        "operationId=${seatSyncDiagnosticKey(command.commandId)} trigger=EXACT_CARD_REFRESH privateValuesLogged=false",
+                )
+                UnifiedDebugEventStore.record(
+                    "AGENDA_SYNC_UI_STATE_CHANGED",
+                    context.packageName,
+                    "scope=SINGLE_TRIP tripIdentityPresent=true " +
+                        "tripKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} " +
+                        "trigger=EXACT_CARD_REFRESH operationId=${seatSyncDiagnosticKey(command.commandId)} " +
+                        "result=STARTED privateValuesLogged=false",
+                )
                 onChanged("📡 Agenda buscando somente esta viagem na BlaBlaCar em segundo plano.")
             } else {
                 onChanged("Atualização bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
@@ -2075,7 +2220,7 @@ private fun TimelineEntryCard(
                         enabled = tripTarget0407 != null && !reverifyPending0407,
                         onClick = queueTargetCollectorRefresh0517,
                     ) {
-                        Text(if (reverifyPending0407) "📡 …" else "📡")
+                        Text(if (singleTripRefreshPending0562) "📡 …" else "📡")
                     }
                     if (BlaBlaTripAction0407.SEAT_DETAILS in actionPalette0407.primary) {
                         TextButton(onClick = { showSeatDetails = true }) {

@@ -2,6 +2,32 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.562",
+      "build": 5853,
+      "commit": null,
+      "branch": "agent/agenda-sync-visual-scope-0.1.562",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Estado visual tipado de sincronização da Agenda distingue NONE, SINGLE_TRIP e ALL_TRIPS sem inferir escopo por tela, quantidade de cards ou atividade de rede.",
+        "Atualização global passa a possuir explicitamente somente os commandIds aceitos pela ação Atualizar todas; atualização individual possui o commandId exato iniciado pelo card."
+      ],
+      "fixed": [
+        "Comando pendente de uma única viagem deixa de promover o cabeçalho da Timeline para 📡 Atualizando todas….",
+        "Polling, refresh canônico, reconciliação e atividade de backend deixam de controlar o indicador manual global apenas por estarem pendentes."
+      ],
+      "improved": [
+        "Conclusão global consulta o status durável dos commandIds pertencentes à operação e ignora comandos concorrentes não pertencentes ao lote.",
+        "Logs sanitizados correlacionam início e término do escopo manual por operationId e hash da identidade forte, sem registrar dados privados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.561: atualizar um único card podia exibir incorretamente 📡 Atualizando todas… no cabeçalho."
+      ],
+      "modulesAffected": ["Agenda", "Timeline", "Sincronização", "Observabilidade", "Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.561",
       "build": 5852,
       "commit": null,
