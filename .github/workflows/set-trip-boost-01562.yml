@@ -42,11 +42,11 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           req = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaBrowserRequest.kt').read_text()
-          activity = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripBoostActivity0562.kt').read_text()
           controller = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripBoostBrowserController0562.kt').read_text()
           domain = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTripBoost0562.kt').read_text()
           adapter = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripBoostScriptAdapter0562.kt').read_text()
           executor = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripScriptExecutorActivity0558.kt').read_text()
+          catalog = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt').read_text()
           manifest = Path('app/src/main/AndroidManifest.xml').read_text()
           for token in ['BOOST_STATE', 'BOOST_OPEN_EDIT', 'BOOST_OPEN_SECTION', 'BOOST_SET_STATE', 'BOOST_SAVE']:
               assert token in req
@@ -57,6 +57,7 @@ jobs:
           assert 'toggle/valor ambíguo é proibido' in domain
           assert 'boostAdapter.execute()' in executor and 'boostAdapter.simulate()' in executor
           assert 'AgendaTripBoostScriptAdapter0562' in adapter
+          assert 'all - seatFlowRequests0478 - boostFlowRequests0562' in catalog
           boost_decl = 'android:name=".trips.BlaBlaTripBoostActivity0562"'
           assert boost_decl in manifest
           pos = manifest.index(boost_decl)
@@ -75,16 +76,12 @@ jobs:
         run: |
           test -f app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee app/build/outputs/apk/debug/app-debug.apk.sha256
-          printf '%s\n' '${{ github.sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
-          printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+          echo "SOURCE_SHA=${{ github.sha }}"
+          echo "SOURCE_BRANCH=${{ github.ref_name }}"
 
-      - name: Upload exact-SHA APK
+      - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-set-trip-boost-candidate-${{ github.sha }}
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/debug/app-debug.apk.sha256
-            app/build/outputs/apk/debug/SOURCE_SHA.txt
-            app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+          name: rota-certa-boost-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
