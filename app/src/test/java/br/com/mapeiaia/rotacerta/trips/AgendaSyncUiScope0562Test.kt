@@ -34,10 +34,35 @@ class AgendaSyncUiScope0562Test {
     fun `single trip pending never means all trips busy`() {
         val trip = target()
         val cardAudit = audit(commandId = "card-1", pending = true)
-        val single = agendaSingleTripScope0562(trip, cardAudit)
+        val single = agendaSingleTripScope0562(
+            target = trip,
+            audit = cardAudit,
+            activeSingleTripOperationId = "card-1",
+        )
 
         assertTrue(single is AgendaSyncUiScope0562.SingleTrip)
         assertFalse(agendaGlobalSyncBusy0562(single, listOf(cardAudit)))
+    }
+
+    @Test
+    fun `automatic pending command is not classified as manual single trip`() {
+        val trip = target()
+        val automaticAudit = audit(commandId = "background-1", pending = true)
+
+        assertTrue(
+            agendaSingleTripScope0562(
+                target = trip,
+                audit = automaticAudit,
+                activeSingleTripOperationId = null,
+            ) is AgendaSyncUiScope0562.None,
+        )
+        assertTrue(
+            agendaSingleTripScope0562(
+                target = trip,
+                audit = automaticAudit,
+                activeSingleTripOperationId = "different-manual-command",
+            ) is AgendaSyncUiScope0562.None,
+        )
     }
 
     @Test
@@ -103,6 +128,7 @@ class AgendaSyncUiScope0562Test {
             agendaSingleTripScope0562(
                 target = trip,
                 audit = globalAudit,
+                activeSingleTripOperationId = "global-a",
                 activeGlobalCommandIds = setOf("global-a"),
             ) is AgendaSyncUiScope0562.None,
         )
