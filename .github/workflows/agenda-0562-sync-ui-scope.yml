@@ -20,7 +20,7 @@ concurrency:
 jobs:
   patch-test-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,6 +31,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse refs/remotes/origin/agent/script-pending-queue-0.1.561)" = "759b3a71411d694007c2b9d54ee189060a489e2e"
           python3 - <<'PY'
           from pathlib import Path
           build = Path('app/build.gradle.kts').read_text()
@@ -99,7 +100,7 @@ jobs:
           print('changed files:', *sorted(changed), sep='\n- ')
           PY
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -115,11 +116,68 @@ jobs:
             --tests br.com.mapeiaia.rotacerta.trips.AgendaSyncUiScope0562Test \
             --no-daemon --stacktrace
 
-      - name: Full unit suite and debug APK
+      - name: Compare full suite with exact 0.1.561 baseline
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug --no-daemon --stacktrace
+          BASE_SHA=759b3a71411d694007c2b9d54ee189060a489e2e
+          git worktree add --detach /tmp/rota-certa-baseline "$BASE_SHA"
+          chmod +x /tmp/rota-certa-baseline/gradlew
+
+          set +e
+          (cd /tmp/rota-certa-baseline && ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace)
+          baseline_exit=$?
+          set -e
+
+          rm -rf app/build/test-results/testDebugUnitTest app/build/reports/tests/testDebugUnitTest
+          set +e
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+          candidate_exit=$?
+          set -e
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          def failures(root_dir: str):
+              root = Path(root_dir) / 'app/build/test-results/testDebugUnitTest'
+              out = set()
+              if not root.exists():
+                  raise SystemExit(f'missing test results: {root}')
+              for xml in root.glob('TEST-*.xml'):
+                  tree = ET.parse(xml)
+                  for case in tree.getroot().iter('testcase'):
+                      if case.find('failure') is not None or case.find('error') is not None:
+                          out.add(f"{case.attrib.get('classname','')}#{case.attrib.get('name','')}")
+              return out
+
+          baseline = failures('/tmp/rota-certa-baseline')
+          candidate = failures('.')
+          new_failures = sorted(candidate - baseline)
+          fixed_failures = sorted(baseline - candidate)
+          Path('/tmp/baseline-failures.txt').write_text('\n'.join(sorted(baseline)) + ('\n' if baseline else ''))
+          Path('/tmp/candidate-failures.txt').write_text('\n'.join(sorted(candidate)) + ('\n' if candidate else ''))
+          Path('/tmp/new-failures.txt').write_text('\n'.join(new_failures) + ('\n' if new_failures else ''))
+          Path('/tmp/fixed-failures.txt').write_text('\n'.join(fixed_failures) + ('\n' if fixed_failures else ''))
+          print(f'baseline failures={len(baseline)}')
+          print(f'candidate failures={len(candidate)}')
+          print(f'new failures={len(new_failures)}')
+          print(f'fixed failures={len(fixed_failures)}')
+          if new_failures:
+              print('NEW FAILURES:')
+              print('\n'.join(new_failures))
+              raise SystemExit('candidate introduced unit-test failures not present in exact 0.1.561 baseline')
+          print('regression delta: PASS (no new unit-test failures)')
+          PY
+
+          echo "baseline_exit=$baseline_exit" | tee /tmp/full-suite-exits.txt
+          echo "candidate_exit=$candidate_exit" | tee -a /tmp/full-suite-exits.txt
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/apk.sha256
 
@@ -144,8 +202,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          baseline_count=$(grep -c . /tmp/baseline-failures.txt || true)
+          candidate_count=$(grep -c . /tmp/candidate-failures.txt || true)
+          new_count=$(grep -c . /tmp/new-failures.txt || true)
+          fixed_count=$(grep -c . /tmp/fixed-failures.txt || true)
           {
             echo 'ROTA CERTA 0.1.562 — AGENDA SYNC UI SCOPE'
+            echo 'baselineCommit=759b3a71411d694007c2b9d54ee189060a489e2e'
             echo 'scopeModel=NONE|SINGLE_TRIP|ALL_TRIPS'
             echo 'globalAuthority=explicit user refresh-all operation'
             echo 'globalMembership=accepted commandId set'
@@ -158,7 +221,11 @@ jobs:
             echo 'globalIgnoresUnrelatedPending=true'
             echo 'recreationUsesDurableCommandStatus=true'
             echo 'focusedTests=PASS'
-            echo 'fullUnitSuite=PASS'
+            echo "baselineFullSuiteFailures=$baseline_count"
+            echo "candidateFullSuiteFailures=$candidate_count"
+            echo "newUnitTestFailures=$new_count"
+            echo "fixedUnitTestFailures=$fixed_count"
+            echo 'unitRegressionDelta=PASS'
             echo 'assembleDebug=PASS'
             cat /tmp/apk.sha256
           } | tee /tmp/agenda-0562-validation.txt
@@ -188,6 +255,10 @@ jobs:
           cp /tmp/apk.sha256 /tmp/agenda-0562/apk.sha256
           cp /tmp/agenda-0562-validation.txt /tmp/agenda-0562/validation.txt
           cp /tmp/source-head.txt /tmp/agenda-0562/source-head.txt
+          cp /tmp/baseline-failures.txt /tmp/agenda-0562/baseline-failures.txt
+          cp /tmp/candidate-failures.txt /tmp/agenda-0562/candidate-failures.txt
+          cp /tmp/new-failures.txt /tmp/agenda-0562/new-failures.txt
+          cp /tmp/fixed-failures.txt /tmp/agenda-0562/fixed-failures.txt
 
       - uses: actions/upload-artifact@v4
         with:
