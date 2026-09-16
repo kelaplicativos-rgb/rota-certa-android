@@ -15,7 +15,7 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.569/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.569\.1/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
@@ -35,12 +35,18 @@ test("0569 whole valid card goes only to canonical official BlaBlaCar trip URL",
   assert.doesNotMatch(app, /method:\s*["']POST["']/);
 });
 
-test("0569 card surface contains video-style shell only", () => {
+test("0569 card surface contains route shell only and exposes no passenger occupancy", () => {
   assert.match(app, /agendaDate0569/);
   assert.match(app, /agendaDriver0569/);
   assert.match(app, /agendaJourney0569/);
-  assert.match(app, /agendaOccupancy0569/);
-  assert.match(app, /passageiro/);
+  assert.doesNotMatch(app, /passengerCount0569/);
+  assert.doesNotMatch(app, /agendaOccupancy0569/);
+  assert.doesNotMatch(app, /confirmedPassengerSeats/);
+  assert.doesNotMatch(app, /segmentPassengerLoads/);
+  assert.doesNotMatch(app, /segmentAvailability/);
+  assert.doesNotMatch(app, /passageiro/i);
+  assert.doesNotMatch(html, /agendaOccupancy0569/);
+  assert.doesNotMatch(html, /passageiro/i);
   assert.doesNotMatch(app, /Vagas por trecho/);
   assert.doesNotMatch(app, /Disponibilidade/);
   assert.doesNotMatch(app, /LOTADO/);
