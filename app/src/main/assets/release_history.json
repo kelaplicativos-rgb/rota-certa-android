@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.563",
+      "build": 5854,
+      "commit": null,
+      "branch": "agent/operational-browser-all-trips-0.1.563",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todas as viagens passa a ser um índice operacional único das viagens BlaBlaCar pertencentes às contas conectadas, ordenado globalmente por data e horário.",
+        "O toque no card resolve identidade forte profileUuid + tripId + URL administrativa e abre a viagem original na sessão WebView isolada da conta proprietária.",
+        "A administração da viagem passa a ocorrer diretamente no site original da BlaBlaCar, sem atalhos operacionais do Rota Certa dentro do card."
+      ],
+      "fixed": [
+        "A superfície principal Todas as viagens deixa de renderizar o antigo TripTimelineScreen e de manter uma segunda interface operacional para a mesma viagem externa.",
+        "Contexto de conta divergente ou identidade externa incompleta bloqueiam a abertura em modo fail-closed, sem inferência por nome, rota ou posição visual."
+      ],
+      "improved": [
+        "Agenda, coletor e estado canônico permanecem independentes da nova navegação operacional; a mudança substitui apenas a experiência de operação do motorista.",
+        "A lista unificada limita-se a localizar a viagem; ações de passageiro, edição, cancelamento e demais controles continuam pertencendo ao site original da BlaBlaCar."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Todas as viagens",
+        "BlaBlaCar",
+        "Contas externas",
+        "Sessão multiperfil",
+        "Navegação",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.561",
       "build": 5852,
       "commit": null,
@@ -27,7 +59,14 @@
       "resolvedRegressions": [
         "0.1.560: execução cancelada em PUBLISHED_AMBIGUOUS permanecia eternamente no slot active e impedia o Executor de iniciar o JSON atual."
       ],
-      "modulesAffected": ["Agenda", "Scripts", "Executor de Script", "BlaBlaCar", "Reconciliação", "Build"],
+      "modulesAffected": [
+        "Agenda",
+        "Scripts",
+        "Executor de Script",
+        "BlaBlaCar",
+        "Reconciliação",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -52,7 +91,14 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Agenda", "Scripts", "Executor de Script", "BlaBlaCar", "Navegação", "Build"],
+      "modulesAffected": [
+        "Agenda",
+        "Scripts",
+        "Executor de Script",
+        "BlaBlaCar",
+        "Navegação",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -75,7 +121,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Agenda", "Executor de Script", "BlaBlaCar", "Publicador"],
+      "modulesAffected": [
+        "Agenda",
+        "Executor de Script",
+        "BlaBlaCar",
+        "Publicador"
+      ],
       "detailsComplete": true
     },
     {
@@ -102,7 +153,13 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Agenda", "Executor de Script", "BlaBlaCar", "Identidade canônica", "Build"],
+      "modulesAffected": [
+        "Agenda",
+        "Executor de Script",
+        "BlaBlaCar",
+        "Identidade canônica",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -129,7 +186,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Leitura", "Stage38", "Depuração", "Build"],
+      "modulesAffected": [
+        "Leitura",
+        "Stage38",
+        "Depuração",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -152,7 +214,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["BlaBlaCar", "Contas externas", "Sessão multiperfil", "Atualização individual da viagem"],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Contas externas",
+        "Sessão multiperfil",
+        "Atualização individual da viagem"
+      ],
       "detailsComplete": true
     },
     {
@@ -174,7 +241,12 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Agenda", "Timeline", "Identidade canônica", "Vagas por trecho"],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Identidade canônica",
+        "Vagas por trecho"
+      ],
       "detailsComplete": true
     },
     {
@@ -197,7 +269,11 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["BlaBlaCar", "Contas externas", "Sessão multiperfil"],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Contas externas",
+        "Sessão multiperfil"
+      ],
       "detailsComplete": true
     },
     {
@@ -223,7 +299,13 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["BlaBlaCar", "Agenda", "Timeline", "Central do Dia", "Contas externas"],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Contas externas"
+      ],
       "detailsComplete": true
     },
     {
@@ -234,7 +316,9 @@
       "generatedAt": null,
       "status": "EM_VALIDACAO",
       "implemented": [],
-      "fixed": ["Fechado o caminho fraco que permitia persistir como canônico um link público BlaBlaCar de token diferente usando apenas correspondência de perfil, rota e horário da consulta pública."],
+      "fixed": [
+        "Fechado o caminho fraco que permitia persistir como canônico um link público BlaBlaCar de token diferente usando apenas correspondência de perfil, rota e horário da consulta pública."
+      ],
       "improved": [
         "Links descobertos por exact_public_search agora só sobrevivem ao merge canônico quando a própria URL comprova o mesmo trip_id administrativo.",
         "Bindings autoritativos capturados diretamente pela rede ou por navegação exata originada da viagem continuam aceitando permalinks públicos legítimos cujo token difere do identificador administrativo.",
@@ -242,7 +326,11 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["BlaBlaCar", "Agenda", "Timeline"],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline"
+      ],
       "detailsComplete": true
     },
     {
@@ -258,7 +346,9 @@
         "Seção de problemas conhecidos com suporte ao ciclo introduzida → corrigida → validada.",
         "Relatório sanitizado e copiável da versão instalada."
       ],
-      "fixed": ["Corrigida a compilação Compose da Central de Versões: rememberScrollState passou a usar o pacote correto, o peso desnecessário do título foi removido e a renderização de regressões passou a invocar composables por lambda."],
+      "fixed": [
+        "Corrigida a compilação Compose da Central de Versões: rememberScrollState passou a usar o pacote correto, o peso desnecessário do título foi removido e a renderização de regressões passou a invocar composables por lambda."
+      ],
       "improved": [
         "Metadados objetivos da build instalada continuam vindo do BuildConfig por meio de AppBuildInfo.",
         "Conteúdo semântico do histórico passa a ter uma única fonte estruturada embarcada e verificável no build.",
@@ -266,7 +356,10 @@
       ],
       "regressions": [],
       "resolvedRegressions": [],
-      "modulesAffected": ["Sobre", "Build"],
+      "modulesAffected": [
+        "Sobre",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
@@ -276,8 +369,15 @@
       "branch": "agent/timeline-agenda-card-parity-0.1.549",
       "generatedAt": null,
       "status": null,
-      "implemented": [], "fixed": [], "improved": [], "regressions": [], "resolvedRegressions": [],
-      "modulesAffected": ["Timeline"], "detailsComplete": false
+      "implemented": [],
+      "fixed": [],
+      "improved": [],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline"
+      ],
+      "detailsComplete": false
     },
     {
       "version": "0.1.548",
@@ -286,8 +386,15 @@
       "branch": "agent/timeline-temporal-cutoff-0.1.548",
       "generatedAt": null,
       "status": null,
-      "implemented": [], "fixed": [], "improved": [], "regressions": [], "resolvedRegressions": [],
-      "modulesAffected": ["Timeline"], "detailsComplete": false
+      "implemented": [],
+      "fixed": [],
+      "improved": [],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Timeline"
+      ],
+      "detailsComplete": false
     }
   ],
   "regressions": []
