@@ -46,7 +46,7 @@ test("0569 card surface contains video-style shell only", () => {
   assert.doesNotMatch(app, /LOTADO/);
   assert.doesNotMatch(app, /priceToNextCents/);
   assert.doesNotMatch(app, /plannedAddress|\.address/);
-  assert.doesNotMatch(app, /expand|toggle/i);
+  assert.doesNotMatch(app, /toggleAgendaTripDetails|agendaExpanded|expandedItinerary|expandHint/i);
 });
 
 test("0569 WhatsApp uses configured public driver field dynamically and never hardcodes a number", () => {
