@@ -43,7 +43,7 @@ jobs:
           node trip-platform/functions/scripts/patch-public-agenda-exact-blablacar-0570.js
           node --check trip-platform/functions/index.js
           grep -Fq 'async function publicAgendaExactBlaBlaLinks0570' trip-platform/functions/index.js
-          test "$(grep -Fc 'const exactLinkedTrips0570 = tester' trip-platform/functions/index.js)" -eq 2
+          test "$(grep -Fc 'const exactLinkedTrips0570 = tester' trip-platform/functions/index.js)" -eq 1
           grep -Fq 'canonicalTimelinePrivateMirrorCompatible0523' trip-platform/functions/index.js
           grep -Fq 'canonicalTimelineExternalIdentity0523' trip-platform/functions/index.js
           grep -Fq 'canonicalTimelinePublicUrl0524' trip-platform/functions/index.js
@@ -111,8 +111,7 @@ jobs:
           function official(raw) {
             try {
               const u = new URL(String(raw || ''));
-              const host = u.hostname.toLowerCase();
-              const labels = host.replace(/^www\./, '').split('.');
+              const labels = u.hostname.toLowerCase().replace(/^www\./, '').split('.');
               if (u.protocol !== 'https:' || labels[0] !== 'blablacar') return false;
               const path = u.pathname.replace(/\/+$/, '').toLowerCase();
               if (path === '/trip') return /^[A-Za-z0-9_-]{6,}$/.test(String(u.searchParams.get('id') || ''));
