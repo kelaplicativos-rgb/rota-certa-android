@@ -184,19 +184,6 @@ function syncWhatsappFab0569() {
   fab.setAttribute("aria-hidden", "false");
 }
 
-function passengerCount0569(item) {
-  const direct = Number(item?.confirmedPassengerSeats);
-  if (Number.isFinite(direct) && direct >= 0) return Math.floor(direct);
-  const segmentPassengerLoads = Array.isArray(item?.segmentPassengerLoads)
-    ? item.segmentPassengerLoads.map(Number).filter((value) => Number.isFinite(value) && value >= 0)
-    : [];
-  if (segmentPassengerLoads.length) return Math.max(...segmentPassengerLoads.map(Math.floor));
-  const availabilityCounts = Array.isArray(item?.segmentAvailability)
-    ? item.segmentAvailability.map((segment) => Number(segment?.passengerSeats)).filter((value) => Number.isFinite(value) && value >= 0)
-    : [];
-  return availabilityCounts.length ? Math.max(...availabilityCounts.map(Math.floor)) : null;
-}
-
 function cardEligible0569(item) {
   return PUBLIC_AGENDA_CARD_STATUSES_0569.has(String(item?.status || "").toUpperCase()) && orderedStops0569(item).length >= 2;
 }
@@ -265,18 +252,6 @@ function renderTripCard0569(item) {
   top.append(date, driver);
   card.appendChild(top);
   appendJourney0569(card, item, firstStop, lastStop);
-  const count = passengerCount0569(item);
-  if (count != null) {
-    const occupancy = document.createElement("div");
-    occupancy.className = "agendaOccupancy0569";
-    const car = document.createElement("span");
-    car.setAttribute("aria-hidden", "true");
-    car.textContent = "🚗";
-    const label = document.createElement("span");
-    label.textContent = count === 1 ? "1 passageiro" : `${count} passageiros`;
-    occupancy.append(car, label);
-    card.appendChild(occupancy);
-  }
   return card;
 }
 
