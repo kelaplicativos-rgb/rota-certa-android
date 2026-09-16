@@ -1,16 +1,16 @@
-name: Finalize Operational Browser 0.1.567
+name: Finalize Operational Browser 0.1.568
 
 on:
   push:
     branches:
-      - agent/operational-browser-auto-discovery-0.1.567
+      - agent/operational-browser-video-style-0.1.568
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: operational-browser-final-01567-${{ github.ref }}
+  group: operational-browser-final-01568-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +23,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prepare authoritative 0.1.567 build metadata
+      - name: Apply reference-video card and date presentation
+        run: python3 .github/scripts/operational_browser_video_style_0568.py
+
+      - name: Prepare authoritative 0.1.568 build metadata
         run: |
           python3 - <<'PY'
           import json
@@ -31,10 +34,10 @@ jobs:
 
           gradle = Path('app/build.gradle.kts')
           text = gradle.read_text()
-          old_code = 'val releaseVersionCode = 5_857'
-          old_name = 'val releaseVersionName = "0.1.566"'
-          new_code = 'val releaseVersionCode = 5_858'
-          new_name = 'val releaseVersionName = "0.1.567"'
+          old_code = 'val releaseVersionCode = 5_858'
+          old_name = 'val releaseVersionName = "0.1.567"'
+          new_code = 'val releaseVersionCode = 5_859'
+          new_name = 'val releaseVersionName = "0.1.568"'
 
           if new_code not in text:
               if old_code not in text:
@@ -49,47 +52,52 @@ jobs:
           path = Path('app/src/main/assets/release_history.json')
           data = json.loads(path.read_text())
           releases = data['releases']
-          matches = [r for r in releases if r.get('version') == '0.1.567' and r.get('build') == 5858]
+          matches = [r for r in releases if r.get('version') == '0.1.568' and r.get('build') == 5859]
           if len(matches) > 1:
-              raise SystemExit('duplicate 0.1.567/5858 release history records')
+              raise SystemExit('duplicate 0.1.568/5859 release history records')
           if not matches:
               releases.insert(0, {
-                  'version': '0.1.567',
-                  'build': 5858,
+                  'version': '0.1.568',
+                  'build': 5859,
                   'commit': None,
-                  'branch': 'agent/operational-browser-auto-discovery-0.1.567',
+                  'branch': 'agent/operational-browser-video-style-0.1.568',
                   'generatedAt': None,
                   'status': 'EM_VALIDACAO',
                   'implemented': [
-                      'Ao abrir ou retomar a área de viagens, o Rota Certa solicita automaticamente ao coletor canônico a descoberta das viagens publicadas nos perfis BlaBlaCar conectados.',
-                      'Uma viagem nova descoberta pelo coletor entra no estado canônico e passa a aparecer em Todas as viagens sem cadastro manual nem botão de atualização.'
+                      'Os cards de Todas as viagens passam a seguir a composição visual observada no vídeo de referência da tela Suas viagens da BlaBlaCar: data dentro do card, horários em coluna, linha de rota, origem/destino e resumo discreto de passageiros.',
+                      'Datas do mesmo ano são exibidas no padrão Sex. 18 Set.; datas de outro ano incluem obrigatoriamente o ano, por exemplo Sáb. 07 Ago. 2027.',
+                      'Hoje, Ontem e Amanhã usam rótulos relativos; viagens canceladas exibem Cancelada no topo do card; Viagens arquivadas usa seção recolhível no mesmo fluxo visual.'
                   ],
                   'fixed': [
-                      'Eliminada a dependência de aguardar apenas o próximo ciclo periódico para que uma publicação nova apareça no índice operacional depois que o motorista retorna ao Rota Certa.',
-                      'Retornos rápidos ao app são protegidos por debounce de ciclo de vida para evitar enfileiramento redundante de coletas.'
+                      'Corrigida a omissão do ano em viagens do ano seguinte, que poderia fazer uma viagem de 2027 parecer pertencente a 2026.',
+                      'Removidos cabeçalhos de data externos aos cards para que cada viagem carregue sua própria data, como no vídeo de referência.'
                   ],
                   'improved': [
-                      'A implementação reutiliza AgendaBackgroundSync0392 e o pipeline coletor → reconciliação canônica → BookingRealtimeEvents, sem criar segunda fonte de verdade.',
-                      'Somente perfis com UUID externo confirmado habilitam o gatilho automático; a sincronização periódica existente permanece como contingência para mudanças feitas enquanto o Rota Certa não é retomado.'
+                      'A formatação de dia da semana e mês usa abreviações brasileiras determinísticas e não depende da pontuação variável do Locale do aparelho.',
+                      'A mudança é exclusivamente de apresentação do índice operacional: tocar no card continua abrindo a viagem original na sessão BlaBlaCar correta e nenhuma ação operacional foi duplicada no Rota Certa.'
                   ],
                   'regressions': [],
                   'resolvedRegressions': [],
-                  'modulesAffected': ['Todas as viagens', 'BlaBlaCar', 'Coletor', 'Sincronização canônica', 'Contas externas', 'Build'],
+                  'modulesAffected': ['Todas as viagens', 'Navegador operacional', 'Datas', 'Arquivo de viagens', 'BlaBlaCar', 'Build'],
                   'detailsComplete': True
               })
               path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
           PY
 
-      - name: Commit final candidate metadata when needed
+      - name: Commit final candidate source and metadata when needed
         id: commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/build.gradle.kts app/src/main/assets/release_history.json
+          git add \
+            app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt \
+            app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserVideoStyle0568Test.kt \
+            app/build.gradle.kts \
+            app/src/main/assets/release_history.json
           if git diff --cached --quiet; then
-            echo '0.1.567 metadata already authoritative.'
+            echo '0.1.568 source and metadata already authoritative.'
           else
-            git commit -m 'build: finalize operational browser 0.1.567 [skip ci]'
+            git commit -m 'ui: finalize reference-video trip cards 0.1.568 [skip ci]'
             git push origin HEAD:${GITHUB_REF_NAME}
           fi
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -104,9 +112,10 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify operational browser and canonical regressions
+      - name: Verify reference-video dates and operational browser regressions
         run: |
           ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserVideoStyle0568Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserAutoDiscovery0567Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripAutoArchive0566Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserSystemBars0565Test' \
@@ -129,16 +138,17 @@ jobs:
           sha256sum "$APK" | tee "$APK.sha256"
           printf '%s\n' '${{ steps.commit.outputs.source_sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
           printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
-          printf '%s\n' '0.1.567' > app/build/outputs/apk/debug/VERSION_NAME.txt
-          printf '%s\n' '5858' > app/build/outputs/apk/debug/VERSION_CODE.txt
-          grep -F 'val releaseVersionCode = 5_858' app/build.gradle.kts
-          grep -F 'val releaseVersionName = "0.1.567"' app/build.gradle.kts
+          printf '%s\n' '0.1.568' > app/build/outputs/apk/debug/VERSION_NAME.txt
+          printf '%s\n' '5859' > app/build/outputs/apk/debug/VERSION_CODE.txt
+          grep -F 'val releaseVersionCode = 5_859' app/build.gradle.kts
+          grep -F 'val releaseVersionName = "0.1.568"' app/build.gradle.kts
+          grep -F 'Sáb. 07 Ago. 2027' app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserVideoStyle0568Test.kt
           test "$(git rev-parse HEAD)" = '${{ steps.commit.outputs.source_sha }}'
 
       - name: Upload installable APK bound to final source SHA
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-operational-browser-0.1.567-${{ steps.commit.outputs.source_sha }}
+          name: rota-certa-operational-browser-0.1.568-${{ steps.commit.outputs.source_sha }}
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256
