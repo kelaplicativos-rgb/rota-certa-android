@@ -128,3 +128,36 @@ internal fun operationalBrowserNavigationResult0564(
     finalTripId != requestedTripId -> OperationalBrowserNavigationResult0564.REDIRECTED
     else -> OperationalBrowserNavigationResult0564.CONFIRMED
 }
+
+/**
+ * 0.1.566 — temporal partition used by Todas as viagens.
+ *
+ * A departure remains active at the exact departure instant and becomes archived only
+ * after its departure timestamp is strictly in the past. Active items are chronological;
+ * archived items are most-recent-first so the latest completed departure is easiest to find.
+ */
+internal data class OperationalArchiveSelection0566<T>(
+    val active: List<T>,
+    val archived: List<T>,
+)
+
+internal fun <T> operationalArchiveSelection0566(
+    items: List<T>,
+    nowMillis: Long,
+    departureAtMillis: (T) -> Long,
+): OperationalArchiveSelection0566<T> {
+    val active = items
+        .asSequence()
+        .filter { item -> departureAtMillis(item) >= nowMillis }
+        .sortedBy(departureAtMillis)
+        .toList()
+    val archived = items
+        .asSequence()
+        .filter { item -> departureAtMillis(item) < nowMillis }
+        .sortedByDescending(departureAtMillis)
+        .toList()
+    return OperationalArchiveSelection0566(
+        active = active,
+        archived = archived,
+    )
+}
