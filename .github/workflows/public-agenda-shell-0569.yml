@@ -107,3 +107,24 @@ jobs:
           ! grep -Fiq 'confirmedPassengerSeats' /tmp/live-shell.js
           echo 'PUBLIC_AGENDA_SHELL_0569_PASSENGER_FREE_LIVE=PASS'
           echo "source_head=$GITHUB_SHA"
+
+      - name: Diagnose public trip link fields
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel?diag=$GITHUB_SHA" > /tmp/public-agenda.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/public-agenda.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          console.log('PUBLIC_AGENDA_TRIP_COUNT=' + trips.length);
+          if (!trips.length) process.exit(0);
+          const keys = [...new Set(trips.flatMap((trip) => Object.keys(trip || {})))].sort();
+          console.log('PUBLIC_AGENDA_TRIP_KEYS=' + keys.join(','));
+          const candidates = ['blablaPublicUrl','publicUrl','publicTripId','tripPublicId','blablaTripId','externalTripId'];
+          for (const name of candidates) {
+            const values = trips.map((trip) => trip && trip[name]).filter((value) => value != null && String(value).trim() !== '');
+            console.log(`PUBLIC_LINK_FIELD_${name}=count:${values.length},sampleLength:${values.length ? String(values[0]).length : 0}`);
+          }
+          NODE
