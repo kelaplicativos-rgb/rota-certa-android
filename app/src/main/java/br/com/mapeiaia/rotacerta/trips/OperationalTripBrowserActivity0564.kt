@@ -4,28 +4,39 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 
 /**
- * 0.1.564 — minimal real BlaBlaCar browser used by "Todas as viagens".
+ * 0.1.565 — minimal real BlaBlaCar browser used by "Todas as viagens".
  *
  * There are intentionally no Rota Certa trip-operation shortcuts here. The activity
  * reuses the already isolated AndroidX WebView profile of the owning account, loads the
  * original administrative trip URL and only records success after the final main-frame
  * destination resolves back to the exact requested trip.
+ *
+ * Android 15+ enforces edge-to-edge for apps targeting API 35. The browser therefore owns
+ * an inset-aware root that keeps the real BlaBlaCar viewport inside status/navigation bars
+ * and display cutouts instead of allowing the web page to be covered by system UI.
  *
  * Important: this read/interactive browser intentionally does not mutate the central
  * BlaBlaCarSessionKeeper0552 runtime state. That keeper's acquire/navigation calls move a
@@ -51,6 +62,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSystemBars0565()
         registry = BlaBlaDynamicAccountRegistry(applicationContext)
 
         val accountId = intent?.getStringExtra(OperationalTripBrowserIntents0564.EXTRA_ACCOUNT_ID)
@@ -109,6 +121,41 @@ class OperationalTripBrowserActivity0564 : Activity() {
             ),
         )
         webView.loadUrl(requestedUrl)
+    }
+
+    private fun configureSystemBars0565() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            isAppearanceLightStatusBars = true
+            isAppearanceLightNavigationBars = true
+        }
+    }
+
+    private fun setInsetAwareContent0565(content: View) {
+        val root = FrameLayout(this).apply {
+            setBackgroundColor(Color.WHITE)
+            addView(
+                content,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                ),
+            )
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val safeInsets = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout(),
+            )
+            view.setPadding(
+                safeInsets.left,
+                safeInsets.top,
+                safeInsets.right,
+                safeInsets.bottom,
+            )
+            insets
+        }
+        setContentView(root)
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun createBrowser0564() {
@@ -180,7 +227,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
                 )
             }
         }
-        setContentView(webView)
+        setInsetAwareContent0565(webView)
     }
 
     private fun attestFinalDestination0564(finalUrl: String) {
@@ -279,7 +326,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
                 "tripPresent=${requestedTripId.isNotBlank()} expectedProfilePresent=${expectedProfileUuid.isNotBlank()} " +
                 "failClosed=true piiLogged=false cookiesLogged=false",
         )
-        setContentView(TextView(this).apply {
+        setInsetAwareContent0565(TextView(this).apply {
             text = "Não foi possível confirmar com segurança a conta e a viagem da BlaBlaCar. Volte e reconfirme a conta conectada."
             setPadding(32, 32, 32, 32)
         })
