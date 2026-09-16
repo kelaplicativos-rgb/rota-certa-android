@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.564",
+      "build": 5855,
+      "commit": null,
+      "branch": "agent/operational-browser-attestation-0.1.564",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O navegador operacional passa a atestar a navegação ponta a ponta antes de considerar que a viagem original da BlaBlaCar foi aberta com sucesso.",
+        "Cada toque em Todas as viagens recebe uma operação sanitizada que relaciona viagem solicitada, conta proprietária, destino final e resultado da atestação."
+      ],
+      "fixed": [
+        "O sucesso não é mais registrado imediatamente após startActivity; a confirmação exige que a navegação final corresponda à mesma viagem solicitada.",
+        "Redirecionamento para login, outra viagem ou identidade incompatível deixa de ser tratado como abertura exata da viagem.",
+        "Cancelamentos normais de lifecycle são separados de falhas operacionais de transporte."
+      ],
+      "improved": [
+        "Viagens omitidas do índice passam a registrar motivos sanitizados de exclusão para diagnóstico sem expor dados privados.",
+        "A saúde global da sessão autenticada não é degradada artificialmente pelo navegador operacional durante a revalidação.",
+        "Agenda e estado canônico permanecem independentes; a mudança endurece somente o índice operacional e o roteamento para a BlaBlaCar original."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Todas as viagens",
+        "BlaBlaCar",
+        "Contas externas",
+        "Sessão multiperfil",
+        "Navegação",
+        "Relatórios",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.563",
       "build": 5854,
       "commit": null,
