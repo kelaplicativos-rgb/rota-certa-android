@@ -7,126 +7,56 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>Rota Certa — Agenda de Viagens</title>
   <style>
-    :root{
-      font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-      color:#171717;background:#f5f6f8;
-      --ink:#171717;--muted:#5d626a;--line:#dde0e5;
-    }
+    :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
     *{box-sizing:border-box}
-    html{font-size:18px}
-    body{margin:0;background:#f5f6f8}
-    main{max-width:760px;margin:0 auto;padding:22px 16px 80px}
+    html{font-size:18px;background:#fbf8fc}
+    body{margin:0;background:#fbf8fc;color:var(--ink)}
+    main{width:min(100%,760px);margin:0 auto;padding:18px 14px calc(104px + env(safe-area-inset-bottom,0px))}
     .hidden{display:none!important}
-    .topNav{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:10px}
-    .brand{font-size:18px;font-weight:900;letter-spacing:.06em}
-    .passengerAreaLink0491{color:#176f98;font-size:16px;font-weight:900;text-decoration:none;padding:10px 12px;border:1px solid #cbd8e3;border-radius:14px;background:#fff}
-    .pageTitle{font-size:32px;line-height:1.15;margin:18px 0 6px;font-weight:900}
-    .lead{font-size:20px;line-height:1.45;color:var(--muted);margin:4px 0 18px}
-    .card{background:#fff;border-radius:24px;padding:22px;margin-top:16px;box-shadow:0 5px 22px #0000000b;border:1px solid #ebedf0}
-    .error{color:#9b1c1c;font-weight:800;font-size:20px}
-    .muted{color:var(--muted);font-size:18px;line-height:1.5}
-    .agendaTrip{position:relative;display:block;color:inherit;border:2px solid var(--line);border-radius:26px;padding:22px;margin-top:18px;background:#fff;cursor:pointer}
-    .agendaTrip:focus-visible{outline:3px solid #1186d8;outline-offset:3px}
-    .agendaTripFull{background:#f0f1f3;color:#7c8189}
-    .agendaCanonicalVisual0473{display:block;color:var(--ink)}
-    .agendaCanonicalVisual0473 .agendaDate0473{font-size:31px;line-height:1.08;font-weight:950;margin:0 0 24px;letter-spacing:-.02em}
-    .agendaJourney0473{display:grid;grid-template-columns:82px 28px minmax(0,1fr);grid-template-rows:minmax(68px,auto) minmax(58px,auto);column-gap:10px;align-items:start}
-    .agendaJourneyTime0473{grid-column:1;display:grid;gap:4px;align-content:start;line-height:1.05}
-    .agendaJourneyStart0473{grid-row:1}
-    .agendaJourneyEnd0473{grid-row:2}
-    .agendaJourneyTime0473 strong{font-size:26px;font-weight:950;letter-spacing:-.025em}
-    .agendaJourneyDuration0473{font-size:20px;line-height:1.05;font-weight:850;color:var(--muted)}
-    .agendaJourneyRail0473{grid-column:2;grid-row:1 / 3;position:relative;display:grid;grid-template-rows:20px 1fr 20px;justify-items:center;align-self:stretch;min-height:118px;padding:2px 0 4px}
-    .agendaJourneyDot0473{width:16px;height:16px;border:4px solid #58718d;border-radius:50%;background:#fff;z-index:2}
-    .agendaJourneyLine0473{width:5px;background:#58718d;min-height:58px;margin:-1px 0}
-    .agendaJourneyCity0473{grid-column:3;font-size:29px;line-height:1.12;font-weight:950;letter-spacing:-.018em;padding:0 0 10px;overflow-wrap:anywhere}
-    .agendaJourneyStartCity0473{grid-row:1}
-    .agendaJourneyEndCity0473{grid-row:2}
-    .agendaExpandedItinerary0480{display:none}
-    .agendaTripExpanded0480 .agendaJourney0473{display:none}
-    .agendaTripExpanded0480 .agendaExpandedItinerary0480{display:block}
-    .agendaExpandedStop0480{display:grid;grid-template-columns:82px 28px minmax(0,1fr);column-gap:10px;align-items:stretch;min-height:66px}
-    .agendaExpandedStopTime0480{grid-column:1;display:grid;gap:5px;align-content:start;line-height:1.05;padding-top:1px}
-    .agendaExpandedStopTime0480 strong{font-size:25px;font-weight:950;letter-spacing:-.025em}
-    .agendaExpandedDuration0480{font-size:19px;line-height:1.05;font-weight:850;color:var(--muted)}
-    .agendaExpandedStopRail0480{grid-column:2;display:flex;flex-direction:column;align-items:center;align-self:stretch;min-height:66px;padding-top:3px}
-    .agendaExpandedStopDot0480{width:16px;height:16px;border:4px solid #58718d;border-radius:50%;background:#fff;flex:0 0 auto;z-index:2}
-    .agendaExpandedStopLine0480{width:5px;flex:1 1 auto;min-height:38px;background:#58718d;margin-top:2px}
-    .agendaExpandedStopBody0480{grid-column:3;min-width:0;padding:0 0 20px}
-    .agendaExpandedStopCity0480{display:block;font-size:28px;line-height:1.12;font-weight:950;letter-spacing:-.018em;overflow-wrap:anywhere}
-    .agendaExpandedStopAddress0480{margin-top:5px;font-size:20px;line-height:1.28;font-weight:650;color:#243142;overflow-wrap:anywhere}
-    .agendaExpandedStopLast0480{min-height:48px}
-    .agendaExpandedStopLast0480 .agendaExpandedStopBody0480{padding-bottom:4px}
-    .agendaSegmentAvailability0484{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
-    .agendaSegmentAvailabilityTitle0484{margin:0 0 12px;font-size:20px;line-height:1.2;font-weight:950;color:var(--ink)}
-    .agendaSegmentAvailabilityRow0484{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #edf0f3}
-    .agendaSegmentAvailabilityRow0484:last-child{border-bottom:0}
-    .agendaSegmentAvailabilityRoute0484{min-width:0;font-size:17px;line-height:1.3;font-weight:750;color:#243142;overflow-wrap:anywhere}
-    .agendaSegmentPassengers0489{display:flex;align-items:center;justify-content:flex-end;min-width:0;padding-left:2px}
-    .agendaSegmentPassengers0489 .agendaPassengerDot0473,.agendaSegmentPassengers0489 .agendaPassengerMore0473{width:30px;height:30px;border-width:2px;margin-left:-7px;box-shadow:0 0 0 1px #fff}
-    .agendaSegmentPassengers0489 .agendaPassengerDot0473:first-child,.agendaSegmentPassengers0489 .agendaPassengerMore0473:first-child{margin-left:0}
-    .agendaSegmentPassengers0489 .agendaPassengerMore0473{font-size:12px}
-    .agendaSegmentAvailabilitySeats0484{font-size:16px;line-height:1.2;font-weight:950;white-space:nowrap;color:var(--ink)}
-    .agendaSegmentAvailabilityPending0484{font-size:16px;line-height:1.35;font-weight:750;color:var(--muted)}
-    .agendaExpandHint0480{margin-top:12px;text-align:center;font-size:14px;line-height:1.2;font-weight:900;color:#176f98}
-    .agendaBottom0473{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:16px;padding-top:18px;border-top:1px solid var(--line);flex-wrap:nowrap}
-    .agendaOccupancy0473{display:flex;align-items:center;gap:12px;min-width:0}
-    .agendaCar0473{display:inline-flex;align-items:center;justify-content:center;width:44px;min-width:44px;height:44px;font-size:25px;filter:grayscale(1);opacity:.78}
-    .agendaPassengerStack0473{display:flex;align-items:center;min-width:0;padding-left:4px}
-    .agendaPassengerDot0473,.agendaPassengerMore0473{width:44px;height:44px;border-radius:50%;border:3px solid #1186d8;background:#f5f8fb;margin-left:-10px;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff;font-size:0}
-    .agendaPassengerDot0473:first-child,.agendaPassengerMore0473:first-child{margin-left:0}
-    .agendaPassengerDot0473{background:radial-gradient(circle at 50% 34%,#9aacbd 0 18%,transparent 19%),radial-gradient(ellipse at 50% 88%,#9aacbd 0 35%,transparent 36%),#f4f7fa}
-    .agendaPassengerMore0473{background:#176f98;color:#fff;font-size:17px;font-weight:950}
-    .agendaPassengerEmpty0473{font-size:14px;font-weight:850;color:var(--muted);white-space:nowrap}
-    .agendaCardSummary0473{display:grid;justify-items:end;gap:3px;text-align:right;min-width:0}
-    .agendaCardAvailability0473{font-size:14px;line-height:1.2;font-weight:850;color:var(--muted)}
-    .agendaCardPrice0473{font-size:21px;line-height:1.1;font-weight:950;white-space:nowrap}
-    .agendaTripActions0541{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
-    .agendaReserve0541{display:flex;align-items:center;justify-content:center;width:100%;min-height:52px;padding:13px 16px;border-radius:16px;background:#0071eb;color:#fff;font-size:17px;line-height:1.2;font-weight:950;text-decoration:none;text-align:center}
-    .agendaReserve0541:focus-visible{outline:3px solid #0057b8;outline-offset:3px}
-    .agendaReserve0541:active{transform:translateY(1px)}
-    .agendaReserveUnavailable0541{background:#d5d9df;color:#5d626a;border:0;cursor:not-allowed;transform:none}
-    .fullWord{margin-top:16px;font-size:21px;font-weight:950}
-    @media(max-width:480px){
-      html{font-size:17px}
-      .pageTitle{font-size:30px}
-      .agendaCanonicalVisual0473 .agendaDate0473{font-size:29px}
-      .agendaJourney0473{grid-template-columns:70px 24px minmax(0,1fr);column-gap:8px}
-      .agendaJourneyTime0473 strong{font-size:23px}
-      .agendaJourneyDuration0473{font-size:18px}
-      .agendaJourneyCity0473{font-size:25px}
-      .agendaExpandedStop0480{grid-template-columns:70px 24px minmax(0,1fr);column-gap:8px}
-      .agendaExpandedStopTime0480 strong{font-size:22px}
-      .agendaExpandedDuration0480{font-size:17px}
-      .agendaExpandedStopCity0480{font-size:24px}
-      .agendaExpandedStopAddress0480{font-size:18px}
-      .agendaSegmentAvailabilityTitle0484{font-size:19px}
-      .agendaSegmentAvailabilityRoute0484{font-size:16px}
-      .agendaSegmentAvailabilitySeats0484{font-size:15px}
-      .agendaSegmentPassengers0489 .agendaPassengerDot0473,.agendaSegmentPassengers0489 .agendaPassengerMore0473{width:27px;height:27px}
-      .agendaPassengerDot0473,.agendaPassengerMore0473{width:40px;height:40px}
-      .agendaCar0473{width:38px;min-width:38px}
-      .agendaCardAvailability0473{font-size:12px}
-      .agendaCardPrice0473{font-size:19px}
-    }
+    .top0569{padding:3px 2px 14px;border-bottom:1px solid #e6e0e7;text-align:center}
+    .brand0569{font-size:24px;line-height:1.05;font-weight:900;letter-spacing:-.02em}
+    .title0569{margin-top:5px;font-size:18px;line-height:1.15;color:var(--muted);font-weight:650}
+    .state0569{margin-top:18px;padding:18px;border:1px solid #ebe6ec;border-radius:22px;background:#fff;font-size:17px;line-height:1.4}
+    .error0569{color:#8f1d1d;font-weight:750}
+    .empty0569{margin-top:18px;padding:20px;border:1px solid #ebe6ec;border-radius:22px;background:#fff;color:var(--muted);font-size:17px;line-height:1.4}
+    .agendaTrip0569{position:relative;display:block;width:100%;margin-top:16px;padding:20px 18px 22px;border:2px solid var(--line);border-radius:26px;background:#fffaff;color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+    a.agendaTrip0569{cursor:pointer}
+    a.agendaTrip0569:focus-visible{outline:3px solid #1186d8;outline-offset:3px}
+    a.agendaTrip0569:active{transform:translateY(1px)}
+    .agendaTop0569{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:22px}
+    .agendaDate0569{min-width:0;font-size:28px;line-height:1.08;font-weight:900;letter-spacing:-.025em}
+    .agendaDriver0569{max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#514b54;font-size:20px;line-height:1.12;font-weight:800;text-align:right}
+    .agendaJourney0569{display:grid;grid-template-columns:76px 26px minmax(0,1fr);grid-template-rows:minmax(70px,auto) minmax(60px,auto);column-gap:9px;align-items:start}
+    .agendaTime0569{grid-column:1;display:grid;gap:4px;align-content:start;line-height:1.05}
+    .agendaStartTime0569{grid-row:1}
+    .agendaEndTime0569{grid-row:2}
+    .agendaTime0569 strong{font-size:24px;font-weight:900;letter-spacing:-.02em}
+    .agendaTime0569 small{font-size:18px;line-height:1.05;font-weight:650;color:var(--muted)}
+    .agendaRail0569{grid-column:2;grid-row:1 / 3;display:grid;grid-template-rows:18px 1fr 18px;justify-items:center;align-self:stretch;min-height:122px;padding:2px 0 4px}
+    .agendaDot0569{width:14px;height:14px;border-radius:50%;background:var(--accent);z-index:2}
+    .agendaLine0569{width:3px;min-height:58px;margin:-1px 0;background:var(--accent)}
+    .agendaCity0569{grid-column:3;min-width:0;padding:0 0 10px;overflow-wrap:anywhere;font-size:26px;line-height:1.12;font-weight:850;letter-spacing:-.018em}
+    .agendaStartCity0569{grid-row:1}
+    .agendaEndCity0569{grid-row:2}
+    .agendaOccupancy0569{display:flex;align-items:center;gap:9px;margin-top:10px;color:#514b54;font-size:19px;line-height:1.2;font-weight:600}
+    .agendaOccupancy0569 span:first-child{font-size:24px;line-height:1}
+    .whatsappFab0569{position:fixed;z-index:1000;right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;max-width:calc(100vw - 28px);padding:13px 18px;overflow:hidden;border-radius:999px;background:#128c4a;color:#fff;box-shadow:0 8px 28px #0003;font-size:17px;line-height:1;font-weight:850;text-decoration:none;white-space:nowrap;text-overflow:ellipsis;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .whatsappFab0569:focus-visible{outline:3px solid #0b6033;outline-offset:3px}
+    .whatsappFab0569:active{transform:translateY(1px)}
+    @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaOccupancy0569{font-size:17px}}
   </style>
 </head>
 <body>
-<main>
-  <div class="topNav">
-    <div class="brand">ROTA CERTA</div>
-    <a id="passengerAreaLink0491" class="passengerAreaLink0491" href="/minha-area.html">Minha Área</a>
-  </div>
-
-  <section id="loading" class="card">Carregando viagens…</section>
-  <section id="error" class="card error hidden" role="alert"></section>
-
-  <section id="agenda" class="hidden">
-    <h1 class="pageTitle">Próximas viagens</h1>
-    <p id="driverName" class="lead"></p>
-    <div id="agendaTrips" aria-live="polite"></div>
-  </section>
-</main>
-<script src="/app.js?v=0.1.543-reserve-request-trip-query0543" defer></script>
+  <main>
+    <header class="top0569" aria-label="Rota Certa">
+      <div class="brand0569">Rota Certa</div>
+      <div class="title0569">Todas as viagens</div>
+    </header>
+    <section id="loading" class="state0569">Carregando viagens…</section>
+    <section id="error" class="state0569 error0569 hidden" role="alert"></section>
+    <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
+  </main>
+  <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
+  <script src="/public-agenda-shell-0569.js?v=0.1.569" defer></script>
 </body>
 </html>
