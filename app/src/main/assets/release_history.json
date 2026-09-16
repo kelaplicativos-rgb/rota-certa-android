@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.565",
+      "build": 5856,
+      "commit": null,
+      "branch": "agent/operational-browser-system-bars-0.1.565",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O navegador operacional passa a aplicar insets reais das barras de sistema e do recorte de tela ao viewport da BlaBlaCar.",
+        "A área navegável da página fica contida entre a barra superior do Android e a barra inferior de navegação, inclusive em edge-to-edge obrigatório."
+      ],
+      "fixed": [
+        "Corrigida a sobreposição do conteúdo da BlaBlaCar pela barra de status superior no Samsung/Android 16.",
+        "Corrigida a sobreposição do conteúdo e dos controles inferiores pela barra de navegação/gestos do Android.",
+        "A tela de erro do navegador operacional também passa a respeitar os mesmos insets seguros."
+      ],
+      "improved": [
+        "Ícones das barras de status e navegação passam a usar aparência escura sobre o fundo claro do navegador.",
+        "A correção é dinâmica e reaplicada quando os insets mudam, sem hardcode de altura, modelo de aparelho ou densidade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Conteúdo WebView sobreposto pelas barras do sistema na 0.1.564"
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "BlaBlaCar",
+        "Navegador operacional",
+        "Insets Android",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.564",
       "build": 5855,
       "commit": null,
