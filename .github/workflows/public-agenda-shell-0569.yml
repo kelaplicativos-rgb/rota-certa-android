@@ -127,4 +127,30 @@ jobs:
             const values = trips.map((trip) => trip && trip[name]).filter((value) => value != null && String(value).trim() !== '');
             console.log(`PUBLIC_LINK_FIELD_${name}=count:${values.length},sampleLength:${values.length ? String(values[0]).length : 0}`);
           }
+          const firstPublicUrl = String(trips[0].publicUrl || '');
+          const parsed = new URL(firstPublicUrl);
+          const token = parsed.searchParams.get('trip') || '';
+          if (!token) throw new Error('public trip token missing from publicUrl');
+          fs.writeFileSync('/tmp/public-trip-token.txt', token);
+          console.log('PUBLIC_URL_HOST=' + parsed.hostname);
+          console.log('PUBLIC_URL_PATH=' + parsed.pathname);
+          console.log('PUBLIC_URL_QUERY_KEYS=' + [...parsed.searchParams.keys()].sort().join(','));
+          NODE
+          TOKEN="$(cat /tmp/public-trip-token.txt)"
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/trips/$TOKEN?diag=$GITHUB_SHA" > /tmp/public-trip-detail.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/public-trip-detail.json', 'utf8'));
+          const trip = body.trip && typeof body.trip === 'object' ? body.trip : body;
+          const keys = Object.keys(trip || {}).sort();
+          console.log('PUBLIC_TRIP_DETAIL_KEYS=' + keys.join(','));
+          for (const name of ['blablaPublicUrl','publicUrl','publicTripId','tripPublicId','blablaTripId','externalTripId']) {
+            const value = trip && trip[name];
+            console.log(`PUBLIC_TRIP_DETAIL_${name}=present:${Boolean(value)},length:${value ? String(value).length : 0}`);
+          }
+          if (trip && trip.blablaPublicUrl) {
+            const u = new URL(String(trip.blablaPublicUrl));
+            console.log('PUBLIC_TRIP_DETAIL_BLABLA_HOST=' + u.hostname);
+            console.log('PUBLIC_TRIP_DETAIL_BLABLA_PATH=' + u.pathname);
+          }
           NODE
