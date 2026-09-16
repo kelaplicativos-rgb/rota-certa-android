@@ -4226,6 +4226,32 @@ async function safePublicTripWithCanonicalBookings0497(doc, nowMillis = Date.now
  * BlaBlaCar public permalink. Private mirror fields never leave this helper.
  * If identity/link proof is incomplete, the trip remains inert in the public UI.
  */
+function normalizeBlaBlaPublicShareUrl0571(raw) {
+  const value = cleanText(raw, 1200);
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || !isOfficialBlaBlaHost(url.hostname)) return "";
+    if (url.username || url.password || (url.port && !["80", "443"].includes(url.port))) return "";
+    const path = url.pathname.replace(/\/+$/, "").toLowerCase();
+    if (path !== "/trip" && !path.startsWith("/trip/")) return "";
+    const forbidden = new Set(["requested_seats", "search_origin", "search_uuid"]);
+    for (const key of url.searchParams.keys()) {
+      if (forbidden.has(String(key).toLowerCase())) return "";
+    }
+    const publicId = blaBlaExternalTripId(url);
+    if (!publicId || !/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
+    const sourceParam = cleanText(url.searchParams.get("source"), 40).toUpperCase();
+    if (sourceParam && sourceParam !== "CARPOOLING") return "";
+    url.protocol = "https:";
+    if (url.port === "80" || url.port === "443") url.port = "";
+    url.hash = "";
+    return url.toString();
+  } catch (_) {
+    return "";
+  }
+}
+
 async function publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips) {
   const docs = Array.isArray(sourceDocs) ? sourceDocs : [];
   const trips = Array.isArray(rawTrips) ? rawTrips : [];
@@ -4279,7 +4305,8 @@ async function publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips) {
       mirrorCompatible ? privatePayload : null,
       externalIdentity,
     );
-    return exactPublicUrl ? { ...trip, blablaPublicUrl: exactPublicUrl } : trip;
+    const strictPublicShareUrl0571 = normalizeBlaBlaPublicShareUrl0571(exactPublicUrl);
+    return { ...trip, blablaPublicUrl: strictPublicShareUrl0571 };
   });
 }
 

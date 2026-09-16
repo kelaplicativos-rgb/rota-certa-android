@@ -96,12 +96,25 @@ internal object BlaBlaCollectorUrlModule {
     fun isSpecificTrip(raw: String?): Boolean =
         isAllowed(raw) && !isPassenger(raw) && !isEditOrOptions(raw) && tripId(raw) != null
 
+    private fun isShareCompatiblePublicTrip0571(uri: URI): Boolean {
+        val forbidden = setOf("requested_seats", "search_origin", "search_uuid")
+        val hasForbidden = uri.rawQuery.orEmpty()
+            .split('&')
+            .filter(String::isNotBlank)
+            .map { part -> part.substringBefore('=', missingDelimiterValue = "").lowercase() }
+            .any(forbidden::contains)
+        if (hasForbidden) return false
+        val source = queryValue(uri, "source")?.trim().orEmpty()
+        return source.isBlank() || source.equals("CARPOOLING", ignoreCase = true)
+    }
+
     /** Passenger-facing exact trip URL. Administrative /rides/offer URLs are rejected. */
     fun publicTrip(raw: String?, expectedTripId: String? = null): String? {
         val value = canonical(raw).takeIf(String::isNotBlank) ?: return null
         val uri = parseAllowed(value) ?: return null
         val path = uri.path.orEmpty().trimEnd('/').lowercase()
         if (path != "/trip" && !path.startsWith("/trip/")) return null
+        if (!isShareCompatiblePublicTrip0571(uri)) return null
         val actualTripId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val expected = expectedTripId?.trim()?.takeIf(String::isNotEmpty)
         if (expected != null && actualTripId != expected) return null
@@ -166,10 +179,10 @@ internal object BlaBlaCollectorUrlModule {
         val uri = parseOfficialHttpOrHttps(raw) ?: return null
         val path = uri.path.orEmpty().trimEnd('/').lowercase()
         if (path != "/trip" && !path.startsWith("/trip/")) return null
+        if (!isShareCompatiblePublicTrip0571(uri)) return null
         val query = uri.rawQuery.orEmpty()
             .split('&')
             .filter(String::isNotBlank)
-            .filterNot { part -> part.substringBefore('=').equals("search_uuid", ignoreCase = true) }
             .joinToString("&")
         val promoted = buildString {
             append("https://").append(uri.host.lowercase())

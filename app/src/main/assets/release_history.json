@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.569",
+      "build": 5860,
+      "commit": null,
+      "branch": "agent/public-agenda-shell-blablacar-whatsapp-0.1.569",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "TRIP_PUBLIC_SHARE passa a usar o payload real de compartilhamento da BlaBlaCar como autoridade do permalink público, inclusive quando o token público difere do identificador administrativo da viagem."
+      ],
+      "fixed": [
+        "URLs de contexto de busca com requested_seats, search_origin ou search_uuid deixam de ser promovidas a blablaPublicUrl na captura Android, no backend e na Agenda Pública.",
+        "A captura deixa de aceitar um link /trip passivo da página antes de acionar Compartilhar esta carona, evitando que um ID administrativo bloqueie a obtenção do token público real."
+      ],
+      "improved": [
+        "Links oficiais de compartilhamento em http são promovidos para https sem alterar source=CARPOOLING, o id público nem parâmetros legítimos como p0[ac]=adult.",
+        "Sem permalink público comprovado, o card público permanece visível porém inerte, sem reconstruir ou inferir um link a partir do tripId administrativo."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.570: a prova ao vivo validava apenas host, caminho e id e podia classificar um URL de busca como permalink público válido."
+      ],
+      "modulesAffected": [
+        "Agenda Pública",
+        "BlaBlaCar",
+        "Coletor",
+        "Links públicos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.568",
       "build": 5859,
       "commit": null,

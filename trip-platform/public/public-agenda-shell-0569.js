@@ -135,8 +135,8 @@ function validatedBlaBlaPublicUrl0569(raw) {
   if (!value) return "";
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || !isOfficialBlaBlaHost0569(url.hostname)) return "";
-    if (url.username || url.password || (url.port && url.port !== "443")) return "";
+    if (!["http:", "https:"].includes(url.protocol) || !isOfficialBlaBlaHost0569(url.hostname)) return "";
+    if (url.username || url.password || (url.port && !["80", "443"].includes(url.port))) return "";
     const normalizedPath = url.pathname.replace(/\/+$/, "").toLowerCase();
     let publicId = "";
     if (normalizedPath === "/trip") {
@@ -148,7 +148,14 @@ function validatedBlaBlaPublicUrl0569(raw) {
       return "";
     }
     if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
-    url.searchParams.delete("search_uuid");
+    const forbidden = new Set(["requested_seats", "search_origin", "search_uuid"]);
+    for (const key of url.searchParams.keys()) {
+      if (forbidden.has(String(key).toLowerCase())) return "";
+    }
+    const sourceParam = String(url.searchParams.get("source") || "").trim().toUpperCase();
+    if (sourceParam && sourceParam !== "CARPOOLING") return "";
+    url.protocol = "https:";
+    if (url.port === "80" || url.port === "443") url.port = "";
     url.hash = "";
     return url.toString();
   } catch (_) {

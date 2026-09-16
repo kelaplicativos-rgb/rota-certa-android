@@ -28,17 +28,22 @@
     if (!tripId) return '';
     try {
       const url = new URL(raw || '', location.href);
-      if (url.protocol !== 'https:' || !isOfficialBlaBlaHost(url.hostname)) return '';
+      if (!['http:', 'https:'].includes(url.protocol) || !isOfficialBlaBlaHost(url.hostname)) return '';
+      if (url.username || url.password || (url.port && !['80', '443'].includes(url.port))) return '';
       const path = url.pathname.replace(/\/+$/, '').toLowerCase();
       if (path !== '/trip' && !path.startsWith('/trip/')) return '';
+      if (['requested_seats', 'search_origin', 'search_uuid'].some((key) => url.searchParams.has(key))) return '';
+      const sourceParam = clean(url.searchParams.get('source')).toUpperCase();
+      if (sourceParam && sourceParam !== 'CARPOOLING') return '';
       let id = clean(url.searchParams.get('id'));
       if (!id) {
         const match = url.pathname.match(/\/trip\/([^/?#]+)/i);
         id = clean(match && match[1]);
       }
-      if (!id) return '';
+      if (!/^[A-Za-z0-9_-]{6,}$/.test(id)) return '';
       if (requireAdministrativeId && id !== tripId) return '';
-      url.searchParams.delete('search_uuid');
+      url.protocol = 'https:';
+      if (url.port === '80' || url.port === '443') url.port = '';
       url.hash = '';
       return url.href;
     } catch (_) {
@@ -80,21 +85,11 @@
     return '';
   };
 
-  if (!state.publicTripHref) {
-    Array.from(document.querySelectorAll(
-      'a[href], [data-href], [data-share-url], [data-url], link[rel="canonical"], meta[property="og:url"], meta[name="twitter:url"]'
-    )).some((node) => {
-      const candidates = [
-        node.href,
-        node.content,
-        node.getAttribute && node.getAttribute('href'),
-        node.getAttribute && node.getAttribute('data-href'),
-        node.getAttribute && node.getAttribute('data-share-url'),
-        node.getAttribute && node.getAttribute('data-url'),
-        node.getAttribute && node.getAttribute('content')
-      ];
-      return candidates.some(acceptCandidate);
-    });
+  // 0.1.569/0571: generic page links are not public-share authority.
+  // A public token may differ from the administrative trip id, so capture the
+  // actual share payload instead of accepting a search/navigation URL.
+  if (state.publicTripHref && !authoritativeSharedPublicTripUrl(state.publicTripHref)) {
+    state.publicTripHref = '';
   }
 
   const capturePayload = (payload) => {
@@ -176,7 +171,7 @@
         node.getAttribute && node.getAttribute('data-share-url'),
         node.getAttribute && node.getAttribute('data-url')
       ];
-      return candidates.some(acceptCandidate);
+      return candidates.some((candidate) => acceptCandidate(candidate, true));
     });
   }
 

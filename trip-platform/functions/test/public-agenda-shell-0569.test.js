@@ -23,7 +23,10 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
 
 test("0569 whole valid card goes only to canonical official BlaBlaCar trip URL", () => {
   assert.match(app, /function validatedBlaBlaPublicUrl0569/);
-  assert.match(app, /url\.protocol !== "https:"/);
+  assert.match(app, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
+  assert.match(app, /requested_seats/);
+  assert.match(app, /search_origin/);
+  assert.match(app, /sourceParam.*CARPOOLING/);
   assert.match(app, /isOfficialBlaBlaHost0569/);
   assert.match(app, /normalizedPath === "\/trip"/);
   assert.match(app, /normalizedPath\.startsWith\("\/trip\/"\)/);
