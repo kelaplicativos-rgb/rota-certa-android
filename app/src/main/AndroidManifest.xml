@@ -78,7 +78,7 @@
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
-                android:name="android.accessibilityservice"
+                android:name="android.support.accessibility"
                 android:resource="@xml/rota_certa_accessibility" />
         </service>
 
@@ -146,6 +146,9 @@
             android:initOrder="100" />
         <activity
             android:name=".trips.BlaBlaDynamicAccountSessionActivity"
+            android:exported="false" />
+        <activity
+            android:name=".trips.OperationalTripBrowserActivity0564"
             android:exported="false" />
         <activity
             android:name=".trips.BlaBlaMhtmlHarvestActivity"
