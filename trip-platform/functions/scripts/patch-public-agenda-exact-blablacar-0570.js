@@ -92,16 +92,16 @@ const linkedProjectionBlock = `  const exactLinkedTrips0570 = tester
 
 if (!source.includes("const exactLinkedTrips0570 = tester")) {
   const occurrences = source.split(projectionBlock).length - 1;
-  if (occurrences !== 2) {
-    throw new Error(`expected 2 public Agenda projection blocks, found ${occurrences}`);
+  if (occurrences !== 1) {
+    throw new Error(`expected shared public Agenda projection block once, found ${occurrences}`);
   }
-  source = source.split(projectionBlock).join(linkedProjectionBlock);
+  source = source.replace(projectionBlock, linkedProjectionBlock);
 }
 
 const helperOccurrences = source.split(`function ${helperName}(`).length - 1;
 const linkedOccurrences = source.split("const exactLinkedTrips0570 = tester").length - 1;
 if (helperOccurrences !== 1) throw new Error(`expected exactly one ${helperName}, found ${helperOccurrences}`);
-if (linkedOccurrences !== 2) throw new Error(`expected two linked Agenda blocks, found ${linkedOccurrences}`);
+if (linkedOccurrences !== 1) throw new Error(`expected one shared linked Agenda block, found ${linkedOccurrences}`);
 
 fs.writeFileSync(indexPath, source);
-console.log(`PUBLIC_AGENDA_EXACT_BLABLACAR_PATCH_0570=PASS helper=${helperOccurrences} routes=${linkedOccurrences}`);
+console.log(`PUBLIC_AGENDA_EXACT_BLABLACAR_PATCH_0570=PASS helper=${helperOccurrences} sharedRoute=${linkedOccurrences}`);
