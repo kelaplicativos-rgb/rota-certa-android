@@ -796,93 +796,28 @@ private fun TripApp(
                         }
                     },
                 )
-                TripScreen.TIMELINE -> Column(
+                TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563(
+                    trips = trips,
+                    bookings = bookings,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(
-                            enabled = !timelineGlobalRefreshBusy0540,
-                            onClick = requestTimelineGlobalRadarRefresh0540,
+                    onMessage = { text -> message = text },
+                    onFirstUsableFrame = { renderedItems ->
+                        AgendaTrace.reportTimelineFirstUsableFrame(
+                            activity = activity,
+                            traceId = traceId,
+                            renderedItems = renderedItems,
                         ) {
-                            Text(
-                                if (timelineGlobalRefreshBusy0540) {
-                                    "📡 Atualizando todas…"
-                                } else {
-                                    "📡 Atualizar todas"
-                                },
-                            )
+                            if (timelineStartupEnded.compareAndSet(false, true)) {
+                                AgendaTrace.operationEnd(
+                                    activity,
+                                    timelineStartupOperation,
+                                    result = "operational_browser_ready",
+                                    processedCount = renderedItems,
+                                )
+                            }
                         }
-                    }
-                    TripTimelineScreen(
-                        trips = trips,
-                        bookings = bookings,
-                        store = store,
-                        onChanged = { text -> refresh(); message = text },
-                        onCreateTripForPassenger = { passengerId ->
-                            pendingCreateForPassengerId = passengerId
-                            parentRootScreen0396 = TripScreen.TIMELINE
-                            screen = TripScreen.CREATE
-                        },
-                        addPassengerResumeToken = addPassengerResumeToken,
-                        addPassengerResumePassengerId = addPassengerResumePassengerId,
-                        addPassengerResumeTripId = addPassengerResumeTripId,
-                        onManageLocal = { tripId ->
-                            selectedId = tripId
-                            parentRootScreen0396 = TripScreen.TIMELINE
-                            screen = TripScreen.LIST
-                        },
-                        uiCommand0396 = timelineUiCommand0396,
-                        uiCommandToken0396 = timelineUiCommandToken0396,
-                        focusedTripId = focusedTripId
-                            ?: focusedRemoteTripId?.let { remote -> trips.firstOrNull { it.remoteId == remote }?.id },
-                        focusedBookingId = focusedBookingId,
-                        reservationPendingOnly = reservationPendingOnly,
-                        listState = timelineListState,
-                        listModifier = Modifier.weight(1f),
-                        manualRefreshToken0499 = timelineGlobalRefreshToken0540,
-                        lastHandledGlobalRefreshToken0540 = timelineGlobalRefreshHandledToken0540,
-                        onGlobalRefreshStarted0540 = { token0540 ->
-                            timelineGlobalRefreshHandledToken0540 = maxOf(
-                                timelineGlobalRefreshHandledToken0540,
-                                token0540,
-                            )
-                        },
-                        onGlobalRefreshBusy0540 = { busy0540 ->
-                            val wasBusy0540 = timelineGlobalRefreshBusy0540
-                            timelineGlobalRefreshBusy0540 = busy0540
-                            if (wasBusy0540 && !busy0540) {
-                                refresh()
-                                message = "📡 Atualização global finalizada."
-                            }
-                        },
-                        onCanonicalRefreshState0499 = { refreshing0499, error0499 ->
-                            if (!refreshing0499 && !error0499.isNullOrBlank()) {
-                                message = "Atualização BlaBlaCar → Agenda concluída; sincronização canônica secundária indisponível: $error0499"
-                            }
-                        },
-                        onFirstUsableFrame = { renderedItems ->
-                            AgendaTrace.reportTimelineFirstUsableFrame(
-                                activity = activity,
-                                traceId = traceId,
-                                renderedItems = renderedItems,
-                            ) {
-                                if (timelineStartupEnded.compareAndSet(false, true)) {
-                                    AgendaTrace.operationEnd(
-                                        activity,
-                                        timelineStartupOperation,
-                                        result = "visual_ready",
-                                        processedCount = renderedItems,
-                                    )
-                                }
-                            }
-                        },
-                    )
-                }
+                    },
+                )
                 TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(
                     trips = trips,
                     bookings = bookings,
