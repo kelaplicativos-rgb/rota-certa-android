@@ -1,0 +1,100 @@
+name: Build Operational Browser 0.1.563
+
+on:
+  push:
+    branches:
+      - agent/operational-browser-all-trips-0.1.563
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: operational-browser-01563-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migrate-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply deterministic 0.1.563 migration
+        run: python3 .github/scripts/operational_browser_0563.py
+
+      - name: Verify migration contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          activity = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt').read_text()
+          screen = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt').read_text()
+          build = Path('app/build.gradle.kts').read_text()
+          assert 'TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563(' in activity
+          timeline_block = activity.split('TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563(', 1)[1].split('TripScreen.ASSISTANT ->', 1)[0]
+          assert 'TripTimelineScreen(' not in timeline_block
+          assert 'operationalConnectedEntries0563' in screen
+          assert 'resolveBlaBlaTripTarget0407' in screen
+          assert 'BlaBlaDynamicSessionIntents.manage' in screen
+          assert 'OPERATIONAL_BROWSER_ACCOUNT_CONTEXT_MISMATCH_0563' in screen
+          assert 'val releaseVersionCode = 5_854' in build
+          assert 'val releaseVersionName = "0.1.563"' in build
+          PY
+
+      - name: Commit migrated source
+        id: commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt app/build.gradle.kts
+          if git diff --cached --quiet; then
+            echo 'No generated source changes to commit.'
+          else
+            git commit -m 'feat: replace Timeline surface with operational browser index 0.1.563 [skip ci]'
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify operational browser and canonical regressions
+        run: |
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'
+
+      - name: Assemble installable debug APK
+        env:
+          ROTA_CERTA_GIT_SHA: ${{ steps.commit.outputs.source_sha }}
+          ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
+        run: ./gradlew assembleDebug
+
+      - name: Record APK identity
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+          printf '%s\n' '${{ steps.commit.outputs.source_sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
+          printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-operational-browser-0.1.563
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
+            app/build/outputs/apk/debug/SOURCE_SHA.txt
+            app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+          if-no-files-found: error
