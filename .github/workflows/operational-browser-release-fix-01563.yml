@@ -1,0 +1,119 @@
+name: Finalize Operational Browser 0.1.563
+
+on:
+  push:
+    branches:
+      - agent/operational-browser-all-trips-0.1.563
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: operational-browser-final-01563-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Register authoritative 0.1.563 history
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('app/src/main/assets/release_history.json')
+          data = json.loads(path.read_text())
+          releases = data['releases']
+          matches = [r for r in releases if r.get('version') == '0.1.563' and r.get('build') == 5854]
+          if len(matches) > 1:
+              raise SystemExit('duplicate 0.1.563/5854 release history records')
+          if not matches:
+              releases.insert(0, {
+                  'version': '0.1.563',
+                  'build': 5854,
+                  'commit': None,
+                  'branch': 'agent/operational-browser-all-trips-0.1.563',
+                  'generatedAt': None,
+                  'status': 'EM_VALIDACAO',
+                  'implemented': [
+                      'Todas as viagens passa a ser um índice operacional único das viagens BlaBlaCar pertencentes às contas conectadas, ordenado globalmente por data e horário.',
+                      'O toque no card resolve identidade forte profileUuid + tripId + URL administrativa e abre a viagem original na sessão WebView isolada da conta proprietária.',
+                      'A administração da viagem passa a ocorrer diretamente no site original da BlaBlaCar, sem atalhos operacionais do Rota Certa dentro do card.'
+                  ],
+                  'fixed': [
+                      'A superfície principal Todas as viagens deixa de renderizar o antigo TripTimelineScreen e de manter uma segunda interface operacional para a mesma viagem externa.',
+                      'Contexto de conta divergente ou identidade externa incompleta bloqueiam a abertura em modo fail-closed, sem inferência por nome, rota ou posição visual.'
+                  ],
+                  'improved': [
+                      'Agenda, coletor e estado canônico permanecem independentes da nova navegação operacional; a mudança substitui apenas a experiência de operação do motorista.',
+                      'A lista unificada limita-se a localizar a viagem; ações de passageiro, edição, cancelamento e demais controles continuam pertencendo ao site original da BlaBlaCar.'
+                  ],
+                  'regressions': [],
+                  'resolvedRegressions': [],
+                  'modulesAffected': ['Todas as viagens', 'BlaBlaCar', 'Contas externas', 'Sessão multiperfil', 'Navegação', 'Build'],
+                  'detailsComplete': True
+              })
+              path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+          PY
+
+      - name: Commit release record when needed
+        id: commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/assets/release_history.json
+          if git diff --cached --quiet; then
+            echo 'Release history already registered.'
+          else
+            git commit -m 'docs: register operational browser 0.1.563 [skip ci]'
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify operational browser and canonical regressions
+        run: |
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'
+
+      - name: Assemble installable debug APK
+        env:
+          ROTA_CERTA_GIT_SHA: ${{ steps.commit.outputs.source_sha }}
+          ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
+        run: ./gradlew assembleDebug
+
+      - name: Record APK identity
+        run: |
+          test -f app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+          printf '%s\n' '${{ steps.commit.outputs.source_sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
+          printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-operational-browser-0.1.563-final
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
+            app/build/outputs/apk/debug/SOURCE_SHA.txt
+            app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+          if-no-files-found: error
