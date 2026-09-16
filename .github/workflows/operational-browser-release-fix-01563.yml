@@ -1,16 +1,16 @@
-name: Finalize Operational Browser 0.1.563
+name: Finalize Operational Browser 0.1.564
 
 on:
   push:
     branches:
-      - agent/operational-browser-all-trips-0.1.563
+      - agent/operational-browser-attestation-0.1.564
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: operational-browser-final-01563-${{ github.ref }}
+  group: operational-browser-final-01564-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,56 +23,75 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Register authoritative 0.1.563 history
+      - name: Prepare authoritative 0.1.564 build metadata
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
+
+          gradle = Path('app/build.gradle.kts')
+          text = gradle.read_text()
+          old_code = 'val releaseVersionCode = 5_854'
+          old_name = 'val releaseVersionName = "0.1.563"'
+          new_code = 'val releaseVersionCode = 5_855'
+          new_name = 'val releaseVersionName = "0.1.564"'
+
+          if new_code not in text:
+              if old_code not in text:
+                  raise SystemExit('unexpected releaseVersionCode; refusing blind version mutation')
+              text = text.replace(old_code, new_code, 1)
+          if new_name not in text:
+              if old_name not in text:
+                  raise SystemExit('unexpected releaseVersionName; refusing blind version mutation')
+              text = text.replace(old_name, new_name, 1)
+          gradle.write_text(text)
+
           path = Path('app/src/main/assets/release_history.json')
           data = json.loads(path.read_text())
           releases = data['releases']
-          matches = [r for r in releases if r.get('version') == '0.1.563' and r.get('build') == 5854]
+          matches = [r for r in releases if r.get('version') == '0.1.564' and r.get('build') == 5855]
           if len(matches) > 1:
-              raise SystemExit('duplicate 0.1.563/5854 release history records')
+              raise SystemExit('duplicate 0.1.564/5855 release history records')
           if not matches:
               releases.insert(0, {
-                  'version': '0.1.563',
-                  'build': 5854,
+                  'version': '0.1.564',
+                  'build': 5855,
                   'commit': None,
-                  'branch': 'agent/operational-browser-all-trips-0.1.563',
+                  'branch': 'agent/operational-browser-attestation-0.1.564',
                   'generatedAt': None,
                   'status': 'EM_VALIDACAO',
                   'implemented': [
-                      'Todas as viagens passa a ser um índice operacional único das viagens BlaBlaCar pertencentes às contas conectadas, ordenado globalmente por data e horário.',
-                      'O toque no card resolve identidade forte profileUuid + tripId + URL administrativa e abre a viagem original na sessão WebView isolada da conta proprietária.',
-                      'A administração da viagem passa a ocorrer diretamente no site original da BlaBlaCar, sem atalhos operacionais do Rota Certa dentro do card.'
+                      'O navegador operacional passa a atestar a navegação ponta a ponta antes de considerar que a viagem original da BlaBlaCar foi aberta com sucesso.',
+                      'Cada toque em Todas as viagens recebe uma operação sanitizada que relaciona viagem solicitada, conta proprietária, destino final e resultado da atestação.'
                   ],
                   'fixed': [
-                      'A superfície principal Todas as viagens deixa de renderizar o antigo TripTimelineScreen e de manter uma segunda interface operacional para a mesma viagem externa.',
-                      'Contexto de conta divergente ou identidade externa incompleta bloqueiam a abertura em modo fail-closed, sem inferência por nome, rota ou posição visual.'
+                      'O sucesso não é mais registrado imediatamente após startActivity; a confirmação exige que a navegação final corresponda à mesma viagem solicitada.',
+                      'Redirecionamento para login, outra viagem ou identidade incompatível deixa de ser tratado como abertura exata da viagem.',
+                      'Cancelamentos normais de lifecycle são separados de falhas operacionais de transporte.'
                   ],
                   'improved': [
-                      'Agenda, coletor e estado canônico permanecem independentes da nova navegação operacional; a mudança substitui apenas a experiência de operação do motorista.',
-                      'A lista unificada limita-se a localizar a viagem; ações de passageiro, edição, cancelamento e demais controles continuam pertencendo ao site original da BlaBlaCar.'
+                      'Viagens omitidas do índice passam a registrar motivos sanitizados de exclusão para diagnóstico sem expor dados privados.',
+                      'A saúde global da sessão autenticada não é degradada artificialmente pelo navegador operacional durante a revalidação.',
+                      'Agenda e estado canônico permanecem independentes; a mudança endurece somente o índice operacional e o roteamento para a BlaBlaCar original.'
                   ],
                   'regressions': [],
                   'resolvedRegressions': [],
-                  'modulesAffected': ['Todas as viagens', 'BlaBlaCar', 'Contas externas', 'Sessão multiperfil', 'Navegação', 'Build'],
+                  'modulesAffected': ['Todas as viagens', 'BlaBlaCar', 'Contas externas', 'Sessão multiperfil', 'Navegação', 'Relatórios', 'Build'],
                   'detailsComplete': True
               })
               path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
           PY
 
-      - name: Commit release record when needed
+      - name: Commit final candidate metadata when needed
         id: commit
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/assets/release_history.json
+          git add app/build.gradle.kts app/src/main/assets/release_history.json
           if git diff --cached --quiet; then
-            echo 'Release history already registered.'
+            echo '0.1.564 metadata already authoritative.'
           else
-            git commit -m 'docs: register operational browser 0.1.563 [skip ci]'
+            git commit -m 'build: finalize operational browser 0.1.564 [skip ci]'
             git push origin HEAD:${GITHUB_REF_NAME}
           fi
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -90,6 +109,7 @@ jobs:
       - name: Verify operational browser and canonical regressions
         run: |
           ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserAttestation0564Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineLocalPrimary0525Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalTripState0395Test'
@@ -100,20 +120,29 @@ jobs:
           ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
         run: ./gradlew assembleDebug
 
-      - name: Record APK identity
+      - name: Record and verify APK identity
         run: |
-          test -f app/build/outputs/apk/debug/app-debug.apk
-          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee app/build/outputs/apk/debug/app-debug.apk.sha256
+          set -euo pipefail
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -f "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
           printf '%s\n' '${{ steps.commit.outputs.source_sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
           printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+          printf '%s\n' '0.1.564' > app/build/outputs/apk/debug/VERSION_NAME.txt
+          printf '%s\n' '5855' > app/build/outputs/apk/debug/VERSION_CODE.txt
+          grep -F 'val releaseVersionCode = 5_855' app/build.gradle.kts
+          grep -F 'val releaseVersionName = "0.1.564"' app/build.gradle.kts
+          test "$(git rev-parse HEAD)" = '${{ steps.commit.outputs.source_sha }}'
 
-      - name: Upload installable APK
+      - name: Upload installable APK bound to final source SHA
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-operational-browser-0.1.563-final
+          name: rota-certa-operational-browser-0.1.564-${{ steps.commit.outputs.source_sha }}
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256
             app/build/outputs/apk/debug/SOURCE_SHA.txt
             app/build/outputs/apk/debug/SOURCE_BRANCH.txt
+            app/build/outputs/apk/debug/VERSION_NAME.txt
+            app/build/outputs/apk/debug/VERSION_CODE.txt
           if-no-files-found: error
