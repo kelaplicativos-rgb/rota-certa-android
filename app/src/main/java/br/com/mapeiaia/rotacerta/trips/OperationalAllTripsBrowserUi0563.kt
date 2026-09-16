@@ -12,9 +12,13 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,13 +30,16 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.delay
 
 /**
- * 0.1.564 — operational replacement for the old Timeline surface.
+ * 0.1.566 — operational replacement for the old Timeline surface.
  *
  * This screen remains an INDEX, not a second BlaBlaCar implementation:
  * - it shows trips from every currently connected/verified BlaBlaCar account;
  * - ordering is global by the canonical departure timestamp;
+ * - departures strictly older than the current clock leave the active sequence and move
+ *   automatically to the collapsible archive while the screen remains open;
  * - the card carries no Rota Certa operational shortcuts;
  * - tapping a card opens the original administrative trip URL inside the isolated
  *   WebView profile that owns the confirmed profileUuid;
@@ -154,95 +161,182 @@ internal fun OperationalAllTripsBrowserScreen0563(
         return
     }
 
+    var nowMillis by remember(rows) { mutableStateOf(System.currentTimeMillis()) }
+    var showArchived by remember { mutableStateOf(false) }
+
+    LaunchedEffect(rows.map { it.entry.departureAtMillis }) {
+        while (true) {
+            val current = System.currentTimeMillis()
+            nowMillis = current
+            val nextBoundary = rows
+                .asSequence()
+                .map { row -> row.entry.departureAtMillis }
+                .filter { departure -> departure >= current }
+                .minOrNull()
+            val waitMillis = nextBoundary
+                ?.let { departure -> (departure - current + 50L).coerceIn(50L, 60_000L) }
+                ?: 60_000L
+            delay(waitMillis)
+        }
+    }
+
+    val archiveSelection = remember(rows, nowMillis) {
+        operationalArchiveSelection0566(
+            items = rows,
+            nowMillis = nowMillis,
+            departureAtMillis = { row -> row.entry.departureAtMillis },
+        )
+    }
+    val activeRows = archiveSelection.active
+    val archivedRows = archiveSelection.archived
+
     val zoneId = remember { ZoneId.systemDefault() }
-    val today = remember { LocalDate.now(zoneId) }
+    val today = remember(zoneId, nowMillis) {
+        Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+    }
+
+    val openRow: (OperationalTripBrowserRow0563) -> Unit = openRow@{ row ->
+        val target = row.target
+        val account = row.account
+        if (target == null || account == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "OPERATIONAL_BROWSER_TARGET_REJECTED_0564",
+                context.packageName,
+                "tripKey=${operationalTripDecisionDiagnosticKey0564(row.entry)} " +
+                    "reason=${row.decisionReason?.name ?: OperationalTripDecisionReason0564.TARGET_UNRESOLVED.name} " +
+                    "failClosed=true piiLogged=false",
+            )
+            onMessage("Não foi possível confirmar a conta e a viagem original na BlaBlaCar.")
+            return@openRow
+        }
+        val liveAccount = BlaBlaDynamicAccountRegistry(context.applicationContext).get(account.id)
+        val expectedProfile = target.profileUuid.trim().lowercase()
+        val liveProfile = liveAccount?.profileUuid?.trim()?.lowercase().orEmpty()
+        if (liveAccount == null || expectedProfile.isBlank() || liveProfile != expectedProfile) {
+            UnifiedDebugEventStore.recordAlways(
+                "OPERATIONAL_BROWSER_ACCOUNT_CONTEXT_MISMATCH_0564",
+                context.packageName,
+                "accountKey=${sha256TripPublication0387(account.id).take(16)} " +
+                    "tripKey=${operationalTripDecisionDiagnosticKey0564(row.entry)} " +
+                    "expectedProfilePresent=${expectedProfile.isNotBlank()} liveProfileMatches=false " +
+                    "failClosed=true piiLogged=false",
+            )
+            onMessage("A identidade da conta mudou. Reconfirme o login desta conta antes de abrir a viagem.")
+            return@openRow
+        }
+
+        val operationId = UUID.randomUUID().toString()
+        runCatching {
+            context.startActivity(
+                OperationalTripBrowserIntents0564.open(
+                    context = context,
+                    account = liveAccount,
+                    target = target,
+                    operationId = operationId,
+                ),
+            )
+        }.onSuccess {
+            UnifiedDebugEventStore.recordAlways(
+                "OPERATIONAL_BROWSER_TARGET_NAVIGATION_REQUESTED_0564",
+                context.packageName,
+                "operationId=$operationId " +
+                    "accountKey=${sha256TripPublication0387(liveAccount.id).take(16)} " +
+                    "tripKey=${sha256TripPublication0387(target.tripId).take(16)} " +
+                    "profileVerified=true targetUrlTripMatches=${BlaBlaCollectorUrlModule.tripId(target.tripHref) == target.tripId} " +
+                    "confirmed=false piiLogged=false cookiesLogged=false",
+            )
+        }.onFailure { error ->
+            UnifiedDebugEventStore.record(
+                "OPERATIONAL_BROWSER_TARGET_NAVIGATION_DISPATCH_FAILED_0564",
+                context.packageName,
+                "operationId=$operationId " +
+                    "accountKey=${sha256TripPublication0387(liveAccount.id).take(16)} " +
+                    "tripKey=${sha256TripPublication0387(target.tripId).take(16)} " +
+                    "error=${error.javaClass.simpleName.take(80)} confirmed=false",
+            )
+            onMessage("Não foi possível abrir a viagem original na BlaBlaCar.")
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        itemsIndexed(
-            items = rows,
-            key = { _, row -> operationalTripBrowserKey0563(row.entry) },
-        ) { index, row ->
-            val date = operationalDepartureDate0563(row.entry, zoneId)
-            val previousDate = rows.getOrNull(index - 1)?.let { previous ->
-                operationalDepartureDate0563(previous.entry, zoneId)
-            }
-            if (index == 0 || date != previousDate) {
+        if (activeRows.isEmpty()) {
+            item(key = "no-active-trips-0566") {
                 Text(
-                    text = operationalDateLabel0563(date, today),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = if (index == 0) 0.dp else 8.dp, bottom = 2.dp),
+                    text = "Nenhuma viagem atual ou futura.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(vertical = 12.dp),
                 )
             }
+        } else {
+            itemsIndexed(
+                items = activeRows,
+                key = { _, row -> "active|${operationalTripBrowserKey0563(row.entry)}" },
+            ) { index, row ->
+                val date = operationalDepartureDate0563(row.entry, zoneId)
+                val previousDate = activeRows.getOrNull(index - 1)?.let { previous ->
+                    operationalDepartureDate0563(previous.entry, zoneId)
+                }
+                if (index == 0 || date != previousDate) {
+                    Text(
+                        text = operationalDateLabel0563(date, today),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 8.dp, bottom = 2.dp),
+                    )
+                }
 
-            OperationalTripBrowserCard0563(
-                row = row,
-                zoneId = zoneId,
-                onOpen = {
-                    val target = row.target
-                    val account = row.account
-                    if (target == null || account == null) {
-                        UnifiedDebugEventStore.recordAlways(
-                            "OPERATIONAL_BROWSER_TARGET_REJECTED_0564",
-                            context.packageName,
-                            "tripKey=${operationalTripDecisionDiagnosticKey0564(row.entry)} " +
-                                "reason=${row.decisionReason?.name ?: OperationalTripDecisionReason0564.TARGET_UNRESOLVED.name} " +
-                                "failClosed=true piiLogged=false",
-                        )
-                        onMessage("Não foi possível confirmar a conta e a viagem original na BlaBlaCar.")
-                        return@OperationalTripBrowserCard0563
+                OperationalTripBrowserCard0563(
+                    row = row,
+                    zoneId = zoneId,
+                    archived = false,
+                    onOpen = { openRow(row) },
+                )
+            }
+        }
+
+        if (archivedRows.isNotEmpty()) {
+            item(key = "archived-toggle-0566") {
+                TextButton(
+                    onClick = { showArchived = !showArchived },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (showArchived) {
+                            "Ocultar arquivadas (${archivedRows.size})"
+                        } else {
+                            "Arquivadas (${archivedRows.size})"
+                        },
+                    )
+                }
+            }
+
+            if (showArchived) {
+                itemsIndexed(
+                    items = archivedRows,
+                    key = { _, row -> "archived|${operationalTripBrowserKey0563(row.entry)}" },
+                ) { index, row ->
+                    val date = operationalDepartureDate0563(row.entry, zoneId)
+                    val previousDate = archivedRows.getOrNull(index - 1)?.let { previous ->
+                        operationalDepartureDate0563(previous.entry, zoneId)
                     }
-                    val liveAccount = BlaBlaDynamicAccountRegistry(context.applicationContext).get(account.id)
-                    val expectedProfile = target.profileUuid.trim().lowercase()
-                    val liveProfile = liveAccount?.profileUuid?.trim()?.lowercase().orEmpty()
-                    if (liveAccount == null || expectedProfile.isBlank() || liveProfile != expectedProfile) {
-                        UnifiedDebugEventStore.recordAlways(
-                            "OPERATIONAL_BROWSER_ACCOUNT_CONTEXT_MISMATCH_0564",
-                            context.packageName,
-                            "accountKey=${sha256TripPublication0387(account.id).take(16)} " +
-                                "tripKey=${operationalTripDecisionDiagnosticKey0564(row.entry)} " +
-                                "expectedProfilePresent=${expectedProfile.isNotBlank()} liveProfileMatches=false " +
-                                "failClosed=true piiLogged=false",
+                    if (index == 0 || date != previousDate) {
+                        Text(
+                            text = operationalDateLabel0563(date, today),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = if (index == 0) 4.dp else 8.dp, bottom = 2.dp),
                         )
-                        onMessage("A identidade da conta mudou. Reconfirme o login desta conta antes de abrir a viagem.")
-                        return@OperationalTripBrowserCard0563
                     }
 
-                    val operationId = UUID.randomUUID().toString()
-                    runCatching {
-                        context.startActivity(
-                            OperationalTripBrowserIntents0564.open(
-                                context = context,
-                                account = liveAccount,
-                                target = target,
-                                operationId = operationId,
-                            ),
-                        )
-                    }.onSuccess {
-                        UnifiedDebugEventStore.recordAlways(
-                            "OPERATIONAL_BROWSER_TARGET_NAVIGATION_REQUESTED_0564",
-                            context.packageName,
-                            "operationId=$operationId " +
-                                "accountKey=${sha256TripPublication0387(liveAccount.id).take(16)} " +
-                                "tripKey=${sha256TripPublication0387(target.tripId).take(16)} " +
-                                "profileVerified=true targetUrlTripMatches=${BlaBlaCollectorUrlModule.tripId(target.tripHref) == target.tripId} " +
-                                "confirmed=false piiLogged=false cookiesLogged=false",
-                        )
-                    }.onFailure { error ->
-                        UnifiedDebugEventStore.record(
-                            "OPERATIONAL_BROWSER_TARGET_NAVIGATION_DISPATCH_FAILED_0564",
-                            context.packageName,
-                            "operationId=$operationId " +
-                                "accountKey=${sha256TripPublication0387(liveAccount.id).take(16)} " +
-                                "tripKey=${sha256TripPublication0387(target.tripId).take(16)} " +
-                                "error=${error.javaClass.simpleName.take(80)} confirmed=false",
-                        )
-                        onMessage("Não foi possível abrir a viagem original na BlaBlaCar.")
-                    }
-                },
-            )
+                    OperationalTripBrowserCard0563(
+                        row = row,
+                        zoneId = zoneId,
+                        archived = true,
+                        onOpen = { openRow(row) },
+                    )
+                }
+            }
         }
     }
 }
@@ -264,6 +358,7 @@ internal fun operationalConnectedEntries0563(
 private fun OperationalTripBrowserCard0563(
     row: OperationalTripBrowserRow0563,
     zoneId: ZoneId,
+    archived: Boolean,
     onOpen: () -> Unit,
 ) {
     val targetConfirmed = row.target != null && row.account != null
@@ -290,6 +385,12 @@ private fun OperationalTripBrowserCard0563(
                     style = MaterialTheme.typography.labelLarge,
                 )
             }
+            if (archived) {
+                Text(
+                    text = "Arquivada",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
             Text(
                 text = row.entry.origin,
                 style = MaterialTheme.typography.titleMedium,
@@ -303,10 +404,10 @@ private fun OperationalTripBrowserCard0563(
                 style = MaterialTheme.typography.titleMedium,
             )
             Text(
-                text = if (targetConfirmed) {
-                    "Toque para abrir esta viagem no site original da BlaBlaCar"
-                } else {
-                    "Identidade externa incompleta — abertura bloqueada"
+                text = when {
+                    !targetConfirmed -> "Identidade externa incompleta — abertura bloqueada"
+                    archived -> "Toque para abrir esta viagem arquivada no site original da BlaBlaCar"
+                    else -> "Toque para abrir esta viagem no site original da BlaBlaCar"
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
