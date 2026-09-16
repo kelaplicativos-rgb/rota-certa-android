@@ -39,7 +39,7 @@ class OperationalTripAutoArchive0566Test {
         assertTrue(source.contains("operationalArchiveSelection0566"))
         assertTrue(source.contains("System.currentTimeMillis()"))
         assertTrue(source.contains("delay(waitMillis)"))
-        assertTrue(source.contains("Arquivadas ("))
+        assertTrue(source.contains("Viagens arquivadas"))
         assertTrue(source.contains("Nenhuma viagem atual ou futura."))
     }
 }
