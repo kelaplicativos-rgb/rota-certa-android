@@ -27,12 +27,13 @@ import androidx.webkit.WebViewFeature
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 
 /**
- * 0.1.565 — minimal real BlaBlaCar browser used by "Todas as viagens".
+ * 0.1.570 — minimal real BlaBlaCar browser used by "Todas as viagens".
  *
  * There are intentionally no Rota Certa trip-operation shortcuts here. The activity
  * reuses the already isolated AndroidX WebView profile of the owning account, loads the
- * original administrative trip URL and only records success after the final main-frame
- * destination resolves back to the exact requested trip.
+ * original administrative trip URL and records the passenger-facing permalink directly
+ * from authoritative main-frame navigation when BlaBlaCar opens the public /trip page.
+ * The capture never depends on a visible "Compartilhar esta carona" control or DOM text.
  *
  * Android 15+ enforces edge-to-edge for apps targeting API 35. The browser therefore owns
  * an inset-aware root that keeps the real BlaBlaCar viewport inside status/navigation bars
@@ -42,11 +43,12 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
  * BlaBlaCarSessionKeeper0552 runtime state. That keeper's acquire/navigation calls move a
  * session into REVALIDATING until positive UUID evidence is observed; this activity does
  * not run that identity probe, so mutating the keeper here would poison otherwise healthy
- * account state. Strong account identity is re-read from the dynamic registry before load
- * and again during final attestation instead.
+ * account state. Strong account identity is re-read from the dynamic registry before load,
+ * final attestation and public-link persistence.
  */
 class OperationalTripBrowserActivity0564 : Activity() {
     private val settleHandler = Handler(Looper.getMainLooper())
+    private val tripStore by lazy { TripStore(applicationContext) }
     private lateinit var registry: BlaBlaDynamicAccountRegistry
     private lateinit var account: BlaBlaDynamicAccount
     private lateinit var webView: WebView
@@ -58,6 +60,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
     private var navigationGeneration = 0L
     private var terminalAttestation: OperationalBrowserNavigationResult0564? = null
     private var terminalTransportFailure = false
+    private var lastCapturedPublicUrl0570 = ""
     private var destroyed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,20 +182,34 @@ class OperationalTripBrowserActivity0564 : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
         )
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean =
-                handleNonWebNavigation0564(request?.url)
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                if (request?.isForMainFrame == true) {
+                    captureAuthoritativePublicTripNavigation0570(request.url?.toString(), "shouldOverrideUrlLoading")
+                }
+                return handleNonWebNavigation0564(request?.url)
+            }
 
             @Suppress("DEPRECATION")
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean =
-                handleNonWebNavigation0564(url?.let(Uri::parse))
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                captureAuthoritativePublicTripNavigation0570(url, "shouldOverrideUrlLoadingLegacy")
+                return handleNonWebNavigation0564(url?.let(Uri::parse))
+            }
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 navigationGeneration += 1L
+                captureAuthoritativePublicTripNavigation0570(url, "onPageStarted")
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                captureAuthoritativePublicTripNavigation0570(url, "doUpdateVisitedHistory")
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                captureAuthoritativePublicTripNavigation0570(url, "onPageFinished")
+                captureAuthoritativePublicTripNavigation0570(view.url, "onPageFinishedCurrentUrl")
                 if (terminalAttestation != null || terminalTransportFailure || destroyed) return
                 val expectedGeneration = navigationGeneration
                 settleHandler.postDelayed({
@@ -228,6 +245,62 @@ class OperationalTripBrowserActivity0564 : Activity() {
             }
         }
         setInsetAwareContent0565(webView)
+    }
+
+    private fun captureAuthoritativePublicTripNavigation0570(rawUrl: String?, source: String) {
+        if (destroyed || requestedTripId.isBlank() || expectedProfileUuid.isBlank()) return
+        val canonical = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+            raw = rawUrl,
+            expectedAdministrativeTripId = requestedTripId,
+            boundAdministrativeTripId = requestedTripId,
+        ) ?: return
+        if (canonical == lastCapturedPublicUrl0570) return
+        if (!liveProfileMatches0564()) {
+            UnifiedDebugEventStore.recordAlways(
+                "OPERATIONAL_BROWSER_PUBLIC_TRIP_REJECTED_0570",
+                packageName,
+                "operationId=${operationId.take(80)} reason=IDENTITY_MISMATCH source=${source.take(48)} failClosed=true piiLogged=false",
+            )
+            return
+        }
+
+        val matches = tripStore.trips().filter { trip ->
+            !trip.deleted &&
+                trip.blablaTripId?.trim() == requestedTripId &&
+                trip.blablaProfileUuid?.trim()?.lowercase() == expectedProfileUuid
+        }
+        val trip = matches.singleOrNull()
+        if (trip == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "OPERATIONAL_BROWSER_PUBLIC_TRIP_REJECTED_0570",
+                packageName,
+                "operationId=${operationId.take(80)} reason=CANONICAL_BINDING_NOT_UNIQUE source=${source.take(48)} " +
+                    "matchCount=${matches.size.coerceAtMost(99)} failClosed=true piiLogged=false",
+            )
+            return
+        }
+        if (trip.blablaPublicUrl == canonical) {
+            lastCapturedPublicUrl0570 = canonical
+            return
+        }
+
+        tripStore.saveTrip(
+            trip.copy(
+                blablaPublicUrl = canonical,
+                updatedAtMillis = System.currentTimeMillis(),
+            ),
+        )
+        lastCapturedPublicUrl0570 = canonical
+        val publicIdKey = BlaBlaCollectorUrlModule.tripId(canonical)
+            ?.let { sha256TripPublication0387(it).take(16) }
+            .orEmpty()
+        UnifiedDebugEventStore.recordAlways(
+            "OPERATIONAL_BROWSER_PUBLIC_TRIP_CAPTURED_0570",
+            packageName,
+            "operationId=${operationId.take(80)} source=${source.take(48)} publicTripKey=$publicIdKey " +
+                "binding=${BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION} " +
+                "canonicalTripKey=${sha256TripPublication0387(trip.id).take(16)} persisted=true piiLogged=false",
+        )
     }
 
     private fun attestFinalDestination0564(finalUrl: String) {
