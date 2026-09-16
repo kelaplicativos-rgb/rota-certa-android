@@ -63,6 +63,13 @@ jobs:
           fi
           echo "MATERIALIZED_HEAD=$(git rev-parse HEAD)"
 
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+          node -e "require('./trip-platform/functions/node_modules/firebase-functions'); require('./trip-platform/functions/node_modules/firebase-admin'); console.log('TRIP_API_DEPENDENCIES=PASS')"
+
       - name: Configure Firebase authentication
         shell: bash
         run: |
