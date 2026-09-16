@@ -88,6 +88,11 @@
             android:authorities="${applicationId}.agenda.trace"
             android:exported="false"
             android:initOrder="110" />
+        <provider
+            android:name=".trips.OperationalBrowserAutoDiscoveryProvider0567"
+            android:authorities="${applicationId}.operational.browser.auto.discovery"
+            android:exported="false"
+            android:initOrder="105" />
         <activity
             android:name=".trips.TripsActivity"
             android:exported="true">
