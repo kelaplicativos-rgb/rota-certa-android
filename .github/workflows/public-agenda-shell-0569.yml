@@ -49,9 +49,12 @@ jobs:
           grep -Fq 'https://wa.me/' trip-platform/public/public-agenda-shell-0569.js
           grep -Fq 'id="whatsappFab0569"' trip-platform/public/index.html
           grep -Fq 'safe-area-inset-bottom' trip-platform/public/index.html
-          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569' trip-platform/public/index.html
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569.1' trip-platform/public/index.html
           ! grep -Fiq 'Minha Área' trip-platform/public/index.html
           ! grep -Fiq 'Fazer pedido de reserva' trip-platform/public/index.html
+          ! grep -Fiq 'passageiro' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fiq 'agendaOccupancy0569' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fiq 'confirmedPassengerSeats' trip-platform/public/public-agenda-shell-0569.js
 
       - name: Configure Firebase authentication
         shell: bash
@@ -93,11 +96,14 @@ jobs:
           BASE='https://rota-certa-7ccc8.web.app'
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/ezequiel?sha=$GITHUB_SHA" > /tmp/live-index.html
           curl --retry 8 --retry-delay 3 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?sha=$GITHUB_SHA" > /tmp/live-shell.js
-          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569' /tmp/live-index.html
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.569.1' /tmp/live-index.html
           grep -Fq 'id="whatsappFab0569"' /tmp/live-index.html
           ! grep -Fiq 'Minha Área' /tmp/live-index.html
           grep -Fq 'card.href = publicUrl' /tmp/live-shell.js
           grep -Fq 'body?.driver?.whatsapp' /tmp/live-shell.js
           grep -Fq 'https://wa.me/' /tmp/live-shell.js
-          echo 'PUBLIC_AGENDA_SHELL_0569_LIVE=PASS'
+          ! grep -Fiq 'passageiro' /tmp/live-shell.js
+          ! grep -Fiq 'agendaOccupancy0569' /tmp/live-shell.js
+          ! grep -Fiq 'confirmedPassengerSeats' /tmp/live-shell.js
+          echo 'PUBLIC_AGENDA_SHELL_0569_PASSENGER_FREE_LIVE=PASS'
           echo "source_head=$GITHUB_SHA"
