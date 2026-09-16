@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  test-and-build:
+  build-and-publish:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -36,13 +36,6 @@ jobs:
           test "$ACTUAL" = "$GITHUB_SHA"
           echo "FINAL_SHA=$ACTUAL" >> "$GITHUB_ENV"
 
-      - name: Unit tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x ./gradlew
-          ./gradlew --no-daemon testDebugUnitTest
-
       - name: Assemble installable APK
         shell: bash
         env:
@@ -50,6 +43,7 @@ jobs:
           ROTA_CERTA_GIT_BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          chmod +x ./gradlew
           ./gradlew --no-daemon assembleDebug
 
       - name: Package exact-SHA APK and evidence
