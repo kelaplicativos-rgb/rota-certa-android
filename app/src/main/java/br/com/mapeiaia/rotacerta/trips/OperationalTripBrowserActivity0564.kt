@@ -26,6 +26,13 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
  * reuses the already isolated AndroidX WebView profile of the owning account, loads the
  * original administrative trip URL and only records success after the final main-frame
  * destination resolves back to the exact requested trip.
+ *
+ * Important: this read/interactive browser intentionally does not mutate the central
+ * BlaBlaCarSessionKeeper0552 runtime state. That keeper's acquire/navigation calls move a
+ * session into REVALIDATING until positive UUID evidence is observed; this activity does
+ * not run that identity probe, so mutating the keeper here would poison otherwise healthy
+ * account state. Strong account identity is re-read from the dynamic registry before load
+ * and again during final attestation instead.
  */
 class OperationalTripBrowserActivity0564 : Activity() {
     private val settleHandler = Handler(Looper.getMainLooper())
@@ -39,6 +46,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
     private var expectedProfileUuid = ""
     private var navigationGeneration = 0L
     private var terminalAttestation: OperationalBrowserNavigationResult0564? = null
+    private var terminalTransportFailure = false
     private var destroyed = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,7 +98,6 @@ class OperationalTripBrowserActivity0564 : Activity() {
         }
 
         createBrowser0564()
-        BlaBlaCarSessionKeeper0552.observeAcquire(this, account, "operational_browser_0564")
         UnifiedDebugEventStore.recordAlways(
             "OPERATIONAL_BROWSER_TARGET_LOAD_STARTED_0564",
             packageName,
@@ -135,21 +142,17 @@ class OperationalTripBrowserActivity0564 : Activity() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 navigationGeneration += 1L
-                BlaBlaCarSessionKeeper0552.observeNavigation(
-                    this@OperationalTripBrowserActivity0564,
-                    account,
-                    url,
-                )
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                if (terminalAttestation != null || destroyed) return
+                if (terminalAttestation != null || terminalTransportFailure || destroyed) return
                 val expectedGeneration = navigationGeneration
                 settleHandler.postDelayed({
                     if (
                         !destroyed &&
                         terminalAttestation == null &&
+                        !terminalTransportFailure &&
                         expectedGeneration == navigationGeneration
                     ) {
                         attestFinalDestination0564(view.url.orEmpty())
@@ -163,7 +166,8 @@ class OperationalTripBrowserActivity0564 : Activity() {
                 error: WebResourceError,
             ) {
                 super.onReceivedError(view, request, error)
-                if (!request.isForMainFrame || terminalAttestation != null) return
+                if (!request.isForMainFrame || terminalAttestation != null || terminalTransportFailure) return
+                terminalTransportFailure = true
                 UnifiedDebugEventStore.recordAlways(
                     "OPERATIONAL_BROWSER_TARGET_NAVIGATION_FAILED_0564",
                     packageName,
@@ -180,7 +184,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
     }
 
     private fun attestFinalDestination0564(finalUrl: String) {
-        if (terminalAttestation != null || destroyed) return
+        if (terminalAttestation != null || terminalTransportFailure || destroyed) return
         if (finalUrl.isBlank()) {
             UnifiedDebugEventStore.recordAlways(
                 "OPERATIONAL_BROWSER_TARGET_NAVIGATION_UNVERIFIED_0564",
@@ -197,7 +201,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
 
         val profileMatches = liveProfileMatches0564()
         val finalTripId = BlaBlaCollectorUrlModule.tripId(finalUrl).orEmpty()
-        val authRequired = operationalBrowserAuthUrl0564(finalUrl)
+        val authRequired = BlaBlaCarSessionKeeper0552.isExplicitLoginUrl(finalUrl)
         val allowed = BlaBlaCollectorUrlModule.isAllowed(finalUrl)
         val result = operationalBrowserNavigationResult0564(
             requestedTripId = requestedTripId,
@@ -303,7 +307,7 @@ class OperationalTripBrowserActivity0564 : Activity() {
     override fun onDestroy() {
         destroyed = true
         settleHandler.removeCallbacksAndMessages(null)
-        if (terminalAttestation == null && operationId.isNotBlank()) {
+        if (terminalAttestation == null && !terminalTransportFailure && operationId.isNotBlank()) {
             UnifiedDebugEventStore.recordAlways(
                 "OPERATIONAL_BROWSER_TARGET_NAVIGATION_CANCELLED_0564",
                 packageName,
@@ -344,14 +348,5 @@ internal object OperationalTripBrowserIntents0564 {
         .putExtra(EXTRA_EXPECTED_PROFILE_UUID, target.profileUuid)
 }
 
-internal fun operationalBrowserAuthUrl0564(rawUrl: String): Boolean {
-    val normalized = rawUrl.lowercase()
-    return listOf(
-        "/login",
-        "/signin",
-        "/sign-in",
-        "/auth/",
-        "/authentication",
-        "/connexion",
-    ).any(normalized::contains)
-}
+internal fun operationalBrowserAuthUrl0564(rawUrl: String): Boolean =
+    BlaBlaCarSessionKeeper0552.isExplicitLoginUrl(rawUrl)
