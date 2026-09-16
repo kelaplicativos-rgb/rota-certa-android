@@ -96,6 +96,27 @@ class OperationalBrowserAttestation0564Test {
     }
 
     @Test
+    fun operationalBrowserDoesNotLeaveSharedSessionHealthInRevalidating() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalTripBrowserActivity0564.kt",
+        ).readText()
+        assertFalse(source.contains("BlaBlaCarSessionKeeper0552.observeAcquire("))
+        assertFalse(source.contains("BlaBlaCarSessionKeeper0552.observeNavigation("))
+        assertTrue(source.contains("BlaBlaCarSessionKeeper0552.isExplicitLoginUrl(finalUrl)"))
+    }
+
+    @Test
+    fun transportFailureIsTerminalAndNotRelabeledLifecycleCancellation() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalTripBrowserActivity0564.kt",
+        ).readText()
+        assertTrue(source.contains("terminalTransportFailure = true"))
+        assertTrue(source.contains("terminalAttestation == null && !terminalTransportFailure"))
+        assertTrue(source.contains("result=CANCELLED_BY_LIFECYCLE"))
+        assertTrue(source.contains("result = \"TRANSPORT_ERROR\""))
+    }
+
+    @Test
     fun everyNonOpenableVisibilityDecisionHasExplicitReasonContract() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserContracts0564.kt",
