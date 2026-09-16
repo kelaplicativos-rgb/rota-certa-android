@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.567",
+      "build": 5858,
+      "commit": null,
+      "branch": "agent/operational-browser-auto-discovery-0.1.567",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Ao abrir ou retomar a área de viagens, o Rota Certa solicita automaticamente ao coletor canônico a descoberta das viagens publicadas nos perfis BlaBlaCar conectados.",
+        "Uma viagem nova descoberta pelo coletor entra no estado canônico e passa a aparecer em Todas as viagens sem cadastro manual nem botão de atualização."
+      ],
+      "fixed": [
+        "Eliminada a dependência de aguardar apenas o próximo ciclo periódico para que uma publicação nova apareça no índice operacional depois que o motorista retorna ao Rota Certa.",
+        "Retornos rápidos ao app são protegidos por debounce de ciclo de vida para evitar enfileiramento redundante de coletas."
+      ],
+      "improved": [
+        "A implementação reutiliza AgendaBackgroundSync0392 e o pipeline coletor → reconciliação canônica → BookingRealtimeEvents, sem criar segunda fonte de verdade.",
+        "Somente perfis com UUID externo confirmado habilitam o gatilho automático; a sincronização periódica existente permanece como contingência para mudanças feitas enquanto o Rota Certa não é retomado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Todas as viagens",
+        "BlaBlaCar",
+        "Coletor",
+        "Sincronização canônica",
+        "Contas externas",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.566",
       "build": 5857,
       "commit": null,
