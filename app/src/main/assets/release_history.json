@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.566",
+      "build": 5857,
+      "commit": null,
+      "branch": "agent/operational-browser-auto-archive-0.1.566",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todas as viagens passa a separar automaticamente viagens atuais/futuras de viagens arquivadas usando o timestamp canônico de saída.",
+        "Assim que departureAtMillis fica estritamente no passado, o card deixa a sequência ativa sem exigir pull-to-refresh ou reabertura da tela.",
+        "Viagens arquivadas permanecem acessíveis em uma seção recolhível e continuam abrindo a viagem original da BlaBlaCar quando o destino administrativo ainda estiver disponível."
+      ],
+      "fixed": [
+        "Datas e horários já passados deixam de permanecer misturados com viagens atuais e futuras na lista operacional.",
+        "A virada temporal também atualiza o rótulo Hoje/Amanhã enquanto a tela permanece aberta."
+      ],
+      "improved": [
+        "A lista ativa permanece em ordem cronológica crescente; o arquivo usa ordem decrescente, deixando a viagem passada mais recente primeiro.",
+        "O relógio da tela acorda no próximo limite de saída, com verificação periódica de segurança, sem hardcode de data, cidade, conta ou viagem."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Arquivo de viagens",
+        "Navegador operacional",
+        "Ordenação temporal",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.565",
       "build": 5856,
       "commit": null,
