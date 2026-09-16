@@ -79,17 +79,11 @@ if (!source.includes(`function ${helperName}(`)) {
   source = source.slice(0, at) + helper + source.slice(at);
 }
 
-const oldBlock = `  const rawTrips = tester
-    ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
-    : await Promise.all(sourceDocs.map((doc) => safePublicTripWithCanonicalBookings0497(doc)));
-  const trips = rawTrips.map((trip, index) =>
+const projectionBlock = `  const trips = rawTrips.map((trip, index) =>
     publicTripProjection0491(applyPublicTripVisibility0434(trip, sourceDocs[index].data(), driver))
   );`;
 
-const newBlock = `  const rawTrips = tester
-    ? await Promise.all(sourceDocs.map((doc) => testerOverlayPublicTrip(doc.id, doc.data(), tester)))
-    : await Promise.all(sourceDocs.map((doc) => safePublicTripWithCanonicalBookings0497(doc)));
-  const exactLinkedTrips0570 = tester
+const linkedProjectionBlock = `  const exactLinkedTrips0570 = tester
     ? rawTrips
     : await publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips);
   const trips = exactLinkedTrips0570.map((trip, index) =>
@@ -97,11 +91,11 @@ const newBlock = `  const rawTrips = tester
   );`;
 
 if (!source.includes("const exactLinkedTrips0570 = tester")) {
-  const occurrences = source.split(oldBlock).length - 1;
+  const occurrences = source.split(projectionBlock).length - 1;
   if (occurrences !== 2) {
-    throw new Error(`expected 2 public Agenda render blocks, found ${occurrences}`);
+    throw new Error(`expected 2 public Agenda projection blocks, found ${occurrences}`);
   }
-  source = source.split(oldBlock).join(newBlock);
+  source = source.split(projectionBlock).join(linkedProjectionBlock);
 }
 
 const helperOccurrences = source.split(`function ${helperName}(`).length - 1;
