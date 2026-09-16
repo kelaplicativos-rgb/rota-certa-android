@@ -1,15 +1,21 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -22,13 +28,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.delay
 
@@ -274,22 +280,11 @@ internal fun OperationalAllTripsBrowserScreen0563(
             itemsIndexed(
                 items = activeRows,
                 key = { _, row -> "active|${operationalTripBrowserKey0563(row.entry)}" },
-            ) { index, row ->
-                val date = operationalDepartureDate0563(row.entry, zoneId)
-                val previousDate = activeRows.getOrNull(index - 1)?.let { previous ->
-                    operationalDepartureDate0563(previous.entry, zoneId)
-                }
-                if (index == 0 || date != previousDate) {
-                    Text(
-                        text = operationalDateLabel0563(date, today),
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(top = if (index == 0) 0.dp else 8.dp, bottom = 2.dp),
-                    )
-                }
-
+            ) { _, row ->
                 OperationalTripBrowserCard0563(
                     row = row,
                     zoneId = zoneId,
+                    today = today,
                     archived = false,
                     onOpen = { openRow(row) },
                 )
@@ -302,13 +297,14 @@ internal fun OperationalAllTripsBrowserScreen0563(
                     onClick = { showArchived = !showArchived },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        if (showArchived) {
-                            "Ocultar arquivadas (${archivedRows.size})"
-                        } else {
-                            "Arquivadas (${archivedRows.size})"
-                        },
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Viagens arquivadas", style = MaterialTheme.typography.titleMedium)
+                        Text(if (showArchived) "⌃" else "⌄", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
 
@@ -316,22 +312,11 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 itemsIndexed(
                     items = archivedRows,
                     key = { _, row -> "archived|${operationalTripBrowserKey0563(row.entry)}" },
-                ) { index, row ->
-                    val date = operationalDepartureDate0563(row.entry, zoneId)
-                    val previousDate = archivedRows.getOrNull(index - 1)?.let { previous ->
-                        operationalDepartureDate0563(previous.entry, zoneId)
-                    }
-                    if (index == 0 || date != previousDate) {
-                        Text(
-                            text = operationalDateLabel0563(date, today),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = if (index == 0) 4.dp else 8.dp, bottom = 2.dp),
-                        )
-                    }
-
+                ) { _, row ->
                     OperationalTripBrowserCard0563(
                         row = row,
                         zoneId = zoneId,
+                        today = today,
                         archived = true,
                         onOpen = { openRow(row) },
                     )
@@ -358,59 +343,124 @@ internal fun operationalConnectedEntries0563(
 private fun OperationalTripBrowserCard0563(
     row: OperationalTripBrowserRow0563,
     zoneId: ZoneId,
+    today: LocalDate,
     archived: Boolean,
     onOpen: () -> Unit,
 ) {
+    val entry = row.entry
     val targetConfirmed = row.target != null && row.account != null
+    val date = operationalDepartureDate0563(entry, zoneId)
+    val departureTime = operationalDepartureTime0563(entry, zoneId)
+    val arrivalTime = operationalArrivalTime0568(entry, zoneId)
+    val duration = operationalDurationLabel0568(entry.departureAtMillis, entry.arrivalAtMillis)
+    val dateLabel = operationalDateLabel0568(date, today)
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = targetConfirmed, onClick = onOpen),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            if (entry.status == TripStatus.CANCELLED) {
+                Text(
+                    text = "⊘ Cancelada",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = operationalDepartureTime0563(row.entry, zoneId),
-                    style = MaterialTheme.typography.titleLarge,
+                    text = dateLabel,
+                    style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
                     text = row.account?.displayLabel ?: "Conta não confirmada",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            if (archived) {
-                Text(
-                    text = "Arquivada",
                     style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = row.entry.origin,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = "↓",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = row.entry.destination,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = when {
-                    !targetConfirmed -> "Identidade externa incompleta — abertura bloqueada"
-                    archived -> "Toque para abrir esta viagem arquivada no site original da BlaBlaCar"
-                    else -> "Toque para abrir esta viagem no site original da BlaBlaCar"
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.width(60.dp),
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    Text(departureTime, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(14.dp))
+                    if (duration != null) {
+                        Text(
+                            duration,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Spacer(Modifier.height(16.dp))
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    Text(arrivalTime ?: "—", style = MaterialTheme.typography.titleMedium)
+                }
+
+                Column(
+                    modifier = Modifier.width(34.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "●
+│
+│
+●",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(entry.origin, style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(if (duration != null) 42.dp else 46.dp))
+                    Text(entry.destination, style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("🚗", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = operationalPassengerSummary0568(entry),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            if (!targetConfirmed) {
+                Text(
+                    text = "Identidade externa incompleta — abertura bloqueada",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            } else if (archived) {
+                Text(
+                    text = "Viagem arquivada",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -430,9 +480,64 @@ private fun operationalDepartureTime0563(entry: TripTimelineEntry, zoneId: ZoneI
         .atZone(zoneId)
         .format(DateTimeFormatter.ofPattern("HH:mm"))
 
-private fun operationalDateLabel0563(date: LocalDate, today: LocalDate): String = when (date) {
-    today -> "Hoje"
-    today.plusDays(1) -> "Amanhã"
-    else -> date.format(DateTimeFormatter.ofPattern("EEE, dd MMM", Locale("pt", "BR")))
-        .replaceFirstChar { first -> if (first.isLowerCase()) first.titlecase(Locale("pt", "BR")) else first.toString() }
+private fun operationalArrivalTime0568(entry: TripTimelineEntry, zoneId: ZoneId): String? =
+    entry.arrivalAtMillis?.let { arrival ->
+        Instant.ofEpochMilli(arrival)
+            .atZone(zoneId)
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
+    }
+
+internal fun operationalDurationLabel0568(departureAtMillis: Long, arrivalAtMillis: Long?): String? {
+    val arrival = arrivalAtMillis ?: return null
+    val elapsedMillis = arrival - departureAtMillis
+    if (elapsedMillis < 0L) return null
+    val minutes = elapsedMillis / 60_000L
+    val hours = minutes / 60L
+    val remainingMinutes = minutes % 60L
+    return when {
+        hours > 0L && remainingMinutes > 0L -> "${hours}h${remainingMinutes.toString().padStart(2, '0')}"
+        hours > 0L -> "${hours}h"
+        else -> "${remainingMinutes}min"
+    }
+}
+
+internal fun operationalDateLabel0568(date: LocalDate, today: LocalDate): String {
+    if (date == today) return "Hoje"
+    if (date == today.minusDays(1)) return "Ontem"
+    if (date == today.plusDays(1)) return "Amanhã"
+
+    val weekday = when (date.dayOfWeek) {
+        java.time.DayOfWeek.MONDAY -> "Seg."
+        java.time.DayOfWeek.TUESDAY -> "Ter."
+        java.time.DayOfWeek.WEDNESDAY -> "Qua."
+        java.time.DayOfWeek.THURSDAY -> "Qui."
+        java.time.DayOfWeek.FRIDAY -> "Sex."
+        java.time.DayOfWeek.SATURDAY -> "Sáb."
+        java.time.DayOfWeek.SUNDAY -> "Dom."
+    }
+    val month = when (date.monthValue) {
+        1 -> "Jan."
+        2 -> "Fev."
+        3 -> "Mar."
+        4 -> "Abr."
+        5 -> "Mai."
+        6 -> "Jun."
+        7 -> "Jul."
+        8 -> "Ago."
+        9 -> "Set."
+        10 -> "Out."
+        11 -> "Nov."
+        else -> "Dez."
+    }
+    val base = "$weekday ${date.dayOfMonth.toString().padStart(2, '0')} $month"
+    return if (date.year == today.year) base else "$base ${date.year}"
+}
+
+internal fun operationalPassengerSummary0568(entry: TripTimelineEntry): String = when {
+    entry.maximumOccupiedSeats > 0 -> {
+        val seats = entry.maximumOccupiedSeats
+        "$seats ${if (seats == 1) "passageiro" else "passageiros"}"
+    }
+    entry.blablaPassengerRosterComplete == true -> "Nenhum passageiro nesta viagem"
+    else -> "Viagem BlaBlaCar"
 }

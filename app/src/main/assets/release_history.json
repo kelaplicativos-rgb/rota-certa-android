@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.568",
+      "build": 5859,
+      "commit": null,
+      "branch": "agent/operational-browser-video-style-0.1.568",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Os cards de Todas as viagens passam a seguir a composição visual observada no vídeo de referência da tela Suas viagens da BlaBlaCar: data dentro do card, horários em coluna, linha de rota, origem/destino e resumo discreto de passageiros.",
+        "Datas do mesmo ano são exibidas no padrão Sex. 18 Set.; datas de outro ano incluem obrigatoriamente o ano, por exemplo Sáb. 07 Ago. 2027.",
+        "Hoje, Ontem e Amanhã usam rótulos relativos; viagens canceladas exibem Cancelada no topo do card; Viagens arquivadas usa seção recolhível no mesmo fluxo visual."
+      ],
+      "fixed": [
+        "Corrigida a omissão do ano em viagens do ano seguinte, que poderia fazer uma viagem de 2027 parecer pertencente a 2026.",
+        "Removidos cabeçalhos de data externos aos cards para que cada viagem carregue sua própria data, como no vídeo de referência."
+      ],
+      "improved": [
+        "A formatação de dia da semana e mês usa abreviações brasileiras determinísticas e não depende da pontuação variável do Locale do aparelho.",
+        "A mudança é exclusivamente de apresentação do índice operacional: tocar no card continua abrindo a viagem original na sessão BlaBlaCar correta e nenhuma ação operacional foi duplicada no Rota Certa."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Navegador operacional",
+        "Datas",
+        "Arquivo de viagens",
+        "BlaBlaCar",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.567",
       "build": 5858,
       "commit": null,
