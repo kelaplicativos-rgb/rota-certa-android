@@ -1,16 +1,16 @@
-name: Finalize Operational Browser 0.1.565
+name: Finalize Operational Browser 0.1.566
 
 on:
   push:
     branches:
-      - agent/operational-browser-system-bars-0.1.565
+      - agent/operational-browser-auto-archive-0.1.566
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: operational-browser-final-01565-${{ github.ref }}
+  group: operational-browser-final-01566-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prepare authoritative 0.1.565 build metadata
+      - name: Prepare authoritative 0.1.566 build metadata
         run: |
           python3 - <<'PY'
           import json
@@ -31,10 +31,10 @@ jobs:
 
           gradle = Path('app/build.gradle.kts')
           text = gradle.read_text()
-          old_code = 'val releaseVersionCode = 5_855'
-          old_name = 'val releaseVersionName = "0.1.564"'
-          new_code = 'val releaseVersionCode = 5_856'
-          new_name = 'val releaseVersionName = "0.1.565"'
+          old_code = 'val releaseVersionCode = 5_856'
+          old_name = 'val releaseVersionName = "0.1.565"'
+          new_code = 'val releaseVersionCode = 5_857'
+          new_name = 'val releaseVersionName = "0.1.566"'
 
           if new_code not in text:
               if old_code not in text:
@@ -49,33 +49,33 @@ jobs:
           path = Path('app/src/main/assets/release_history.json')
           data = json.loads(path.read_text())
           releases = data['releases']
-          matches = [r for r in releases if r.get('version') == '0.1.565' and r.get('build') == 5856]
+          matches = [r for r in releases if r.get('version') == '0.1.566' and r.get('build') == 5857]
           if len(matches) > 1:
-              raise SystemExit('duplicate 0.1.565/5856 release history records')
+              raise SystemExit('duplicate 0.1.566/5857 release history records')
           if not matches:
               releases.insert(0, {
-                  'version': '0.1.565',
-                  'build': 5856,
+                  'version': '0.1.566',
+                  'build': 5857,
                   'commit': None,
-                  'branch': 'agent/operational-browser-system-bars-0.1.565',
+                  'branch': 'agent/operational-browser-auto-archive-0.1.566',
                   'generatedAt': None,
                   'status': 'EM_VALIDACAO',
                   'implemented': [
-                      'O navegador operacional passa a aplicar insets reais das barras de sistema e do recorte de tela ao viewport da BlaBlaCar.',
-                      'A área navegável da página fica contida entre a barra superior do Android e a barra inferior de navegação, inclusive em edge-to-edge obrigatório.'
+                      'Todas as viagens passa a separar automaticamente viagens atuais/futuras de viagens arquivadas usando o timestamp canônico de saída.',
+                      'Assim que departureAtMillis fica estritamente no passado, o card deixa a sequência ativa sem exigir pull-to-refresh ou reabertura da tela.',
+                      'Viagens arquivadas permanecem acessíveis em uma seção recolhível e continuam abrindo a viagem original da BlaBlaCar quando o destino administrativo ainda estiver disponível.'
                   ],
                   'fixed': [
-                      'Corrigida a sobreposição do conteúdo da BlaBlaCar pela barra de status superior no Samsung/Android 16.',
-                      'Corrigida a sobreposição do conteúdo e dos controles inferiores pela barra de navegação/gestos do Android.',
-                      'A tela de erro do navegador operacional também passa a respeitar os mesmos insets seguros.'
+                      'Datas e horários já passados deixam de permanecer misturados com viagens atuais e futuras na lista operacional.',
+                      'A virada temporal também atualiza o rótulo Hoje/Amanhã enquanto a tela permanece aberta.'
                   ],
                   'improved': [
-                      'Ícones das barras de status e navegação passam a usar aparência escura sobre o fundo claro do navegador.',
-                      'A correção é dinâmica e reaplicada quando os insets mudam, sem hardcode de altura, modelo de aparelho ou densidade.'
+                      'A lista ativa permanece em ordem cronológica crescente; o arquivo usa ordem decrescente, deixando a viagem passada mais recente primeiro.',
+                      'O relógio da tela acorda no próximo limite de saída, com verificação periódica de segurança, sem hardcode de data, cidade, conta ou viagem.'
                   ],
                   'regressions': [],
-                  'resolvedRegressions': ['Conteúdo WebView sobreposto pelas barras do sistema na 0.1.564'],
-                  'modulesAffected': ['Todas as viagens', 'BlaBlaCar', 'Navegador operacional', 'Insets Android', 'Build'],
+                  'resolvedRegressions': [],
+                  'modulesAffected': ['Todas as viagens', 'Arquivo de viagens', 'Navegador operacional', 'Ordenação temporal', 'Build'],
                   'detailsComplete': True
               })
               path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
@@ -88,9 +88,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add app/build.gradle.kts app/src/main/assets/release_history.json
           if git diff --cached --quiet; then
-            echo '0.1.565 metadata already authoritative.'
+            echo '0.1.566 metadata already authoritative.'
           else
-            git commit -m 'build: finalize operational browser 0.1.565 [skip ci]'
+            git commit -m 'build: finalize operational browser 0.1.566 [skip ci]'
             git push origin HEAD:${GITHUB_REF_NAME}
           fi
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -108,6 +108,7 @@ jobs:
       - name: Verify operational browser and canonical regressions
         run: |
           ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripAutoArchive0566Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserSystemBars0565Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalBrowserAttestation0564Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.OperationalAllTripsBrowser0563Test' \
@@ -128,16 +129,16 @@ jobs:
           sha256sum "$APK" | tee "$APK.sha256"
           printf '%s\n' '${{ steps.commit.outputs.source_sha }}' > app/build/outputs/apk/debug/SOURCE_SHA.txt
           printf '%s\n' '${{ github.ref_name }}' > app/build/outputs/apk/debug/SOURCE_BRANCH.txt
-          printf '%s\n' '0.1.565' > app/build/outputs/apk/debug/VERSION_NAME.txt
-          printf '%s\n' '5856' > app/build/outputs/apk/debug/VERSION_CODE.txt
-          grep -F 'val releaseVersionCode = 5_856' app/build.gradle.kts
-          grep -F 'val releaseVersionName = "0.1.565"' app/build.gradle.kts
+          printf '%s\n' '0.1.566' > app/build/outputs/apk/debug/VERSION_NAME.txt
+          printf '%s\n' '5857' > app/build/outputs/apk/debug/VERSION_CODE.txt
+          grep -F 'val releaseVersionCode = 5_857' app/build.gradle.kts
+          grep -F 'val releaseVersionName = "0.1.566"' app/build.gradle.kts
           test "$(git rev-parse HEAD)" = '${{ steps.commit.outputs.source_sha }}'
 
       - name: Upload installable APK bound to final source SHA
         uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-operational-browser-0.1.565-${{ steps.commit.outputs.source_sha }}
+          name: rota-certa-operational-browser-0.1.566-${{ steps.commit.outputs.source_sha }}
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/app-debug.apk.sha256
