@@ -1,0 +1,64 @@
+name: Rota Certa 0.1.570 live exact-link proof
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-shell-blablacar-whatsapp-0.1.569
+    paths:
+      - '.github/workflows/public-agenda-exact-blablacar-smoke-0570.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Prove public Agenda exact BlaBla links
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error \
+            "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > /tmp/live-agenda-0570.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/live-agenda-0570.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          if (!trips.length) throw new Error('live Agenda returned no trips');
+          function official(raw) {
+            try {
+              const u = new URL(String(raw || ''));
+              const labels = u.hostname.toLowerCase().replace(/^www\./, '').split('.');
+              if (u.protocol !== 'https:' || labels[0] !== 'blablacar') return false;
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              if (path === '/trip') return /^[A-Za-z0-9_-]{6,}$/.test(String(u.searchParams.get('id') || ''));
+              if (path.startsWith('/trip/')) return /^\/trip\/[A-Za-z0-9_-]{6,}$/i.test(path);
+              return false;
+            } catch (_) { return false; }
+          }
+          const linked = trips.filter((trip) => official(trip && trip.blablaPublicUrl));
+          console.log(`LIVE_PUBLIC_AGENDA_TRIPS=${trips.length}`);
+          console.log(`LIVE_EXACT_BLABLA_LINKS=${linked.length}`);
+          console.log(`LIVE_INERT_TRIPS=${trips.length - linked.length}`);
+          if (linked.length !== trips.length) {
+            throw new Error(`exact BlaBla permalink missing/invalid on ${trips.length - linked.length} public trip(s)`);
+          }
+          console.log('PUBLIC_AGENDA_EXACT_BLABLACAR_0570_LIVE=PASS');
+          NODE
+
+      - name: Prove shell remains passenger-free and clickable by exact URL
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > /tmp/live-index-0570.html
+          curl --retry 5 --retry-delay 2 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > /tmp/live-shell-0570.js
+          grep -Fq 'card.href = publicUrl' /tmp/live-shell-0570.js
+          grep -Fq 'validatedBlaBlaPublicUrl0569(item?.blablaPublicUrl)' /tmp/live-shell-0570.js
+          ! grep -Fiq 'passageiro' /tmp/live-shell-0570.js
+          ! grep -Fiq 'confirmedPassengerSeats' /tmp/live-shell-0570.js
+          grep -Fq 'id="whatsappFab0569"' /tmp/live-index-0570.html
+          echo 'PUBLIC_AGENDA_LIVE_SHELL_0570=PASS'
