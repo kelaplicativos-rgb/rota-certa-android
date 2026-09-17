@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: operational-evolution-engine-0.1.572-${{ github.ref }}
@@ -19,7 +19,6 @@ jobs:
     timeout-minutes: 60
     env:
       GOOGLE_MAPS_API_KEY: operational_evolution_validation_dummy_key
-      RELEASE_TAG: v0.1.572-operational-evolution
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_HOME: /usr/local/lib/android/sdk
 
@@ -102,27 +101,12 @@ jobs:
             apk-sha256.txt
             app/build/reports/tests/testDebugUnitTest
 
-      - name: Publish installable GitHub release
+      - name: Confirm installable artifact publication
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          SOURCE_SHA="$(cat validated-source-head.txt)"
-          cat > release-notes.md <<EOF
-          Rota Certa 0.1.572 — Central de Saúde e Evolução Operacional
-
-          Branch: agent/operational-evolution-engine-0.1.572
-          Commit validado: ${SOURCE_SHA}
-          Package: br.com.mapeiaia.rotacerta
-          VersionName: 0.1.572
-          VersionCode: 5863
-
-          O APK foi gerado do mesmo SHA validado pelo workflow. Foram executados os testes focados do motor, build Android, verificação ZIP, assinatura, package/version e SHA-256.
-          EOF
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG"               rota-certa-0.1.572-operational-evolution.apk               apk-sha256.txt apk-size-bytes.txt aapt-badging.txt apksigner.txt validated-source-head.txt               --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$RELEASE_TAG"               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.572 validado"               --notes-file release-notes.md               --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$RELEASE_TAG"               rota-certa-0.1.572-operational-evolution.apk               apk-sha256.txt apk-size-bytes.txt aapt-badging.txt apksigner.txt validated-source-head.txt               --target "$SOURCE_SHA"               --title "Rota Certa 0.1.572 validado"               --notes-file release-notes.md               --repo "$GITHUB_REPOSITORY"
-          fi
+          test -s rota-certa-0.1.572-operational-evolution.apk
+          test -s apk-sha256.txt
+          test -s validated-source-head.txt
+          test "$(cat validated-source-head.txt)" = "$GITHUB_SHA"
+          echo "APK published as GitHub Actions artifact for exact SHA $GITHUB_SHA"
