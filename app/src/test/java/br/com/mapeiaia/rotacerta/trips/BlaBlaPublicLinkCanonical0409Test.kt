@@ -30,16 +30,18 @@ class BlaBlaPublicLinkCanonical0409Test {
             BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.co.uk/trip?id=$tripIdA", tripIdA),
         )
         assertNull(BlaBlaCollectorUrlModule.publicTrip("https://blablacar.evil.com/trip?id=$tripIdA", tripIdA))
+        assertNull(BlaBlaCollectorUrlModule.publicTrip("https://evilblablacar.com/trip?id=$tripIdA", tripIdA))
         assertNull(BlaBlaCollectorUrlModule.publicTrip("http://www.blablacar.fr/trip?id=$tripIdA", tripIdA))
         assertNull(BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.fr/search?id=$tripIdA", tripIdA))
+        assertNull(BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.fr/trip/$tripIdA/edit", tripIdA))
+        assertNull(BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.fr/trip/$tripIdA/manage", tripIdA))
         assertNull(BlaBlaCollectorUrlModule.publicTrip("https://www.blablacar.fr/trip?id=$tripIdB", tripIdA))
     }
 
-
     @Test
-    fun authoritativeNetworkBindingMayMapAdministrativeIdToDifferentPublicTokenAndPromotesHttp() {
+    fun authoritativeNetworkBindingMayMapAdministrativeIdToDifferentPublicTokenButRequiresHttps() {
         val publicToken = "AaA1b3otfQu_hBV-_wf_NUAE2q6YFjakQATP8vIER6w"
-        val raw = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&search_uuid=temp&p0%5Bac%5D=adult"
+        val raw = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken&search_uuid=temp&p0%5Bac%5D=adult"
         val accepted = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
             raw = raw,
             expectedAdministrativeTripId = tripIdA,
@@ -54,6 +56,13 @@ class BlaBlaPublicLinkCanonical0409Test {
         assertNull(BlaBlaCollectorUrlModule.publicTrip(raw, tripIdA))
         assertNull(
             BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                raw = raw.replace("https://", "http://"),
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
                 raw = raw,
                 expectedAdministrativeTripId = tripIdA,
                 boundAdministrativeTripId = tripIdB,
@@ -62,14 +71,21 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
-    fun orchestratorNavigationBindingMayCarryDifferentPublicTokenButUnboundStateCannot() {
-        val raw = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1NavigationPublicToken0409&search_uuid=temp"
+    fun orchestratorNavigationBindingMayCarryDifferentPublicTokenButRejectsObservedHttp() {
+        val raw = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1NavigationPublicToken0409&search_uuid=temp"
         assertEquals(
             "https://www.blablacar.com.br/trip?source=CARPOOLING&id=AaA1NavigationPublicToken0409",
             BlaBlaCollectorUrlModule.publicTripForCollectorState(
                 raw = raw,
                 expectedTripId = tripIdA,
                 binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+            ),
+        )
+        assertNull(
+            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                raw = raw.replace("https://", "http://"),
+                expectedAdministrativeTripId = tripIdA,
+                boundAdministrativeTripId = tripIdA,
             ),
         )
         assertNull(BlaBlaCollectorUrlModule.publicTripForCollectorState(raw, tripIdA, null))
@@ -83,17 +99,28 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
-    fun authoritativeNetworkBindingStillRejectsSearchAndForgedHosts() {
-        assertNull(
+    fun authoritativeBindingRejectsSearchAdministrativeSuffixesAndForgedHosts() {
+        val publicToken = "PublicToken0409StrictPath"
+        listOf(
+            "https://www.blablacar.fr/search?id=$publicToken",
+            "https://www.blablacar.fr/trip/$publicToken/edit",
+            "https://www.blablacar.fr/trip/$publicToken/manage",
+            "https://blablacar.evil.com/trip?id=$publicToken",
+            "https://evilblablacar.com/trip?id=$publicToken",
+        ).forEach { candidate ->
+            assertNull(
+                BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
+                    candidate,
+                    tripIdA,
+                    tripIdA,
+                ),
+                candidate,
+            )
+        }
+        assertEquals(
+            "https://www.blablacar.co.uk/trip?id=$publicToken",
             BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
-                "https://www.blablacar.fr/search?id=public-0409",
-                tripIdA,
-                tripIdA,
-            ),
-        )
-        assertNull(
-            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeNetwork(
-                "https://www.blablacar.fr.evil.test/trip?id=public-0409",
+                "https://www.blablacar.co.uk/trip?id=$publicToken",
                 tripIdA,
                 tripIdA,
             ),
