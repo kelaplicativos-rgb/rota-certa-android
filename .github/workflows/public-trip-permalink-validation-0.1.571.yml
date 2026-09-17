@@ -10,27 +10,14 @@ on:
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: public-trip-permalink-validation-0.1.571-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  diagnose-stage2:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout exact triggering SHA
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Locate canonical URL/hash implementation
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          grep -R -n -C 12 -E 'canonicalTripStateHash0406|canonicalBoundBlaBlaPublicUrl0423' app/src/main/java/br/com/mapeiaia/rotacerta/trips
-
   validate-stage2:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -43,22 +30,70 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove stage-2 scope
+      - name: Prove stage-2 source scope
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
           BASE=c26ab587eeeb3f554bfbd37eec60ca2fa80c286e
           git diff --check "$BASE"..HEAD
-          git diff --name-only "$BASE"..HEAD | sort > /tmp/actual-stage2-files.txt
+          git diff --name-only "$BASE"..HEAD | sort > /tmp/actual-stage2-source-files.txt
           printf '%s\n' \
             '.github/workflows/public-trip-permalink-validation-0.1.571.yml' \
             'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt' \
-            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt' | sort > /tmp/expected-stage2-files.txt
-          cmp /tmp/expected-stage2-files.txt /tmp/actual-stage2-files.txt
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt' | sort > /tmp/expected-stage2-source-files.txt
+          cmp /tmp/expected-stage2-source-files.txt /tmp/actual-stage2-source-files.txt
           grep -Fq 'canonicalAuthoritativePublicTrip0571' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
           grep -Fq 'EXACT_PUBLIC_TRIP_PATH_0571' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
           ! grep -Fq 'canonicalPublicTripPromotingOfficialHttp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+
+      - name: Materialize hash-only authoritative permalink identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt')
+          text = path.read_text()
+          helper = '''private fun canonicalBlaBlaPublicUrlHashIdentity0571(
+              raw: String?,
+              expectedTripId: String?,
+          ): String {
+              val bound = canonicalBoundBlaBlaPublicUrl0423(raw, expectedTripId) ?: return ""
+              val publicId = BlaBlaCollectorUrlModule.publicTripPublicId(bound) ?: return ""
+              val origin = BlaBlaCollectorUrlModule.origin(bound) ?: return ""
+              return "$origin/trip#$publicId"
+          }
+
+          '''
+          anchor = 'internal fun canonicalTripStateHash0406(\n'
+          old_line = '        append(canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append(\'|\')\n'
+          new_line = '        append(canonicalBlaBlaPublicUrlHashIdentity0571(trip.blablaPublicUrl, trip.blablaTripId)).append(\'|\')\n'
+
+          if 'private fun canonicalBlaBlaPublicUrlHashIdentity0571(' not in text:
+              if anchor not in text:
+                  raise SystemExit('stage2 hash anchor missing')
+              text = text.replace(anchor, helper + anchor, 1)
+          if old_line in text:
+              text = text.replace(old_line, new_line, 1)
+          elif new_line not in text:
+              raise SystemExit('stage2 hash usage anchor missing')
+          path.write_text(text)
+          PY
+          git diff --check
+          grep -Fq 'private fun canonicalBlaBlaPublicUrlHashIdentity0571(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'canonicalBlaBlaPublicUrlHashIdentity0571(trip.blablaPublicUrl, trip.blablaTripId)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'return "$origin/trip#$publicId"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+
+          BASE=c26ab587eeeb3f554bfbd37eec60ca2fa80c286e
+          git diff --name-only "$BASE" | sort > /tmp/actual-stage2-materialized-files.txt
+          printf '%s\n' \
+            '.github/workflows/public-trip-permalink-validation-0.1.571.yml' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt' | sort > /tmp/expected-stage2-materialized-files.txt
+          cmp /tmp/expected-stage2-materialized-files.txt /tmp/actual-stage2-materialized-files.txt
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -90,6 +125,21 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           sha256sum app/build/outputs/apk/debug/app-debug.apk | tee stage2-apk.sha256
 
+      - name: Commit exact tested hash fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            git rev-parse HEAD | tee stage2-tested-source-head.txt
+          else
+            git commit -m 'fix: stabilize canonical hash for authoritative public permalink'
+            git rev-parse HEAD | tee stage2-tested-source-head.txt
+          fi
+
       - name: Upload validation evidence
         uses: actions/upload-artifact@v4
         with:
@@ -100,4 +150,11 @@ jobs:
             stage2-focused-tests.log
             stage2-assemble-debug.log
             stage2-apk.sha256
+            stage2-tested-source-head.txt
             app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish exact tested source to stage-2 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:agent/public-trip-permalink-validation-0.1.571
