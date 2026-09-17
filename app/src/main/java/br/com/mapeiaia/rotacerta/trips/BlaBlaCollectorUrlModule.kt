@@ -108,12 +108,16 @@ internal object BlaBlaCollectorUrlModule {
         return source.isBlank() || source.equals("CARPOOLING", ignoreCase = true)
     }
 
+    private fun isExactPublicTripPath0571(uri: URI): Boolean {
+        fun exact(path: String): Boolean = EXACT_PUBLIC_TRIP_PATH_0571.matches(path)
+        return exact(uri.rawPath.orEmpty()) && exact(uri.path.orEmpty())
+    }
+
     /** Passenger-facing exact trip URL. Administrative /rides/offer URLs are rejected. */
     fun publicTrip(raw: String?, expectedTripId: String? = null): String? {
         val value = canonical(raw).takeIf(String::isNotBlank) ?: return null
         val uri = parseAllowed(value) ?: return null
-        val path = uri.path.orEmpty().trimEnd('/').lowercase()
-        if (path != "/trip" && !path.startsWith("/trip/")) return null
+        if (!isExactPublicTripPath0571(uri)) return null
         if (!isShareCompatiblePublicTrip0571(uri)) return null
         val actualTripId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val expected = expectedTripId?.trim()?.takeIf(String::isNotEmpty)
@@ -125,7 +129,7 @@ internal object BlaBlaCollectorUrlModule {
      * Authoritative acquisition may bind an administrative trip id to a passenger-facing
      * permalink whose public token is different. The binding itself must already be proven by
      * the acquisition context; this method only validates that exact administrative binding and
-     * the official /trip URL.
+     * the official HTTPS /trip permalink.
      */
     private fun publicTripFromAuthoritativeBinding(
         raw: String?,
@@ -135,7 +139,7 @@ internal object BlaBlaCollectorUrlModule {
         val expected = expectedAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
         val bound = boundAdministrativeTripId?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches) ?: return null
         if (expected != bound) return null
-        val value = canonicalPublicTripPromotingOfficialHttp(raw) ?: return null
+        val value = canonicalAuthoritativePublicTrip0571(raw) ?: return null
         val actualPublicId = tripId(value)?.trim()?.takeIf(String::isNotEmpty) ?: return null
         if (!STABLE_EXTERNAL_ID.matches(actualPublicId)) return null
         return value
@@ -171,48 +175,31 @@ internal object BlaBlaCollectorUrlModule {
     }
 
     fun publicTripPublicId(raw: String?): String? {
-        val value = canonicalPublicTripPromotingOfficialHttp(raw) ?: return null
+        val value = canonicalAuthoritativePublicTrip0571(raw) ?: return null
         return tripId(value)?.trim()?.takeIf(STABLE_EXTERNAL_ID::matches)
     }
 
-    private fun canonicalPublicTripPromotingOfficialHttp(raw: String?): String? {
-        val uri = parseOfficialHttpOrHttps(raw) ?: return null
-        val path = uri.path.orEmpty().trimEnd('/').lowercase()
-        if (path != "/trip" && !path.startsWith("/trip/")) return null
-        if (!isShareCompatiblePublicTrip0571(uri)) return null
-        val query = uri.rawQuery.orEmpty()
-            .split('&')
-            .filter(String::isNotBlank)
-            .joinToString("&")
-        val promoted = buildString {
-            append("https://").append(uri.host.lowercase())
-            append(uri.rawPath.orEmpty().ifBlank { "/" })
-            if (query.isNotBlank()) append('?').append(query)
-        }
-        return promoted.takeIf { publicTrip(it, null) != null }
+    private fun canonicalAuthoritativePublicTrip0571(raw: String?): String? {
+        val uri = parseOfficialHttpsOrProtocolRelative0571(raw) ?: return null
+        if (!isExactPublicTripPath0571(uri)) return null
+        val canonical = canonical(raw).takeIf(String::isNotBlank) ?: return null
+        return publicTrip(canonical, null)
     }
 
-    private fun parseOfficialHttpOrHttps(raw: String?): URI? {
+    private fun parseOfficialHttpsOrProtocolRelative0571(raw: String?): URI? {
         val value = raw?.trim().orEmpty()
         val absoluteValue = when {
             value.startsWith("//") -> "https:$value"
             value.startsWith("https://", ignoreCase = true) -> value
-            value.startsWith("http://", ignoreCase = true) -> value
             else -> return null
         }
         return runCatching {
             URI(absoluteValue)
         }.getOrNull()?.takeIf { uri ->
-            val https = uri.scheme.equals("https", ignoreCase = true)
-            val http = uri.scheme.equals("http", ignoreCase = true)
-            (https || http) &&
+            uri.scheme.equals("https", ignoreCase = true) &&
                 isOfficialBlaBlaHost(uri.host) &&
                 uri.rawUserInfo == null &&
-                when {
-                    https -> uri.port in setOf(-1, 443)
-                    http -> uri.port in setOf(-1, 80)
-                    else -> false
-                }
+                uri.port in setOf(-1, 443)
         }
     }
 
@@ -298,5 +285,6 @@ internal object BlaBlaCollectorUrlModule {
         val strongId: String,
     )
 
+    private val EXACT_PUBLIC_TRIP_PATH_0571 = Regex("^/trip(?:/[^/]+)?/?$", RegexOption.IGNORE_CASE)
     private val STABLE_EXTERNAL_ID = Regex("[A-Za-z0-9_-]{8,160}")
 }
