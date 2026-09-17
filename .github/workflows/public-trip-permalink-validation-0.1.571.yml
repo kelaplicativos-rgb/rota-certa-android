@@ -1,0 +1,84 @@
+name: Public trip permalink validation 0.1.571
+
+on:
+  push:
+    branches:
+      - agent/public-trip-permalink-validation-0.1.571
+    paths:
+      - '.github/workflows/public-trip-permalink-validation-0.1.571.yml'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt'
+  workflow_dispatch:
+
+concurrency:
+  group: public-trip-permalink-validation-0.1.571-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-stage2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: public_trip_permalink_validation_dummy_key
+
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove stage-2 scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          BASE=c26ab587eeeb3f554bfbd37eec60ca2fa80c286e
+          git diff --check "$BASE"..HEAD
+          git diff --name-only "$BASE"..HEAD | sort > /tmp/actual-stage2-files.txt
+          printf '%s\n' \
+            '.github/workflows/public-trip-permalink-validation-0.1.571.yml' \
+            'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt' \
+            'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaPublicLinkCanonical0409Test.kt' | sort > /tmp/expected-stage2-files.txt
+          cmp /tmp/expected-stage2-files.txt /tmp/actual-stage2-files.txt
+          grep -Fq 'canonicalAuthoritativePublicTrip0571' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          grep -Fq 'EXACT_PUBLIC_TRIP_PATH_0571' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+          ! grep -Fq 'canonicalPublicTripPromotingOfficialHttp' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorUrlModule.kt
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run focused permalink tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee stage2-focused-tests.log
+
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee stage2-assemble-debug.log
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee stage2-apk.sha256
+
+      - name: Upload validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-trip-permalink-validation-0.1.571-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            stage2-focused-tests.log
+            stage2-assemble-debug.log
+            stage2-apk.sha256
+            app/build/outputs/apk/debug/app-debug.apk
