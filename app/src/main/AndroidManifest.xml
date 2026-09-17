@@ -58,6 +58,15 @@
             android:exported="false"
             android:label="Controle financeiro" />
         <activity
+            android:name=".monitoring.OperationalHealthActivity"
+            android:exported="false"
+            android:label="Saúde e Evolução" />
+        <provider
+            android:name=".monitoring.OperationalHealthInitializerProvider"
+            android:authorities="${applicationId}.operational.health"
+            android:exported="false"
+            android:initOrder="95" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

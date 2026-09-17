@@ -2964,6 +2964,23 @@ private fun ReportsGroupScreen(
         Text("Relatórios e histórico", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Central de Saúde e Evolução", fontWeight = FontWeight.Bold)
+                Text(
+                    "Analisa somente a trilha sanitizada, agrupa incidentes, aponta causa provável e acompanha regressões sem alterar viagens automaticamente.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Button(
+                    onClick = {
+                        context.startActivity(
+                            Intent(context, br.com.mapeiaia.rotacerta.monitoring.OperationalHealthActivity::class.java),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Abrir Central de Saúde") }
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Investigação intensiva temporária", fontWeight = FontWeight.Bold)
                 Text(
                     "Registra um checkpoint pequeno a cada segundo por até 10 minutos. Não captura telas e não executa OCR em ciclo.",

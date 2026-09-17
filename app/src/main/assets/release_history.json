@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.572",
+      "build": 5863,
+      "commit": null,
+      "branch": "agent/operational-evolution-engine-0.1.572",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Central de Saúde e Evolução operacional sobre a trilha UnifiedDebugEventStore já sanitizada, sem criar segunda fonte de logs.",
+        "Motor de incidentes agrupa falhas por fingerprint técnico, severidade, módulo, código de erro e janela temporal.",
+        "Motor de causa raiz gera hipótese provável com nível de confiança e evidencia objetiva extraída exclusivamente dos eventos sanitizados.",
+        "Motor de oportunidades traduz incidentes recorrentes em propostas estruturais, incluindo identidade operacional forte, invariantes canônicos e escopo explícito de operação.",
+        "Motor de validação compara a janela recente com a janela anterior para indicar melhora, estabilidade, regressão ou dados insuficientes.",
+        "Auditoria completa horária via WorkManager e auditoria imediata no início do processo, ambas idempotentes e sem executar alterações em viagens.",
+        "Central dedicada mostra estado verde/amarelo/vermelho, build/commit, incidentes, oportunidades e validação antes/depois."
+      ],
+      "fixed": [],
+      "improved": [
+        "Eventos críticos passam a ser observados no momento em que entram no flight recorder sanitizado, sem bloquear o fluxo operacional.",
+        "A Central persiste apenas a projeção sanitizada de saúde em armazenamento local limitado; nomes, telefones, mensagens, e-mails, cookies, tokens e endereços privados não são aceitos como fonte.",
+        "O motor não aplica patch, merge, deploy ou mutação operacional silenciosa; recomendações arquiteturais permanecem explícitas e auditáveis."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Relatórios",
+        "Diagnóstico",
+        "Agenda",
+        "Timeline",
+        "BlaBlaCar",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.569",
       "build": 5860,
       "commit": null,

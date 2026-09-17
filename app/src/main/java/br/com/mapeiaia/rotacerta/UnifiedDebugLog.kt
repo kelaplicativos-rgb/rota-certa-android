@@ -219,6 +219,9 @@ object UnifiedDebugEventStore {
             }
             events.addLast(event)
         }
+        runCatching {
+            br.com.mapeiaia.rotacerta.monitoring.OperationalHealthRuntime.observe(event)
+        }
 
         val cost = (System.nanoTime() - overheadStartNs).coerceAtLeast(0L)
         synchronized(lock) {
