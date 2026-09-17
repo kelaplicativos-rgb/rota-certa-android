@@ -28,7 +28,16 @@ function productionDecision() {
     "function staleTransportPublicUrlEnrichmentDecisionStage1",
     "function staleTransportPublicUrlEnrichmentPatchStage1",
   );
-  const sandbox = { URL };
+  // The broad production helper slice also contains declarations whose default
+  // arguments reference Firestore FieldValue. The stage-1 decision never uses
+  // Firestore, so expose only a non-persisting sentinel to let the declarations
+  // load without granting the test any backend behavior.
+  const sandbox = {
+    URL,
+    FieldValue: {
+      serverTimestamp: () => ({ __stage1TestTimestamp: true }),
+    },
+  };
   vm.runInNewContext(
     `${urlHelpers}\n${decision}\nthis.stage1Decision = staleTransportPublicUrlEnrichmentDecisionStage1;`,
     sandbox,
