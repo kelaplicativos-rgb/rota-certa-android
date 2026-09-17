@@ -1,0 +1,19 @@
+diff --git a/app/src/test/java/br/com/mapeiaia/rotacerta/RadarEditDeleteDismissContract0178Test.kt b/app/src/test/java/br/com/mapeiaia/rotacerta/RadarEditDeleteDismissContract0178Test.kt
+--- a/app/src/test/java/br/com/mapeiaia/rotacerta/RadarEditDeleteDismissContract0178Test.kt
++++ b/app/src/test/java/br/com/mapeiaia/rotacerta/RadarEditDeleteDismissContract0178Test.kt
+@@ -10,6 +10,7 @@
+     private val service = File("src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt").readText()
+     private val repository = File("src/main/java/br/com/mapeiaia/rotacerta/Repositories.kt").readText()
+     private val main = File("src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt").readText()
++    private val radarImport = File("src/main/java/br/com/mapeiaia/rotacerta/RadarImport.kt").readText()
+ 
+     @Test
+     fun closeMutesOnlyCurrentApproachAndExitReleasesIt() {
+@@ -33,6 +34,6 @@
+         assertTrue(repository.contains("suspend fun removeImportedRadar"))
+         assertTrue(main.contains("highlightedImportedRadarId0178"))
+         assertTrue(main.contains("EXTRA_IMPORTED_RADAR_ID_0178"))
+-        assertTrue(main.contains("highlightedRadar = importedRadars.firstOrNull"))
++        assertTrue(radarImport.contains("val highlightedRadar = radars.firstOrNull"))
+     }
+ }

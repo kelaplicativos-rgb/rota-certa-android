@@ -1,0 +1,78 @@
+name: Inspect Rota Certa 0.1.184 source base
+
+on:
+  pull_request:
+    branches: [agent/contextual-shortcut-menu-0.1.183]
+    paths:
+      - .github/workflows/inspect-rota-certa-0.1.184-source.yml
+      - scripts/materialize_source_0184.sh
+      - docs/IMPLEMENTATION_PLAN_0.1.184.md
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.184-source-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/home-catalog-directional-shortcuts-0.1.184
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize validated 0.1.183 source
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0184-source
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/materialize_source_0184.sh ../patches 2>&1 | tee materialize-0.1.184.log
+
+      - name: Upload materialized source
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.183-materialized-source-for-0.1.184
+          path: source/materialized-source-0.1.183/
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.184-source-inspection-failure
+          path: source/materialize-0.1.184.log
+          retention-days: 14
+          if-no-files-found: warn

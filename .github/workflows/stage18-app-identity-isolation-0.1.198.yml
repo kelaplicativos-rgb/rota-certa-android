@@ -1,0 +1,310 @@
+name: Validate Stage 18 app identity isolation 0.1.198
+
+on:
+  pull_request:
+    branches:
+      - agent/stage16-visible-card-priority-latency-v2-0.1.194
+    paths:
+      - .github/workflows/stage18-app-identity-isolation-0.1.198.yml
+      - scripts/apply_app_identity_isolation_stage18.py
+  workflow_dispatch:
+
+concurrency:
+  group: stage18-app-identity-isolation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  validate-stage18-final:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected canonical source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Checkout exact Stage 18 head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify exact Stage 16 ancestry and Stage 18 scope
+        working-directory: patches
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          BASE=5b37e50d90b18123b9159c72317a783ba5febc92
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+          git merge-base --is-ancestor "$BASE" HEAD
+          git diff --name-only "$BASE"..HEAD | sort > /tmp/stage18-files.txt
+          printf '%s\n' \
+            '.github/workflows/stage18-app-identity-isolation-0.1.198.yml' \
+            'scripts/apply_app_identity_isolation_stage18.py' | sort > /tmp/stage18-expected-files.txt
+          diff -u /tmp/stage18-expected-files.txt /tmp/stage18-files.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize exact canonical 0.1.194
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage18-base
+        run: |
+          set -euo pipefail
+          mkdir -p stage18-evidence
+          bash ../patches/scripts/build_rota_certa_0194.sh ../patches 2>&1 | tee stage18-evidence/materialize-0.1.194.log
+          grep -Fq 'versionCode = 5478' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.194"' app/build.gradle.kts
+
+      - name: Reapply preserved Stage 9, Stage 12 and Stage 14 layers
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py --self-test | tee stage18-evidence/stage9-self-test.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" --check | tee stage18-evidence/stage9-check.txt
+          python3 ../patches/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD" | tee stage18-evidence/stage9-apply.txt
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py --self-test | tee stage18-evidence/stage12-self-test.txt
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" --check | tee stage18-evidence/stage12-check.txt
+          python3 ../patches/scripts/apply_farol_latency_manual_export_stage12.py "$PWD" | tee stage18-evidence/stage12-apply.txt
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py --self-test | tee stage18-evidence/stage14-self-test.txt
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" --check | tee stage18-evidence/stage14-check.txt
+          python3 ../patches/scripts/apply_visible_offer_activation_stage14.py "$PWD" | tee stage18-evidence/stage14-apply.txt
+
+      - name: Reapply exact Stage 16 contract
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ../patches/scripts/apply_visible_card_priority_latency_stage16.py
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py --self-test | tee stage18-evidence/stage16-self-test.txt
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD" --check | tee stage18-evidence/stage16-check.txt
+          python3 ../patches/scripts/apply_visible_card_priority_latency_stage16.py "$PWD" | tee stage18-evidence/stage16-apply.txt
+          grep -Fxq 'visible_card_priority_stage16_apply=passed' stage18-evidence/stage16-apply.txt
+          grep -Fq 'versionCode = 5480' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.196"' app/build.gradle.kts
+          grep -Fq 'VISIBLE_CARD_PRIORITY_AND_TRANSIENT_EMPTY_STAGE16' app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16.kt
+
+      - name: Snapshot Stage 16 protected boundaries
+        working-directory: source
+        run: |
+          set -euo pipefail
+          sha256sum \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/br/com/mapeiaia/rotacerta/DecisionEngine.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeSafety0187.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolRealDeviceGate0188.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisualPriority0189.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/UniversalScreenAddressParser.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolLatencyProbeStage9.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/ManualTechnicalReportBuilder.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/FarolVisibleCardPriorityStage16.kt \
+            app/src/main/java/br/com/mapeiaia/rotacerta/MainActivity.kt \
+            > stage18-evidence/protected-pre-stage18.sha256
+          sha256sum app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt > stage18-evidence/service-pre-stage18.sha256
+
+      - name: Run Stage 18 transform controls
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile ../patches/scripts/apply_app_identity_isolation_stage18.py
+          echo 'py_compile=passed' | tee stage18-evidence/stage18-py-compile.txt
+          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py --self-test | tee stage18-evidence/stage18-self-test.txt
+          grep -Fxq 'app_identity_isolation_stage18_self_test=passed' stage18-evidence/stage18-self-test.txt
+          grep -Fxq 'foreground_requirement_added=false' stage18-evidence/stage18-self-test.txt
+          grep -Fxq 'selected_app_role=read_authorization_only' stage18-evidence/stage18-self-test.txt
+          grep -Fxq 'cross_app_root_override=false' stage18-evidence/stage18-self-test.txt
+          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD" --check | tee stage18-evidence/stage18-check.txt
+          grep -Fxq 'app_identity_isolation_stage18_check=passed' stage18-evidence/stage18-check.txt
+          grep -Fxq 'stage16_contract_preserved=true' stage18-evidence/stage18-check.txt
+          grep -Fxq 'google_maps_service_unchanged=true' stage18-evidence/stage18-check.txt
+          grep -Fxq 'decision_engine_unchanged=true' stage18-evidence/stage18-check.txt
+
+      - name: Apply Stage 18 app identity isolation
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 ../patches/scripts/apply_app_identity_isolation_stage18.py "$PWD" | tee stage18-evidence/stage18-apply.txt
+          grep -Fxq 'app_identity_isolation_stage18_apply=passed' stage18-evidence/stage18-apply.txt
+          grep -Fxq 'versionName=0.1.198' stage18-evidence/stage18-apply.txt
+          grep -Fxq 'versionCode=5482' stage18-evidence/stage18-apply.txt
+          grep -Fxq 'cross_app_identity_contamination_blocked=true' stage18-evidence/stage18-apply.txt
+          grep -Fq 'versionCode = 5482' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
+          SERVICE=app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          HELPER=app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
+          TEST=app/src/test/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18Test.kt
+          grep -Fq 'BUBBLE_IDENTITY_FAIL_CLOSED_STAGE18' "$SERVICE"
+          grep -Fq 'BUBBLE_APP_IDENTITY_SWITCH_STAGE18' "$SERVICE"
+          grep -Fq 'BUBBLE_MIXED_APP_BLOCKS_REJECTED_STAGE18' "$SERVICE"
+          grep -Fq 'EXPLICIT_SELECTED_APP_IDENTITY_ISOLATION_STAGE18' "$HELPER"
+          test "$(grep -Fc '@Test' "$TEST")" -ge 30
+          ! grep -Fq 'Thread.sleep(' "$HELPER"
+          ! grep -Fq 'SystemClock.sleep(' "$HELPER"
+          sha256sum -c stage18-evidence/protected-pre-stage18.sha256 | tee stage18-evidence/protected-post-stage18-check.txt
+          sha256sum \
+            "$SERVICE" \
+            "$HELPER" \
+            "$TEST" \
+            app/build.gradle.kts \
+            > stage18-evidence/stage18-changed-materialized.sha256
+
+      - name: Run Stage 18 and preserved visible-card specific tests
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage18-final
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolAppIdentityIsolationStage18Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolVisibleCardPriorityStage16Test' \
+            --tests 'br.com.mapeiaia.rotacerta.VisibleOfferActivationStage14Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage18-evidence/stage18-specific-tests.log
+          python3 - <<'PY' | tee stage18-evidence/stage18-specific-test-results.txt
+          import glob
+          import xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(report).getroot()
+              tests += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0))
+              errors += int(root.attrib.get('errors', 0))
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          print(f'errors={errors}')
+          if tests < 89: raise SystemExit(f'Esperados pelo menos 89 testes específicos Stage14+16+18, encontrados {tests}')
+          if failures or errors: raise SystemExit('Falhas nos testes específicos Stage18')
+          PY
+
+      - name: Run complete unit suite
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage18-final
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage18-evidence/full-unit-suite.log
+          python3 - <<'PY' | tee stage18-evidence/full-test-count.txt
+          import glob
+          import xml.etree.ElementTree as ET
+          tests=failures=errors=0
+          for report in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(report).getroot()
+              tests += int(root.attrib.get('tests', 0))
+              failures += int(root.attrib.get('failures', 0))
+              errors += int(root.attrib.get('errors', 0))
+          print(f'tests={tests}')
+          print(f'failures={failures}')
+          print(f'errors={errors}')
+          if tests < 494: raise SystemExit(f'Mínimo Stage16 + 34 regressões Stage18 exige >=494 testes, encontrados {tests}')
+          if failures or errors: raise SystemExit('Falhas na suíte completa Stage18')
+          PY
+
+      - name: Run Android Lint
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage18-final
+        run: |
+          set -euo pipefail
+          ./gradlew lintDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage18-evidence/lint-debug.log
+          test -f app/build/reports/lint-results-debug.html
+          cp app/build/reports/lint-results-debug.html stage18-evidence/lint-results-debug.html
+          if test -f app/build/reports/lint-results-debug.txt; then cp app/build/reports/lint-results-debug.txt stage18-evidence/lint-results-debug.txt; fi
+
+      - name: Clean assembleDebug
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-stage18-final
+        run: |
+          set -euo pipefail
+          ./gradlew clean assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace 2>&1 | tee stage18-evidence/clean-assemble-debug.log
+
+      - name: Validate APK, package, signature and Stage 18 markers
+        working-directory: source
+        run: |
+          set -euo pipefail
+          OUT=stage18-evidence
+          APK_SRC=app/build/outputs/apk/debug/app-debug.apk
+          APK="$OUT/rota-certa-0.1.198-stage18-app-identity-isolation-ci.apk"
+          test -s "$APK_SRC"
+          cp "$APK_SRC" "$APK"
+          unzip -tqq "$APK"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | tee "$OUT/badging.txt"
+          grep -F "package: name='br.com.mapeiaia.rotacerta' versionCode='5482' versionName='0.1.198'" "$OUT/badging.txt"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$OUT/signature.txt"
+          grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true' "$OUT/signature.txt"
+          grep -qi 'd9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd' "$OUT/signature.txt"
+          sha256sum "$APK" | tee "$OUT/apk.sha256"
+          stat --printf='%s\n' "$APK" | tee "$OUT/apk-size-bytes.txt"
+          unzip -Z1 "$APK" | grep -E '^classes[0-9]*\.dex$' > "$OUT/dex-files.txt"
+          FOUND18=0
+          FOUND16=0
+          while IFS= read -r DEX; do
+            if unzip -p "$APK" "$DEX" | grep -aFq 'EXPLICIT_SELECTED_APP_IDENTITY_ISOLATION_STAGE18'; then FOUND18=1; fi
+            if unzip -p "$APK" "$DEX" | grep -aFq 'VISIBLE_CARD_PRIORITY_AND_TRANSIENT_EMPTY_STAGE16'; then FOUND16=1; fi
+          done < "$OUT/dex-files.txt"
+          test "$FOUND18" -eq 1
+          test "$FOUND16" -eq 1
+          printf 'stage18_marker_in_dex=%s\nstage16_marker_in_dex=%s\n' "$FOUND18" "$FOUND16" | tee "$OUT/dex-marker-validation.txt"
+          cat > "$OUT/validation.txt" <<'VALIDATION'
+          package=br.com.mapeiaia.rotacerta
+          versionName=0.1.198
+          versionCode=5482
+          technical_test_apk_not_for_release=true
+          stage18_app_identity_isolation=true
+          explicit_selected_event_never_uses_different_selected_root=true
+          background_selected_event_does_not_displace_current_visible_other_app=true
+          real_app_switch_invalidates_previous_identity_before_new_processing=true
+          mixed_app_blocks_rejected=true
+          old_ocr_route_cache_identity_cannot_cross_app_boundary=true
+          selected_app_role=read_authorization_only
+          foreground_requirement_added=false
+          popup_launcher_maps_systemui_contract_preserved=true
+          stage9_preserved=true
+          stage12_preserved=true
+          stage14_preserved=true
+          stage16_preserved=true
+          google_maps_service_unchanged=true
+          decision_engine_unchanged=true
+          release_created=false
+          latest_changed=false
+          merged=false
+          physical_test_performed=false
+          physical_latency_claim=false
+          VALIDATION
+          sed -i 's/^          //' "$OUT/validation.txt"
+
+      - name: Upload Stage 18 CI evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-stage18-app-identity-isolation-ci-evidence
+          path: source/stage18-evidence
+          if-no-files-found: error
+          retention-days: 30

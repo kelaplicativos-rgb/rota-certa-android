@@ -1,0 +1,153 @@
+name: Build Rota Certa 0.1.190 alert popup lifecycle
+
+on:
+  push:
+    branches: [agent/alert-popup-lifecycle-0.1.190]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.190.yml
+      - scripts/build_rota_certa_0190.sh
+      - scripts/apply_alert_popup_lifecycle_0190.py
+  pull_request:
+    branches: [agent/fix-farol-priority-latency-0.1.189]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.190.yml
+      - scripts/build_rota_certa_0190.sh
+      - scripts/apply_alert_popup_lifecycle_0190.py
+  workflow_dispatch:
+
+concurrency:
+  group: rota-certa-0.1.190-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          fetch-depth: 0
+          persist-credentials: false
+          path: source
+
+      - name: Verify protected source commit
+        working-directory: source
+        run: test "$(git rev-parse HEAD)" = "32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42"
+
+      - name: Checkout exact pull request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: patches
+
+      - name: Verify cumulative patch commit
+        working-directory: patches
+        env:
+          EXPECTED_PATCH_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_PATCH_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate patch script syntax
+        working-directory: patches
+        run: python3 -m py_compile scripts/apply_alert_popup_lifecycle_0190.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and validate 0.1.190
+        working-directory: source
+        env:
+          GRADLE_USER_HOME: ${{ runner.temp }}/gradle-home-0190
+        run: |
+          set -o pipefail
+          bash ../patches/scripts/build_rota_certa_0190.sh ../patches 2>&1 | tee build-0.1.190.log
+
+      - name: Upload failure diagnostic
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.190-alert-popup-failure
+          path: |
+            source/build-0.1.190.log
+            source/app/build/reports/tests/
+            source/app/build/reports/lint-results-debug.html
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload validated APK
+        id: artifact_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.190-alert-popup-lifecycle-validated
+          path: source/artifact-0.1.190/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish isolated prerelease candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          APK_SOURCE='source/artifact-0.1.190/rota-certa-0.1.190-alertas-popup-3s-validado-em-ci.apk'
+          APK_CANDIDATE="${RUNNER_TEMP}/rota-certa-0.1.190-candidate.apk"
+          cp "$APK_SOURCE" "$APK_CANDIDATE"
+          EXPECTED_SHA="$(awk '{print $1}' source/artifact-0.1.190/sha256.txt)"
+          ACTUAL_SHA="$(sha256sum "$APK_CANDIDATE" | awk '{print $1}')"
+          test "$EXPECTED_SHA" = "$ACTUAL_SHA"
+          TEST_COUNT="$(awk -F= '/^tests=/{print $2}' source/artifact-0.1.190/test-count.txt)"
+          cat > "${RUNNER_TEMP}/candidate-notes.md" <<NOTES
+          Rota Certa 0.1.190 — candidato de teste dos alertas
+
+          Candidato isolado. Não substitui o link permanente `latest`.
+
+          - pacote: br.com.mapeiaia.rotacerta
+          - versão: 0.1.190
+          - versionCode: 5474
+          - head validado em CI: ${VALIDATED_HEAD}
+          - testes: ${TEST_COUNT}; falhas: 0
+          - Android Lint: aprovado
+          - clean assembleDebug: aprovado
+          - assinatura APK v2: conferida
+          - SHA-256: ${ACTUAL_SHA}
+          - pop-up após ultrapassar radar/alerta: fecha automaticamente após 3 segundos
+          - Fechar manualmente: silencia somente o mesmo ponto durante a aproximação atual
+          - nova aproximação futura: volta a permitir o aviso depois de sair da zona
+
+          O farol, DecisionEngine, OCR, rota, política direcional e motor de proximidade permanecem inalterados.
+          NOTES
+          if gh release view ci-0.1.190 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete ci-0.1.190 --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create ci-0.1.190 "$APK_CANDIDATE" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$VALIDATED_HEAD" \
+            --title 'Rota Certa 0.1.190 — alertas por 3 segundos' \
+            --notes-file "${RUNNER_TEMP}/candidate-notes.md" \
+            --prerelease
+
+      - name: Verify public candidate byte for byte
+        run: |
+          set -euo pipefail
+          URL='https://github.com/kelaplicativos-rgb/rota-certa-android/releases/download/ci-0.1.190/rota-certa-0.1.190-candidate.apk'
+          curl --fail --location --retry 6 --retry-all-errors --output downloaded-candidate.apk "$URL"
+          test "$(sha256sum downloaded-candidate.apk | awk '{print $1}')" = "$(awk '{print $1}' source/artifact-0.1.190/sha256.txt)"

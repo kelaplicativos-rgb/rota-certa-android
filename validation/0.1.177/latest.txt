@@ -1,0 +1,16 @@
+head=7da8ce4a50414566938151416f4ae860858daf46
+run=30751876132
+job=91507226425
+conclusion=success
+artifact_id=8834751631
+artifact_name=rota-certa-0.1.177-shortcut-module-focus-validated
+artifact_zip_sha256=418dda808c2f5403bae31f11c25a7d9100fac50647ae8e821aa0818999a07008
+artifact_zip_bytes=31569733
+apk=rota-certa-0.1.177-modulos-grade-foco-validado.apk
+apk_sha256=21996c09751c3704c82bcd575f2fadab1f48455a824a5d5a8b17f6fa4eb089c5
+apk_bytes=55993295
+package=br.com.mapeiaia.rotacerta
+version=0.1.177
+version_code=5380
+signature_scheme_v2=true
+certificate_sha256=d9ee577b5bb9a4c72bce115e974c9ecf1ec8c7382bcd034e88d433e01eb0e7fd

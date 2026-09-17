@@ -1,0 +1,324 @@
+name: Validate Stage46 single-destination R6 v3 0.1.224
+on:
+  pull_request:
+    branches: [agent/stage45-ocr-multiline-address-reconstruction-0.1.218]
+    paths:
+      - '.github/workflows/stage46-single-destination-fast-path-r6-v3-0.1.224.yml'
+      - 'scripts/apply_stage46_single_destination_fast_path_r6.py'
+      - 'scripts/apply_stage46_r6_version.py'
+      - 'scripts/apply_stage46_r6_test_compat.py'
+      - 'stage46/FarolSingleDestinationFastPathStage46R6.kt'
+      - 'stage46/FarolStage46SingleDestinationFastPathR6Test.kt'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate-stage46-single-destination-r6-v3:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      GOOGLE_MAPS_API_KEY: '${{ secrets.GOOGLE_MAPS_API_KEY }}'
+    steps:
+      - name: Checkout protected canonical source with full history
+        uses: actions/checkout@v4
+        with:
+          ref: 32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42
+          path: source
+          fetch-depth: 0
+      - name: Checkout current Stage46 patches
+        uses: actions/checkout@v4
+        with:
+          ref: '${{ github.event.pull_request.head.sha || github.sha }}'
+          path: patches
+          fetch-depth: 1
+      - name: Checkout pinned Stage19 recipe
+        uses: actions/checkout@v4
+        with:
+          ref: aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c
+          path: historical19
+          fetch-depth: 1
+      - name: Checkout pinned Stage34 bootstrap recipe
+        uses: actions/checkout@v4
+        with:
+          ref: a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79
+          path: historical34
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Rebuild exact Stage18 from pinned historical recipe
+        working-directory: source
+        run: |
+          set -euo pipefail
+          mkdir -p ../evidence
+          printf 'canonical_base=32da54cd112c8ecb8b43b40c5cdb87ef13c4ec42\n' | tee ../evidence/bootstrap-pins.txt
+          printf 'canonical_fetch_depth=0\n' | tee -a ../evidence/bootstrap-pins.txt
+          printf 'stage18_recipe=aa4bd10847d41a3abd5d8a9cb186d6cfa8acc88c\n' | tee -a ../evidence/bootstrap-pins.txt
+          printf 'stage32_recipe=a4443bb6c287fcf31a56f2a3c4ba8fc211fe1f79\n' | tee -a ../evidence/bootstrap-pins.txt
+          git cat-file -e d84be03702ff5c75e753b448cde4ccd4b66a3222^{object}
+          bash ../historical19/scripts/build_rota_certa_0194.sh ../historical19 2>&1 | tee ../evidence/rebuild-0.1.194.log
+          python3 ../historical19/scripts/apply_farol_latency_instrumentation_stage9.py "$PWD"
+          python3 ../historical19/scripts/apply_farol_latency_manual_export_stage12.py "$PWD"
+          python3 ../historical19/scripts/apply_visible_offer_activation_stage14.py "$PWD"
+          python3 ../historical19/scripts/apply_visible_card_priority_latency_stage16.py "$PWD"
+          python3 ../historical19/scripts/apply_app_identity_isolation_stage18.py "$PWD"
+          grep -Fq 'versionCode = 5482' app/build.gradle.kts
+          grep -Fq 'versionName = "0.1.198"' app/build.gradle.kts
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          test -f app/src/main/java/br/com/mapeiaia/rotacerta/FarolAppIdentityIsolationStage18.kt
+          find app/src/main/java app/src/test/java -type f -print0 | sort -z | xargs -0 sha256sum > ../evidence/stage18-content-manifest.sha256
+          printf 'rebuild_stage18=PASS historical_object_available=true\n' | tee ../evidence/rebuild-stage18.txt
+
+      - name: Rebuild exact Stage32 from pinned Stage34 recipe
+        run: |
+          set -euo pipefail
+          cat > source/app/src/main/res/xml/rota_certa_accessibility.xml <<'XML'
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android" android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeWindowsChanged" android:accessibilityFeedbackType="feedbackGeneric" android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows" android:canRetrieveWindowContent="true" android:canTakeScreenshot="true" android:description="@string/accessibility_service_description" android:notificationTimeout="100" />
+          XML
+          for x in \
+            apply_universal_visual_pipeline_stage19.py \
+            apply_farol_forensic_causality_stage20.py \
+            apply_farol_causal_corrections_stage21.py \
+            apply_farol_visual_identity_stage23.py \
+            apply_farol_reading_activation_stage26_materialized.py \
+            apply_farol_causal_latency_stage28_v2.py \
+            apply_farol_presence_authority_stage30.py; do
+              python historical34/scripts/$x source
+          done
+          python historical34/scripts/apply_farol_semantic_ocr_blackbox_print_stage32.py source
+          grep -Fq 'versionCode = 5491' source/app/build.gradle.kts
+          grep -Fq 'FAROL_SEMANTIC_CARD_GENERATION_STAGE32' source/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          find source/app/src/main/java source/app/src/test/java -type f -print0 | sort -z | xargs -0 sha256sum > evidence/stage32-content-manifest.sha256
+          sha256sum historical19/scripts/build_rota_certa_0194.sh \
+            historical19/scripts/apply_farol_latency_instrumentation_stage9.py \
+            historical19/scripts/apply_farol_latency_manual_export_stage12.py \
+            historical19/scripts/apply_visible_offer_activation_stage14.py \
+            historical19/scripts/apply_visible_card_priority_latency_stage16.py \
+            historical19/scripts/apply_app_identity_isolation_stage18.py \
+            historical34/scripts/apply_universal_visual_pipeline_stage19.py \
+            historical34/scripts/apply_farol_forensic_causality_stage20.py \
+            historical34/scripts/apply_farol_causal_corrections_stage21.py \
+            historical34/scripts/apply_farol_visual_identity_stage23.py \
+            historical34/scripts/apply_farol_reading_activation_stage26_materialized.py \
+            historical34/scripts/apply_farol_causal_latency_stage28_v2.py \
+            historical34/scripts/apply_farol_presence_authority_stage30.py \
+            historical34/scripts/apply_farol_semantic_ocr_blackbox_print_stage32.py > evidence/bootstrap-script-sha256.txt
+          printf 'rebuild_stage32=PASS versionCode=5491 pinned_historical_recipes=true artifact_dependency=false\n' | tee evidence/rebuild-stage32.txt
+
+      - name: Materialize Stage34 Stage36 Stage38
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage34_semantic.py source
+          python patches/scripts/apply_stage34_precollect.py source
+          python patches/scripts/apply_stage34_binding.py source
+          python patches/scripts/apply_stage34_test_semantic_contract.py source
+          python patches/scripts/apply_stage34_test_candidate_contract.py source
+          python patches/scripts/apply_stage34_test_frame_contract.py source
+          cp patches/stage34/FarolStage34Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage34Test.kt
+          python patches/scripts/apply_stage34_test_root_fix.py source
+          python patches/scripts/apply_stage36_prepare.py source
+          python patches/scripts/apply_stage36_farol_core.py source
+          python patches/scripts/apply_stage36_report_compile_fix.py source
+          cp patches/stage36/FarolStage36Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36Test.kt
+          cp patches/stage36/FarolStage36FreshnessTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36FreshnessTest.kt
+          cp patches/stage36/FarolStage36RuntimeTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage36RuntimeTest.kt
+          python patches/scripts/apply_stage36_test_runtime_fix.py source
+          python patches/scripts/apply_stage38_parser.py source
+          python patches/scripts/apply_stage38_evaluation.py source
+          python patches/scripts/apply_stage38_acquisition.py source
+          python patches/scripts/apply_stage38_ocr_request.py source
+          python patches/scripts/apply_stage38_ocr_result.py source
+          python patches/scripts/apply_stage38_downstream.py source
+          python patches/scripts/apply_stage38_report.py source
+          cp patches/stage38/FarolStage38Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage38Test.kt
+
+      - name: Materialize Stage40 Stage41 Stage42 Stage43
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage40_presence.py source
+          python patches/scripts/apply_stage40_visual.py source
+          cp patches/stage40/FarolStage40AuthorityRedContractTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40AuthorityRedContractTest.kt
+          python patches/scripts/apply_stage40_version.py source
+          python patches/scripts/apply_stage40_precollect_bounded.py source
+          cp patches/stage40/FarolStage40PreCollectBootstrapTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage40PreCollectBootstrapTest.kt
+          python patches/scripts/apply_stage40_precollect_physical_version.py source
+          python patches/scripts/apply_stage41_subsecond_final_paint.py source
+          cp patches/stage41/FarolStage41SubsecondFinalPaintTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage41SubsecondFinalPaintTest.kt
+          python patches/scripts/apply_stage41_version.py source
+          python patches/scripts/apply_stage42_manual_universal_reading.py source
+          cp patches/stage42/FarolStage42ManualUniversalReadingTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage42ManualUniversalReadingTest.kt
+          python patches/scripts/apply_stage42_version.py source
+          python patches/scripts/apply_stage43_manual_toggle_runtime_sync.py source
+          cp patches/stage43/FarolStage43ManualToggleRuntimeSyncTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage43ManualToggleRuntimeSyncTest.kt
+          python patches/scripts/apply_stage43_version.py source
+
+      - name: Materialize Stage44 Stage45
+        run: |
+          set -euo pipefail
+          python patches/scripts/apply_stage44_semantic_final_lease.py source
+          cp patches/stage44/FarolStage44SemanticFinalLeaseTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage44SemanticFinalLeaseTest.kt
+          python patches/scripts/apply_stage44_version.py source
+          python patches/scripts/apply_stage45_ocr_multiline_address.py source
+          cp patches/stage45/FarolStage45OcrMultilineAddressTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage45OcrMultilineAddressTest.kt
+          python patches/scripts/apply_stage45_version.py source
+          grep -q 'versionCode = 5502' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.218"' source/app/build.gradle.kts
+
+      - name: Materialize Stage46 R1 R2 R3 R4 R5 R6
+        run: |
+          set -euo pipefail
+          P=source/app/src/main/java/br/com/mapeiaia/rotacerta
+          for f in FarolCausalCorrectionStage21.kt FarolFinalPaintFreshnessStage41.kt FarolManualOffVisualCommitStage43.kt FarolSemanticFinalLeaseStage44.kt FarolOcrMultilineAddressStage45.kt; do sha256sum "$P/$f" >> evidence/protected-before.sha256; done
+          python patches/scripts/apply_stage46_visual_epoch_no_result.py source | tee evidence/materialize-r1.txt
+          cp patches/stage46/FarolStage46VisualEpochNoResultTest.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46VisualEpochNoResultTest.kt
+          python patches/scripts/apply_stage46_version.py source
+          python patches/scripts/apply_stage46_target_surface_r2.py source | tee evidence/materialize-r2.txt
+          python patches/scripts/apply_stage46_target_surface_r2_order_fix.py source
+          cp patches/stage46/FarolStage46TargetSurfaceR2Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46TargetSurfaceR2Test.kt
+          python patches/scripts/apply_stage46_r2_version.py source
+          python patches/scripts/apply_stage46_r2_test_compat.py source
+          python patches/scripts/apply_stage46_acquisition_surface_r3.py source | tee evidence/materialize-r3.txt
+          python patches/scripts/apply_stage46_r3_semantic_promotion_fix.py source
+          cp patches/stage46/FarolStage46AcquisitionSurfaceR3Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46AcquisitionSurfaceR3Test.kt
+          python patches/scripts/apply_stage46_r3_version.py source
+          python patches/scripts/apply_stage46_r3_test_compat.py source
+          python patches/scripts/apply_stage46_stable_final_latch_r4.py source | tee evidence/materialize-r4.txt
+          cp patches/stage46/FarolStage46StableFinalLatchR4Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46StableFinalLatchR4Test.kt
+          python patches/scripts/apply_stage46_r4_version.py source
+          python patches/scripts/apply_stage46_r4_test_compat.py source
+          python patches/scripts/apply_stage46_atomic_transition_r5.py source | tee evidence/materialize-r5.txt
+          cp patches/stage46/FarolStage46AtomicTransitionR5Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46AtomicTransitionR5Test.kt
+          python patches/scripts/apply_stage46_r5_version.py source
+          python patches/scripts/apply_stage46_r5_test_compat.py source
+          python patches/scripts/apply_stage46_single_destination_fast_path_r6.py source | tee evidence/materialize-r6.txt
+          cp patches/stage46/FarolStage46SingleDestinationFastPathR6Test.kt source/app/src/test/java/br/com/mapeiaia/rotacerta/FarolStage46SingleDestinationFastPathR6Test.kt
+          python patches/scripts/apply_stage46_r6_version.py source
+          python patches/scripts/apply_stage46_r6_test_compat.py source
+          for f in FarolCausalCorrectionStage21.kt FarolFinalPaintFreshnessStage41.kt FarolManualOffVisualCommitStage43.kt FarolSemanticFinalLeaseStage44.kt FarolOcrMultilineAddressStage45.kt; do sha256sum "$P/$f" >> evidence/protected-after.sha256; done
+          sed 's#  .*#  FILE#' evidence/protected-before.sha256 > /tmp/a
+          sed 's#  .*#  FILE#' evidence/protected-after.sha256 > /tmp/b
+          cmp /tmp/a /tmp/b
+          grep -q 'versionCode = 5508' source/app/build.gradle.kts
+          grep -q 'versionName = "0.1.224"' source/app/build.gradle.kts
+          test "$(grep -c '@Test' patches/stage46/FarolStage46VisualEpochNoResultTest.kt)" -eq 28
+          test "$(grep -c '@Test' patches/stage46/FarolStage46TargetSurfaceR2Test.kt)" -eq 24
+          test "$(grep -c '@Test' patches/stage46/FarolStage46AcquisitionSurfaceR3Test.kt)" -eq 26
+          test "$(grep -c '@Test' patches/stage46/FarolStage46StableFinalLatchR4Test.kt)" -eq 25
+          test "$(grep -c '@Test' patches/stage46/FarolStage46AtomicTransitionR5Test.kt)" -eq 24
+          test "$(grep -c '@Test' patches/stage46/FarolStage46SingleDestinationFastPathR6Test.kt)" -eq 33
+
+      - name: Static Stage46 R6 causal audit
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/static-r6.txt
+          from pathlib import Path
+          p=Path('source/app/src/main/java/br/com/mapeiaia/rotacerta')
+          s=(p/'LiveRideAccessibilityService.kt').read_text()
+          stage21=(p/'FarolCausalCorrectionStage21.kt').read_text()
+          r4=(p/'FarolStableFinalLatchStage46R4.kt').read_text()
+          r5=(p/'FarolAtomicTransitionStage46R5.kt').read_text()
+          r6=(p/'FarolSingleDestinationFastPathStage46R6.kt').read_text()
+          markers=('FAROL_SINGLE_DESTINATION_FAST_PATH_STAGE46_R6','TWO_ADDRESSES_NOT_MANDATORY_WHEN_SINGLE_DESTINATION_HIGH_CONFIDENCE_STAGE46_R6','LAST_GEOMETRIC_VISIBLE_ADDRESS_IS_DESTINATION_STAGE46_R6','SPLIT_ADDRESS_BLOCKS_CAN_FORM_CURRENT_VISUAL_DESTINATION_STAGE46_R6','SINGLE_DESTINATION_STILL_USES_STAGE21_ADDRESS_VALIDATION_STAGE46_R6','SINGLE_PICKUP_OR_ORIGIN_CUE_CANNOT_AUTHORIZE_ROUTE_STAGE46_R6','AMBIGUOUS_SINGLE_ADDRESS_FALLS_BACK_TO_LEGACY_ACQUISITION_STAGE46_R6','PACKAGE_IDENTITY_NEVER_AUTHORIZES_SINGLE_DESTINATION_STAGE46_R6','EVENT_DRIVEN_SINGLE_DESTINATION_NO_POLLING_STAGE46_R6')
+          for m in markers: assert m in r6,m
+          assert s.count('FarolSingleDestinationFastPathStage46R6.evaluate(') >= 2
+          assert 'FarolSingleDestinationFastPathStage46R6.validateEvaluation(evaluationStage19)' in s
+          assert 'S46_R6_SINGLE_DESTINATION_FAST_PATH' in s and 'S46_R6_LAST_VISUAL_DESTINATION' in s
+          assert 'FarolCausalCorrectionStage21.evaluate(listOf(blockStage46))' in s and 'FarolCausalCorrectionStage21::validateEvaluation' in s
+          assert 'less_than_two_addresses' in stage21 and 'FAROL_SINGLE_DESTINATION_FAST_PATH_STAGE46_R6' not in stage21
+          assert 'FINAL_COLOR_STAYS_LIT_UNTIL_PROVEN_CHANGE_STAGE46_R4' in r4
+          assert 'FAROL_ATOMIC_TRANSITION_STAGE46_R5' in r5
+          assert 'S46_R5_ATOMIC_CLEAR_REARM_REQUESTED' in s and 'S46_R4_FINAL_LATCH_PRESERVED_FOREIGN' in s and 'S46_R3_TARGET_PROMOTED_AFTER_STAGE21' in s
+          assert 'FarolVisualIdentityStage23.hasTwoAddressLeads' in s and 'hasOneAddressLead' not in s and 'hasSingleAddressLead' not in s
+          for forbidden in ('Thread.sleep','delay(','Timer(','scheduleAtFixedRate','scheduleWithFixedDelay'): assert forbidden not in r6,forbidden
+          print('stage46_r6_static_causal_audit=PASS legacy_first=true single_high_confidence=true split_geometry=true stage21_protected=true r4_latch=true r5_atomic=true no_polling=true bootstrap_reproducible=true')
+          PY
+
+      - name: Verify exact 1208 tests
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee evidence/test-inventory.txt
+          from pathlib import Path
+          n=sum(p.read_text(encoding='utf-8').count('@Test') for p in Path('source/app/src/test/java').rglob('*.kt'))
+          print('total_at_test='+str(n)); assert n==1208,n
+          PY
+
+      - name: Stage46 R1 R2 R3 R4 R5 R6 regressions 160
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage46VisualEpochNoResultTest --tests br.com.mapeiaia.rotacerta.FarolStage46TargetSurfaceR2Test --tests br.com.mapeiaia.rotacerta.FarolStage46AcquisitionSurfaceR3Test --tests br.com.mapeiaia.rotacerta.FarolStage46StableFinalLatchR4Test --tests br.com.mapeiaia.rotacerta.FarolStage46AtomicTransitionR5Test --tests br.com.mapeiaia.rotacerta.FarolStage46SingleDestinationFastPathR6Test | tee ../evidence/stage46-r6-tests.log
+          python - <<'PY' | tee ../evidence/stage46-r6-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-br.com.mapeiaia.rotacerta.FarolStage46*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s); assert (t,f,e,s)==(160,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Critical inherited regressions
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest --tests br.com.mapeiaia.rotacerta.FarolStage45OcrMultilineAddressTest --tests br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest --tests br.com.mapeiaia.rotacerta.FarolStage43ManualToggleRuntimeSyncTest --tests br.com.mapeiaia.rotacerta.FarolStage42ManualUniversalReadingTest --tests br.com.mapeiaia.rotacerta.FarolStage41SubsecondFinalPaintTest --tests br.com.mapeiaia.rotacerta.FarolStage40PreCollectBootstrapTest --tests br.com.mapeiaia.rotacerta.FarolStage40AuthorityRedContractTest --tests br.com.mapeiaia.rotacerta.FarolStage38Test --tests br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest | tee ../evidence/inherited-regressions.log
+
+      - name: Complete suite exact 1208
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --rerun-tasks testDebugUnitTest | tee ../evidence/full-tests.log
+          python - <<'PY' | tee ../evidence/full-count.txt
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          t=f=e=s=0
+          for p in Path('app/build/test-results/testDebugUnitTest').glob('TEST-*.xml'):
+              r=E.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          print(t,f,e,s); assert (t,f,e,s)==(1208,0,0,0),(t,f,e,s)
+          PY
+
+      - name: Lint and assemble Stage46 R6 physical APK
+        working-directory: source
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon lintDebug | tee ../evidence/lint.log
+          ./gradlew --no-daemon clean assembleDebug | tee ../evidence/assemble.log
+
+      - name: Validate Stage46 R6 physical APK
+        run: |
+          set -euo pipefail
+          A=source/app/build/outputs/apk/debug/app-debug.apk
+          O=evidence/Rota-Certa-Stage46-Single-Destination-Fast-Path-R6-0.1.224.apk
+          cp "$A" "$O"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          SIGN=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          "$AAPT" dump badging "$O" | tee evidence/badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta' versionCode='5508' versionName='0.1.224'" evidence/badging.txt
+          "$SIGN" verify --verbose --print-certs "$O" | tee evidence/signature.txt
+          grep -q 'Verified using v2 scheme (APK Signature Scheme v2): true' evidence/signature.txt
+          unzip -t "$O" | tee evidence/zip.txt
+          mkdir -p evidence/dex
+          unzip -Z1 "$O" | grep -E '^classes([0-9]+)?\.dex$' | tee evidence/dex-inventory.txt
+          while IFS= read -r dex; do unzip -p "$O" "$dex" > "evidence/dex/$dex"; done < evidence/dex-inventory.txt
+          cat evidence/dex/classes*.dex > evidence/all-classes.dex
+          for m in FAROL_SINGLE_DESTINATION_FAST_PATH_STAGE46_R6 TWO_ADDRESSES_NOT_MANDATORY_WHEN_SINGLE_DESTINATION_HIGH_CONFIDENCE_STAGE46_R6 LAST_GEOMETRIC_VISIBLE_ADDRESS_IS_DESTINATION_STAGE46_R6 SINGLE_PICKUP_OR_ORIGIN_CUE_CANNOT_AUTHORIZE_ROUTE_STAGE46_R6 FAROL_ATOMIC_TRANSITION_STAGE46_R5 FAROL_STABLE_FINAL_LATCH_STAGE46_R4 FAROL_ACQUISITION_SURFACE_STAGE46_R3 FAROL_TARGET_SURFACE_AUTHORITY_STAGE46_R2 FAROL_VISUAL_SURFACE_EPOCH_STAGE46 FAROL_OCR_MULTILINE_ADDRESS_STAGE45 FAROL_SEMANTIC_FINAL_LEASE_STAGE44 MANUAL_OFF_PHYSICAL_VIEW_COMMIT_STAGE43 FAROL_SUBSECOND_SAME_FRAME_FINAL_PAINT_STAGE41; do grep -a -q "$m" evidence/all-classes.dex; done
+          sha256sum "$O" | tee evidence/apk-sha256.txt
+          sha512sum "$O" | tee evidence/apk-sha512.txt
+          stat -c '%s' "$O" | tee evidence/apk-size.txt
+          printf 'stage46_r6_apk_validation=PASS\n' | tee evidence/apk-validation.txt
+
+      - name: Upload Stage46 R6 physical artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.224-stage46-single-destination-fast-path-r6
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,243 @@
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+index 52a542e..0872105 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+@@ -124,6 +124,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     private val phoneCaptureInProgress118 = AtomicBoolean(false)
+     private var analyzeJob: Job? = null
+     private var screenshotFallbackJob127: Job? = null // deferred_ocr_job_0_1_127
++    private var scheduledOcrIdentity0189: String? = null
++    private var lastOcrAttemptIdentity0189: String? = null
++    private var lastOcrAttemptAtMillis0189: Long = 0L
+     private var lastAccessibilityAcceptedAtMillis127: Long = 0L // accessibility_first_timestamp_0_1_127
+     private var overlayView: TextView? = null
+     private var savedPlacePopupView: LinearLayout? = null
+@@ -1471,23 +1474,51 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     } // universal_stable_schedule_0_1_101
+ 
+     private fun scheduleScreenshotFallback127(expectedPackage: String) {
++        val sessionToken0162 = driverCardSessionGate0162.current()?.takeIf { it.packageName == expectedPackage } ?: return
++        val identity0189 = listOf(
++            expectedPackage,
++            sessionToken0162.generation.toString(),
++            sessionToken0162.windowId.toString(),
++            universalScreenGeneration.toString(),
++            universalWindowGeneration.toString(),
++            (lastImmediateScreenFingerprintChecklist13 ?: 0).toString(),
++        ).joinToString("|")
++        val now0189 = System.currentTimeMillis()
++        if (scheduledOcrIdentity0189 == identity0189 && screenshotFallbackJob127?.isActive == true) {
++            FarolFlightRecorder0163.record(
++                stage = "OCR_FALLBACK_DEDUPED_0189",
++                packageName = expectedPackage,
++                details = "identity=$identity0189; reason=same_generation_already_scheduled",
++            )
++            return
++        }
++        if (lastOcrAttemptIdentity0189 == identity0189 && now0189 - lastOcrAttemptAtMillis0189 < 350L) {
++            return
++        }
+         screenshotFallbackJob127?.cancel()
++        scheduledOcrIdentity0189 = identity0189
+         FarolFlightRecorder0163.record(
+             stage = "OCR_FALLBACK_SCHEDULED",
+             packageName = expectedPackage,
+-            details = "delay_ms=${FarolCriticalPathPolicy.OCR_FALLBACK_DELAY_MILLIS}; generation=$universalScreenGeneration; lastAccessibilityAccepted=$lastAccessibilityAcceptedAtMillis127",
++            details = "delay_ms=0; generation=$universalScreenGeneration; windowGeneration=$universalWindowGeneration; identity=$identity0189",
+         )
+-        val sessionToken0162 = driverCardSessionGate0162.current()?.takeIf { it.packageName == expectedPackage } ?: return
+         val scheduledAt127 = System.currentTimeMillis()
+         screenshotFallbackJob127 = scope.launch {
+-            if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return@launch
+-            if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+-            if (expectedPackage != strictSelectedRootPackageChecklist1()) return@launch
+-            if (!shouldScanPackage(expectedPackage)) return@launch
+-            if (lastAccessibilityAcceptedAtMillis127 >= scheduledAt127) return@launch
+-            requestScreenshotAnalysis(allowPopupCandidate = true)
++            try {
++                if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return@launch
++                if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
++                if (scheduledOcrIdentity0189 != identity0189) return@launch
++                if (expectedPackage != strictSelectedRootPackageChecklist1()) return@launch
++                if (!shouldScanPackage(expectedPackage)) return@launch
++                if (lastAccessibilityAcceptedAtMillis127 >= scheduledAt127) return@launch
++                lastOcrAttemptIdentity0189 = identity0189
++                lastOcrAttemptAtMillis0189 = System.currentTimeMillis()
++                requestScreenshotAnalysis(allowPopupCandidate = true)
++            } finally {
++                if (scheduledOcrIdentity0189 == identity0189) scheduledOcrIdentity0189 = null
++            }
+         }
+-    } // deferred_ocr_fallback_90ms_0_1_127
++    } // ocr_single_flight_per_generation_0_1_189
+ 
+ 
+     // subsecond_capture_helpers_final_checklist_6
+@@ -2009,39 +2040,33 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         ocrBlocks0188: List<OcrTextBlock0188>,
+     ): List<FarolCardBlock0188> {
+         if (ocrBlocks0188.isEmpty()) return emptyList()
+-        val rootId0188 = "ocr:$windowId0188"
+-        val output0188 = ArrayList<FarolCardBlock0188>(ocrBlocks0188.size + 1)
+-        val fullText0188 = ocrBlocks0188.asSequence()
+-            .map(OcrTextBlock0188::text)
+-            .filter(String::isNotBlank)
+-            .distinct()
+-            .joinToString("\n")
+-        if (fullText0188.isNotBlank()) {
+-            output0188 += FarolCardBlock0188(
+-                id = rootId0188,
++        val fragments0189 = ocrBlocks0188.take(120).mapIndexedNotNull { index0189, block0189 ->
++            block0189.text.takeIf(String::isNotBlank)?.let {
++                FarolSpatialFragment0189(
++                    id = "ocr:$windowId0188/block:$index0189",
++                    text = it,
++                    left = block0189.left,
++                    top = block0189.top,
++                    right = block0189.right,
++                    bottom = block0189.bottom,
++                )
++            }
++        }
++        return FarolVisualPriority0189.cluster("ocr:$windowId0188", fragments0189).map { group0189 ->
++            FarolCardBlock0188(
++                id = group0189.id,
+                 packageName = packageName0188,
+                 windowId = windowId0188,
+                 windowLayer = Int.MAX_VALUE,
+-                depth = 0,
+-                text = fullText0188,
++                depth = 1,
++                text = group0189.text,
+                 source = FarolEvidenceSource0188.Ocr,
++                left = group0189.left,
++                top = group0189.top,
++                right = group0189.right,
++                bottom = group0189.bottom,
+             )
+         }
+-        ocrBlocks0188.take(80).forEachIndexed { index0188, block0188 ->
+-            if (block0188.text.isNotBlank()) {
+-                output0188 += FarolCardBlock0188(
+-                    id = "$rootId0188/block:$index0188",
+-                    parentId = rootId0188,
+-                    packageName = packageName0188,
+-                    windowId = windowId0188,
+-                    windowLayer = Int.MAX_VALUE,
+-                    depth = 1,
+-                    text = block0188.text,
+-                    source = FarolEvidenceSource0188.Ocr,
+-                )
+-            }
+-        }
+-        return output0188
+     }
+ 
+     private fun collectAccessibilityCardBlocks0188(
+@@ -2055,7 +2080,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
+             .sortedByDescending { runCatching { it.layer }.getOrDefault(0) }
+         for (window0188 in interactive0188) {
+             val windowId0188 = runCatching { window0188.id }.getOrDefault(-1)
+-            if (windowId0188 != expectedWindowId0188) continue
+             val root0188 = runCatching { window0188.root }.getOrNull() ?: continue
+             val rootPackage0188 = safeNodePackageName0185(root0188) ?: continue
+             if (rootPackage0188 != expectedPackage0188) continue
+@@ -2131,6 +2155,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         }
+         val text0188 = lines0188.joinToString("\n").take(MAX_ACCESSIBILITY_TEXT_CHARS_0167)
+         if (text0188.isNotBlank()) {
++            val bounds0189 = Rect()
++            runCatching { node0188.getBoundsInScreen(bounds0189) }
+             output0188 += FarolCardBlock0188(
+                 id = id0188,
+                 parentId = parentId0188,
+@@ -2140,6 +2166,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
+                 depth = depth0188,
+                 text = text0188,
+                 source = FarolEvidenceSource0188.Accessibility,
++                left = bounds0189.left,
++                top = bounds0189.top,
++                right = bounds0189.right,
++                bottom = bounds0189.bottom,
++                syntheticRoot = depth0188 == 0,
+             )
+         }
+         return lines0188.toList()
+@@ -2377,11 +2408,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
+             return
+         }
+ 
++        rememberBubbleReason(
++            "destination_confirmed_0189",
++            "Último endereço do bloco superior confirmado; preparando rota real.",
++        )
++        UnifiedDebugEventStore.record(
++            "BUBBLE_DESTINATION_CONFIRMED_ORANGE_0189",
++            selectedPackageChecklist13,
++            "destination=${fieldsChecklist13.destination.orEmpty()}; screenHash=${evaluationChecklist13.screenHash}",
++        )
++        if (currentRadarColor != RadarColor.Orange || currentDistanceKm != null) {
++            showOverlay(RadarColor.Orange, distanceKm = null)
++        }
++
+         val settingsChecklist13 = currentSettings
+         val targetsChecklist13 = fastWorkRegionTargetsChecklist13(settingsChecklist13)
+         if (targetsChecklist13.destinations.isEmpty()) {
+-            rememberBubbleReason("work_region_missing", "Configure Casa ou pelo menos um alfinete com coordenada validada.")
+-            showOverlay(RadarColor.Default, distanceKm = null)
++            rememberBubbleReason("work_region_missing", "Destino confirmado, mas falta Casa ou alfinete com coordenada validada.")
++            showOverlay(RadarColor.Orange, distanceKm = null)
+             return
+         }
+ 
+@@ -2417,10 +2461,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         lastAccessibilityAcceptedAtMillis127 = System.currentTimeMillis()
+         // accessibility_card_cancels_ocr_0_1_157
+         UnifiedDebugEventStore.record("BUBBLE_ROUTE_REQUESTED", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBindingChecklist13.screenGeneration}; windowGeneration=${decisionBindingChecklist13.windowGeneration}")
+-        rememberBubbleReason("universal_waiting", "Dois enderecos identificados; calculando o ultimo destino.")
+-        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
+-            showOverlay(RadarColor.Default, distanceKm = null)
+-        } // waiting_render_noop_0_1_157
++        rememberBubbleReason("universal_waiting", "Destino final confirmado; rota real em cálculo.")
++        if (currentRadarColor != RadarColor.Orange || currentDistanceKm != null) {
++            showOverlay(RadarColor.Orange, distanceKm = null)
++        } // destination_confirmed_orange_0_1_189
+         bubblePrefs.edit().putString("fast_farol_last_path", "rota_google").apply()
+         universalRouteJob = scope.launch {
+             if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
+@@ -2675,14 +2719,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
+             BuildConfig.GOOGLE_MAPS_API_KEY,
+         )
+         if (apiKeyChecklist13.isBlank()) {
+-            rememberBubbleReason("google_maps_api_required", "Configure a Chave Google Maps API para calcular a rota.")
+-            showOverlay(RadarColor.Default, distanceKm = null)
++            rememberBubbleReason("google_maps_api_required", "Destino confirmado, mas a Chave Google Maps API está ausente.")
++            showOverlay(RadarColor.Orange, distanceKm = null)
+             return
+         }
+         val targetsChecklist13 = fastWorkRegionTargetsChecklist13(settingsChecklist13)
+         if (targetsChecklist13.destinations.isEmpty()) {
+-            rememberBubbleReason("work_region_missing", "Configure Casa ou pelo menos um alfinete com coordenada validada.")
+-            showOverlay(RadarColor.Default, distanceKm = null)
++            rememberBubbleReason("work_region_missing", "Destino confirmado, mas falta Casa ou alfinete com coordenada validada.")
++            showOverlay(RadarColor.Orange, distanceKm = null)
+             return
+         }
+         UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_START", universalActiveRidePackageName, "destino=${fields.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBinding0187Phase4.screenGeneration}; windowGeneration=${decisionBinding0187Phase4.windowGeneration}")
+@@ -2720,7 +2764,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+         val colorChecklist13 = when (result.recommendation) {
+             Recommendation.GoodRide -> RadarColor.Green
+             Recommendation.OutsideRadius -> RadarColor.Red
+-            Recommendation.InsufficientData -> RadarColor.Default
++            Recommendation.InsufficientData -> RadarColor.Orange
+         }
+         val distanceChecklist13 = result.nearestConfiguredDistanceKm()
+         lastAnalyzedHash = decisionBinding0187Phase4.screenHash
+@@ -5028,6 +5072,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
+     ) {
+         Idle(Color.rgb(117, 117, 117), Color.rgb(66, 66, 66), "cinza"),
+         Default(Color.rgb(241, 196, 15), Color.rgb(133, 100, 4), "amarelo"),
++        Orange(Color.rgb(243, 156, 18), Color.rgb(145, 82, 0), "laranja"),
+         Green(Color.rgb(46, 204, 113), Color.rgb(24, 106, 59), "verde"),
+         Red(Color.rgb(231, 76, 60), Color.rgb(127, 29, 29), "vermelho");
+ 

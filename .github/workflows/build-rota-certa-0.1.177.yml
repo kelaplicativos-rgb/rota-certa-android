@@ -1,0 +1,71 @@
+name: Build Rota Certa 0.1.177
+
+on:
+  push:
+    branches: [agent/fix-shortcut-module-focus-0.1.177]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.177.yml
+      - scripts/fix_shortcut_module_focus_0177.py
+      - scripts/build_rota_certa_0177.sh
+  pull_request:
+    branches: [agent/fix-shortcut-single-tap-0.1.176]
+    paths:
+      - .github/workflows/build-rota-certa-0.1.177.yml
+      - scripts/fix_shortcut_module_focus_0177.py
+      - scripts/build_rota_certa_0177.sh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+    steps:
+      - name: Checkout protected source
+        uses: actions/checkout@v4
+        with:
+          ref: codex/unified-debug-log-0.1.139
+          fetch-depth: 0
+          path: source
+
+      - name: Checkout cumulative patches
+        uses: actions/checkout@v4
+        with:
+          ref: agent/fix-shortcut-module-focus-0.1.177
+          fetch-depth: 0
+          path: patches
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Materialize, test, lint, build and validate 0.1.177
+        working-directory: source
+        run: bash ../patches/scripts/build_rota_certa_0177.sh ../patches
+
+      - name: Upload validated APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.177-shortcut-module-focus-validated
+          path: |
+            source/rota-certa-0.1.177-modulos-grade-foco-validado.apk
+            source/rota-certa-0.1.177-sha256.txt
+            source/rota-certa-0.1.177-assinatura.txt
+            source/rota-certa-0.1.177-badging.txt
+            source/rota-certa-0.1.177-tamanho.txt
+            source/rota-certa-0.1.177-validacao.txt
+          retention-days: 90
+          if-no-files-found: error

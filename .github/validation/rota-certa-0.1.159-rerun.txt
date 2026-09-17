@@ -1,0 +1,1 @@
+Nova execução após corrigir o contrato gerado sem reintroduzir referências do Coletor.

@@ -1,0 +1,117 @@
++                                    )
++                                }
++
+                                 else -> InlineModuleAction0174(
+                                     title = spec.displayLabel,
+                                     description = ShortcutGridPolicy0173.description(spec),
+@@ -787,6 +813,8 @@ const val EXTRA_CONFIRM_DESTINATION_GPS_138 = "confirm_destination_gps_138"
+ const val EXTRA_OPEN_SHORTCUT_MODULE_0171 = "open_shortcut_module_0171"
+ const val EXTRA_OPEN_SHORTCUT_CUSTOMIZATION_0179 = "open_shortcut_customization_0179"
+ const val EXTRA_EDIT_SHORTCUT_ENTRY_ID_0180 = "edit_shortcut_entry_id_0180"
++const val EXTRA_CREATE_BACKUP_0184 = "create_backup_0184"
++const val EXTRA_RESTORE_BACKUP_0184 = "restore_backup_0184"
+ const val EXTRA_IMPORTED_RADAR_ID_0178 = "imported_radar_id_0178"
+ 
+ private const val BUBBLE_GROUP_GENERAL = "general"
+@@ -825,6 +853,16 @@ private fun ShortcutModulesHome0171(
+     moduleContent: @Composable (BubbleShortcutSpec) -> Unit,
+ ) {
+     val context = LocalContext.current
++    val shortcutStore0184 = remember { ShortcutGridPreferenceStore0179(context) }
++    val shortcutEntries0184 = remember {
++        mutableStateListOf<ShortcutGridEntry0179>().apply { addAll(shortcutStore0184.read()) }
++    }
++    fun updateShortcutEntries0184(updated: List<ShortcutGridEntry0179>) {
++        val normalized = ShortcutGridCustomizationPolicy0179.normalize(updated)
++        shortcutEntries0184.clear()
++        shortcutEntries0184.addAll(normalized)
++        shortcutStore0184.write(normalized)
++    }
+     LaunchedEffect(Unit) {
+         check(HomeModuleBubbleGridPolicy0175.CONTRACT_MARKER.isNotBlank())
+         check(ShortcutModuleFocusPolicy0177.CONTRACT_MARKER.isNotBlank())
+@@ -851,7 +889,7 @@ private fun ShortcutModulesHome0171(
+         )
+         Text("Grade da Home", fontWeight = FontWeight.Bold)
+         Text(
+-            "Esta grade é o catálogo completo do Rota Certa. A grade flutuante continua separada e executa apenas as ações rápidas sobre outros aplicativos.",
++            "A Home mostra todos os módulos. Abra um módulo e escolha, ação por ação, o que deve entrar na grade flutuante.",
+             style = MaterialTheme.typography.bodySmall,
+         )
+         OutlinedButton(onClick = onOpenCustomization, modifier = Modifier.fillMaxWidth()) {
+@@ -887,6 +925,8 @@ private fun ShortcutModulesHome0171(
+                 if (expandedModule != null) {
+                     HomeModuleInlinePanel0175(
+                         spec = expandedModule.spec,
++                        shortcutEntries = shortcutEntries0184.toList(),
++                        onShortcutEntriesChange = ::updateShortcutEntries0184,
+                         content = { moduleContent(expandedModule.spec) },
+                     )
+                 }
+@@ -906,9 +946,6 @@ private fun ShortcutGridCustomizationScreen0179(
+         mutableStateListOf<ShortcutGridEntry0179>().apply { addAll(store0179.read()) }
+     }
+     var savedEntries0179 by remember { mutableStateOf(entries0179.toList()) }
+-    var addShortcutId0179 by remember {
+-        mutableStateOf(BubbleShortcutCatalog.modules.firstOrNull()?.spec?.id.orEmpty())
+-    }
+     var pendingDeleteEntryId0179 by remember { mutableStateOf<String?>(null) }
+     var confirmReset0179 by remember { mutableStateOf(false) }
+ 
+@@ -949,15 +986,15 @@ private fun ShortcutGridCustomizationScreen0179(
+     if (confirmReset0179) {
+         AlertDialog(
+             onDismissRequest = { confirmReset0179 = false },
+-            title = { Text("Restaurar grade original?") },
+-            text = { Text("Nomes, ícones, ordem e atalhos personalizados serão substituídos pelo catálogo padrão.") },
++            title = { Text("Esvaziar grade de atalhos?") },
++            text = { Text("Todas as bolinhas serão removidas da grade. Os módulos continuarão disponíveis na Home.") },
+             confirmButton = {
+                 TextButton(onClick = {
+                     store0179.reset()
+                     replaceEntries0179(ShortcutGridCustomizationPolicy0179.defaults())
+                     savedEntries0179 = entries0179.toList()
+                     confirmReset0179 = false
+-                }) { Text("Restaurar") }
++                }) { Text("Esvaziar") }
+             },
+             dismissButton = {
+                 TextButton(onClick = { confirmReset0179 = false }) { Text("Cancelar") }
+@@ -973,14 +1010,14 @@ private fun ShortcutGridCustomizationScreen0179(
+         )
+         Text(
+             if (selectedEntryId0180 == null) {
+-                "Personalize nome, recurso, ícone, ordem e visibilidade de cada atalho."
++                "A grade contém somente ações adicionadas pela Home. Aqui você pode reordenar, renomear ou remover."
+             } else {
+                 "Edite esta bolinha sem alterar o funcionamento das demais."
+             },
+             style = MaterialTheme.typography.bodySmall,
+         )
+         Text(
+-            "Um toque na bolinha principal abre a grade; o toque seguinte executa o atalho imediatamente. Use a bolinha + para voltar a esta Central.",
++            "Um toque na bolinha principal abre a grade; o toque seguinte executa a ação imediatamente.",
+             style = MaterialTheme.typography.bodySmall,
+         )
+         Text(
+@@ -988,37 +1025,11 @@ private fun ShortcutGridCustomizationScreen0179(
+             fontWeight = FontWeight.Bold,
+         )
+ 
+-        if (selectedEntryId0180 == null) {
+-            Card(modifier = Modifier.fillMaxWidth()) {
+-                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+-                    Text("Adicionar atalho", fontWeight = FontWeight.Bold)
+-                    val candidate0179 = BubbleShortcutCatalog.findSpec(addShortcutId0179)
+-                    OutlinedButton(
+-                        onClick = {
+-                            addShortcutId0179 = ShortcutGridCustomizationPolicy0179.nextShortcutId(addShortcutId0179)
+-                        },
+-                        modifier = Modifier.fillMaxWidth(),
+-                    ) {
+-                        Text("${candidate0179?.emoji.orEmpty()}  ${candidate0179?.displayLabel ?: "Escolher ação"}")
+-                    }
+-                    Button(
+-                        onClick = {
+-                            replaceEntries0179(
+-                                ShortcutGridCustomizationPolicy0179.add(

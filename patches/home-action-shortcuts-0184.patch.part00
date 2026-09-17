@@ -1,0 +1,150 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 97d4f25..ea50db2 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -37,8 +37,8 @@ android {
+         applicationId = "br.com.mapeiaia.rotacerta"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 5440
+-        versionName = "0.1.183"
++        versionCode = 5450
++        versionName = "0.1.184"
+ 
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         buildConfigField("String", "GOOGLE_MAPS_API_KEY", "\"${googleMapsApiKey.escapeForBuildConfig()}\"")
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+index 2ffc90a..e71dce7 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutModule.kt
+@@ -214,6 +214,38 @@ object CaptureCurrentAppScreenBubbleShortcutModule : BubbleShortcutModule {
+     )
+ }
+ 
++object ReportsBubbleShortcutModule0184 : BubbleShortcutModule {
++    override val spec = BubbleShortcutSpec(
++        id = "reports",
++        emoji = "📄",
++        label = "Relatórios e diagnóstico",
++        displayLabel = "Relatórios",
++        action = BubbleShortcutAction.OpenReports,
++        targetGroup = "reports",
++        targetTab = "history",
++    )
++}
++
++object MessageTemplatesBubbleShortcutModule0184 : BubbleShortcutModule {
++    override val spec = BubbleShortcutSpec(
++        id = "message_templates",
++        emoji = "📝",
++        label = "Frases e modelos",
++        displayLabel = "Frases",
++        action = BubbleShortcutAction.OpenMessageTemplates,
++    )
++}
++
++object WorkTrackingBubbleShortcutModule0184 : BubbleShortcutModule {
++    override val spec = BubbleShortcutSpec(
++        id = "work_tracking",
++        emoji = "🗺️",
++        label = "Rastreamento de trabalho",
++        displayLabel = "Rastreamento",
++        action = BubbleShortcutAction.OpenSettings,
++    )
++}
++
+ object BubbleShortcutCatalog {
+     val modules: List<BubbleShortcutModule> = listOf(
+         RouteBubbleShortcutModule,
+@@ -222,6 +254,7 @@ object BubbleShortcutCatalog {
+         SavedPlacesManagementBubbleShortcutModule,
+         RadarsManagementBubbleShortcutModule,
+         AppearanceBubbleShortcutModule,
++        PermissionsBubbleShortcutModule,
+         BackupBubbleShortcutModule,
+         WhatsAppBubbleShortcutModule,
+         TripConfirmationBubbleShortcutModule,
+@@ -232,15 +265,20 @@ object BubbleShortcutCatalog {
+         QuickRepliesBubbleShortcutModule,
+         QuickLinksBubbleShortcutModule,
+         CaptureCurrentAppScreenBubbleShortcutModule,
++        ReportsBubbleShortcutModule0184,
++        MessageTemplatesBubbleShortcutModule0184,
++        WorkTrackingBubbleShortcutModule0184,
+         StopBubbleShortcutModule,
+     )
+ 
+     fun findSpec(id: String?): BubbleShortcutSpec? = modules
+         .firstOrNull { it.spec.id == id }
+         ?.spec
++        ?: ShortcutActionCatalog0184.findSpec(id)
+ 
+     fun requireValid() {
+-        require(modules.size == 17) { "O popup deve conter 17 módulos." }
++        require(modules.size >= 21) { "A Home deve conter o catálogo completo de módulos." }
++        ShortcutActionCatalog0184.requireValid()
+         require(modules.map { it.spec.id }.distinct().size == modules.size) {
+             "Cada atalho precisa ter identificador unico."
+         }
+diff --git a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+index 3133789..d529857 100644
+--- a/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
++++ b/app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+@@ -286,7 +286,7 @@ class BubbleShortcutOverlayController(
+         BubbleShortcutCatalog.requireValid()
+ 
+         val visibleShortcuts0179 = shortcuts.take(ShortcutGesturePolicy0179.MAX_GRID_ITEMS)
+-        val totalItems0179 = visibleShortcuts0179.size + 1
++        val totalItems0179 = visibleShortcuts0179.size
+         val scale = appearanceStore.scale()
+         val columns = if (scale >= LARGE_SCALE_TWO_COLUMNS) 2 else 3
+         val rows = (totalItems0179 + columns - 1) / columns
+@@ -335,36 +335,6 @@ class BubbleShortcutOverlayController(
+                     ),
+                 )
+             }
+-            val addSpec0179 = BubbleShortcutSpec(
+-                id = "shortcut_add_0179",
+-                emoji = "+",
+-                label = "Adicionar atalho",
+-                displayLabel = "Novo",
+-                action = BubbleShortcutAction.OpenSettings,
+-            )
+-            addView(
+-                shortcutBubble(
+-                    spec = addSpec0179,
+-                    bubbleSize = bubbleSize,
+-                    itemMargin = itemMargin,
+-                    scale = scale,
+-                    singleAction = {
+-                        hideShortcuts()
+-                        trace("bubble.shortcut.customize.clicked")
+-                        onCustomize()
+-                    },
+-                    longAction = {
+-                        hideShortcuts()
+-                        trace("bubble.shortcut.customize.long_press")
+-                        onCustomize()
+-                    },
+-                    customizeAction = {
+-                        hideShortcuts()
+-                        trace("bubble.shortcut.customize.triple_tap")
+-                        onCustomize()
+-                    },
+-                ),
+-            )
+         }
+ 
+         val menu: View = if (needsVerticalScroll) {
+@@ -421,7 +391,7 @@ class BubbleShortcutOverlayController(
+         if (runCatching { windowManager.addView(menu, params) }.isSuccess) {
+             shortcutView = menu
+             trace(
+-                "bubble.shortcuts.opened count=${visibleShortcuts0179.size} plus=1 " +
++                "bubble.shortcuts.opened count=${visibleShortcuts0179.size} plus=0 " +
+                     "anchor=${anchor.x},${anchor.y},$anchorWidth,$anchorHeight " +
+                     "menu=${position.x},${position.y},$menuWidth,$visibleMenuHeight " +
+                     "estimatedHeight=$estimatedMenuHeight scroll=$needsVerticalScroll scale=$scale columns=$columns",
+@@ -445,8 +415,7 @@ class BubbleShortcutOverlayController(
+         gravity = Gravity.CENTER
+         includeFontPadding = false
