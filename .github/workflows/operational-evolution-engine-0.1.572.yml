@@ -48,16 +48,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Prepare preinstalled Android SDK
+      - name: Verify preinstalled Android SDK
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/16.0/bin/sdkmanager"
-          test -x "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          test -d "$ANDROID_SDK_ROOT"
           test -d "$ANDROID_SDK_ROOT/platforms/android-35"
-          test -d "$ANDROID_SDK_ROOT/build-tools/35.0.0"
+          find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1 | tee android-build-tools-dir.txt
+          test -s android-build-tools-dir.txt
 
       - uses: gradle/actions/setup-gradle@v4
 
