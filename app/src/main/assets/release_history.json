@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.575",
+      "build": 5866,
+      "commit": null,
+      "branch": "agent/health-technical-package-0.1.575",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central de Saúde passa a gerar um pacote técnico ZIP sanitizado em Downloads/Rota Certa/Diagnosticos, pronto para anexar em análise externa.",
+        "O pacote inclui manifest, snapshot da saúde, incidentes/fingerprints, eventos correlacionados em NDJSON, estatísticas do buffer e evidência persistida de crash/checkpoints da Agenda.",
+        "Cada incidente passa a ter ação própria para gerar uma evidência técnica focada somente naquele fingerprint.",
+        "A seleção de eventos preserva contexto antes/depois do desvio e segue operationId, parentOperationId, correlationId e traceId, com limite para evitar dumps gigantes."
+      ],
+      "fixed": [
+        "Oportunidades antigas e genéricas persistidas por versões anteriores deixam de ser mescladas de volta; a lista é reconstruída somente a partir dos incidentes atuais.",
+        "Eliminada a convivência entre cartões antigos Eliminar a classe da falha e as novas recomendações específicas para o mesmo incidente."
+      ],
+      "improved": [
+        "Todo conteúdo textual do ZIP passa novamente pelo UnifiedDebugEventStore.sanitizeForExport antes de ser gravado.",
+        "O pacote registra cobertura temporal e custo da observabilidade para distinguir ausência de dados de ausência de falha.",
+        "Exportação ocorre fora da thread principal e não executa mutações em viagens, login, reserva, cancelamento ou deploy."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.574: oportunidades genéricas herdadas da projeção persistida podiam continuar aparecendo ao lado das recomendações específicas.",
+        "0.1.574: análise aprofundada dependia de screenshots e não preservava automaticamente a cadeia temporal/correlação de cada incidente."
+      ],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Diagnóstico",
+        "Relatórios",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },    {
       "version": "0.1.574",
       "build": 5865,
       "commit": null,
