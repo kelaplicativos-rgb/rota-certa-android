@@ -528,13 +528,21 @@ object OperationalHealthCoordinator {
     private const val RECENT_CRITICAL_MS = 60L * 60L * 1000L
 
     fun scan(context: Context): OperationalHealthSnapshot {
-        val fresh = OperationalHealthEngine.analyze(UnifiedDebugEventStore.snapshot())
-        return mergeWithStored(context, fresh).also { OperationalHealthStore.save(context, it) }
+        val source = UnifiedDebugEventStore.snapshot()
+        val fresh = OperationalHealthEngine.analyze(source)
+        return mergeWithStored(context, fresh).also { merged ->
+            OperationalHealthStore.save(context, merged)
+            OperationalHealthEvidenceCapsuleStore0576.capture(context, source, merged)
+        }
     }
 
     fun current(context: Context): OperationalHealthSnapshot {
-        val fresh = OperationalHealthEngine.analyze(UnifiedDebugEventStore.snapshot())
-        return mergeWithStored(context, fresh).also { OperationalHealthStore.save(context, it) }
+        val source = UnifiedDebugEventStore.snapshot()
+        val fresh = OperationalHealthEngine.analyze(source)
+        return mergeWithStored(context, fresh).also { merged ->
+            OperationalHealthStore.save(context, merged)
+            OperationalHealthEvidenceCapsuleStore0576.capture(context, source, merged)
+        }
     }
 
     private fun mergeWithStored(
