@@ -232,6 +232,26 @@ class BlaBlaPublicLinkCanonical0409Test {
     }
 
     @Test
+    fun canonicalProjectionPromotesFreshAuthoritativePublicSharePermalink() {
+        val publicToken = "PublicShareToken0577"
+        val observed = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicToken"
+        val canonical = trip(tripIdA, null)
+        val source = source(tripIdA, observed).copy(
+            public_trip_href_binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+            public_trip_href_source = "share_action",
+        )
+
+        val projection = PublicAgendaAutoSync0300.toCanonicalExternalProjection0406(
+            canonical = canonical,
+            source = source,
+            nowMillis = 0L,
+        )
+
+        assertEquals(observed, projection?.trip?.blablaPublicUrl)
+        assertEquals(observed, projection?.blablaPublicHref)
+    }
+
+    @Test
     fun publicPermalinkPersistsWithTheSameStrongTripIdentity() {
         val original = trip(tripIdA, "https://www.blablacar.com.br/trip?id=$tripIdA")
         val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
