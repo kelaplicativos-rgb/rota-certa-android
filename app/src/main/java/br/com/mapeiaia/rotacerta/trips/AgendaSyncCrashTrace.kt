@@ -49,6 +49,50 @@ internal object AgendaSyncCrashTraceStore {
     }
 
     /**
+     * Rehydrates the last persisted Agenda crash into the existing unified in-memory
+     * event store using the original crash timestamp. This keeps the health engine
+     * on the same sanitized source while allowing process-death evidence to survive
+     * into the next process without making an old crash look newly current.
+     */
+    fun recoverPersistedCrashIntoUnifiedDebug(context: Context): Boolean {
+        val appContext = context.applicationContext
+        val file = traceFile(appContext)
+        if (!file.isFile) return false
+        return runCatching {
+            val raw = file.readText(Charsets.UTF_8).take(MAX_EXPORT_CHARS)
+            val capturedAt = raw.lineSequence()
+                .firstOrNull { it.startsWith("capturedAt=") }
+                ?.substringAfter("capturedAt=")
+                ?.trim()
+                ?.let { value ->
+                    runCatching {
+                        SimpleDateFormat("dd/MM/yyyy HH:mm:ss.SSS", Locale("pt", "BR"))
+                            .parse(value)
+                            ?.time
+                    }.getOrNull()
+                }
+                ?: file.lastModified().takeIf { it > 0L }
+                ?: System.currentTimeMillis()
+            val evidence = raw.lineSequence()
+                .firstOrNull { it.startsWith("failureEvidence=") }
+                ?.substringAfter("failureEvidence=")
+                .orEmpty()
+            val rootCauseClass = evidence
+                .substringAfter("rootCauseClass=\"", "")
+                .substringBefore('"')
+                .take(120)
+                .ifBlank { "unknown" }
+            br.com.mapeiaia.rotacerta.UnifiedDebugEventStore.recordAlways(
+                stage = "RECOVERED_UNCAUGHT_AGENDA_SYNC_CRASH_0573",
+                packageName = appContext.packageName,
+                details = "source=persisted_agenda_crash; recovered=true; rootCauseClass=$rootCauseClass",
+                nowMillis = capturedAt,
+            )
+            true
+        }.getOrDefault(false)
+    }
+
+    /**
      * Hot-path checkpoint: compact memory mutation only. Disk persistence is
      * coalesced and happens off the caller thread.
      */
