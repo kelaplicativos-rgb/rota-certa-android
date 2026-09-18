@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.578",
+      "build": 5869,
+      "commit": null,
+      "branch": "agent/navigation-identity-atomic-0.1.578",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A identidade operacional BlaBlaCar passa a ser indivisível: profileUuid + tripId só é promovido como navegável quando existe href específico validado para a mesma viagem.",
+        "Snapshots parciais podem recuperar o href administrativo previamente comprovado da mesma identidade canônica, sem usar rota, horário, texto visual ou URL sintetizada."
+      ],
+      "fixed": [
+        "Corrigida a causa raiz em que externalTripId sobrevivia no estado canônico enquanto specificHref desaparecia, produzindo cards sem destino operacional.",
+        "Novas observações incompletas deixam de sobrescrever/promover viagens navegáveis pela metade."
+      ],
+      "improved": [
+        "A ausência de href específico gera bloqueio explícito SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0578 e exige nova coleta do card exato.",
+        "Teste de regressão cobre href direto, recuperação pelo mesmo estado canônico, ausência total e href de tripId divergente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.577: viagens podiam permanecer com externalTripId presente e specificHref ausente após reconciliação canônica."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline",
+        "Identidade canônica",
+        "Navegação",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.577",
       "build": 5868,
       "commit": null,
