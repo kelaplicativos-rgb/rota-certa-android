@@ -55,6 +55,33 @@ class OperationalHealthEngineTest {
         assertEquals(OperationalValidationState.REGRESSION, result.validation)
     }
 
+    @Test
+    fun slowOperationAndJankAreOperationalIncidents() {
+        val events = listOf(
+            UnifiedDebugEventStore.SnapshotEvent(
+                atMillis = now - 2_000L,
+                monotonicNs = (now - 2_000L) * 1_000_000L,
+                stage = "SLOW_OPERATION",
+                packageName = "br.com.mapeiaia.rotacerta",
+                details = "durationMs=1251",
+                threadName = "main",
+            ),
+            UnifiedDebugEventStore.SnapshotEvent(
+                atMillis = now - 1_000L,
+                monotonicNs = (now - 1_000L) * 1_000_000L,
+                stage = "AGENDA_JANK_FRAME_500MS",
+                packageName = "br.com.mapeiaia.rotacerta",
+                details = "durationMs=641",
+                threadName = "main",
+            ),
+        )
+        val result = OperationalHealthEngine.analyze(snapshot(events), now)
+        assertEquals(2, result.incidents.size)
+        assertTrue(result.incidents.all { it.severity == OperationalIncidentSeverity.WARNING })
+        assertTrue(result.incidents.any { it.probableRootCause.contains("responsividade") })
+        assertEquals(OperationalHealthState.YELLOW, result.state)
+    }
+
     private fun event(
         at: Long,
         stage: String,
