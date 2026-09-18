@@ -9,6 +9,10 @@
     const current = new URL(location.href);
     tripId = clean(current.searchParams.get('id'));
     if (!tripId) {
+      const currentMatch = current.pathname.match(/\/ride-plan\/trip-edit\/([^/?#]+)/i);
+      tripId = clean(currentMatch && currentMatch[1]);
+    }
+    if (!tripId) {
       const match = current.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
       tripId = clean(match && match[1]);
     }
