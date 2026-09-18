@@ -2704,6 +2704,26 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     BlaBlaCollectorUrlModule.isSpecificTrip(href)
                 }
                 .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
+            val repairedSpecificHrefs0578 = store.repairSpecificTripHrefs0578(account, visibleAll)
+            if (repairedSpecificHrefs0578 > 0) {
+                // Publish the repaired per-account snapshot immediately. The canonical delta worker
+                // then persists the same exact binding into TripStore without waiting for all cards
+                // to finish their deep traversal.
+                BlaBlaAutomaticCollectionCoordinator0400.publishCurrentSessions(
+                    context = this,
+                    reason = "ride_list_specific_href_repaired_0578",
+                )
+                AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+                    context = this,
+                    source = "ride_list_specific_href_repaired_0578",
+                )
+                UnifiedDebugEventStore.record(
+                    "RIDE_LIST_SPECIFIC_HREF_BINDING_0578",
+                    packageName,
+                    "account=${account.displayLabel} repaired=$repairedSpecificHrefs0578 visible=${visibleAll.size} " +
+                        "deepTraversalPending=true canonicalDeltaQueued=true synthesized=false",
+                )
+            }
             val requestedDates = targetDates.toSet().takeIf { it.isNotEmpty() }
             val visible = requestedDates?.let { dates ->
                 BlaBlaCollectorCardModule.candidatesOnDates(visibleAll, dates)
