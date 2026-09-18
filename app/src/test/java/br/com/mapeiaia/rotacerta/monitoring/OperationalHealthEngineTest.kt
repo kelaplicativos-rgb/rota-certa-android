@@ -45,14 +45,38 @@ class OperationalHealthEngineTest {
     }
 
     @Test
-    fun increaseInRecentWindowIsClassifiedAsRegression() {
+    fun increaseInUniqueIncidentsWithFullWindowIsClassifiedAsRegression() {
         val events = listOf(
+            UnifiedDebugEventStore.SnapshotEvent(
+                atMillis = now - 13L * 60L * 60L * 1000L,
+                monotonicNs = (now - 13L * 60L * 60L * 1000L) * 1_000_000L,
+                stage = "HEALTH_BASELINE",
+                packageName = "br.com.mapeiaia.rotacerta",
+                details = "baseline=true",
+                threadName = "test",
+            ),
             event(now - 7L * 60L * 60L * 1000L, "NETWORK_TIMEOUT", "timeout", "SYNC"),
             event(now - 60L * 60L * 1000L, "NETWORK_TIMEOUT", "timeout", "SYNC"),
-            event(now - 30L * 60L * 1000L, "NETWORK_TIMEOUT", "timeout", "SYNC"),
+            event(now - 30L * 60L * 1000L, "CANONICAL_MISMATCH", "canonical_mismatch", "SYNC"),
         )
         val result = OperationalHealthEngine.analyze(snapshot(events), now)
         assertEquals(OperationalValidationState.REGRESSION, result.validation)
+        assertTrue(result.validationSummary.contains("Incidentes únicos aumentaram de 1 para 2"))
+    }
+
+    @Test
+    fun truncatedHistoryCannotBeCalledRegression() {
+        val events = buildList {
+            repeat(113) { index ->
+                add(event(now - index * 1_000L, "NETWORK_TIMEOUT", "timeout", "SYNC"))
+            }
+        }
+        val result = OperationalHealthEngine.analyze(
+            snapshot(events).copy(droppedEvents = 22_895L),
+            now,
+        )
+        assertEquals(OperationalValidationState.INSUFFICIENT_DATA, result.validation)
+        assertTrue(result.validationSummary.contains("Não classificar como regressão"))
     }
 
     @Test
