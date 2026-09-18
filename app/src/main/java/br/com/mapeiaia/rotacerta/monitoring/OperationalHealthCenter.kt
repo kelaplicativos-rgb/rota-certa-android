@@ -155,25 +155,34 @@ object OperationalHealthEngine {
             .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
             .take(12)
             .map(::opportunityFor)
-        val recentCount = candidates.count { it.atMillis >= nowMillis - SIX_HOURS }
-        val previousCount = candidates.count {
+        val recentCandidates = candidates.filter { it.atMillis >= nowMillis - SIX_HOURS }
+        val previousCandidates = candidates.filter {
             it.atMillis >= nowMillis - (2L * SIX_HOURS) && it.atMillis < nowMillis - SIX_HOURS
         }
+        val recentIncidentCount = recentCandidates.map(::fingerprint).distinct().size
+        val previousIncidentCount = previousCandidates.map(::fingerprint).distinct().size
+        val oldestRetainedAt = snapshot.events.minOfOrNull { it.atMillis }
+        val hasFullComparisonWindow = oldestRetainedAt != null &&
+            oldestRetainedAt <= nowMillis - (2L * SIX_HOURS)
+
         val validation = when {
-            previousCount == 0 && recentCount == 0 -> OperationalValidationState.INSUFFICIENT_DATA
-            previousCount > 0 && recentCount == 0 -> OperationalValidationState.IMPROVED
-            recentCount > previousCount -> OperationalValidationState.REGRESSION
+            !hasFullComparisonWindow -> OperationalValidationState.INSUFFICIENT_DATA
+            previousIncidentCount > 0 && recentIncidentCount == 0 -> OperationalValidationState.IMPROVED
+            recentIncidentCount > previousIncidentCount -> OperationalValidationState.REGRESSION
             else -> OperationalValidationState.STABLE
         }
         val validationSummary = when (validation) {
             OperationalValidationState.IMPROVED ->
-                "Janela recente sem falhas relacionadas; janela anterior registrou $previousCount."
+                "Incidentes únicos caíram de $previousIncidentCount para 0; eventos relacionados na janela anterior=${previousCandidates.size}."
             OperationalValidationState.REGRESSION ->
-                "Falhas sanitizadas aumentaram de $previousCount para $recentCount entre as duas janelas de 6h."
+                "Incidentes únicos aumentaram de $previousIncidentCount para $recentIncidentCount; eventos relacionados na janela recente=${recentCandidates.size}."
             OperationalValidationState.STABLE ->
-                "Janela anterior=$previousCount e janela recente=$recentCount; sem aumento objetivo."
-            OperationalValidationState.INSUFFICIENT_DATA ->
-                "Ainda não há eventos suficientes nas duas janelas de 6h para validar tendência."
+                "Incidentes únicos: anterior=$previousIncidentCount e recente=$recentIncidentCount; eventos recentes=${recentCandidates.size}."
+            OperationalValidationState.INSUFFICIENT_DATA -> {
+                val oldest = oldestRetainedAt?.let { nowMillis - it } ?: 0L
+                val coverageHours = oldest / (60L * 60L * 1000L)
+                "Comparação de 12h indisponível: o buffer retém aproximadamente ${coverageHours}h de histórico nesta sessão; removidos por limite=${snapshot.droppedEvents}. Não classificar como regressão sem janela anterior completa."
+            }
         }
         return OperationalHealthSnapshot(
             scannedAtMillis = nowMillis,
@@ -281,8 +290,8 @@ object OperationalHealthEngine {
             else ->
                 OperationalOpportunity(
                     incident.id,
-                    "Eliminar a classe da falha",
-                    "Usar o primeiro evento divergente como fronteira arquitetural e propor uma mudança que impeça a mesma família de incidente, em vez de apenas tratar o sintoma.",
+                    "Corrigir ${incident.errorCode.take(48)}",
+                    "Causa provável (${incident.confidencePercent}%): ${incident.probableRootCause} Correção estrutural: ${incident.suggestedCorrection}",
                 )
         }
     }
@@ -636,7 +645,7 @@ class OperationalHealthActivity : ComponentActivity() {
             Text("Versão ${BuildConfig.VERSION_NAME} • build ${BuildConfig.VERSION_CODE}")
             Text("Commit ${BuildConfig.BUILD_GIT_SHA.take(12)} • branch ${BuildConfig.BUILD_GIT_BRANCH}")
             Text("Última auditoria: ${formatter.format(Date(snapshot.scannedAtMillis))}")
-            Text("Eventos sanitizados: ${snapshot.sourceEventCount} • descartados pelo buffer: ${snapshot.droppedEvents}")
+            Text("Eventos sanitizados no buffer: ${snapshot.sourceEventCount} • removidos por limite: ${snapshot.droppedEvents}")
             OperationalHealthRuntime.latestCriticalAtMillis().takeIf { it > 0L }?.let {
                 Text("Último crítico observado em tempo real: ${formatter.format(Date(it))}")
             }
