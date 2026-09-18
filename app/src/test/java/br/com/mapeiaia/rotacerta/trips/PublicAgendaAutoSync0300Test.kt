@@ -324,7 +324,7 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
-    fun departedCollectorTripIsNotRepublished() {
+    fun departedCollectorTripWithoutArrivalUsesSafeOperationalRetention() {
         val departure = LocalDate.of(2030, 9, 10)
             .atTime(LocalTime.of(11, 0))
             .atZone(zone)
@@ -337,7 +337,15 @@ class PublicAgendaAutoSync0300Test {
             search_from = "Santo André",
             search_to = "São Thomé das Letras",
         )
-        assertNull(PublicAgendaAutoSync0300.toPublicTrip(source, 4, departure + 1L, zone))
+        assertNotNull(PublicAgendaAutoSync0300.toPublicTrip(source, 4, departure + 1L, zone))
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source,
+                4,
+                departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 + 1L,
+                zone,
+            ),
+        )
     }
 
     @Test
