@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.576",
+      "build": 5867,
+      "commit": null,
+      "branch": "agent/health-evidence-integrity-0.1.576",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A validação antes/depois deixa de usar evidência histórica reidratada como se fosse cobertura temporal contínua da sessão atual.",
+        "Eventos defensivos de stale ignorado/rejeitado/pulado passam a ser classificados como proteção funcionando, não como incidente.",
+        "TRIP_IDENTITY com externalTripId presente e href específico ausente passa a gerar uma única invariante agregada de cobertura de navegação.",
+        "Cada incidente capturado passa a persistir uma cápsula sanitizada de evidências correlacionadas para sobreviver à troca de processo e entrar no pacote técnico futuro.",
+        "O pacote técnico passa a incluir persisted-evidence-capsules.json."
+      ],
+      "fixed": [
+        "Corrigido falso REGRESSION causado por crash histórico reidratado distante do restante dos eventos vivos.",
+        "Corrigida herança de tendência anterior quando o processo atual não possui eventos suficientes para uma comparação válida.",
+        "Corrigido events.ndjson para preservar uma linha por objeto após sanitização.",
+        "Corrigida a exibição de removidos pelo buffer para representar apenas a sessão atual, sem carregar contagem antiga persistida."
+      ],
+      "improved": [
+        "O diagnóstico de ausência de href específico recebe causa raiz e correção estrutural próprias.",
+        "Cápsulas de evidência armazenam contexto ao redor do desvio e IDs correlacionados sem criar uma segunda fonte de logs.",
+        "A exportação continua fail-closed para dados sensíveis por reutilizar UnifiedDebugEventStore.sanitizeForExport em cada campo persistido."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.575: AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435 podia aparecer como incidente mesmo sendo um descarte defensivo com Result.success.",
+        "0.1.575: eventos históricos recuperados podiam fabricar cobertura de 12 horas e gerar REGRESSION sem janela anterior real.",
+        "0.1.575: events.ndjson tinha objetos concatenados após sanitização global.",
+        "0.1.575: incidentes persistidos podiam permanecer sem qualquer contexto técnico após o evento sair do buffer vivo.",
+        "0.1.575: 21 viagens com externalTripId e sem href específico não eram elevadas a uma invariante explícita de saúde."
+      ],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Diagnóstico",
+        "Relatórios",
+        "Agenda",
+        "BlaBlaCar",
+        "Build"
+      ],
+      "detailsComplete": true
+    },    {
       "version": "0.1.575",
       "build": 5866,
       "commit": null,
