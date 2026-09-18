@@ -2150,8 +2150,11 @@ internal object PublicAgendaAutoSync0300 {
 
         var arrival = parseDateTime(source.date, source.arrival_time, zoneId)
         if (arrival != null && arrival < departure) arrival += DAY_MILLIS
-        val visibleUntil0577 = (arrival ?: (departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577)) +
-            OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
+        val visibleUntil0577 = if (arrival != null) {
+            arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
+        } else {
+            departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
+        }
         if (nowMillis > visibleUntil0577) return null
 
         val identity = stableIdentity(source)
