@@ -574,7 +574,7 @@ class OperationalHealthWorker(
         Result.success()
     }.getOrElse { error ->
         UnifiedDebugEventStore.recordAlways(
-            stage = "OPERATIONAL_HEALTH_SCAN_FAILED_0574",
+            stage = "OPERATIONAL_HEALTH_SCAN_FAILED_0575",
             packageName = applicationContext.packageName,
             details = "errorClass=${error.javaClass.simpleName}",
         )
