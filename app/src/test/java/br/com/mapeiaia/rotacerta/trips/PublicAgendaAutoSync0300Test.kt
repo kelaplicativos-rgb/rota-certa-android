@@ -53,6 +53,57 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun collectorTripRemainsPublishableAfterDepartureUntilArrivalPlusGrace() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-operational-0577",
+            date = "2030-09-10",
+            departure_time = "11:00",
+            arrival_time = "16:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-0577",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-0577",
+            trip_id = "trip-0577",
+            passenger_roster_complete = true,
+        )
+        val departure = LocalDate.parse(source.date)
+            .atTime(LocalTime.parse(source.departure_time))
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val arrival = LocalDate.parse(source.date)
+            .atTime(LocalTime.parse(source.arrival_time))
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+
+        assertNotNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = departure + 60L * 60L * 1000L,
+                zoneId = zone,
+            ),
+        )
+        assertNotNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577,
+                zoneId = zone,
+            ),
+        )
+        assertNull(
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = 4,
+                nowMillis = arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 + 1L,
+                zoneId = zone,
+            ),
+        )
+    }
+
+    @Test
     fun blablaBookedEvidenceRemainsOccupancyAndNeverBecomesPhysicalCapacity() {
         val source = BlaBlaCollectorTrip(
             profile_uuid = "profile-barbosa",
