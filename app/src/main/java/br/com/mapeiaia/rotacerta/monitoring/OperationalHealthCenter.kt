@@ -40,6 +40,7 @@ import androidx.work.WorkerParameters
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.trips.AgendaSyncCrashTraceStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -91,6 +92,7 @@ object OperationalHealthEngine {
     private val failureTokens = listOf(
         "ERROR", "FAILED", "FAILURE", "MISSING", "MISMATCH", "TIMEOUT",
         "STALE", "BLOCKED", "UNAVAILABLE", "CRASH", "REJECTED",
+        "SLOW_OPERATION", "LONG_BLOCK", "JANK_FRAME",
     )
     private val criticalTokens = listOf(
         "CRASH", "IDENTITY", "PROFILE_MISMATCH", "EDIT_TARGET_MISSING",
@@ -240,6 +242,12 @@ object OperationalHealthEngine {
                 "Há uma janela em que uma projeção antiga permanece elegível depois de uma mudança de autoridade.",
                 80,
                 "Versionar snapshots e invalidações com revisão monotônica e impedir regressão para revisão anterior.",
+            )
+        key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK") || key.contains("JANK_FRAME") ->
+            Diagnosis(
+                "Uma operação ou frame ultrapassou o orçamento de responsividade e bloqueou a experiência perceptível da tela.",
+                92,
+                "Retirar trabalho pesado da main thread, reduzir recomposição/serialização no caminho crítico e validar novamente os percentis e frames longos.",
             )
         else ->
             Diagnosis(
@@ -447,19 +455,94 @@ object OperationalHealthStore {
 }
 
 object OperationalHealthCoordinator {
+    private const val INCIDENT_RETENTION_MS = 24L * 60L * 60L * 1000L
+    private const val RECENT_CRITICAL_MS = 60L * 60L * 1000L
+
     fun scan(context: Context): OperationalHealthSnapshot {
-        val snapshot = OperationalHealthEngine.analyze(UnifiedDebugEventStore.snapshot())
-        OperationalHealthStore.save(context, snapshot)
-        return snapshot
+        val fresh = OperationalHealthEngine.analyze(UnifiedDebugEventStore.snapshot())
+        return mergeWithStored(context, fresh).also { OperationalHealthStore.save(context, it) }
     }
 
     fun current(context: Context): OperationalHealthSnapshot {
-        val live = UnifiedDebugEventStore.snapshot()
-        return if (live.events.isNotEmpty()) {
-            OperationalHealthEngine.analyze(live).also { OperationalHealthStore.save(context, it) }
-        } else {
-            OperationalHealthStore.load(context) ?: OperationalHealthEngine.analyze(live)
+        val fresh = OperationalHealthEngine.analyze(UnifiedDebugEventStore.snapshot())
+        return mergeWithStored(context, fresh).also { OperationalHealthStore.save(context, it) }
+    }
+
+    private fun mergeWithStored(
+        context: Context,
+        fresh: OperationalHealthSnapshot,
+    ): OperationalHealthSnapshot {
+        val previous = OperationalHealthStore.load(context) ?: return fresh
+        val cutoff = fresh.scannedAtMillis - INCIDENT_RETENTION_MS
+        val mergedByFingerprint = linkedMapOf<String, OperationalIncident>()
+
+        previous.incidents
+            .filter { it.lastSeenMillis >= cutoff }
+            .forEach { mergedByFingerprint[it.fingerprint] = it }
+
+        fresh.incidents.forEach { incoming ->
+            val existing = mergedByFingerprint[incoming.fingerprint]
+            mergedByFingerprint[incoming.fingerprint] = if (existing == null) {
+                incoming
+            } else {
+                val newest = if (incoming.lastSeenMillis >= existing.lastSeenMillis) incoming else existing
+                newest.copy(
+                    firstSeenMillis = minOf(existing.firstSeenMillis, incoming.firstSeenMillis),
+                    lastSeenMillis = maxOf(existing.lastSeenMillis, incoming.lastSeenMillis),
+                    count = maxOf(existing.count, incoming.count),
+                )
+            }
         }
+
+        val incidents = mergedByFingerprint.values
+            .sortedWith(
+                compareByDescending<OperationalIncident> { it.severity == OperationalIncidentSeverity.CRITICAL }
+                    .thenByDescending { it.lastSeenMillis },
+            )
+            .take(30)
+
+        val state = when {
+            incidents.any {
+                it.severity == OperationalIncidentSeverity.CRITICAL &&
+                    it.lastSeenMillis >= fresh.scannedAtMillis - RECENT_CRITICAL_MS
+            } -> OperationalHealthState.RED
+            incidents.isNotEmpty() -> OperationalHealthState.YELLOW
+            else -> OperationalHealthState.GREEN
+        }
+
+        val activeIds = incidents.mapTo(mutableSetOf()) { it.id }
+        val opportunities = (fresh.opportunities + previous.opportunities)
+            .filter { it.incidentId in activeIds }
+            .distinctBy { "${it.incidentId}|${it.title}" }
+            .take(12)
+
+        val validation = if (
+            fresh.sourceEventCount == 0 &&
+            fresh.validation == OperationalValidationState.INSUFFICIENT_DATA &&
+            incidents.isNotEmpty()
+        ) {
+            previous.validation
+        } else {
+            fresh.validation
+        }
+
+        val validationSummary = if (
+            fresh.sourceEventCount == 0 &&
+            incidents.isNotEmpty()
+        ) {
+            "Sem novos eventos no processo atual; incidentes sanitizados ainda válidos foram preservados da projeção anterior."
+        } else {
+            fresh.validationSummary
+        }
+
+        return fresh.copy(
+            state = state,
+            droppedEvents = maxOf(previous.droppedEvents, fresh.droppedEvents),
+            incidents = incidents,
+            opportunities = opportunities,
+            validation = validation,
+            validationSummary = validationSummary,
+        )
     }
 }
 
@@ -506,6 +589,7 @@ class OperationalHealthInitializerProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val appContext = context?.applicationContext ?: return false
         runCatching {
+            AgendaSyncCrashTraceStore.recoverPersistedCrashIntoUnifiedDebug(appContext)
             OperationalHealthScheduler.ensureScheduled(appContext)
             OperationalHealthScheduler.enqueueImmediate(appContext)
         }
