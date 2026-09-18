@@ -81,6 +81,29 @@ class OperationalHealthTechnicalPackage0575Test {
     }
 
     @Test
+    fun persistedEvidenceCapsuleSanitizesSensitiveDetails() {
+        val event = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = 1L,
+            monotonicNs = 1L,
+            stage = "TEST_EVENT",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "email=teste@example.com token=abc123 url=https://example.com/path telefone=11999998888",
+            threadName = "main",
+        )
+
+        val json = OperationalHealthEvidenceCapsuleStore0576.eventJson0576(event).toString()
+
+        assertTrue("[email mascarado]" in json)
+        assertTrue("[segredo mascarado]" in json)
+        assertTrue("[url mascarada]" in json)
+        assertTrue("[telefone mascarado]" in json)
+        assertFalse("teste@example.com" in json)
+        assertFalse("abc123" in json)
+        assertFalse("https://example.com/path" in json)
+        assertFalse("11999998888" in json)
+    }
+
+    @Test
     fun zipBuilderSanitizesSensitiveTextBeforeWriting() {
         val bytes = OperationalHealthTechnicalPackage0575.zipSanitized0575(
             mapOf(
