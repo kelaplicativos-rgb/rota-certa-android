@@ -2202,56 +2202,55 @@ private fun TimelineEntryCard(
                 }
             }
 
-            if (expanded) {
-                HorizontalDivider(color = agendaBorder0549)
-                Text("Vagas por trecho", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            HorizontalDivider(color = agendaBorder0549)
+            Text("Vagas por trecho", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-                if (publicLoads0549.isEmpty()) {
-                    Text(
-                        "Disponibilidade por trecho aguardando o estado canônico da Agenda.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = agendaMuted0549,
-                    )
-                } else {
-                    publicLoads0549.forEach { load0549 ->
-                        val seatCount0549 = (
-                            load0549.passengerSeats + load0549.blockedSeats + load0549.availableSeats
-                        ).coerceAtLeast(1).coerceAtMost(8)
-                        val occupied0549 = (seatCount0549 - load0549.availableSeats).coerceIn(0, seatCount0549)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
+            if (publicLoads0549.isEmpty()) {
+                Text(
+                    "Disponibilidade por trecho aguardando o estado canônico da Agenda.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = agendaMuted0549,
+                )
+            } else {
+                publicLoads0549.forEach { load0580 ->
+                    val seatCapacity0580 = operationalInventory0549?.coerceAtLeast(0) ?: 0
+                    val availableForDots0580 = load0580.availableSeats.coerceIn(0, seatCapacity0580)
+                    val occupiedForDots0580 = (seatCapacity0580 - availableForDots0580).coerceAtLeast(0)
+                    val seatDots0580 = "●".repeat(occupiedForDots0580) + "○".repeat(availableForDots0580)
+                    val availabilityLabel0580 = when (load0580.availableSeats.coerceAtLeast(0)) {
+                        0 -> "LOTADO"
+                        1 -> "1 vaga"
+                        else -> "${load0580.availableSeats.coerceAtLeast(0)} vagas"
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            "${load0580.from.name} → ${load0580.to.name}",
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (seatDots0580.isNotEmpty()) {
                             Text(
-                                "${load0549.from.name} → ${load0549.to.name}",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                                repeat(seatCount0549) { seatIndex0549 ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(25.dp)
-                                            .border(2.dp, agendaSeatAccent0549, CircleShape),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        if (seatIndex0549 < occupied0549) {
-                                            Text("●", color = Color(0xFF9AA5B1), style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
-                                }
-                            }
-                            Text(
-                                "${load0549.availableSeats} vagas",
+                                seatDots0580,
                                 style = MaterialTheme.typography.bodyMedium,
+                                color = agendaSeatAccent0549,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
+                        Text(
+                            availabilityLabel0580,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
+            }
 
+            if (expanded) {
                 HorizontalDivider(color = agendaBorder0549)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
