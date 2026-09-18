@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.573",
+      "build": 5864,
+      "commit": null,
+      "branch": "agent/operational-health-rootcause-0.1.573",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Falhas Java persistidas da Agenda são reidratadas no UnifiedDebugEventStore com o timestamp original antes da auditoria inicial, mantendo uma única trilha sanitizada para a Central de Saúde.",
+        "A Central preserva por até 24 horas incidentes sanitizados ainda válidos entre processos e entre estouros do buffer, realizando merge por fingerprint sem converter falha antiga em ocorrência nova.",
+        "SLOW_OPERATION, MAIN_THREAD_LONG_BLOCK e JANK_FRAME passam a gerar incidentes operacionais de desempenho com causa provável e correção sugerida."
+      ],
+      "fixed": [
+        "Removido o uso do modificador regex (?U) incompatível com java.util.regex.Pattern em Android no corretor offline de texto, eliminando o PatternSyntaxException observado no Samsung Android 16.",
+        "Corrigido o falso estado verde causado pela substituição da projeção persistida de saúde por um snapshot vivo sem os incidentes do processo anterior."
+      ],
+      "improved": [
+        "A reidratação de crash usa a data original registrada em disco para respeitar a janela temporal e impedir que um crash antigo seja promovido artificialmente a crítico recente.",
+        "A fusão de incidentes mantém severidade, primeira/última ocorrência e contagem conservadora por fingerprint, sem duplicar logs nem alterar viagens."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.572: falha persistida após morte do processo podia permanecer no relatório forense sem aparecer na Central de Saúde.",
+        "0.1.572: lentidão objetiva da Agenda podia ser registrada como SLOW_OPERATION/JANK sem se tornar incidente da Central."
+      ],
+      "modulesAffected": [
+        "Diagnóstico",
+        "Central de Saúde",
+        "Agenda",
+        "Corretor de texto",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.572",
       "build": 5863,
       "commit": null,
