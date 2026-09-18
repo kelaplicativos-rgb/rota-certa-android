@@ -57,6 +57,7 @@ object OperationalHealthTechnicalPackage0575 {
             "health-snapshot.json" to healthSnapshot0575(health),
             "incident-evidence.json" to incidentEvidence0575(selectedIncidents, evidenceEvents),
             "events.ndjson" to eventsNdjson0575(evidenceEvents),
+            "persisted-evidence-capsules.json" to OperationalHealthEvidenceCapsuleStore0576.export(appContext, incidentId),
             "buffer-stats.json" to bufferStats0575(source),
             "agenda-crash-evidence.txt" to AgendaSyncCrashTraceStore.export(appContext),
         )
@@ -266,6 +267,7 @@ object OperationalHealthTechnicalPackage0575 {
         appendLine("- health-snapshot.json: estado calculado da Central.")
         appendLine("- incident-evidence.json: incidentes, fingerprints, causa provavel e politica de selecao.")
         appendLine("- events.ndjson: contexto cronologico selecionado ao redor dos desvios e IDs correlacionados.")
+        appendLine("- persisted-evidence-capsules.json: evidência sanitizada persistida por fingerprint, inclusive após troca de processo.")
         appendLine("- buffer-stats.json: cobertura real do buffer e custo de observabilidade.")
         appendLine("- agenda-crash-evidence.txt: crash/checkpoints persistidos da Agenda, quando existentes.")
         appendLine()
@@ -277,7 +279,13 @@ object OperationalHealthTechnicalPackage0575 {
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             entries.forEach { (name, raw) ->
-                val safe = UnifiedDebugEventStore.sanitizeForExport(raw)
+                val safe = if (name.endsWith(".ndjson", ignoreCase = true)) {
+                    raw.lineSequence()
+                        .map(UnifiedDebugEventStore::sanitizeForExport)
+                        .joinToString("\n")
+                } else {
+                    UnifiedDebugEventStore.sanitizeForExport(raw)
+                }
                 zip.putNextEntry(ZipEntry(name))
                 zip.write(safe.toByteArray(Charsets.UTF_8))
                 zip.closeEntry()
