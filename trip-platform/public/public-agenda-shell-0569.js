@@ -195,6 +195,77 @@ function cardEligible0569(item) {
   return PUBLIC_AGENDA_CARD_STATUSES_0569.has(String(item?.status || "").toUpperCase()) && orderedStops0569(item).length >= 2;
 }
 
+function publicSegmentRows0580(item, stops) {
+  const expected = Math.max(0, (Array.isArray(stops) ? stops.length : 0) - 1);
+  const capacity = Math.max(0, Math.floor(Number(item?.capacity || 0)));
+  if (item?.capacityReliable !== true || expected < 1 || !Array.isArray(item?.segmentAvailability)) return [];
+  if (item.segmentAvailability.length !== expected) return [];
+  return item.segmentAvailability.map((segment) => {
+    const from = String(segment?.from || "").trim();
+    const to = String(segment?.to || "").trim();
+    const availableSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.availableSeats || 0))));
+    if (!from || !to || !Number.isFinite(Number(segment?.availableSeats))) return null;
+    return { from, to, availableSeats, capacity };
+  }).filter(Boolean);
+}
+
+function segmentAvailabilityLabel0580(availableSeats) {
+  const available = Math.max(0, Math.floor(Number(availableSeats || 0)));
+  if (available === 0) return "LOTADO";
+  if (available === 1) return "1 vaga";
+  return available + " vagas";
+}
+
+function segmentSeatDots0580(capacity, availableSeats) {
+  const total = Math.max(0, Math.floor(Number(capacity || 0)));
+  const available = Math.max(0, Math.min(total, Math.floor(Number(availableSeats || 0))));
+  const occupied = Math.max(0, total - available);
+  return "●".repeat(occupied) + "○".repeat(available);
+}
+
+function appendSegmentAvailability0580(card, item, stops) {
+  const section = document.createElement("section");
+  section.className = "agendaSegments0580";
+  section.setAttribute("aria-label", "Vagas por trecho");
+
+  const title = document.createElement("strong");
+  title.className = "agendaSegmentsTitle0580";
+  title.textContent = "Vagas por trecho";
+  section.appendChild(title);
+
+  const rows = publicSegmentRows0580(item, stops);
+  if (!rows.length) {
+    const pending = document.createElement("div");
+    pending.className = "agendaSegmentPending0580";
+    pending.textContent = "Disponibilidade por trecho indisponível";
+    section.appendChild(pending);
+    card.appendChild(section);
+    return;
+  }
+
+  rows.forEach((segment) => {
+    const row = document.createElement("div");
+    row.className = "agendaSegmentRow0580";
+
+    const route = document.createElement("span");
+    route.className = "agendaSegmentRoute0580";
+    route.textContent = segment.from + " → " + segment.to;
+
+    const dots = document.createElement("span");
+    dots.className = "agendaSegmentDots0580";
+    dots.setAttribute("aria-hidden", "true");
+    dots.textContent = segmentSeatDots0580(segment.capacity, segment.availableSeats);
+
+    const seats = document.createElement("strong");
+    seats.className = "agendaSegmentSeats0580";
+    seats.textContent = segmentAvailabilityLabel0580(segment.availableSeats);
+
+    row.append(route, dots, seats);
+    section.appendChild(row);
+  });
+  card.appendChild(section);
+}
+
 function appendJourney0569(card, item, firstStop, lastStop) {
   const start = startMillis0569(item, firstStop);
   const end = endMillis0569(lastStop);
@@ -259,6 +330,7 @@ function renderTripCard0569(item) {
   top.append(date, driver);
   card.appendChild(top);
   appendJourney0569(card, item, firstStop, lastStop);
+  appendSegmentAvailability0580(card, item, stops);
   return card;
 }
 
