@@ -368,6 +368,33 @@ class BlaBlaDynamicSessionStore(context: Context) {
         }
     }
 
+    /**
+     * Repairs legacy session snapshots as soon as the authenticated RIDE_LIST exposes the exact
+     * href for a known trip. This happens before deep card traversal, so a later timeout cannot
+     * discard the navigation binding that was already proven on the list page.
+     */
+    fun repairSpecificTripHrefs0578(
+        account: BlaBlaDynamicAccount,
+        candidates: List<BlaBlaDomRideCandidate>,
+    ): Int = withAccountLock(account.id) {
+        val previous = readUnlocked(account) ?: return@withAccountLock 0
+        val repair = repairSpecificTripHrefsInSnapshot0578(
+            snapshot = previous,
+            expectedProfileUuid = account.profileUuid,
+            candidates = candidates,
+        )
+        if (repair.repairedTrips <= 0) return@withAccountLock 0
+
+        val replacement = repair.snapshot.copy(updatedAtMillis = System.currentTimeMillis())
+        writeUnlocked(account, replacement)
+        UnifiedDebugEventStore.record(
+            "SPECIFIC_TRIP_HREF_REPAIRED_0578",
+            appContext.packageName,
+            "account=${account.displayLabel} repaired=${repair.repairedTrips} trips=${replacement.trips.size} " +
+                "identityVerified=${replacement.identityVerified} authority=RIDE_LIST exactTripBinding=true synthesized=false",
+        )
+        repair.repairedTrips
+    }
     /** Atomically reconciles possibly stale MHTML evidence with the latest direct snapshot. */
     fun saveHarvestTrips(
         account: BlaBlaDynamicAccount,
