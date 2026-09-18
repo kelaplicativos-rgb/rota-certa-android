@@ -184,10 +184,10 @@ class BlaBlaPublicLinkCanonical0409Test {
         val publicToken = "AaA1CanonicalPublicTokenDifferent0409"
         val linked = trip(
             tripIdA,
-            "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary&requested_seats=2",
+            "https://www.blablacar.fr/trip?id=$publicToken&source=CARPOOLING&p0%5Bac%5D=adult",
         )
         val tracked = linked.copy(
-            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=another&requested_seats=2",
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&source=CARPOOLING&p0%5Bac%5D=adult",
         )
         val missing = linked.copy(blablaPublicUrl = null)
 
