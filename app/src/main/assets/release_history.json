@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.577",
+      "build": 5868,
+      "commit": null,
+      "branch": "agent/public-agenda-operational-links-0.1.577",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Viagens da Agenda e da Timeline permanecem na superfície operacional durante o trajeto e por uma hora após o horário canônico de chegada.",
+        "Quando a chegada não é confiável, a viagem não desaparece na partida: aplica-se uma retenção operacional segura de doze horas a partir da saída.",
+        "O permalink público autoritativo capturado pelo fluxo TRIP_PUBLIC_SHARE é promovido para a projeção canônica externa e preservado na publicação da Agenda.",
+        "O card público continua apontando exclusivamente para blablaPublicUrl validado, nunca para a URL administrativa; a ação final dentro da BlaBlaCar depende do usuário autenticado na própria plataforma."
+      ],
+      "fixed": [
+        "Corrigido filtro que removia viagens da Agenda Pública imediatamente quando departureAtMillis deixava de ser futuro.",
+        "Corrigido filtro Android que deixava de republicar viagens canônicas em andamento após a partida.",
+        "Corrigido caminho de projeção externa que podia conservar tripId e trip_href administrativo sem promover o public_trip_href recém-capturado.",
+        "Corrigida a Timeline para manter a viagem visível até chegada + 1 hora, em paridade temporal com a Agenda."
+      ],
+      "improved": [
+        "A janela temporal da viagem passa a usar chegada canônica/última parada como autoridade de término operacional.",
+        "Permalinks públicos observados continuam fail-closed: somente links públicos BlaBlaCar previamente validados pelo binding do coletor podem entrar na Agenda.",
+        "Testes de regressão cobrem viagem em andamento, limite chegada + 1 hora, ausência de chegada e promoção de permalink público capturado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.576: card podia sumir exatamente no horário da partida embora a viagem estivesse acontecendo.",
+        "0.1.576: public_trip_href autoritativo recém-capturado podia não alcançar a projeção canônica publicada em um dos caminhos de sincronização externa."
+      ],
+      "modulesAffected": [
+        "Agenda Pública",
+        "Timeline",
+        "BlaBlaCar",
+        "Sincronização canônica",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },    {
       "version": "0.1.576",
       "build": 5867,
       "commit": null,
