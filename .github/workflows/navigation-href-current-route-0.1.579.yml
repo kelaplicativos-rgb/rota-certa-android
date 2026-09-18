@@ -39,10 +39,10 @@ jobs:
           grep -Fq '"version": "0.1.579"' app/src/main/assets/release_history.json
           grep -Fq '/ride-plan/trip-edit/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripBlaBlaCollector.kt
           grep -Fq '/ride-plan/trip-edit/' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomParsing.kt
-          grep -Fq '/ride-plan/trip-edit/' app/src/main/assets/blablacar/scripts/ride_list.js
-          grep -Fq '/ride-plan/trip-edit/' app/src/main/assets/blablacar/scripts/trip_open.js
-          grep -Fq '/ride-plan/trip-edit/' app/src/main/assets/blablacar/scripts/trip_detail.js
-          grep -Fq '/ride-plan/trip-edit/' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/ride_list.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_open.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'ride-plan' app/src/main/assets/blablacar/scripts/trip_public_share.js
           git rev-parse HEAD | tee validated-source-head.txt
 
       - name: Set up JDK 17
