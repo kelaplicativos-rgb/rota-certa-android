@@ -80,7 +80,9 @@ object PortugueseTextCorrectionEngine0186 {
     private fun protectedPlaceholder(index: Int): String = "\uE000${index}\uE001"
 
     private fun replaceCommonWords(text: String): String {
-        // Android java.util.regex.Pattern does not accept the JVM-only (?U) flag on every API level.\n        // Protected spans are already removed, so matching Unicode letter runs directly is sufficient.\n        val wordRegex = "[\\p{L}]+".toRegex()
+        // Android java.util.regex.Pattern does not accept the JVM-only (?U) flag on every API level.
+        // Protected spans are already removed, so matching Unicode letter runs directly is sufficient.
+        val wordRegex = "[\\p{L}]+".toRegex()
         return wordRegex.replace(text) { match ->
             val value = match.value
             val replacement = commonWords[value.lowercase(PT_BR)] ?: return@replace value
