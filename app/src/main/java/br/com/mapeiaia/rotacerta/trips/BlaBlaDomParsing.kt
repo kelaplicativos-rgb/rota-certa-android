@@ -388,6 +388,8 @@ object BlaBlaDomNormalizer {
         val path = runCatching { URI(value).path.orEmpty() }.getOrDefault("")
         Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
             .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+        Regex("/ride-plan/trip-edit/([^/?#]+)", RegexOption.IGNORE_CASE)
+            .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
         Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
             .find(path)?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
         return null
