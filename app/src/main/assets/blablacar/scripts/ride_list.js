@@ -12,6 +12,7 @@
       .map((anchor) => ({ anchor, href: anchor.href || '' }))
       .filter((item) => item.href && !item.href.includes('/rides/offer/passenger/'));
     return (
+      anchors.find((item) => /\/ride-plan\/trip-edit\/[^/?#]+/i.test(item.href)) ||
       anchors.find((item) => /\/rides\/offer\/[^/?#]+/i.test(item.href) || /\/trip\/[^/?#]+/i.test(item.href)) ||
       anchors.find((item) => /\/rides\/offer\?[^#]*\bid=/i.test(item.href) || /\/trip\?[^#]*\bid=/i.test(item.href)) ||
       anchors.find((item) => item.href.includes('/rides/offer') || item.href.includes('/trip?') || item.href.includes('/trip/')) ||
@@ -128,7 +129,7 @@
       passengerRosterComplete: roster.passengerRosterComplete
     };
   }).filter(Boolean);
-  const fallback = fromRoots.length ? [] : Array.from(document.querySelectorAll('a[href*="/rides/offer"], a[href*="/trip?"], a[href*="/trip/"]'))
+  const fallback = fromRoots.length ? [] : Array.from(document.querySelectorAll('a[href*="/ride-plan/trip-edit/"], a[href*="/rides/offer"], a[href*="/trip?"], a[href*="/trip/"]'))
     .filter((anchor) => !(anchor.href || '').includes('/rides/offer/passenger/'))
     .map((anchor) => {
       const root = anchor.closest('article, li, section, div') || anchor.parentElement || document.body;
