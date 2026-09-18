@@ -13,7 +13,8 @@ class PassengerTimelineTemporalCutoff0548Test {
 
     @Test fun tripDisappearsOnlyAfterArrivalPlusOneHour() {
         val arrival = now - OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 - 1L
-        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, arrival, now))
+        val departure = arrival - 2L * 60L * 60L * 1000L
+        assertFalse(isPassengerTimelineCurrentOrUpcoming0548(departure, arrival, now))
     }
 
     @Test fun ongoingTripRemainsVisibleUntilAndAfterArrivalBoundary() {
