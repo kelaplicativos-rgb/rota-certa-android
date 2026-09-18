@@ -273,7 +273,7 @@ object OperationalHealthTechnicalPackage0575 {
         appendLine("Este pacote e diagnostico. Ele nao executa patch, deploy, login, reserva, cancelamento nem edicao de viagem.")
     }
 
-    private fun zipSanitized0575(entries: Map<String, String>): ByteArray {
+    internal fun zipSanitized0575(entries: Map<String, String>): ByteArray {
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             entries.forEach { (name, raw) ->
