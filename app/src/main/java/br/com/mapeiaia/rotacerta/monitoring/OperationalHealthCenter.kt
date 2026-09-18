@@ -271,6 +271,9 @@ object OperationalHealthEngine {
             )
     }
 
+    internal fun opportunityForIncident0575(incident: OperationalIncident): OperationalOpportunity =
+        opportunityFor(incident)
+
     private fun opportunityFor(incident: OperationalIncident): OperationalOpportunity {
         val key = (incident.errorCode + " " + incident.probableRootCause).uppercase(Locale.ROOT)
         return when {
@@ -527,11 +530,10 @@ object OperationalHealthCoordinator {
             else -> OperationalHealthState.GREEN
         }
 
-        val activeIds = incidents.mapTo(mutableSetOf()) { it.id }
-        val opportunities = (fresh.opportunities + previous.opportunities)
-            .filter { it.incidentId in activeIds }
-            .distinctBy { "${it.incidentId}|${it.title}" }
+        val opportunities = incidents
+            .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
             .take(12)
+            .map(OperationalHealthEngine::opportunityForIncident0575)
 
         val validation = if (
             fresh.sourceEventCount == 0 &&
