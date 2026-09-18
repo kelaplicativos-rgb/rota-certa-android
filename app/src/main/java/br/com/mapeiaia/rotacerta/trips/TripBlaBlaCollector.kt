@@ -187,6 +187,8 @@ runCatching { URI(value) }.getOrNull()?.let { uri ->
       ?.substringAfter('=', "")?.trim()?.takeIf(String::isNotEmpty)?.let { return it }
   Regex("/rides/offer/(?!edit(?:/|$)|passenger(?:/|$))([^/?#]+)", RegexOption.IGNORE_CASE)
       .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
+  Regex("/ride-plan/trip-edit/([^/?#]+)", RegexOption.IGNORE_CASE)
+      .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
   Regex("/trip/([^/?#]+)", RegexOption.IGNORE_CASE)
       .find(uri.path.orEmpty())?.groupValues?.getOrNull(1)?.takeIf(String::isNotBlank)?.let { return it }
 }
@@ -223,7 +225,9 @@ val path = runCatching {
 val normalized = if (path.startsWith('/')) path else "/$path"
 if (normalized in setOf("/rides", "/rides/offer", "/trip")) return null
 return normalized.takeIf { candidate ->
-  candidate.startsWith("/rides/offer/") || candidate.startsWith("/trip/")
+  candidate.startsWith("/rides/offer/") ||
+      candidate.startsWith("/ride-plan/trip-edit/") ||
+      candidate.startsWith("/trip/")
 }
 }
 
