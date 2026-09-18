@@ -110,6 +110,20 @@ class OperationalHealthEngineTest {
     }
 
     @Test
+    fun staleCallbackIgnoredWithoutExtraResultIsNotIncident() {
+        val stale = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = now - 1_000L,
+            monotonicNs = (now - 1_000L) * 1_000_000L,
+            stage = "BROWSER_STALE_CALLBACK_IGNORED",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "callbackGeneration=7 activeGeneration=8",
+            threadName = "main",
+        )
+        val result = OperationalHealthEngine.analyze(snapshot(listOf(stale)), now)
+        assertTrue(result.incidents.isEmpty())
+    }
+
+    @Test
     fun tripIdentityWithoutSpecificHrefBecomesSingleCoverageIncident() {
         fun identity(at: Long, index: Int) = UnifiedDebugEventStore.SnapshotEvent(
             atMillis = at,
