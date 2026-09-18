@@ -15,7 +15,7 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\\.js\\?v=0\\.1\\.580\\.1/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.580\.1/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
