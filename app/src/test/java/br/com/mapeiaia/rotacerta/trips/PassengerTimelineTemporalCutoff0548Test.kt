@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PassengerTimelineTemporalCutoff0548Test {
-    private val now = 1_000_000L
+    private val now = 100_000_000L
 
     @Test fun tripThatJustArrivedRemainsVisibleForOperationalGrace() {
         assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now - 1L, now))
