@@ -28,4 +28,10 @@ class TextCorrectionEngine0186Test {
         val url = "https://exemplo.com/voce?q=nao"
         assertEquals(url, PortugueseTextCorrectionEngine0186.correct(url).corrected)
     }
+
+    @Test
+    fun androidCompatibleUnicodeWordMatchingDoesNotRequireInlineUFlag() {
+        val result = PortugueseTextCorrectionEngine0186.correct("voce já confirmou; nao precisa alterar https://exemplo.com/nao")
+        assertEquals("Você já confirmou; não precisa alterar https://exemplo.com/nao", result.corrected)
+    }
 }
