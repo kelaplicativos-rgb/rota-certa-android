@@ -232,17 +232,14 @@ object OperationalHealthEngine {
 
     internal fun isExpectedDefensiveOutcome0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
         val stage = event.stage.uppercase(Locale.ROOT)
-        val details = event.details.uppercase(Locale.ROOT)
-        val defensiveStage =
-            stage == "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435" ||
-                (stage.contains("STALE") &&
-                    (stage.contains("IGNORED") || stage.contains("REJECTED") || stage.contains("SKIPPED")))
-        if (!defensiveStage) return false
+        if (stage == "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435") return true
+        if (
+            stage.contains("STALE") &&
+            (stage.contains("IGNORED") || stage.contains("REJECTED") || stage.contains("SKIPPED"))
+        ) return true
         val result = event.diagnosticContext?.result.orEmpty().uppercase(Locale.ROOT)
-        return details.contains("RESULT=SKIPPED") ||
-            details.contains("IGNORED") ||
-            details.contains("REJECTED") ||
-            result in setOf("SKIPPED", "IGNORED", "REJECTED", "STALE_STATE")
+        return result in setOf("SKIPPED", "IGNORED", "REJECTED", "STALE_STATE") &&
+            stage.contains("STALE")
     }
 
     internal fun isHistoricalRehydratedEvidence0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean =
@@ -592,21 +589,12 @@ object OperationalHealthCoordinator {
             .take(12)
             .map(OperationalHealthEngine::opportunityForIncident0575)
 
-        val validation = if (
-            fresh.sourceEventCount == 0 &&
-            fresh.validation == OperationalValidationState.INSUFFICIENT_DATA &&
-            incidents.isNotEmpty()
-        ) {
-            previous.validation
-        } else {
-            fresh.validation
-        }
-
+        val validation = fresh.validation
         val validationSummary = if (
             fresh.sourceEventCount == 0 &&
             incidents.isNotEmpty()
         ) {
-            "Sem novos eventos no processo atual; incidentes sanitizados ainda válidos foram preservados da projeção anterior."
+            "Sem novos eventos no processo atual; incidentes sanitizados ainda válidos foram preservados, mas a tendência antes/depois permanece como dados insuficientes."
         } else {
             fresh.validationSummary
         }
