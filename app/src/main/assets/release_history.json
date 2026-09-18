@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.574",
+      "build": 5865,
+      "commit": null,
+      "branch": "agent/health-validation-fidelity-0.1.574",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Validação antes/depois passa a comparar fingerprints únicos de incidentes em vez de contar eventos repetidos como falhas independentes.",
+        "A classificação de regressão exige cobertura temporal completa das duas janelas de 6 horas; com histórico truncado pelo buffer, o resultado passa a ser dados insuficientes.",
+        "Oportunidades genéricas passam a carregar código, causa provável e correção estrutural específicas do incidente de origem."
+      ],
+      "fixed": [
+        "Corrigido falso REGRESSION 0→113 observado com buffer cheio, onde a janela anterior não estava mais disponível para comparação.",
+        "Removida a apresentação repetitiva de múltiplos incidentes diferentes sob o mesmo cartão genérico Eliminar a classe da falha.",
+        "Texto da Central deixa de chamar eventos removidos por limite de descartados como se fossem falhas; passa a explicitar que são remoções do buffer circular."
+      ],
+      "improved": [
+        "A Central informa cobertura aproximada do histórico quando não há 12 horas completas para comparação.",
+        "A conclusão de tendência deixa de usar ausência de dados como evidência de melhora ou regressão."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.573: REGRESSION podia ser emitido apenas porque o buffer circular já havia removido a janela anterior.",
+        "0.1.573: eventos repetidos eram contados individualmente na comparação temporal, inflando o número de falhas.",
+        "0.1.573: incidentes sem regra especializada geravam oportunidades indistinguíveis entre si."
+      ],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Diagnóstico",
+        "Validação",
+        "Build"
+      ],
+      "detailsComplete": true
+    },    {
       "version": "0.1.573",
       "build": 5864,
       "commit": null,
