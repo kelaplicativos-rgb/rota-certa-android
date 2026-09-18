@@ -57,6 +57,30 @@ class OperationalHealthTechnicalPackage0575Test {
     }
 
     @Test
+    fun ndjsonEntryPreservesRecordBoundariesAfterSanitization() {
+        val bytes = OperationalHealthTechnicalPackage0575.zipSanitized0575(
+            mapOf(
+                "events.ndjson" to
+                    "{\"stage\":\"ONE\",\"email\":\"one@example.com\"}\n" +
+                    "{\"stage\":\"TWO\",\"email\":\"two@example.com\"}",
+            ),
+        )
+
+        val extracted = ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            val entry = zip.nextEntry
+            assertTrue(entry != null && entry.name == "events.ndjson")
+            zip.readBytes().toString(Charsets.UTF_8)
+        }
+
+        val lines = extracted.lines().filter(String::isNotBlank)
+        assertTrue(lines.size == 2)
+        assertTrue(lines[0].contains("\"stage\":\"ONE\""))
+        assertTrue(lines[1].contains("\"stage\":\"TWO\""))
+        assertFalse("one@example.com" in extracted)
+        assertFalse("two@example.com" in extracted)
+    }
+
+    @Test
     fun zipBuilderSanitizesSensitiveTextBeforeWriting() {
         val bytes = OperationalHealthTechnicalPackage0575.zipSanitized0575(
             mapOf(
