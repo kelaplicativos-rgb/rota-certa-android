@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -49,6 +51,9 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 enum class OperationalHealthState { GREEN, YELLOW, RED }
 enum class OperationalIncidentSeverity { WARNING, CRITICAL }
@@ -295,6 +300,9 @@ object OperationalHealthEngine {
                 )
         }
     }
+
+    internal fun fingerprintForEvidence0575(event: UnifiedDebugEventStore.SnapshotEvent): String =
+        fingerprint(event)
 
     private fun fingerprint(event: UnifiedDebugEventStore.SnapshotEvent): String {
         val d = event.diagnosticContext
@@ -625,7 +633,34 @@ class OperationalHealthActivity : ComponentActivity() {
     @Composable
     private fun OperationalHealthScreen() {
         var snapshot by remember { mutableStateOf(OperationalHealthCoordinator.current(this)) }
+        var exportStatus by remember { mutableStateOf<String?>(null) }
+        val exportScope = rememberCoroutineScope()
         val formatter = remember { SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale("pt", "BR")) }
+
+        fun exportTechnicalPackage0575(incidentId: String? = null) {
+            exportStatus = if (incidentId == null) {
+                "Gerando pacote técnico sanitizado…"
+            } else {
+                "Gerando evidência sanitizada de $incidentId…"
+            }
+            exportScope.launch {
+                val healthNow = OperationalHealthCoordinator.current(this@OperationalHealthActivity)
+                val sourceNow = UnifiedDebugEventStore.snapshot()
+                val saved = withContext(Dispatchers.IO) {
+                    OperationalHealthTechnicalPackage0575.generateAndSave(
+                        context = this@OperationalHealthActivity,
+                        health = healthNow,
+                        source = sourceNow,
+                        incidentId = incidentId,
+                    )
+                }
+                exportStatus = saved.fold(
+                    onSuccess = { "Arquivo pronto em Downloads/Rota Certa/Diagnosticos: ${it.displayName}" },
+                    onFailure = { "Falha ao gerar pacote técnico: ${it.javaClass.simpleName}" },
+                )
+                snapshot = healthNow
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -656,6 +691,13 @@ class OperationalHealthActivity : ComponentActivity() {
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Executar auditoria agora") }
+            OutlinedButton(
+                onClick = { exportTechnicalPackage0575() },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Gerar arquivo técnico (.zip)") }
+            exportStatus?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall)
+            }
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -685,6 +727,10 @@ class OperationalHealthActivity : ComponentActivity() {
                                 "Primeiro: ${formatter.format(Date(incident.firstSeenMillis))} • Último: ${formatter.format(Date(incident.lastSeenMillis))}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            OutlinedButton(
+                                onClick = { exportTechnicalPackage0575(incident.id) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) { Text("Gerar evidência deste incidente") }
                         }
                     }
                 }
@@ -705,7 +751,7 @@ class OperationalHealthActivity : ComponentActivity() {
 
             Spacer(Modifier.height(8.dp))
             Text(
-                "Privacidade: esta Central usa somente eventos já sanitizados pelo flight recorder. Não executa patch, deploy, login, cancelamento, reserva ou edição de viagem automaticamente.",
+                "Privacidade: esta Central usa somente eventos já sanitizados pelo flight recorder. O ZIP técnico passa novamente pelo sanitizador antes de ser salvo em Downloads. Não executa patch, deploy, login, cancelamento, reserva ou edição de viagem automaticamente.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
