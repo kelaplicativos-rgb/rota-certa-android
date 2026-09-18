@@ -116,7 +116,11 @@ object OperationalHealthEngine {
             val ordered = grouped.sortedBy { it.atMillis }
             val sample = ordered.last()
             val diagnostic = sample.diagnosticContext
-            val errorCode = diagnostic?.errorCode.orEmpty()
+            val invariantErrorCode = when {
+                isMissingSpecificTripHref0576(sample) -> "SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0576"
+                else -> ""
+            }
+            val errorCode = diagnostic?.errorCode.orEmpty().ifBlank { invariantErrorCode }
             val module = diagnostic?.parentModule?.label ?: inferModule(sample.stage)
             val technicalKey = listOf(errorCode, sample.stage, diagnostic?.operation.orEmpty())
                 .joinToString(" ")
@@ -160,15 +164,28 @@ object OperationalHealthEngine {
             .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
             .take(12)
             .map(::opportunityFor)
+        val comparisonEvents = snapshot.events.filterNot(::isHistoricalRehydratedEvidence0576)
         val recentCandidates = candidates.filter { it.atMillis >= nowMillis - SIX_HOURS }
         val previousCandidates = candidates.filter {
             it.atMillis >= nowMillis - (2L * SIX_HOURS) && it.atMillis < nowMillis - SIX_HOURS
         }
         val recentIncidentCount = recentCandidates.map(::fingerprint).distinct().size
         val previousIncidentCount = previousCandidates.map(::fingerprint).distinct().size
-        val oldestRetainedAt = snapshot.events.minOfOrNull { it.atMillis }
-        val hasFullComparisonWindow = oldestRetainedAt != null &&
-            oldestRetainedAt <= nowMillis - (2L * SIX_HOURS)
+        val previousCoverageEvents = comparisonEvents.filter {
+            it.atMillis >= nowMillis - (2L * SIX_HOURS) && it.atMillis < nowMillis - SIX_HOURS
+        }
+        val recentCoverageEvents = comparisonEvents.filter {
+            it.atMillis >= nowMillis - SIX_HOURS && it.atMillis <= nowMillis
+        }
+        val oldestComparableAt = comparisonEvents.minOfOrNull { it.atMillis }
+        val newestComparableAt = comparisonEvents.maxOfOrNull { it.atMillis }
+        val hasFullComparisonWindow =
+            previousCoverageEvents.isNotEmpty() &&
+                recentCoverageEvents.isNotEmpty() &&
+                oldestComparableAt != null &&
+                newestComparableAt != null &&
+                oldestComparableAt < nowMillis - SIX_HOURS &&
+                newestComparableAt >= nowMillis - SIX_HOURS
 
         val validation = when {
             !hasFullComparisonWindow -> OperationalValidationState.INSUFFICIENT_DATA
@@ -184,9 +201,9 @@ object OperationalHealthEngine {
             OperationalValidationState.STABLE ->
                 "Incidentes únicos: anterior=$previousIncidentCount e recente=$recentIncidentCount; eventos recentes=${recentCandidates.size}."
             OperationalValidationState.INSUFFICIENT_DATA -> {
-                val oldest = oldestRetainedAt?.let { nowMillis - it } ?: 0L
+                val oldest = oldestComparableAt?.let { nowMillis - it } ?: 0L
                 val coverageHours = oldest / (60L * 60L * 1000L)
-                "Comparação de 12h indisponível: o buffer retém aproximadamente ${coverageHours}h de histórico nesta sessão; removidos por limite=${snapshot.droppedEvents}. Não classificar como regressão sem janela anterior completa."
+                "Comparação de 12h indisponível: cobertura viva aproximada=${coverageHours}h; eventos na janela anterior=${previousCoverageEvents.size}; eventos na janela recente=${recentCoverageEvents.size}; removidos nesta sessão=${snapshot.droppedEvents}. Evidência histórica reidratada não conta como cobertura contínua."
             }
         }
         return OperationalHealthSnapshot(
@@ -202,6 +219,8 @@ object OperationalHealthEngine {
     }
 
     fun isPotentialProblem(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        if (isExpectedDefensiveOutcome0576(event)) return false
+        if (isMissingSpecificTripHref0576(event)) return true
         val diagnostic = event.diagnosticContext
         if (diagnostic?.severity == DiagnosticSeverity0507.ERROR) return true
         if (diagnostic?.errorCode?.isNotBlank() == true) return true
@@ -209,6 +228,30 @@ object OperationalHealthEngine {
         val result = diagnostic?.result.orEmpty().uppercase(Locale.ROOT)
         if (result in setOf("SUCCESS", "SUCCEEDED", "OK", "COMPLETED", "RESOLVED", "RECOVERED")) return false
         return failureTokens.any(stage::contains)
+    }
+
+    internal fun isExpectedDefensiveOutcome0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        val stage = event.stage.uppercase(Locale.ROOT)
+        val details = event.details.uppercase(Locale.ROOT)
+        val defensiveStage =
+            stage == "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435" ||
+                (stage.contains("STALE") &&
+                    (stage.contains("IGNORED") || stage.contains("REJECTED") || stage.contains("SKIPPED")))
+        if (!defensiveStage) return false
+        val result = event.diagnosticContext?.result.orEmpty().uppercase(Locale.ROOT)
+        return details.contains("RESULT=SKIPPED") ||
+            details.contains("IGNORED") ||
+            details.contains("REJECTED") ||
+            result in setOf("SKIPPED", "IGNORED", "REJECTED", "STALE_STATE")
+    }
+
+    internal fun isHistoricalRehydratedEvidence0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean =
+        event.stage.startsWith("RECOVERED_", ignoreCase = true)
+
+    internal fun isMissingSpecificTripHref0576(event: UnifiedDebugEventStore.SnapshotEvent): Boolean {
+        if (!event.stage.equals("TRIP_IDENTITY", ignoreCase = true)) return false
+        val details = event.details.lowercase(Locale.ROOT)
+        return "externaltripidpresent=true" in details && "specifichrefpresent=false" in details
     }
 
     private data class Diagnosis(val rootCause: String, val confidence: Int, val correction: String)
@@ -238,6 +281,12 @@ object OperationalHealthEngine {
                 "O ciclo assíncrono de passageiros não alcançou estado terminal confiável.",
                 84,
                 "Modelar carregamento com estados terminais explícitos, timeout observável e invalidação por versão da viagem.",
+            )
+        key.contains("SPECIFIC_TRIP_HREF_COVERAGE_MISSING") ->
+            Diagnosis(
+                "A coleta reconheceu a identidade externa da viagem, mas não preservou um href específico para abrir a viagem correspondente.",
+                96,
+                "Tratar externalTripId + href específico como contrato indivisível de identidade de navegação; capturar o href na mesma origem autoritativa e bloquear promoção de uma viagem navegável quando o binding estiver ausente.",
             )
         key.contains("PERMALINK") || key.contains("PUBLIC_LINK") ->
             Diagnosis(
@@ -556,7 +605,7 @@ object OperationalHealthCoordinator {
 
         return fresh.copy(
             state = state,
-            droppedEvents = maxOf(previous.droppedEvents, fresh.droppedEvents),
+            droppedEvents = fresh.droppedEvents,
             incidents = incidents,
             opportunities = opportunities,
             validation = validation,
