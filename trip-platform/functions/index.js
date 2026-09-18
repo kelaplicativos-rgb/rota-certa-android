@@ -4155,6 +4155,31 @@ async function convergeLegacyCanonicalTripDocuments0495(docs) {
   return { migrated, migratedBookings, unresolvedLegacy, bookingConflicts };
 }
 
+const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 60 * 60 * 1000;
+const PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12 * 60 * 60 * 1000;
+
+function publicAgendaVisibleUntil0577(data) {
+  const departure = Math.max(0, Number(data && data.departureAtMillis || 0));
+  if (!departure) return 0;
+  const stops = Array.isArray(data && data.stops) ? data.stops : [];
+  const lastStop = stops.length ? stops[stops.length - 1] : null;
+  const arrival = Math.max(
+    0,
+    Number(
+      data && data.arrivalAtMillis ||
+      lastStop && (lastStop.plannedArrivalMillis || lastStop.plannedDepartureMillis) ||
+      0,
+    ),
+  );
+  if (arrival >= departure) return arrival + PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577;
+  return departure + PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577;
+}
+
+function publicAgendaTripStillVisible0577(data, nowMillis = Date.now()) {
+  const visibleUntil = publicAgendaVisibleUntil0577(data);
+  return visibleUntil > 0 && Number(nowMillis || 0) <= visibleUntil;
+}
+
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
   // 0491: public visibility is a publication state, distinct from operational
   // status and source. Administration remains in the authenticated Android path.
@@ -4170,8 +4195,8 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   if (!PUBLIC_STATUSES.has(cleanText(data.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
   }
-  if (Number(data.departureAtMillis || 0) <= Number(nowMillis || 0)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_DEPARTURE_NOT_FUTURE" };
+  if (!publicAgendaTripStillVisible0577(data, nowMillis)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_ARRIVAL_GRACE_EXPIRED_0577" };
   }
   if (!publicProjectionCommittedCurrent0434(token, data)) {
     return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_NOT_COMMITTED" };
@@ -4186,8 +4211,8 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   if (!PUBLIC_STATUSES.has(cleanText(rendered0469.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_STATUS_UNAVAILABLE_0469" };
   }
-  if (Number(rendered0469.departureAtMillis || 0) <= Number(nowMillis || 0)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469" };
+  if (!publicAgendaTripStillVisible0577(rendered0469, nowMillis)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ARRIVAL_GRACE_EXPIRED_0577" };
   }
   if (!Array.isArray(rendered0469.stops) || rendered0469.stops.length < 2) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ITINERARY_UNAVAILABLE_0469" };
