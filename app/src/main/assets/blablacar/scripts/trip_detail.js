@@ -160,6 +160,10 @@
     const currentUrl = new URL(location.href);
     currentTripId = clean(currentUrl.searchParams.get('id'));
     if (!currentTripId) {
+      const currentMatch = currentUrl.pathname.match(/\/ride-plan\/trip-edit\/([^/?#]+)/i);
+      currentTripId = clean(currentMatch && currentMatch[1]);
+    }
+    if (!currentTripId) {
       const match = currentUrl.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
       currentTripId = clean(match && match[1]);
     }
