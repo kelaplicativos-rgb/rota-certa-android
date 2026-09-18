@@ -1785,16 +1785,15 @@ internal object AgendaBackgroundSync0392 {
         val publicationCanonicalTripIds0431 = linkedSetOf<String>()
 
         val observedStrongKeys = linkedSetOf<String>()
-        response.trips.forEach { source ->
-            val profileUuid = source.profile_uuid.trim()
-            val blablaTripId = source.trip_id?.trim().orEmpty()
-            val strongKey = canonicalExternalTripIdentityKey(profileUuid, blablaTripId, source.trip_href)
-            if (source.identity_conflict || profileUuid.isBlank() || blablaTripId.isBlank() || strongKey == null) {
+        response.trips.forEach { incomingSource ->
+            val profileUuid = incomingSource.profile_uuid.trim()
+            val blablaTripId = incomingSource.trip_id?.trim().orEmpty()
+            if (incomingSource.identity_conflict || profileUuid.isBlank() || blablaTripId.isBlank()) {
                 blockedTrips++
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_INGEST_BLOCKED_0403",
                     context.packageName,
-                    "profileUuidPresent=${profileUuid.isNotBlank()} tripIdPresent=${blablaTripId.isNotBlank()} identityConflict=${source.identity_conflict} reason=strong_identity_required",
+                    "profileUuidPresent=${profileUuid.isNotBlank()} tripIdPresent=${blablaTripId.isNotBlank()} identityConflict=${incomingSource.identity_conflict} reason=strong_identity_required",
                 )
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_DISPOSITION_0451",
@@ -1803,13 +1802,39 @@ internal object AgendaBackgroundSync0392 {
                 )
                 return@forEach
             }
-            observedStrongKeys += strongKey
 
             val existing = store.trips().firstOrNull { trip ->
                 resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
+            val source = collectorSourceWithSpecificTripHref0578(incomingSource, existing)
+            if (source == null) {
+                blockedTrips++
+                UnifiedDebugEventStore.recordAlways(
+                    "SPECIFIC_TRIP_HREF_CANONICAL_INGEST_BLOCKED_0578",
+                    context.packageName,
+                    "profileKey=${seatSyncDiagnosticKey(profileUuid)} tripIdPresent=true existingCanonical=${existing != null} " +
+                        "reason=specific_trip_href_required_0578 action=preserve_existing_or_wait_ride_list synthesized=false",
+                )
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_DISPOSITION_0451",
+                    context.packageName,
+                    "profileKey=${seatSyncDiagnosticKey(profileUuid)} tripId=$blablaTripId result=REJECTED reason=specific_trip_href_required_0578",
+                )
+                return@forEach
+            }
+            val strongKey = canonicalExternalTripIdentityKey(profileUuid, blablaTripId, source.trip_href)
+            if (strongKey == null) {
+                blockedTrips++
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_INGEST_BLOCKED_0403",
+                    context.packageName,
+                    "profileUuidPresent=true tripIdPresent=true identityConflict=false reason=strong_identity_required_after_href_binding_0578",
+                )
+                return@forEach
+            }
+            observedStrongKeys += strongKey
             val perTripAllocation = existing?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
             if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
                 staleResultsRejected++
