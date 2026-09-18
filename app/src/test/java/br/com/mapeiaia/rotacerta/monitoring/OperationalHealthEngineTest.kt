@@ -56,6 +56,21 @@ class OperationalHealthEngineTest {
     }
 
     @Test
+    fun recoveredAgendaCrashRemainsCriticalAtOriginalTimestamp() {
+        val crash = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = now - 5_000L,
+            monotonicNs = (now - 5_000L) * 1_000_000L,
+            stage = "RECOVERED_UNCAUGHT_AGENDA_SYNC_CRASH_0573",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "source=persisted_agenda_crash; recovered=true; rootCauseClass=PatternSyntaxException",
+            threadName = "main",
+        )
+        val result = OperationalHealthEngine.analyze(snapshot(listOf(crash)), now)
+        assertEquals(OperationalHealthState.RED, result.state)
+        assertEquals(OperationalIncidentSeverity.CRITICAL, result.incidents.single().severity)
+    }
+
+    @Test
     fun slowOperationAndJankAreOperationalIncidents() {
         val events = listOf(
             UnifiedDebugEventStore.SnapshotEvent(
