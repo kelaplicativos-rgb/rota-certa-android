@@ -1503,7 +1503,7 @@ function publicTripProjection0491(value) {
     out.stops = input.stops.map((rawStop) => {
       const stop = rawStop && typeof rawStop === "object" ? rawStop : {};
       const safe = {};
-      ["order", "name", "address", "plannedArrivalMillis", "plannedDepartureMillis", "priceToNextCents"]
+      ["order", "name", "plannedArrivalMillis", "plannedDepartureMillis", "priceToNextCents"]
         .forEach((field) => {
           if (Object.prototype.hasOwnProperty.call(stop, field)) safe[field] = stop[field];
         });
