@@ -143,6 +143,27 @@ internal fun fullSyncEntityRevision0502(
     remotePublicationRevision.coerceAtLeast(0L)
 }
 
+internal const val OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 = 60L * 60L * 1000L
+internal const val OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12L * 60L * 60L * 1000L
+
+internal fun operationalTripVisibleUntil0577(trip: Trip): Long {
+    val arrival = trip.stops
+        .sortedBy(TripStop::order)
+        .lastOrNull()
+        ?.plannedArrivalMillis
+        ?.takeIf { it >= trip.departureAtMillis }
+    return if (arrival != null) {
+        arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
+    } else {
+        trip.departureAtMillis + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
+    }
+}
+
+internal fun operationalTripStillVisible0577(
+    trip: Trip,
+    nowMillis: Long,
+): Boolean = nowMillis <= operationalTripVisibleUntil0577(trip)
+
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -284,11 +305,11 @@ internal object PublicAgendaAutoSync0300 {
         val persistedTrips = store.trips()
         val localTrips = persistedTrips
             .filter(Trip::isCanonicalLocalPublishSource)
-            .filter { it.departureAtMillis > nowMillis }
+            .filter { operationalTripStillVisible0577(it, nowMillis) }
             .filter { it.status in PUBLIC_LOCAL_STATUSES }
         val externalBackingsExcluded = persistedTrips.count {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                it.departureAtMillis > nowMillis &&
+                operationalTripStillVisible0577(it, nowMillis) &&
                 it.status in PUBLIC_LOCAL_STATUSES
         }
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
@@ -374,7 +395,7 @@ internal object PublicAgendaAutoSync0300 {
             PassengerIdentityStore(context).internallyCancelledExternalReservationKeys()
         val canonicalExternalTrips = persistedTrips
             .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
-            .filter { !it.deleted && it.status != TripStatus.CANCELLED && it.departureAtMillis > nowMillis }
+            .filter { !it.deleted && it.status != TripStatus.CANCELLED && operationalTripStillVisible0577(it, nowMillis) }
             .filter { it.externalSnapshot != null && it.tripKey.isNotBlank() }
         val canonicalResponse = BlaBlaCollectorMonthResponse(
             status = "canonical",
@@ -2067,11 +2088,18 @@ internal object PublicAgendaAutoSync0300 {
         val verifiedPublishedSeats = source.published_seats?.takeIf { it in 0..999 }
         val passengerSeats = source.passengers.sumOf { it.seats.coerceAtLeast(1) }
         val bookedSeats = source.booked_seats.coerceAtLeast(passengerSeats).coerceIn(0, 999)
+        val reconciledPublicHref0577 = canonicalBlaBlaPublicUrl0409(
+            existingUrl = canonical.blablaPublicUrl,
+            observedUrl = source.public_trip_href,
+            expectedTripId = source.trip_id,
+            observedBinding = source.public_trip_href_binding,
+        )
         val projectedTrip = canonical.copy(
             remoteId = canonical.remoteId ?: canonical.publicToken.takeIf(String::isNotBlank),
             recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
             deleted = false,
             deletedAtMillis = 0L,
+            blablaPublicUrl = reconciledPublicHref0577 ?: canonical.blablaPublicUrl,
         )
         val sourceReference = source.trip_id.orEmpty()
             .ifBlank { source.trip_href.orEmpty() }
@@ -2092,7 +2120,7 @@ internal object PublicAgendaAutoSync0300 {
             profileUuid = source.profile_uuid.trim(),
             blablaTripId = source.trip_id.orEmpty().trim(),
             blablaTripHref = source.trip_href.orEmpty().trim(),
-            blablaPublicHref = projectedTrip.blablaPublicUrl.orEmpty(),
+            blablaPublicHref = reconciledPublicHref0577.orEmpty(),
             sourceComplete = verifiedPublishedSeats != null &&
                 source.passenger_roster_complete &&
                 externalPassengerSegmentsResolved(source, projectedTrip),
@@ -2111,7 +2139,6 @@ internal object PublicAgendaAutoSync0300 {
         rotaCertaSeatAllocation: Int = 0,
     ): PublicAgendaExternalTrip? {
         val departure = parseDateTime(source.date, source.departure_time, zoneId) ?: return null
-        if (departure <= nowMillis) return null
 
         val origin = source.actual_departure?.takeIf(String::isNotBlank)
             ?: source.search_from?.takeIf(String::isNotBlank)
@@ -2123,6 +2150,9 @@ internal object PublicAgendaAutoSync0300 {
 
         var arrival = parseDateTime(source.date, source.arrival_time, zoneId)
         if (arrival != null && arrival < departure) arrival += DAY_MILLIS
+        val visibleUntil0577 = (arrival ?: (departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577)) +
+            OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
+        if (nowMillis > visibleUntil0577) return null
 
         val identity = stableIdentity(source)
         val token = "bb${sha256(identity).take(30)}"
