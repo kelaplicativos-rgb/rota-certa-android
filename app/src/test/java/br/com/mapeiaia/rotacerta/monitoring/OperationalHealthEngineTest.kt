@@ -76,7 +76,57 @@ class OperationalHealthEngineTest {
             now,
         )
         assertEquals(OperationalValidationState.INSUFFICIENT_DATA, result.validation)
-        assertTrue(result.validationSummary.contains("Não classificar como regressão"))
+        assertTrue(result.validationSummary.contains("Evidência histórica reidratada não conta como cobertura contínua"))
+    }
+
+    @Test
+    fun recoveredHistoricalEventCannotFakeTwelveHourCoverage() {
+        val recovered = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = now - 15L * 60L * 60L * 1000L,
+            monotonicNs = now * 1_000_000L,
+            stage = "RECOVERED_UNCAUGHT_AGENDA_SYNC_CRASH_0573",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "source=persisted_agenda_crash recovered=true",
+            threadName = "main",
+        )
+        val current = event(now - 1_000L, "NETWORK_TIMEOUT", "timeout", "SYNC")
+        val result = OperationalHealthEngine.analyze(snapshot(listOf(recovered, current)), now)
+        assertEquals(OperationalValidationState.INSUFFICIENT_DATA, result.validation)
+        assertTrue(result.validationSummary.contains("janela anterior=0"))
+    }
+
+    @Test
+    fun staleOneShotSkippedIsProtectiveOutcomeNotIncident() {
+        val stale = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = now - 1_000L,
+            monotonicNs = (now - 1_000L) * 1_000_000L,
+            stage = "AGENDA_BACKGROUND_SYNC_STALE_ONE_SHOT_0435",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "trigger=ADMIN_UPDATE_NOW result=SKIPPED",
+            threadName = "worker",
+        )
+        val result = OperationalHealthEngine.analyze(snapshot(listOf(stale)), now)
+        assertTrue(result.incidents.isEmpty())
+    }
+
+    @Test
+    fun tripIdentityWithoutSpecificHrefBecomesSingleCoverageIncident() {
+        fun identity(at: Long, index: Int) = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = at,
+            monotonicNs = at * 1_000_000L,
+            stage = "TRIP_IDENTITY",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "index=$index/2 externalTripIdPresent=true specificHrefPresent=false fallbackIdentityUsed=false",
+            threadName = "worker",
+        )
+        val result = OperationalHealthEngine.analyze(
+            snapshot(listOf(identity(now - 2_000L, 1), identity(now - 1_000L, 2))),
+            now,
+        )
+        assertEquals(1, result.incidents.size)
+        assertEquals(2, result.incidents.single().count)
+        assertEquals("SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0576", result.incidents.single().errorCode)
+        assertTrue(result.incidents.single().probableRootCause.contains("href específico"))
     }
 
     @Test
