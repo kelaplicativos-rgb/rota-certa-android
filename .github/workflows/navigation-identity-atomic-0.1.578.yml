@@ -64,7 +64,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.NavigationIdentityAtomic0578Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCanonical0409Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineTemporalCutoff0548Test' \
