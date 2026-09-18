@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.579",
+      "build": 5870,
+      "commit": null,
+      "branch": "agent/navigation-href-current-route-0.1.579",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O coletor passa a reconhecer como identidade administrativa específica o href atual observado nos cards da BlaBlaCar em /ride-plan/trip-edit/<tripId>, sem sintetizar URL a partir do tripId.",
+        "A mesma rota atual é reconhecida de ponta a ponta no parser Kotlin, normalização DOM, abertura do card, detalhe da viagem e captura do compartilhamento público."
+      ],
+      "fixed": [
+        "Corrigida a causa raiz observada na Central de Saúde 0.1.578 em que 20/20 viagens tinham externalTripId presente, mas specificHref ausente porque o coletor ainda filtrava somente formatos antigos /rides/offer.",
+        "O href atual do card deixa de ser descartado antes da reconciliação canônica, permitindo que o contrato atômico profileUuid + tripId + href específico da 0.1.578 seja efetivamente satisfeito."
+      ],
+      "improved": [
+        "A validação continua fail-closed: somente href realmente observado, em host BlaBlaCar permitido e contendo o mesmo tripId pode ser promovido como destino operacional.",
+        "Testes de regressão cobrem extração do tripId, classificação como manage target, evidência specificHref e rejeição de href com tripId divergente na rota atual."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.578: o bloqueio de identidade parcial funcionava, porém o coletor não reconhecia o formato administrativo atual /ride-plan/trip-edit/<tripId>, mantendo as viagens sem href operacional."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline",
+        "Identidade canônica",
+        "Navegação",
+        "Coletor",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.578",
       "build": 5869,
       "commit": null,
