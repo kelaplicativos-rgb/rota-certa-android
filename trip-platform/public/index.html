@@ -38,10 +38,17 @@
     .agendaCity0569{grid-column:3;min-width:0;padding:0 0 10px;overflow-wrap:anywhere;font-size:26px;line-height:1.12;font-weight:850;letter-spacing:-.018em}
     .agendaStartCity0569{grid-row:1}
     .agendaEndCity0569{grid-row:2}
+    .agendaSegments0580{margin-top:12px;padding-top:12px;border-top:1px solid #e6e0e7;display:grid;gap:8px}
+    .agendaSegmentsTitle0580{font-size:17px;line-height:1.15;font-weight:900}
+    .agendaSegmentRow0580{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;font-size:15px;line-height:1.2}
+    .agendaSegmentRoute0580{min-width:0;overflow-wrap:anywhere;font-weight:720}
+    .agendaSegmentDots0580{font-size:16px;line-height:1;letter-spacing:1px;color:#1186d8;text-align:right}
+    .agendaSegmentSeats0580{min-width:58px;text-align:right;white-space:nowrap;font-size:15px}
+    .agendaSegmentPending0580{color:var(--muted);font-size:14px;line-height:1.25}
     .whatsappFab0569{position:fixed;z-index:1000;right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;max-width:calc(100vw - 28px);padding:13px 18px;overflow:hidden;border-radius:999px;background:#128c4a;color:#fff;box-shadow:0 8px 28px #0003;font-size:17px;line-height:1;font-weight:850;text-decoration:none;white-space:nowrap;text-overflow:ellipsis;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .whatsappFab0569:focus-visible{outline:3px solid #0b6033;outline-offset:3px}
     .whatsappFab0569:active{transform:translateY(1px)}
-    @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}}
+    @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaSegmentRow0580{grid-template-columns:minmax(0,1fr) auto;gap:5px 8px}.agendaSegmentDots0580{grid-column:1;text-align:left}.agendaSegmentSeats0580{grid-column:2;grid-row:1 / span 2}}
   </style>
 </head>
 <body>
@@ -55,6 +62,6 @@
     <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
   </main>
   <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
-  <script src="/public-agenda-shell-0569.js?v=0.1.569.1" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.580.1" defer></script>
 </body>
 </html>
