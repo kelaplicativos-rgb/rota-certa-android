@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.578",
+      "build": 5869,
+      "commit": null,
+      "branch": "agent/specific-trip-href-integrity-0.1.578",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O vínculo externalTripId + href específico passa a ser tratado como contrato indivisível para navegação de viagens BlaBlaCar.",
+        "O RIDE_LIST autenticado repara snapshots legados assim que o card exato aparece, antes da leitura profunda de passageiros, vagas e edição.",
+        "A reparação usa somente href oficial que resolve para o mesmo tripId; nenhum endereço BlaBlaCar é sintetizado a partir do identificador."
+      ],
+      "fixed": [
+        "Corrigida a origem de SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0576: snapshots canônicos não podem mais promover viagem navegável com tripId e sem href específico.",
+        "Corrigido o ciclo em que a sincronização profunda podia atingir timeout de dez minutos antes de recuperar o href dos cards legados.",
+        "Corrigida a persistência da sessão dinâmica para salvar imediatamente o href exato observado em Suas viagens e publicar o delta canônico correspondente."
+      ],
+      "improved": [
+        "Observação parcial pode reutilizar somente um href previamente comprovado para a mesma identidade forte; ausência sem prova permanece fail-closed.",
+        "A recuperação preserva public_trip_href e todos os dados operacionais existentes, alterando apenas o binding administrativo específico.",
+        "Testes de regressão cobrem host oficial, tripId exato, isolamento por perfil, recuperação do snapshot legado e bloqueio de sessão não verificada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.577: viagens com externalTripId preservado podiam continuar indefinidamente com specificHref ausente quando a coleta profunda era interrompida.",
+        "0.1.577: a reconciliação canônica aceitava identidade externa forte sem exigir prova de navegação específica para o mesmo card."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Suas viagens",
+        "Sincronização canônica",
+        "Timeline",
+        "Agenda Pública",
+        "Central de Saúde",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.577",
       "build": 5868,
       "commit": null,
