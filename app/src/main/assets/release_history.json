@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.580",
+      "build": 5871,
+      "commit": null,
+      "branch": "agent/agenda-segment-availability-cards-0.1.580",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cards fechados da Agenda e Timeline exibem Vagas por trecho com o SegmentLoad canônico do SeatAvailabilityEngine.",
+        "A Agenda Pública 0569 renderiza segmentAvailability sanitizado do backend com trecho, vagas e indicador de ocupação.",
+        "As bolinhas acompanham a capacidade operacional real da viagem sem limite visual fixo."
+      ],
+      "fixed": [
+        "O cálculo por segmento já existente deixa de ficar escondido atrás da expansão do card Android.",
+        "A nova casca pública deixa de descartar segmentAvailability que já chegava no payload canônico.",
+        "Zero vagas usa LOTADO; singular e plural usam 1 vaga e N vagas."
+      ],
+      "improved": [
+        "A UI não recalcula ocupação por passageiro: consome apenas a projeção canônica resolvida.",
+        "Regressões cobrem múltiplos lugares, cancelamento, recusa, trechos intermediários, capacidades variáveis, viagem direta e itinerário longo.",
+        "Quando a projeção por trecho não é confiável, a interface não inventa disponibilidade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.579: Vagas por trecho só aparecia com o card Android expandido e não era mostrado pela casca pública 0569."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Agenda Pública",
+        "Vagas por trecho",
+        "Capacidade canônica",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.579",
       "build": 5870,
       "commit": null,
