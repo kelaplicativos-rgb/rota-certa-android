@@ -15,13 +15,13 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.2/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.3/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
 });
 
-test("0569 whole valid card goes only to canonical official BlaBlaCar trip URL", () => {
+test("0584 BlaBlaCar navigation is isolated in Ver carona and never attached to the whole card", () => {
   assert.match(app, /function validatedBlaBlaPublicUrl0569/);
   assert.match(app, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
   assert.match(app, /requested_seats/);
@@ -31,8 +31,10 @@ test("0569 whole valid card goes only to canonical official BlaBlaCar trip URL",
   assert.match(app, /normalizedPath === "\/trip"/);
   assert.match(app, /normalizedPath\.startsWith\("\/trip\/"\)/);
   assert.match(app, /item\?\.blablaPublicUrl/);
-  assert.match(app, /card\.href = publicUrl/);
-  assert.match(app, /document\.createElement\(publicUrl \? "a" : "article"\)/);
+  assert.match(app, /const card = document\.createElement\("article"\)/);
+  assert.doesNotMatch(app, /card\.href = publicUrl/);
+  assert.match(app, /viewRide\.href = publicUrl/);
+  assert.match(app, /viewRide\.textContent = "Ver carona"/);
   assert.doesNotMatch(app, /\/search\?/i);
   assert.doesNotMatch(app, /blablacar:\/\//i);
   assert.doesNotMatch(app, /method:\s*["']POST["']/);
@@ -70,10 +72,45 @@ test("0569 WhatsApp uses configured public driver field dynamically and never ha
   assert.match(api, /profile\.whatsapp = driverWhatsapp0519/);
 });
 
-test("0569 missing BlaBlaCar URL leaves the shell visible but inert", () => {
-  assert.match(app, /document\.createElement\(publicUrl \? "a" : "article"\)/);
-  assert.match(app, /card\.setAttribute\("aria-disabled", "true"\)/);
-  assert.doesNotMatch(app, /Reserva temporariamente indisponível/);
+test("0584 missing BlaBlaCar URL keeps the card visible and disables only Ver carona", () => {
+  assert.match(app, /const card = document\.createElement\("article"\)/);
+  assert.match(app, /agendaViewRideUnavailable0584/);
+  assert.match(app, /unavailable\.setAttribute\("aria-disabled", "true"\)/);
+  assert.doesNotMatch(app, /card\.setAttribute\("aria-disabled", "true"\)/);
+});
+
+test("0584 each available segment gets its own WhatsApp request and full segments do not", () => {
+  const start = app.indexOf("function whatsappDigits0569");
+  const end = app.indexOf("\nfunction syncWhatsappFab0569", start);
+  assert.ok(start >= 0 && end > start);
+  const source = [
+    'let publicDriverWhatsapp0569 = "+55 11 99999-0000";',
+    'function dateLabel0569(){ return "Dom, 20 set"; }',
+    'function timeLabel0569(){ return "10:30"; }',
+    app.slice(start, end),
+    "return { segmentWhatsappMessage0584, segmentWhatsappHref0584 };",
+  ].join("\n");
+  const helpers = Function(source)();
+  const available = { from: "Pouso Alegre", to: "Três Corações", availableSeats: 1 };
+  const message = helpers.segmentWhatsappMessage0584({ departureAtMillis: 1, timezoneId: "America/Sao_Paulo" }, available);
+  assert.match(message, /Pouso Alegre → Três Corações/);
+  assert.match(message, /Dom, 20 set/);
+  assert.match(message, /10:30/);
+  const href = helpers.segmentWhatsappHref0584({ departureAtMillis: 1, timezoneId: "America/Sao_Paulo" }, available);
+  const url = new URL(href);
+  assert.equal(url.hostname, "wa.me");
+  assert.equal(url.pathname, "/5511999990000");
+  assert.match(url.searchParams.get("text"), /Pouso Alegre → Três Corações/);
+  assert.equal(
+    helpers.segmentWhatsappHref0584(
+      { departureAtMillis: 1, timezoneId: "America/Sao_Paulo" },
+      { ...available, availableSeats: 0 },
+    ),
+    "",
+  );
+  assert.match(app, /reserve\.textContent = "Reservar agora este trecho"/);
+  assert.match(app, /if \(segment\.availableSeats > 0\)/);
+  assert.doesNotMatch(app, /wa\.me\/[0-9]{10,15}/);
 });
 
 test("0580 segment labels and dots follow real capacity without a fixed four-seat assumption", () => {
