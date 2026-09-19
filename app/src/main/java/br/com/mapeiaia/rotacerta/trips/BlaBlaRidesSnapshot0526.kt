@@ -7,9 +7,11 @@ import android.os.Environment
 import android.provider.MediaStore
 import br.com.mapeiaia.rotacerta.BuildConfig
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import java.io.File
 import java.security.MessageDigest
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -713,6 +715,19 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 }
             }
             manifest = store.read(manifest.captureId) ?: manifest
+            val completedProfile0582 = manifest.profiles
+                .singleOrNull { it.accountKey == store.accountKey(account.id) }
+            if (completedProfile0582?.status == BlaBlaRidesSnapshotStatus0526.COMPLETE) {
+                captureMissingPublicTripLinks0582(
+                    context = app,
+                    store = store,
+                    account = account,
+                    captureId = manifest.captureId,
+                    profile = completedProfile0582,
+                    onProgress = onProgress,
+                )
+                manifest = store.read(manifest.captureId) ?: manifest
+            }
         }
 
         return store.finish(manifest.captureId) ?: manifest
@@ -751,7 +766,92 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         }
     }
 
+    private suspend fun captureMissingPublicTripLinks0582(
+        context: Context,
+        store: BlaBlaRidesSnapshotStore0526,
+        account: BlaBlaDynamicAccount,
+        captureId: String,
+        profile: BlaBlaRidesSnapshotProfile0526,
+        onProgress: (String) -> Unit,
+    ) {
+        val expectedProfileUuid = BlaBlaRidesSnapshotStore0526.strongUuid(profile.authenticatedProfileUuid)
+            ?: return
+        val index = store.readRidesIndexJson0582(captureId, profile) ?: return
+        if (index.tripIds.isEmpty()) return
+
+        val htmlFile = store.resolveArtifact0528(captureId, profile.htmlFile) ?: return
+        val parsed = runCatching {
+            parseExternalRideCards0535(
+                raw = htmlFile.readText(Charsets.UTF_8),
+                captureDate = LocalDate.now(),
+                source = "HTML",
+            )
+        }.getOrNull() ?: return
+        val administrativeUrls = parsed.rides
+            .filter { it.tripId in index.tripIds }
+            .associate { it.tripId to it.administrativeUrl }
+
+        fun currentLinks(): List<BlaBlaRidesTripLink0582> {
+            val collectorTrips = BlaBlaCollectorStateStore(context)
+                .lastResponseRecoveringDynamicSessions()
+                ?.trips
+                .orEmpty()
+            return buildRidesTripLinks0582(
+                profileUuid = expectedProfileUuid,
+                tripIds = index.tripIds,
+                administrativeUrlsByTripId = administrativeUrls,
+                collectorTrips = collectorTrips,
+            )
+        }
+
+        var links = currentLinks()
+        val missing = links.filter { it.publicTripStatus != "COMPLETE" && it.administrativeUrl.isNotBlank() }
+        if (missing.isNotEmpty()) {
+            val tenantId = RotaCertaTenantRegistry(context).activeTenant().tenantId
+            missing.forEachIndexed { position, link ->
+                onProgress(
+                    "Capturando link público ${position + 1}/${missing.size} • ${account.displayLabel}",
+                )
+                val target = BlaBlaTripTarget0407(
+                    tenantId = tenantId,
+                    accountId = account.id,
+                    profileUuid = expectedProfileUuid,
+                    tripId = link.tripId,
+                    tripHref = link.administrativeUrl,
+                )
+                val result = runCatching {
+                    BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                        context = context,
+                        target = target,
+                        commandId = "rides-public-link-${captureId.take(36)}-${link.tripId.take(80)}",
+                        origin = "rides_snapshot_public_link_0582",
+                        timeoutMillis = PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582,
+                    )
+                }.getOrNull()
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_RIDES_PUBLIC_LINK_REVERIFY_0582",
+                    context.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} tripKey=${seatSyncDiagnosticKey(link.tripId)} result=${result?.status ?: "FAILED"} browserVisible=false synthesized=false",
+                )
+            }
+            links = currentLinks()
+        }
+
+        val rewritten = store.rewriteRidesIndexTripLinks0582(
+            captureId = captureId,
+            accountId = account.id,
+            profileUuid = expectedProfileUuid,
+            links = links,
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_PUBLIC_LINKS_CAPTURED_0582",
+            context.packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} trips=${links.size} complete=${links.count { it.publicTripStatus == "COMPLETE" }} pending=${links.count { it.publicTripStatus != "COMPLETE" }} indexRewritten=${rewritten != null} synthesized=false",
+        )
+    }
+
     private const val PROFILE_TIMEOUT_MS = 120_000L
+    private const val PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582 = 45_000L
     private val TERMINAL_STATUSES = setOf(
         BlaBlaRidesSnapshotStatus0526.COMPLETE,
         BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
