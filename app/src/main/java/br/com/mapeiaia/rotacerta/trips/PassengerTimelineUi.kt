@@ -1094,6 +1094,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 previous = canonicalBooking0513,
                                 updated = updated0513,
                                 store = store,
+                                mutationCoordinator = mutationCoordinator,
                             )
                         }.onSuccess {
                             copyPassengerFareValue(
@@ -1137,6 +1138,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 previous = canonicalBooking0513,
                                 updated = updated0513,
                                 store = store,
+                                mutationCoordinator = mutationCoordinator,
                             )
                         }.onSuccess {
                             onChanged("Endereço de embarque salvo no estado canônico.")
@@ -1175,6 +1177,7 @@ internal fun EnhancedPassengerTimelineSection(
                                 previous = canonicalBooking0513,
                                 updated = updated0513,
                                 store = store,
+                                mutationCoordinator = mutationCoordinator,
                             )
                         }.onSuccess {
                             onChanged("Endereço de destino salvo no estado canônico.")
@@ -1622,6 +1625,106 @@ private fun PassengerFareEditorDialog(
     )
 }
 
+private fun persistCanonicalPassengerMutation0582(
+    context: Context,
+    trip: Trip,
+    updated: Booking,
+    store: TripStore,
+    mutationCoordinator: TripMutationCoordinator0387,
+    mutationType: String,
+): Booking {
+    require(updated.tripId == trip.id) { "BOOKING_TRIP_ID_MISMATCH" }
+    val saved = store.saveBooking(
+        updated.copy(updatedAtMillis = System.currentTimeMillis()),
+    )
+    val queued = mutationCoordinator.recordLocalMutation(
+        canonicalTripId = trip.id,
+        mutationType = mutationType,
+        source = "TIMELINE_PASSENGER_UI",
+        reconcileBookingInventory = false,
+    )
+    // BlaBlaCar is never synchronized automatically after an internal mutation.
+    // The canonical Rota Certa outbox is the only remote publication path.
+    if (queued != null) {
+        AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_local_mutation")
+    }
+    BookingRealtimeEvents0356.notifyChanged()
+    UnifiedDebugEventStore.record(
+        "TIMELINE_CANONICAL_PASSENGER_LOCAL_FIRST_0582",
+        context.packageName,
+        "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+            " bookingId=" + passengerCancellationHash(saved.id) +
+            " mutationType=" + mutationType.take(64) +
+            " outboxQueued=" + (queued != null) +
+            " directHttp=false blablaPlatformChanged=false",
+    )
+    return saved
+}
+
+private fun passengerOperationalMutation0582(
+    previous: Booking,
+    selectionRaw: String,
+): Booking {
+    val selection = selectionRaw.trim().uppercase()
+    require(selection in setOf("CONFIRMED", "AT_LOCATION", "IN_CAR", "PAID", "COMPLETED", "CANCELLED")) {
+        "INVALID_OPERATIONAL_SELECTION"
+    }
+    require(previous.status !in setOf(BookingStatus.CANCELLED, BookingStatus.EXPIRED)) {
+        "BOOKING_INACTIVE"
+    }
+    require(previous.status != BookingStatus.REQUESTED) { "RESERVATION_DECISION_REQUIRED" }
+    require(previous.status != BookingStatus.REJECTED) { "BOOKING_REJECTED" }
+    require(
+        previous.operationalStatus != PassengerOperationalStatus.COMPLETED ||
+            selection in setOf("COMPLETED", "PAID"),
+    ) { "PASSENGER_OPERATIONAL_COMPLETED" }
+    require(
+        previous.operationalStatus != PassengerOperationalStatus.IN_CAR ||
+            selection != "CANCELLED",
+    ) { "PASSENGER_IN_CAR_NOT_CANCELABLE" }
+
+    val operational = when (selection) {
+        "PAID" -> previous.operationalStatus
+        "CONFIRMED" -> PassengerOperationalStatus.CONFIRMED
+        "AT_LOCATION" -> PassengerOperationalStatus.AT_LOCATION
+        "IN_CAR" -> PassengerOperationalStatus.IN_CAR
+        "COMPLETED" -> PassengerOperationalStatus.COMPLETED
+        "CANCELLED" -> PassengerOperationalStatus.CANCELLED
+        else -> previous.operationalStatus
+    }
+    return previous.copy(
+        status = when {
+            selection == "CANCELLED" -> BookingStatus.CANCELLED
+            selection == "CONFIRMED" && previous.status == BookingStatus.HELD -> BookingStatus.CONFIRMED
+            else -> previous.status
+        },
+        operationalStatus = operational,
+        paymentStatus = if (selection == "PAID") PassengerPaymentStatus.PAID else previous.paymentStatus,
+        lastDriverSelection = selection,
+    )
+}
+
+private fun passengerDecisionMutation0582(
+    previous: Booking,
+    actionRaw: String,
+): Booking {
+    val action = actionRaw.trim().uppercase()
+    require(action in setOf("APPROVE", "REJECT")) { "INVALID_BOOKING_DECISION" }
+    require(previous.status == BookingStatus.REQUESTED) { "BOOKING_ALREADY_RESOLVED" }
+    require(previous.source == BookingSource.ROTA_CERTA) { "INVALID_PENDING_CAPACITY_CLAIM" }
+    require(previous.capacityClaimType == CapacityClaimType.PASSENGER) { "INVALID_PENDING_CAPACITY_CLAIM" }
+    require(!previous.occupancyGroupId.isNullOrBlank()) { "MISSING_PENDING_OCCUPANCY_GROUP" }
+    return previous.copy(
+        status = if (action == "APPROVE") BookingStatus.CONFIRMED else BookingStatus.REJECTED,
+        operationalStatus = if (action == "APPROVE") {
+            PassengerOperationalStatus.CONFIRMED
+        } else {
+            PassengerOperationalStatus.PENDING
+        },
+        lastDriverSelection = action,
+    )
+}
+
 private fun canonicalBookingPrivateMetadataKey0494(bookingId: String): String =
     "canonical-booking-private:" + bookingId.trim()
 
@@ -1654,36 +1757,34 @@ private fun savePassengerFareLegacy0494(
     return true
 }
 
-private suspend fun persistCanonicalPassengerPrivateMetadata0513(
+private fun persistCanonicalPassengerPrivateMetadata0513(
     context: Context,
     trip: Trip,
     previous: Booking,
     updated: Booking,
     store: TripStore,
-): DriverBookingUpsertResponse {
-    val remoteTripId = trip.remoteId?.trim()?.takeIf(String::isNotEmpty)
-        ?: throw IllegalStateException("Viagem canônica sem identidade remota para mutação.")
-    val settings = store.onlineSettings()
-    if (!settings.configured) throw IllegalStateException("Backend canônico não configurado.")
-    val ack = if (previous.source == BookingSource.ROTA_CERTA) {
-        TripRemoteApi(settings).updateProtectedDriverBooking(remoteTripId, updated)
-    } else {
-        TripRemoteApi(settings).upsertDriverBooking(remoteTripId, updated)
-    }
+    mutationCoordinator: TripMutationCoordinator0387,
+): Booking {
+    val saved = persistCanonicalPassengerMutation0582(
+        context = context,
+        trip = trip,
+        updated = updated.copy(localMetadataTouched = true),
+        store = store,
+        mutationCoordinator = mutationCoordinator,
+        mutationType = "PASSENGER_PRIVATE_METADATA_CHANGED",
+    )
     UnifiedDebugEventStore.record(
         "TIMELINE_CANONICAL_PASSENGER_PRIVATE_MUTATION_0513",
         context.packageName,
         "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
             " bookingId=" + passengerCancellationHash(previous.id) +
-            " entityRevision=" + ack.entityRevision +
             " fareChanged=" + (previous.fareMinorUnits != updated.fareMinorUnits ||
                 previous.fareCurrencyCode != updated.fareCurrencyCode) +
             " boardingAddressChanged=" + (previous.boardingAddress != updated.boardingAddress) +
             " dropoffAddressChanged=" + (previous.dropoffAddress != updated.dropoffAddress) +
-            " source=CANONICAL_BACKEND privateValuesLogged=false",
+            " source=LOCAL_CANONICAL_OUTBOX privateValuesLogged=false directHttp=false",
     )
-    BookingRealtimeEvents0356.notifyChanged()
-    return ack
+    return saved
 }
 
 /** Legacy-only metadata link for rows that genuinely have no canonical booking id. */
