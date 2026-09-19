@@ -4252,6 +4252,9 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   if (!Array.isArray(rendered0469.stops) || rendered0469.stops.length < 2) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ITINERARY_UNAVAILABLE_0469" };
   }
+  if (!(Number(rendered0469.departureAtMillis || 0) > 0)) {
+    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_DATETIME_UNAVAILABLE_0469" };
+  }
   const departureAtMillis0581 = Math.max(0, Number(data && data.departureAtMillis || 0));
   return {
     visible: true,

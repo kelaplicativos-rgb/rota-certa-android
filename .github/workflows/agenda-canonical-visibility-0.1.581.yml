@@ -108,7 +108,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${FIREBASE_PROJECT_ID:-}" || { echo "FIREBASE_PROJECT_ID secret is missing." >&2; exit 3; }
           if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
@@ -137,7 +136,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          BASE="https://${FIREBASE_PROJECT_ID}.web.app"
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          BASE="https://${PROJECT}.web.app"
           curl --retry 10 --retry-delay 4 --retry-all-errors --fail --silent --show-error             "$BASE/v1/health?proof=${GITHUB_RUN_ID}" | tee live-health.json
           grep -Fq '"ok":true' live-health.json
 
