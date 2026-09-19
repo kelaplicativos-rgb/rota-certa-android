@@ -59,10 +59,13 @@ test("0582 public Agenda canonicalizes search-context parameters instead of disa
   }
 });
 
-test("0582 shell keeps the whole card as the BlaBlaCar anchor", () => {
-  assert.match(shell, /document\.createElement\(publicUrl \? "a" : "article"\)/);
-  assert.match(shell, /card\.href = publicUrl/);
-  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.2/);
+test("0584 shell isolates BlaBlaCar navigation in the blue Ver carona action", () => {
+  assert.match(shell, /const card = document\.createElement\("article"\)/);
+  assert.doesNotMatch(shell, /card\.href = publicUrl/);
+  assert.match(shell, /viewRide\.href = publicUrl/);
+  assert.match(shell, /viewRide\.textContent = "Ver carona"/);
+  assert.match(html, /agendaViewRide0584/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.3/);
 });
 
 test("0582 server-canonical ingestion may retain an authoritative public token distinct from administrative trip id", () => {
