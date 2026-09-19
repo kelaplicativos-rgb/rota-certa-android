@@ -32,6 +32,7 @@ internal data class RotaCertaBlaBlaRidesProfile0531(
     val tripIds: List<String>,
     val tripIdsSha256: String,
     val duplicateCount: Int,
+    val tripLinks: List<BlaBlaRidesTripLink0582> = emptyList(),
     val earliestDate: String = "",
     val latestDate: String = "",
     val reachedEnd: Boolean,
@@ -140,6 +141,9 @@ internal object BlaBlaRidesPortableJson0531 {
             require(profile.rideDateRange == index.rideDateRange) {
                 "Intervalo de datas do índice diverge da captura"
             }
+            require(index.tripLinks.isEmpty() || validateRidesTripLinks0582(index.tripIds, index.tripLinks)) {
+                "Links de viagem do índice não estão vinculados aos tripIds"
+            }
 
             RotaCertaBlaBlaRidesProfile0531(
                 accountKey = profile.accountKey,
@@ -153,6 +157,7 @@ internal object BlaBlaRidesPortableJson0531 {
                 tripIds = index.tripIds,
                 tripIdsSha256 = index.tripIdsSha256,
                 duplicateCount = 0,
+                tripLinks = index.tripLinks,
                 earliestDate = index.rideDateRange.earliest,
                 latestDate = index.rideDateRange.latest,
                 reachedEnd = true,
@@ -249,6 +254,9 @@ internal object BlaBlaRidesPortableJson0531 {
             require(profile.rideCount == profile.tripIds.size) { "Contagem de viagens inconsistente" }
             require(tripSetSha2560528(profile.tripIds) == profile.tripIdsSha256) {
                 "Hash das viagens não confere"
+            }
+            require(profile.tripLinks.isEmpty() || validateRidesTripLinks0582(profile.tripIds, profile.tripLinks)) {
+                "Links de viagem portáteis não estão vinculados aos tripIds"
             }
             if (profile.tripIds.isEmpty()) {
                 require(profile.earliestDate.isBlank() && profile.latestDate.isBlank()) {
