@@ -521,21 +521,19 @@ internal fun EnhancedPassengerTimelineSection(
                                 decisionRunning = "APPROVE"
                                 scope.launch {
                                     runCatching {
-                                        val settings0494 = store.onlineSettings()
-                                        val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
-                                            ?: error("Viagem sem identidade remota canônica.")
-                                        check(settings0494.configured) { "Backend canônico indisponível." }
-                                        TripRemoteApi(settings0494).decideDriverBooking(
-                                            remoteTripId = remoteId0494,
-                                            bookingId = booking.id,
-                                            action = "APPROVE",
+                                        persistCanonicalPassengerMutation0582(
+                                            context = context,
+                                            trip = selectedTrip,
+                                            updated = passengerDecisionMutation0582(booking, "APPROVE"),
+                                            store = store,
+                                            mutationCoordinator = mutationCoordinator,
+                                            mutationType = "RESERVATION_APPROVED",
                                         )
-                                    }.onSuccess { ack0494 ->
-                                        BookingRealtimeEvents0356.notifyChanged()
+                                    }.onSuccess {
                                         UnifiedDebugEventStore.record(
                                             "TIMELINE_CANONICAL_BOOKING_DECISION_0494",
                                             context.packageName,
-                                            "action=APPROVE authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false",
+                                            "action=APPROVE authority=LOCAL_CANONICAL_OUTBOX localBusinessWrite=true directHttp=false",
                                         )
                                         onChanged("Reserva aprovada no estado canônico ✅")
                                     }.onFailure { error ->
@@ -582,22 +580,19 @@ internal fun EnhancedPassengerTimelineSection(
                                     decisionRunning = "REJECT"
                                     scope.launch {
                                         runCatching {
-                                            val settings0494 = store.onlineSettings()
-                                            val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
-                                                ?: error("Viagem sem identidade remota canônica.")
-                                            check(settings0494.configured) { "Backend canônico indisponível." }
-                                            TripRemoteApi(settings0494).decideDriverBooking(
-                                                remoteTripId = remoteId0494,
-                                                bookingId = booking.id,
-                                                action = "REJECT",
-                                                reason = rejectReason,
+                                            persistCanonicalPassengerMutation0582(
+                                                context = context,
+                                                trip = selectedTrip,
+                                                updated = passengerDecisionMutation0582(booking, "REJECT"),
+                                                store = store,
+                                                mutationCoordinator = mutationCoordinator,
+                                                mutationType = "RESERVATION_REJECTED",
                                             )
-                                        }.onSuccess { ack0494 ->
-                                            BookingRealtimeEvents0356.notifyChanged()
+                                        }.onSuccess {
                                             UnifiedDebugEventStore.record(
                                                 "TIMELINE_CANONICAL_BOOKING_DECISION_0494",
                                                 context.packageName,
-                                                "action=REJECT authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false",
+                                                "action=REJECT authority=LOCAL_CANONICAL_OUTBOX localBusinessWrite=true directHttp=false reasonProvided=${rejectReason.isNotBlank()}",
                                             )
                                             rejectConfirmOpen = false
                                             rejectReason = ""
