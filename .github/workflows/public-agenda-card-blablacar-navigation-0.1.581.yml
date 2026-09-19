@@ -182,6 +182,18 @@ jobs:
           curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/health?proof=$GITHUB_RUN_ID" | tee live-health-0582.json
           grep -Fq '"ok":true' live-health-0582.json
 
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' live-index-0582.html
+          grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
+          grep -Fq 'viewRide.href = publicUrl' live-shell-0582.js
+          grep -Fq 'segmentWhatsappHref0584' live-shell-0582.js
+          grep -Fq 'Reserve Já' live-shell-0582.js
+          grep -Fq 'unavailable.textContent = "Indisponível"' live-shell-0582.js
+          grep -Fq '.agendaSegmentReserve0584{grid-column:3' live-index-0582.html
+          ! grep -Fq 'card.href = publicUrl' live-shell-0582.js
+          echo 'PUBLIC_AGENDA_COMPACT_SEGMENT_ACTION_0585_LIVE=PASS'
+
           curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > live-agenda-0582.json
           node <<'NODE'
           const fs = require('fs');
@@ -225,18 +237,6 @@ jobs:
           }
           console.log('PUBLIC_AGENDA_BLABLA_VIEW_ACTION_0584_LIVE=PASS');
           NODE
-
-          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
-          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
-          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' live-index-0582.html
-          grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
-          grep -Fq 'viewRide.href = publicUrl' live-shell-0582.js
-          grep -Fq 'segmentWhatsappHref0584' live-shell-0582.js
-          grep -Fq 'Reserve Já' live-shell-0582.js
-          grep -Fq 'unavailable.textContent = "Indisponível"' live-shell-0582.js
-          grep -Fq '.agendaSegmentReserve0584{grid-column:3' live-index-0582.html
-          ! grep -Fq 'card.href = publicUrl' live-shell-0582.js
-          echo 'PUBLIC_AGENDA_BLABLA_SHELL_0584_LIVE=PASS'
 
       - name: Upload Firebase proof
         uses: actions/upload-artifact@v4
