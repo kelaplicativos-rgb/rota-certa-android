@@ -787,9 +787,14 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 source = "HTML",
             )
         }.getOrNull() ?: return
-        val administrativeUrls = parsed.rides
-            .filter { it.tripId in index.tripIds }
-            .associate { it.tripId to it.administrativeUrl }
+        val administrativeUrls = buildMap {
+            index.tripLinks
+                .filter { it.tripId in index.tripIds && it.administrativeUrl.isNotBlank() }
+                .forEach { put(it.tripId, it.administrativeUrl) }
+            parsed.rides
+                .filter { it.tripId in index.tripIds && it.administrativeUrl.isNotBlank() }
+                .forEach { put(it.tripId, it.administrativeUrl) }
+        }
 
         fun currentLinks(): List<BlaBlaRidesTripLink0582> {
             val collectorTrips = BlaBlaCollectorStateStore(context)
