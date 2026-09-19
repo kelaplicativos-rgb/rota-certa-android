@@ -4187,41 +4187,14 @@ async function convergeLegacyCanonicalTripDocuments0495(docs) {
   return { migrated, migratedBookings, unresolvedLegacy, bookingConflicts };
 }
 
-const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 60 * 60 * 1000;
-const PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12 * 60 * 60 * 1000;
+const agendaDomain0582 = require("./agenda-domain-0582");
 
 function publicAgendaVisibleUntil0577(data) {
-  const canonicalCutoff0581 = Math.max(
-    0,
-    Math.floor(Number(
-      data && data.agendaVisibleUntilMillis0581 ||
-      data && data.canonicalPublicProjection0434 && data.canonicalPublicProjection0434.agendaVisibleUntilMillis0581 ||
-      0,
-    )),
-  );
-  if (canonicalCutoff0581 > 0) return canonicalCutoff0581;
-
-  // Backward-compatible migration only for documents written before 0.1.581.
-  // New projections receive agendaVisibleUntilMillis0581 from the canonical Android lifecycle engine.
-  const departure = Math.max(0, Number(data && data.departureAtMillis || 0));
-  if (!departure) return 0;
-  const stops = Array.isArray(data && data.stops)
-    ? [...data.stops].sort((a, b) => Number(a && a.order || 0) - Number(b && b.order || 0))
-    : [];
-  const lastStop = stops.length ? stops[stops.length - 1] : null;
-  const candidates = [
-    Number(data && data.arrivalAtMillis || 0),
-    Number(lastStop && lastStop.plannedArrivalMillis || 0),
-    Number(lastStop && lastStop.plannedDepartureMillis || 0),
-  ].filter((value) => Number.isFinite(value) && value >= departure);
-  const arrival = candidates.length ? Math.max(...candidates) : 0;
-  if (arrival >= departure) return arrival + PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577;
-  return departure + PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577;
+  return agendaDomain0582.canonicalAgendaVisibleUntil0582(data);
 }
 
 function publicAgendaTripStillVisible0577(data, nowMillis = Date.now()) {
-  const visibleUntil = publicAgendaVisibleUntil0577(data);
-  return visibleUntil > 0 && Number(nowMillis || 0) <= visibleUntil;
+  return agendaDomain0582.canonicalAgendaLifecycleDecision0582(data, nowMillis).visible;
 }
 
 function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Date.now()) {
