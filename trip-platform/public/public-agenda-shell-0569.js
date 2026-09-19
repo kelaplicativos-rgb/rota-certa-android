@@ -175,6 +175,24 @@ function publicWhatsappHref0569() {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
+function segmentWhatsappMessage0584(item, segment) {
+  const from = String(segment?.from || "").trim();
+  const to = String(segment?.to || "").trim();
+  const availableSeats = Math.max(0, Math.floor(Number(segment?.availableSeats || 0)));
+  if (!from || !to || availableSeats < 1) return "";
+  const date = dateLabel0569(item?.departureAtMillis, item?.timezoneId);
+  const time = timeLabel0569(item?.departureAtMillis, item?.timezoneId);
+  const when = [date, time ? "às " + time : ""].filter(Boolean).join(" ");
+  return `Olá! Quero reservar 1 lugar no trecho ${from} → ${to}${when ? ", na viagem de " + when : ""}. Enviei esta solicitação pela Agenda Rota Certa.`;
+}
+
+function segmentWhatsappHref0584(item, segment) {
+  const digits = whatsappDigits0569(publicDriverWhatsapp0569);
+  const message = segmentWhatsappMessage0584(item, segment);
+  if (!digits || !message) return "";
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
 function syncWhatsappFab0569() {
   const fab = $0569("whatsappFab0569");
   if (!fab) return;
@@ -261,6 +279,23 @@ function appendSegmentAvailability0580(card, item, stops) {
     seats.textContent = segmentAvailabilityLabel0580(segment.availableSeats);
 
     row.append(route, dots, seats);
+
+    if (segment.availableSeats > 0) {
+      const reservationHref = segmentWhatsappHref0584(item, segment);
+      if (reservationHref) {
+        const reserve = document.createElement("a");
+        reserve.className = "agendaSegmentReserve0584";
+        reserve.href = reservationHref;
+        reserve.rel = "noopener noreferrer";
+        reserve.textContent = "Reservar agora este trecho";
+        reserve.setAttribute(
+          "aria-label",
+          `Reservar pelo WhatsApp o trecho ${segment.from} para ${segment.to}`,
+        );
+        row.appendChild(reserve);
+      }
+    }
+
     section.appendChild(row);
   });
   card.appendChild(section);
@@ -308,17 +343,10 @@ function renderTripCard0569(item) {
   const from = String(firstStop?.name || "Origem").trim();
   const to = String(lastStop?.name || "Destino").trim();
   const publicUrl = validatedBlaBlaPublicUrl0569(item?.blablaPublicUrl);
-  const card = document.createElement(publicUrl ? "a" : "article");
+  const card = document.createElement("article");
   card.className = "agendaTrip0569";
   card.dataset.cardSurface = "public-shell-0569";
-  if (publicUrl) {
-    card.href = publicUrl;
-    card.rel = "noopener noreferrer";
-    card.setAttribute("aria-label", `Abrir viagem ${from} para ${to} na BlaBlaCar`);
-  } else {
-    card.setAttribute("aria-disabled", "true");
-    card.setAttribute("aria-label", `Viagem ${from} para ${to}`);
-  }
+  card.setAttribute("aria-label", `Viagem ${from} para ${to}`);
   const top = document.createElement("div");
   top.className = "agendaTop0569";
   const date = document.createElement("strong");
@@ -331,6 +359,25 @@ function renderTripCard0569(item) {
   card.appendChild(top);
   appendJourney0569(card, item, firstStop, lastStop);
   appendSegmentAvailability0580(card, item, stops);
+
+  const actions = document.createElement("div");
+  actions.className = "agendaCardActions0584";
+  if (publicUrl) {
+    const viewRide = document.createElement("a");
+    viewRide.className = "agendaViewRide0584";
+    viewRide.href = publicUrl;
+    viewRide.rel = "noopener noreferrer";
+    viewRide.textContent = "Ver carona";
+    viewRide.setAttribute("aria-label", `Ver carona ${from} para ${to} na BlaBlaCar`);
+    actions.appendChild(viewRide);
+  } else {
+    const unavailable = document.createElement("span");
+    unavailable.className = "agendaViewRide0584 agendaViewRideUnavailable0584";
+    unavailable.textContent = "Ver carona";
+    unavailable.setAttribute("aria-disabled", "true");
+    actions.appendChild(unavailable);
+  }
+  card.appendChild(actions);
   return card;
 }
 
