@@ -1006,8 +1006,7 @@ internal fun EnhancedPassengerTimelineSection(
                     val profile = exact ?: passengerStore.createProfile(row.name, row.phone.orEmpty())
                     val canonicalBooking0494 = row.localBookingId?.let(renderSnapshot.bookingsById::get)
                     val canonicalTrip0494 = trip
-                    val remoteId0494 = canonicalTrip0494?.remoteId?.takeIf(String::isNotBlank)
-                    if (canonicalBooking0494 != null && canonicalTrip0494 != null && remoteId0494 != null) {
+                    if (canonicalBooking0494 != null && canonicalTrip0494 != null) {
                         scope.launch {
                             runCatching {
                                 val updated0494 = canonicalBooking0494.copy(
