@@ -381,37 +381,32 @@ internal fun EnhancedPassengerTimelineSection(
             scope.launch {
                 val selectedTrip = trip
                 val booking = currentBooking
-                val settings0494 = store.onlineSettings()
-                val remoteId0494 = selectedTrip?.remoteId?.takeIf(String::isNotBlank)
-                when {
-                    selectedTrip == null || booking == null -> {
-                        onChanged("A ocorrência canônica não está disponível para alterar o status.")
-                        return@launch
-                    }
-                    !settings0494.configured || remoteId0494 == null -> {
-                        onChanged("Backend canônico indisponível. Nada foi alterado; o coletor não será usado como fallback.")
-                        return@launch
-                    }
+                if (selectedTrip == null || booking == null) {
+                    onChanged("A ocorrência canônica não está disponível para alterar o status.")
+                    return@launch
                 }
 
                 runCatching {
-                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
-                        remoteTripId = remoteId0494!!,
-                        bookingId = booking.id,
-                        selection = selection,
+                    val updated = passengerOperationalMutation0582(booking, selection)
+                    persistCanonicalPassengerMutation0582(
+                        context = context,
+                        trip = selectedTrip,
+                        updated = updated,
+                        store = store,
+                        mutationCoordinator = mutationCoordinator,
+                        mutationType = "PASSENGER_STATUS_" + selection,
                     )
-                }.onSuccess { ack0494 ->
+                }.onSuccess {
                     if (selection == "COMPLETED") {
                         completionService.confirm(entry, passenger)?.let {
                             completionRevision++
                             identityRevision++
                         }
                     }
-                    BookingRealtimeEvents0356.notifyChanged()
                     UnifiedDebugEventStore.record(
                         "TIMELINE_CANONICAL_PASSENGER_MUTATION_0494",
                         context.packageName,
-                        "canonicalTripId=${seatSyncDiagnosticKey(selectedTrip.id)} bookingIdPresent=true selection=$selection entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                        "canonicalTripId=${seatSyncDiagnosticKey(selectedTrip.id)} bookingIdPresent=true selection=$selection authority=LOCAL_CANONICAL_OUTBOX localBusinessWrite=true directHttp=false",
                     )
                     val message = when (selection) {
                         "CONFIRMED" -> "Passageiro confirmado no estado canônico."
@@ -423,7 +418,7 @@ internal fun EnhancedPassengerTimelineSection(
                     }
                     onChanged(message)
                 }.onFailure { error ->
-                    onChanged("Nada foi alterado: ${error.message ?: "falha ao gravar no backend canônico"}")
+                    onChanged("Nada foi alterado: ${error.message ?: "falha ao gravar no estado canônico"}")
                 }
             }
         }
