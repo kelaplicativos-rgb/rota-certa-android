@@ -21,7 +21,7 @@ class BlaBlaNetworkPublicLink0423Test {
             adminA,
             evidence(
                 adminId = adminA,
-                rawHref = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicA&search_uuid=temp&p0%5Bac%5D=adult",
+                rawHref = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicA&search_uuid=temp&p0%5Bac%5D=adult",
             ),
         )
 
@@ -325,7 +325,7 @@ class BlaBlaNetworkPublicLink0423Test {
 
     @Test
     fun agendaProjectionReceivesExactCanonicalNetworkPermalink() {
-        val raw = "http://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicA&p0%5Bac%5D=adult"
+        val raw = "https://www.blablacar.com.br/trip?source=CARPOOLING&id=$publicA&p0%5Bac%5D=adult"
         val source = source(adminA, raw)
         val projected = PublicAgendaAutoSync0300.toPublicTrip(
             source = source,
