@@ -1,0 +1,60 @@
+name: Public Agenda link completeness 0.1.581 proof
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-link-completeness-0.1.581
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-agenda-link-completeness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GOOGLE_MAPS_API_KEY: link_completeness_validation_dummy_key
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git diff --name-only d6991e63204fffab8ce405665099fbb9f03f17cb "$GITHUB_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)"
+          git diff --check d6991e63204fffab8ce405665099fbb9f03f17cb...HEAD
+          grep -Fq 'collectorMissingPublicLinks0585' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDateScopeScriptSelection0449.kt
+          grep -Fq 'PUBLIC_TRIP_LINKS_INCOMPLETE_0585' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile and run focused public-link regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCompleteness0585Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPublicLinkCapture0582Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Compile Android source from app/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:compileDebugKotlin --no-daemon --max-workers=1 --no-parallel --stacktrace
