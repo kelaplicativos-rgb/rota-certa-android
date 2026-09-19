@@ -801,43 +801,61 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 .lastResponseRecoveringDynamicSessions()
                 ?.trips
                 .orEmpty()
-            return buildRidesTripLinks0582(
+            val rawLinks = buildRidesTripLinks0582(
                 profileUuid = expectedProfileUuid,
                 tripIds = index.tripIds,
                 administrativeUrlsByTripId = administrativeUrls,
                 collectorTrips = collectorTrips,
             )
+            return applyRidesShareEligibility0583(
+                links = rawLinks,
+                rides = parsed.rides,
+            )
         }
 
         var links = currentLinks()
-        val missing = links.filter { it.publicTripStatus != "COMPLETE" && it.administrativeUrl.isNotBlank() }
-        if (missing.isNotEmpty()) {
+        val initiallyMissing = links.filter {
+            it.shareEligibility != "EXPIRED" &&
+                it.publicTripStatus != "COMPLETE" &&
+                it.administrativeUrl.isNotBlank()
+        }
+        if (initiallyMissing.isNotEmpty()) {
             val tenantId = RotaCertaTenantRegistry(context).activeTenant().tenantId
-            missing.forEachIndexed { position, link ->
-                onProgress(
-                    "Capturando link público ${position + 1}/${missing.size} • ${account.displayLabel}",
-                )
-                val target = BlaBlaTripTarget0407(
-                    tenantId = tenantId,
-                    accountId = account.id,
-                    profileUuid = expectedProfileUuid,
-                    tripId = link.tripId,
-                    tripHref = link.administrativeUrl,
-                )
-                val result = runCatching {
-                    BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
-                        context = context,
-                        target = target,
-                        commandId = "rides-public-link-${captureId.take(36)}-${link.tripId.take(80)}",
-                        origin = "rides_snapshot_public_link_0582",
-                        timeoutMillis = PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582,
+            initiallyMissing.forEachIndexed { position, initialLink ->
+                var attempt = 0
+                while (attempt < PUBLIC_LINK_CAPTURE_ATTEMPTS_0583) {
+                    val liveLink = currentLinks().singleOrNull { it.tripId == initialLink.tripId }
+                        ?: break
+                    if (liveLink.publicTripStatus == "COMPLETE" || liveLink.shareEligibility == "EXPIRED") break
+                    attempt++
+                    onProgress(
+                        "Capturando link público ${position + 1}/${initiallyMissing.size} • tentativa $attempt/$PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 • ${account.displayLabel}",
                     )
-                }.getOrNull()
-                UnifiedDebugEventStore.recordAlways(
-                    "BLABLACAR_RIDES_PUBLIC_LINK_REVERIFY_0582",
-                    context.packageName,
-                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} tripKey=${seatSyncDiagnosticKey(link.tripId)} result=${result?.status ?: "FAILED"} browserVisible=false synthesized=false",
-                )
+                    val target = BlaBlaTripTarget0407(
+                        tenantId = tenantId,
+                        accountId = account.id,
+                        profileUuid = expectedProfileUuid,
+                        tripId = liveLink.tripId,
+                        tripHref = liveLink.administrativeUrl,
+                    )
+                    val result = runCatching {
+                        BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                            context = context,
+                            target = target,
+                            commandId = "rides-public-link-${captureId.take(30)}-${liveLink.tripId.take(70)}-$attempt",
+                            origin = "rides_snapshot_public_link_0583",
+                            timeoutMillis = PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582,
+                            enabledScripts = PUBLIC_LINK_ONLY_SCRIPTS_0583,
+                        )
+                    }.getOrNull()
+                    val afterAttempt = currentLinks().singleOrNull { it.tripId == liveLink.tripId }
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_RIDES_PUBLIC_LINK_REVERIFY_0583",
+                        context.packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} tripKey=${seatSyncDiagnosticKey(liveLink.tripId)} attempt=$attempt result=${result?.status ?: "FAILED"} linkComplete=${afterAttempt?.publicTripStatus == "COMPLETE"} eligibility=${afterAttempt?.shareEligibility ?: "UNKNOWN"} browserVisible=false synthesized=false",
+                    )
+                    if (afterAttempt?.publicTripStatus == "COMPLETE") break
+                }
             }
             links = currentLinks()
         }
@@ -848,15 +866,35 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             profileUuid = expectedProfileUuid,
             links = links,
         )
+        val activeComplete = activeRidesPublicLinksComplete0583(links)
+        val activeCount = links.count { it.shareEligibility != "EXPIRED" }
+        val activeLinked = links.count {
+            it.shareEligibility != "EXPIRED" && it.publicTripStatus == "COMPLETE"
+        }
+        val expiredCount = links.count { it.shareEligibility == "EXPIRED" }
+        if (!activeComplete) {
+            store.updateProfile(captureId, account.id) { previous ->
+                previous.copy(
+                    status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
+                    errorCode = "PUBLIC_TRIP_LINKS_INCOMPLETE",
+                )
+            }
+        }
         UnifiedDebugEventStore.recordAlways(
-            "BLABLACAR_RIDES_PUBLIC_LINKS_CAPTURED_0582",
+            "BLABLACAR_RIDES_PUBLIC_LINKS_CAPTURED_0583",
             context.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} trips=${links.size} complete=${links.count { it.publicTripStatus == "COMPLETE" }} pending=${links.count { it.publicTripStatus != "COMPLETE" }} indexRewritten=${rewritten != null} synthesized=false",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} trips=${links.size} active=$activeCount activeLinked=$activeLinked expired=$expiredCount operationalComplete=$activeComplete indexRewritten=${rewritten != null} synthesized=false",
         )
     }
 
     private const val PROFILE_TIMEOUT_MS = 120_000L
     private const val PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582 = 45_000L
+    private const val PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 = 2
+    private val PUBLIC_LINK_ONLY_SCRIPTS_0583 = listOf(
+        BlaBlaBrowserRequest.TRIP_OPEN.name,
+        BlaBlaBrowserRequest.TRIP_DETAIL.name,
+        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE.name,
+    )
     private val TERMINAL_STATUSES = setOf(
         BlaBlaRidesSnapshotStatus0526.COMPLETE,
         BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
