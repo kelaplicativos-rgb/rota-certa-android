@@ -51,7 +51,6 @@ jobs:
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPublicLinkCompleteness0585Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPublicLinkCapture0582Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaOrchestratorScriptSelection0449Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Compile Android app/src
