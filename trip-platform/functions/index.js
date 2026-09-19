@@ -1172,15 +1172,20 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
   const previousTripId = cleanText(previous && previous.blablaTripId, 160);
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160) || previousProfileUuid;
   const blablaTripId = cleanText(raw.blablaTripId, 160) || previousTripId;
-  const samePersistentIdentity = !previousTripId || previousTripId === blablaTripId;
+  const samePersistentProfile0585 =
+    !previousProfileUuid ||
+    !blablaProfileUuid ||
+    previousProfileUuid.toLowerCase() === blablaProfileUuid.toLowerCase();
+  const samePersistentIdentity =
+    (!previousTripId || previousTripId === blablaTripId) && samePersistentProfile0585;
   const previousManageUrl = samePersistentIdentity
     ? normalizeBlaBlaManageUrl(previous && previous.blablaManageUrl, blablaTripId)
     : "";
-  const previousCanonicalBoundPublicUrl0582 = samePersistentIdentity && allowCanonicalBoundBlaBlaPublicUrl0582
-    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(previous && previous.blablaPublicUrl, blablaTripId)
-    : "";
+  // 0.1.585 durability: a permalink already persisted under the same strong
+  // BlaBlaCar identity is monotonic. New/unbound writes remain strict below,
+  // but a partial update cannot erase an already canonical-bound public token.
   const previousPublicUrl = samePersistentIdentity
-    ? previousCanonicalBoundPublicUrl0582 || normalizeBlaBlaPublicUrl(previous && previous.blablaPublicUrl, blablaTripId)
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(previous && previous.blablaPublicUrl, blablaTripId)
     : "";
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId) || previousManageUrl;
   const canonicalBoundPublicUrl0582 = allowCanonicalBoundBlaBlaPublicUrl0582
@@ -4301,24 +4306,32 @@ function normalizeBlaBlaPublicShareUrl0571(raw) {
   }
 }
 
+
+function resolvedPublicAgendaBlaBlaUrl0585(exactRaw, existingRaw) {
+  return normalizeBlaBlaPublicShareUrl0571(exactRaw) ||
+    normalizeBlaBlaPublicShareUrl0571(existingRaw);
+}
+
 async function publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips) {
   const docs = Array.isArray(sourceDocs) ? sourceDocs : [];
   const trips = Array.isArray(rawTrips) ? rawTrips : [];
   const driverUsername = cleanText(driver && driver.username, 40);
   if (!driverUsername || !docs.length || !trips.length) return trips;
 
-  let mirrorSnapshot;
+  let mirrorSnapshot = null;
   try {
     mirrorSnapshot = await db.collection("tripPrivateMirrors0434")
       .where("driverUsername", "==", driverUsername)
       .limit(300)
       .get();
   } catch (_) {
-    return trips;
+    // The private mirror is enrichment only. Root/canonical projection evidence
+    // remains sufficient to keep an already-bound passenger-facing permalink.
+    mirrorSnapshot = null;
   }
 
   const mirrorsByCanonicalId = new Map();
-  mirrorSnapshot.docs.forEach((mirrorDoc) => {
+  ((mirrorSnapshot && mirrorSnapshot.docs) || []).forEach((mirrorDoc) => {
     const mirror = mirrorDoc.data() || {};
     const canonicalId = cleanText(mirror.canonicalTripId, 180);
     if (canonicalId) mirrorsByCanonicalId.set(canonicalId, mirror);
@@ -4354,8 +4367,11 @@ async function publicAgendaExactBlaBlaLinks0570(driver, sourceDocs, rawTrips) {
       mirrorCompatible ? privatePayload : null,
       externalIdentity,
     );
-    const strictPublicShareUrl0571 = normalizeBlaBlaPublicShareUrl0571(exactPublicUrl);
-    return { ...trip, blablaPublicUrl: strictPublicShareUrl0571 };
+    const durablePublicShareUrl0585 = resolvedPublicAgendaBlaBlaUrl0585(
+      exactPublicUrl,
+      trip && trip.blablaPublicUrl,
+    );
+    return { ...trip, blablaPublicUrl: durablePublicShareUrl0585 };
   });
 }
 
