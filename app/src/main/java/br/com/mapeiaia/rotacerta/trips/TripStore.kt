@@ -492,9 +492,11 @@ class TripStore(context: Context) {
     }
 
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
-        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin()).let { keyed ->
-            if (keyed.publicTimezoneId0411.isBlank()) keyed.copy(publicTimezoneId0411 = ZoneId.systemDefault().id) else keyed
-        }
+        val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin())
+            .withCanonicalAgendaVisibility0581()
+            .let { keyed ->
+                if (keyed.publicTimezoneId0411.isBlank()) keyed.copy(publicTimezoneId0411 = ZoneId.systemDefault().id) else keyed
+            }
         val allTrips = trips()
         val existingById = allTrips.firstOrNull { it.id == keyedIncoming.id }
         val existingByStrongKey = keyedIncoming.tripKey.takeIf(String::isNotBlank)?.let { key ->
@@ -594,15 +596,20 @@ class TripStore(context: Context) {
     }
 
     private fun canonicalizeTripIdentity0406(trip: Trip): Trip {
-        val key = when (resolvedTripRecordOrigin(trip)) {
+        val lifecycleTrip0581 = trip.withCanonicalAgendaVisibility0581()
+        val key = when (resolvedTripRecordOrigin(lifecycleTrip0581)) {
             TripRecordOrigin.EXTERNAL_BACKING -> canonicalBlaBlaTripKey0406(
                 tenantId = tenantScope.tenantId,
-                profileUuid = trip.blablaProfileUuid,
-                providerTripId = trip.blablaTripId,
+                profileUuid = lifecycleTrip0581.blablaProfileUuid,
+                providerTripId = lifecycleTrip0581.blablaTripId,
             )
-            TripRecordOrigin.LOCAL -> canonicalLocalTripKey0406(tenantScope.tenantId, trip.id)
+            TripRecordOrigin.LOCAL -> canonicalLocalTripKey0406(tenantScope.tenantId, lifecycleTrip0581.id)
         }
-        return if (key.isNullOrBlank() || trip.tripKey == key) trip else trip.copy(tripKey = key)
+        return if (key.isNullOrBlank() || lifecycleTrip0581.tripKey == key) {
+            lifecycleTrip0581
+        } else {
+            lifecycleTrip0581.copy(tripKey = key)
+        }
     }
 
     private fun persistCanonicalTrip0406(trip: Trip, current: List<Trip>) {

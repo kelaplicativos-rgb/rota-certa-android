@@ -143,27 +143,6 @@ internal fun fullSyncEntityRevision0502(
     remotePublicationRevision.coerceAtLeast(0L)
 }
 
-internal const val OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 = 60L * 60L * 1000L
-internal const val OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12L * 60L * 60L * 1000L
-
-internal fun operationalTripVisibleUntil0577(trip: Trip): Long {
-    val arrival = trip.stops
-        .sortedBy(TripStop::order)
-        .lastOrNull()
-        ?.plannedArrivalMillis
-        ?.takeIf { it >= trip.departureAtMillis }
-    return if (arrival != null) {
-        arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
-    } else {
-        trip.departureAtMillis + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
-    }
-}
-
-internal fun operationalTripStillVisible0577(
-    trip: Trip,
-    nowMillis: Long,
-): Boolean = nowMillis <= operationalTripVisibleUntil0577(trip)
-
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(
         context: Context,
@@ -305,11 +284,11 @@ internal object PublicAgendaAutoSync0300 {
         val persistedTrips = store.trips()
         val localTrips = persistedTrips
             .filter(Trip::isCanonicalLocalPublishSource)
-            .filter { operationalTripStillVisible0577(it, nowMillis) }
+            .filter { canonicalAgendaTripStillVisible0581(it, nowMillis) }
             .filter { it.status in PUBLIC_LOCAL_STATUSES }
         val externalBackingsExcluded = persistedTrips.count {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                operationalTripStillVisible0577(it, nowMillis) &&
+                canonicalAgendaTripStillVisible0581(it, nowMillis) &&
                 it.status in PUBLIC_LOCAL_STATUSES
         }
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
@@ -395,7 +374,7 @@ internal object PublicAgendaAutoSync0300 {
             PassengerIdentityStore(context).internallyCancelledExternalReservationKeys()
         val canonicalExternalTrips = persistedTrips
             .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
-            .filter { !it.deleted && it.status != TripStatus.CANCELLED && operationalTripStillVisible0577(it, nowMillis) }
+            .filter { !it.deleted && it.status != TripStatus.CANCELLED && canonicalAgendaTripStillVisible0581(it, nowMillis) }
             .filter { it.externalSnapshot != null && it.tripKey.isNotBlank() }
         val canonicalResponse = BlaBlaCollectorMonthResponse(
             status = "canonical",
@@ -2100,7 +2079,7 @@ internal object PublicAgendaAutoSync0300 {
             deleted = false,
             deletedAtMillis = 0L,
             blablaPublicUrl = reconciledPublicHref0577 ?: canonical.blablaPublicUrl,
-        )
+        ).withCanonicalAgendaVisibility0581()
         val sourceReference = source.trip_id.orEmpty()
             .ifBlank { source.trip_href.orEmpty() }
             .ifBlank { "BLABLACAR:" + projectedTrip.publicToken }
@@ -2150,12 +2129,12 @@ internal object PublicAgendaAutoSync0300 {
 
         var arrival = parseDateTime(source.date, source.arrival_time, zoneId)
         if (arrival != null && arrival < departure) arrival += DAY_MILLIS
-        val visibleUntil0577 = if (arrival != null) {
-            arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
-        } else {
-            departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
-        }
-        if (nowMillis > visibleUntil0577) return null
+        val lifecycle0581 = canonicalAgendaLifecycleDecision0581(
+            departureAtMillis = departure,
+            arrivalAtMillis = arrival,
+            nowMillis = nowMillis,
+        )
+        if (!lifecycle0581.visible) return null
 
         val identity = stableIdentity(source)
         val token = "bb${sha256(identity).take(30)}"
@@ -2209,7 +2188,7 @@ internal object PublicAgendaAutoSync0300 {
             itineraryAuthoritative = source.itinerary_authoritative,
             publishedSeats = verifiedPublishedSeats,
             publicTimezoneId0411 = zoneId.id,
-
+            agendaVisibleUntilMillis0581 = lifecycle0581.visibleUntilMillis,
             capacityReliable = false,
         )
         val sourceReference = source.trip_id.orEmpty()

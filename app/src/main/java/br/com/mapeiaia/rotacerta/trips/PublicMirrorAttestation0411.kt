@@ -38,6 +38,7 @@ internal data class CanonicalPublicTripPayload0411(
     val blablaTripId: String,
     val title: String,
     val departureAtMillis: Long,
+    val agendaVisibleUntilMillis0581: Long,
     val timezoneId: String,
     val status: String,
     val capacity: Int,
@@ -136,6 +137,7 @@ internal fun canonicalPublicProjectionPayload0411(
         blablaTripId = trip.blablaTripId.orEmpty().trim(),
         title = trip.title.trim(),
         departureAtMillis = trip.departureAtMillis,
+        agendaVisibleUntilMillis0581 = trip.canonicalAgendaVisibleUntilMillis0581(),
         timezoneId = trip.publicTimezoneId0411.trim(),
         status = trip.status.name,
         capacity = operationalSnapshot.capacity,
@@ -377,6 +379,7 @@ internal fun evaluatePublicMirrorReadback0411(
     if (actual.canonicalStateHash != expected.canonicalStateHash) mismatch += "canonicalStateHash"
     if (actual.title != expected.title) mismatch += "title"
     if (actual.departureAtMillis != expected.departureAtMillis) mismatch += "departureAtMillis"
+    if (actual.agendaVisibleUntilMillis0581 != expected.agendaVisibleUntilMillis0581) mismatch += "agendaVisibleUntilMillis0581"
     if (actual.timezoneId != expected.timezoneId) mismatch += "timezoneId"
     if (actual.status != expected.status) mismatch += "status"
     if (actual.capacity != expected.capacity) mismatch += "capacity"

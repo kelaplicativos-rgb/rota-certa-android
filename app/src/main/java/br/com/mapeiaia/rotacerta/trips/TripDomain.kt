@@ -131,6 +131,12 @@ data class Trip(
     val canonicalStateHash: String = "",
     /** Explicit public timezone when known. Empty legacy values are normalized at projection time. */
     val publicTimezoneId0411: String = "",
+    /**
+     * Canonical Agenda lifecycle cutoff. It is derived from the last canonical stop and
+     * is transport-independent: capacity, permalink, collector/readback and passenger
+     * enrichment are not allowed to change whether a valid future trip belongs to Agenda.
+     */
+    val agendaVisibleUntilMillis0581: Long = 0L,
     /** Evidence about the current canonical/public projection revision. Never a source of truth. */
     val publicMirrorAttestationState0411: PublicMirrorAttestationState0411 = PublicMirrorAttestationState0411.UNPROVEN,
     val publicMirrorAttestedCanonicalRevision0411: Long = 0L,
@@ -221,6 +227,7 @@ internal fun canonicalTripStateHash0406(
         append(canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
         append(trip.publicTimezoneId0411.trim()).append('|')
         append(trip.departureAtMillis).append('|')
+        append(trip.agendaVisibleUntilMillis0581).append('|')
         append(trip.status.name).append('|')
         append(trip.capacity).append('|')
         append(trip.publishedSeats ?: -1).append('|')

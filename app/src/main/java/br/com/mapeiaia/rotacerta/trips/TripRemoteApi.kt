@@ -1211,14 +1211,14 @@ class TripRemoteApi(
     suspend fun publish(trip: Trip): PublishedTripResponse = request(
         method = "POST",
         path = "/v1/driver/trips",
-        body = json.encodeToString(trip),
+        body = json.encodeToString(trip.withCanonicalAgendaVisibility0581()),
         requireDriverToken = true,
     )
 
     suspend fun update(trip: Trip): PublishedTripResponse = request(
         method = "PUT",
         path = "/v1/driver/trips/${trip.remoteId ?: trip.id}",
-        body = json.encodeToString(trip),
+        body = json.encodeToString(trip.withCanonicalAgendaVisibility0581()),
         requireDriverToken = true,
     )
 
@@ -1272,7 +1272,7 @@ class TripRemoteApi(
                     trip = trip.copy(
                         remoteId = remoteTripId,
                         capacityReliable = if (sourceComplete) true else trip.capacityReliable,
-                    ),
+                    ).withCanonicalAgendaVisibility0581(),
                     claims = claims.map { booking ->
                         DriverCapacitySnapshotClaim(
                             id = booking.id,
