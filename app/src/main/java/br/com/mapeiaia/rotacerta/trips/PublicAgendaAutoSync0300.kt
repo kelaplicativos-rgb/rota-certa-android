@@ -284,11 +284,11 @@ internal object PublicAgendaAutoSync0300 {
         val persistedTrips = store.trips()
         val localTrips = persistedTrips
             .filter(Trip::isCanonicalLocalPublishSource)
-            .filter { canonicalAgendaTripStillVisible0581(it, nowMillis) }
+            .filter { AgendaVisibilityPolicy0582.isVisible(it, nowMillis) }
             .filter { it.status in PUBLIC_LOCAL_STATUSES }
         val externalBackingsExcluded = persistedTrips.count {
             resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                canonicalAgendaTripStillVisible0581(it, nowMillis) &&
+                AgendaVisibilityPolicy0582.isVisible(it, nowMillis) &&
                 it.status in PUBLIC_LOCAL_STATUSES
         }
         AgendaTrace.operationEnd(context, localDiscoveryOperation, processedCount = localTrips.size)
@@ -374,7 +374,7 @@ internal object PublicAgendaAutoSync0300 {
             PassengerIdentityStore(context).internallyCancelledExternalReservationKeys()
         val canonicalExternalTrips = persistedTrips
             .filter { resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING }
-            .filter { !it.deleted && it.status != TripStatus.CANCELLED && canonicalAgendaTripStillVisible0581(it, nowMillis) }
+            .filter { !it.deleted && it.status != TripStatus.CANCELLED && AgendaVisibilityPolicy0582.isVisible(it, nowMillis) }
             .filter { it.externalSnapshot != null && it.tripKey.isNotBlank() }
         val canonicalResponse = BlaBlaCollectorMonthResponse(
             status = "canonical",
