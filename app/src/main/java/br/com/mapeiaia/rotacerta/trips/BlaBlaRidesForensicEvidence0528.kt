@@ -399,6 +399,47 @@ internal fun BlaBlaRidesSnapshotStore0526.writeRidesIndexJson0528(
     return evidence(captureId, target)
 }
 
+internal fun BlaBlaRidesSnapshotStore0526.readRidesIndexJson0582(
+    captureId: String,
+    profile: BlaBlaRidesSnapshotProfile0526,
+): BlaBlaRidesIndexJson0528? {
+    val file = resolveArtifact0528(captureId, profile.ridesIndexFile) ?: return null
+    if (!verifySnapshotArtifact0528(file, profile.ridesIndexBytes, profile.ridesIndexSha256)) return null
+    return runCatching {
+        FORENSIC_JSON_0528.decodeFromString(
+            BlaBlaRidesIndexJson0528.serializer(),
+            file.readText(Charsets.UTF_8),
+        )
+    }.getOrNull()
+}
+
+internal fun BlaBlaRidesSnapshotStore0526.rewriteRidesIndexTripLinks0582(
+    captureId: String,
+    accountId: String,
+    profileUuid: String,
+    links: List<BlaBlaRidesTripLink0582>,
+): BlaBlaRidesSnapshotProfile0526? {
+    val profile = read(captureId)
+        ?.profiles
+        ?.singleOrNull { it.accountKey == accountKey(accountId) }
+        ?: return null
+    val payload = readRidesIndexJson0582(captureId, profile) ?: return null
+    if (!validateRidesTripLinks0582(payload.tripIds, links)) return null
+    val artifact = writeRidesIndexJson0528(
+        captureId = captureId,
+        profileUuid = profileUuid,
+        payload = payload.copy(tripLinks = links),
+    )
+    val updated = updateProfile(captureId, accountId) { previous ->
+        previous.copy(
+            ridesIndexFile = artifact.relativePath,
+            ridesIndexBytes = artifact.bytes,
+            ridesIndexSha256 = artifact.sha256,
+        )
+    }
+    return updated?.profiles?.singleOrNull { it.accountKey == accountKey(accountId) }
+}
+
 internal fun BlaBlaRidesSnapshotStore0526.resolveArtifact0528(
     captureId: String,
     relativePath: String,
