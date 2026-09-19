@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import java.io.File
+import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -81,6 +82,74 @@ class BlaBlaRidesPublicLinkCapture0582Test {
             ),
         )
         assertFalse(publicToken == administrativeTripId)
+    }
+
+    @Test
+    fun expiredRideDoesNotCountAsMissingPublicLink() {
+        val pending = buildRidesTripLinks0582(
+            profileUuid = profileUuid,
+            tripIds = listOf(administrativeTripId),
+            administrativeUrlsByTripId = mapOf(administrativeTripId to administrativeUrl),
+            collectorTrips = emptyList(),
+        )
+        val expiredRide = ParsedExternalRide0535(
+            tripId = administrativeTripId,
+            listPosition = 0,
+            date = "2026-09-18",
+            dateText = "Ontem",
+            dateYearExplicit = false,
+            dateResolution = "RELATIVE",
+            departureTime = "19:00",
+            arrivalTime = "23:30",
+            origin = "Origem",
+            destination = "Destino",
+            status = "",
+            administrativeUrl = administrativeUrl,
+        )
+        val resolved = applyRidesShareEligibility0583(
+            links = pending,
+            rides = listOf(expiredRide),
+            now = LocalDateTime.of(2026, 9, 19, 16, 0),
+        )
+
+        assertEquals("EXPIRED", resolved.single().shareEligibility)
+        assertEquals("NOT_REQUIRED_EXPIRED", resolved.single().publicTripStatus)
+        assertTrue(activeRidesPublicLinksComplete0583(resolved))
+        assertTrue(validateRidesTripLinks0582(listOf(administrativeTripId), resolved))
+    }
+
+    @Test
+    fun activeRideWithoutPublicLinkBlocksOperationalCompleteness() {
+        val pending = buildRidesTripLinks0582(
+            profileUuid = profileUuid,
+            tripIds = listOf(administrativeTripId),
+            administrativeUrlsByTripId = mapOf(administrativeTripId to administrativeUrl),
+            collectorTrips = emptyList(),
+        )
+        val activeRide = ParsedExternalRide0535(
+            tripId = administrativeTripId,
+            listPosition = 0,
+            date = "2026-09-20",
+            dateText = "Amanhã",
+            dateYearExplicit = false,
+            dateResolution = "RELATIVE",
+            departureTime = "10:30",
+            arrivalTime = "16:20",
+            origin = "Origem",
+            destination = "Destino",
+            status = "",
+            administrativeUrl = administrativeUrl,
+        )
+        val resolved = applyRidesShareEligibility0583(
+            links = pending,
+            rides = listOf(activeRide),
+            now = LocalDateTime.of(2026, 9, 19, 16, 0),
+        )
+
+        assertEquals("ACTIVE", resolved.single().shareEligibility)
+        assertEquals("PENDING_UNKNOWN", resolved.single().publicTripStatus)
+        assertFalse(activeRidesPublicLinksComplete0583(resolved))
+        assertTrue(validateRidesTripLinks0582(listOf(administrativeTripId), resolved))
     }
 
     @Test
