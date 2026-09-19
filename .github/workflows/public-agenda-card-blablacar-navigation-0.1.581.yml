@@ -87,7 +87,13 @@ jobs:
           const admin = require('./trip-platform/functions/node_modules/firebase-admin');
           if (!admin.apps.length) admin.initializeApp({ projectId: process.env.PROJECT });
           const db = admin.firestore();
-          const driverUsername = 'ezequiel';
+          const publicUsername = 'ezequiel';
+          let driverUsername = publicUsername;
+          const directDriver = await db.collection('tripDrivers').doc(publicUsername).get();
+          if (!directDriver.exists) {
+            const alias = await db.collection('tripDriverAliases').doc(publicUsername).get();
+            driverUsername = alias.exists ? String(alias.data().canonicalUsername || publicUsername) : publicUsername;
+          }
           const hash = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
           const officialTrip = (raw) => {
             try {
