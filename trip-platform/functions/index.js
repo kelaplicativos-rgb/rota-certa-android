@@ -1214,6 +1214,18 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     raw.tripKey == null ? (previous && previous.tripKey || "") : raw.tripKey,
     180,
   );
+  const rawAgendaVisibleUntil0581 = Math.max(
+    0,
+    Math.floor(Number(raw.agendaVisibleUntilMillis0581 || 0)),
+  );
+  const previousAgendaVisibleUntil0581 = Math.max(
+    0,
+    Math.floor(Number(previous && previous.agendaVisibleUntilMillis0581 || 0)),
+  );
+  const agendaVisibleUntilMillis0581 =
+    rawAgendaVisibleUntil0581 ||
+    previousAgendaVisibleUntil0581 ||
+    publicAgendaVisibleUntil0577({ departureAtMillis, stops });
   return {
     localTripId: cleanText(raw.id, 100),
     canonicalTripId: cleanText(raw.canonicalTripId || raw.id || (previous && previous.canonicalTripId), 180),
@@ -1238,6 +1250,7 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     canonicalStateHash,
     tripKey,
     publicTimezoneId0411,
+    agendaVisibleUntilMillis0581,
     publicAttestationState0417: publicationTombstone ? "UNPROVEN" : "PENDING",
     publicAttestedPublicationRevision0417: 0,
     publicAttestedCanonicalRevision0417: 0,
@@ -1570,6 +1583,10 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     blablaTripId: cleanText(payload.blablaTripId, 160),
     title: cleanText(payload.title, 220),
     departureAtMillis,
+    agendaVisibleUntilMillis0581: Math.max(
+      0,
+      Math.floor(Number(payload.agendaVisibleUntilMillis0581 || 0)),
+    ),
     timezoneId: cleanText(payload.timezoneId, 80),
     status: cleanText(payload.status, 24),
     capacity: Math.max(0, Number(payload.capacity || 0)),
@@ -1687,6 +1704,10 @@ function canonicalPublicTripPayloadFromCurrentCanonicalOccupancy0497(token, data
 
   return {
     ...payload,
+    agendaVisibleUntilMillis0581: Math.max(
+      0,
+      Number(payload.agendaVisibleUntilMillis0581 || data && data.agendaVisibleUntilMillis0581 || 0),
+    ),
     segmentLoads,
     segmentPassengerLoads,
     segmentBlockedLoads,
@@ -1713,6 +1734,10 @@ function canonicalPublicTripPayload0411(token, data) {
     blablaTripId,
     title: cleanText(publicTrip.title, 220),
     departureAtMillis,
+    agendaVisibleUntilMillis0581: Math.max(
+      0,
+      Math.floor(Number(data.agendaVisibleUntilMillis0581 || publicAgendaVisibleUntil0577(data) || 0)),
+    ),
     timezoneId: cleanText(data.publicTimezoneId0411, 80),
     status: cleanText(publicTrip.status, 24),
     capacity: Math.max(0, Number(publicTrip.capacity || 0)),
@@ -2380,6 +2405,7 @@ function canonicalServerStateHash0468(trip) {
     blablaTripId: cleanText(trip.blablaTripId, 160),
     title: cleanText(trip.title, 220),
     departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
+    agendaVisibleUntilMillis0581: Math.max(0, Number(trip.agendaVisibleUntilMillis0581 || 0)),
     status: cleanText(trip.status, 24),
     capacity: Math.max(0, Number(trip.capacity || 0)),
     stops: (Array.isArray(trip.stops) ? trip.stops : []).map(canonicalPublicStop0411),
@@ -4159,18 +4185,30 @@ const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 60 * 60 * 1000;
 const PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12 * 60 * 60 * 1000;
 
 function publicAgendaVisibleUntil0577(data) {
+  const canonicalCutoff0581 = Math.max(
+    0,
+    Math.floor(Number(
+      data && data.agendaVisibleUntilMillis0581 ||
+      data && data.canonicalPublicProjection0434 && data.canonicalPublicProjection0434.agendaVisibleUntilMillis0581 ||
+      0,
+    )),
+  );
+  if (canonicalCutoff0581 > 0) return canonicalCutoff0581;
+
+  // Backward-compatible migration only for documents written before 0.1.581.
+  // New projections receive agendaVisibleUntilMillis0581 from the canonical Android lifecycle engine.
   const departure = Math.max(0, Number(data && data.departureAtMillis || 0));
   if (!departure) return 0;
-  const stops = Array.isArray(data && data.stops) ? data.stops : [];
+  const stops = Array.isArray(data && data.stops)
+    ? [...data.stops].sort((a, b) => Number(a && a.order || 0) - Number(b && b.order || 0))
+    : [];
   const lastStop = stops.length ? stops[stops.length - 1] : null;
-  const arrival = Math.max(
-    0,
-    Number(
-      data && data.arrivalAtMillis ||
-      lastStop && (lastStop.plannedArrivalMillis || lastStop.plannedDepartureMillis) ||
-      0,
-    ),
-  );
+  const candidates = [
+    Number(data && data.arrivalAtMillis || 0),
+    Number(lastStop && lastStop.plannedArrivalMillis || 0),
+    Number(lastStop && lastStop.plannedDepartureMillis || 0),
+  ].filter((value) => Number.isFinite(value) && value >= departure);
+  const arrival = candidates.length ? Math.max(...candidates) : 0;
   if (arrival >= departure) return arrival + PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577;
   return departure + PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577;
 }
@@ -4196,11 +4234,11 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
     return { visible: false, reason: "PUBLIC_AGENDA_STATUS_EXCLUDED" };
   }
   if (!publicAgendaTripStillVisible0577(data, nowMillis)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_ARRIVAL_GRACE_EXPIRED_0577" };
+    return { visible: false, reason: "AGENDA_VISIBILITY_EXPIRED" };
   }
-  if (!publicProjectionCommittedCurrent0434(token, data)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_PROJECTION_NOT_COMMITTED" };
-  }
+  const projectionCommitted0581 = publicProjectionCommittedCurrent0434(token, data);
+  // 0581: projection attestation is transport evidence, not a lifecycle predicate.
+  // A valid future/active canonical trip remains in Agenda while retries/readback converge.
   // 0469: visibility is not merely "stored in the public collection". It must
   // describe the exact payload that the public browser can render as an Agenda card.
   const rendered0469 = applyPublicTripVisibility0434(
@@ -4211,13 +4249,17 @@ function publicAgendaTripVisibility0466(driverData, token, data, nowMillis = Dat
   if (!PUBLIC_STATUSES.has(cleanText(rendered0469.status, 24))) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_STATUS_UNAVAILABLE_0469" };
   }
-  if (!publicAgendaTripStillVisible0577(rendered0469, nowMillis)) {
-    return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ARRIVAL_GRACE_EXPIRED_0577" };
-  }
   if (!Array.isArray(rendered0469.stops) || rendered0469.stops.length < 2) {
     return { visible: false, reason: "PUBLIC_AGENDA_RENDER_ITINERARY_UNAVAILABLE_0469" };
   }
-  return { visible: true, reason: "PUBLIC_AGENDA_VISIBLE" };
+  const departureAtMillis0581 = Math.max(0, Number(data && data.departureAtMillis || 0));
+  return {
+    visible: true,
+    reason: Number(nowMillis || 0) < departureAtMillis0581
+      ? "AGENDA_VISIBILITY_FUTURE_TRIP"
+      : "AGENDA_VISIBILITY_ACTIVE_TRIP",
+    projectionCommitted0581,
+  };
 }
 
 async function safePublicTripWithCanonicalBookings0497(doc, nowMillis = Date.now()) {
@@ -8619,6 +8661,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         canonicalStateHash: incomingPublicProjection0434.canonicalStateHash,
         title: incomingPublicProjection0434.title,
         departureAtMillis: incomingPublicProjection0434.departureAtMillis,
+        agendaVisibleUntilMillis0581: incomingPublicProjection0434.agendaVisibleUntilMillis0581,
         publicTimezoneId0411: incomingPublicProjection0434.timezoneId,
         status: incomingPublicProjection0434.status,
         capacity: incomingPublicProjection0434.capacity,
