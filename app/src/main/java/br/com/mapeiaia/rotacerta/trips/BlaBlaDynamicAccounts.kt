@@ -1936,6 +1936,23 @@ internal class BlaBlaDynamicAccountSessionController0401(
             noNewTripIterations = stabilizer?.noNewTripIterations ?: 0,
             observedAt = observedAt0528,
         )
+        val administrativeUrlsByTripId0582 = result.candidates.mapNotNull { candidate ->
+            val tripId = BlaBlaCollectorUrlModule.tripId(candidate.href) ?: return@mapNotNull null
+            val href = BlaBlaCollectorUrlModule.absolute(candidate.href)
+                .takeIf(BlaBlaCollectorUrlModule::isSpecificTrip)
+                ?: return@mapNotNull null
+            tripId to href
+        }.toMap()
+        val currentCollectorTrips0582 = BlaBlaCollectorStateStore(applicationContext)
+            .lastResponseRecoveringDynamicSessions()
+            ?.trips
+            .orEmpty()
+        val tripLinks0582 = buildRidesTripLinks0582(
+            profileUuid = expectedUuid,
+            tripIds = canonicalIds0528,
+            administrativeUrlsByTripId = administrativeUrlsByTripId0582,
+            collectorTrips = currentCollectorTrips0582,
+        )
         val ridesIndexPayload0528 = BlaBlaRidesIndexJson0528(
             profileUuid = expectedUuid,
             capturedAt = observedAt0528,
@@ -1943,6 +1960,12 @@ internal class BlaBlaDynamicAccountSessionController0401(
             tripIdsSha256 = inventory0528.tripIdsSha256,
             duplicateCount = inventory0528.duplicateCount,
             rideDateRange = dateRange0528,
+            tripLinks = tripLinks0582,
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_PUBLIC_LINKS_INDEXED_0582",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${store0528.accountKey(account.id)} trips=${tripLinks0582.size} complete=${tripLinks0582.count { it.publicTripStatus == "COMPLETE" }} pending=${tripLinks0582.count { it.publicTripStatus != "COMPLETE" }} synthesized=false",
         )
         val ridesIndexArtifact0528 = runCatching {
             store0528.writeRidesIndexJson0528(
