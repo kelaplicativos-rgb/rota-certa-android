@@ -50,8 +50,11 @@ jobs:
           node --test \
             trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js \
             trip-platform/functions/test/public-agenda-shell-0569.test.js
-          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.2' trip-platform/public/index.html
-          grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.3' trip-platform/public/index.html
+          grep -Fq 'viewRide.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'segmentWhatsappHref0584' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'Reservar agora este trecho' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
 
       - name: Install trip-api dependencies
         shell: bash
@@ -169,7 +172,7 @@ jobs:
           if [ "${USE_FIREBASE_TOKEN:-0}" = '1' ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
           npx --yes firebase-tools@latest deploy             --project "$PROJECT"             --only functions:trip-api,hosting             --non-interactive             --force             "${AUTH_ARGS[@]}"
 
-      - name: Prove live public cards open exact BlaBlaCar trips
+      - name: Prove live Ver carona actions use exact BlaBlaCar trips
         shell: bash
         run: |
           set -euo pipefail
@@ -211,22 +214,25 @@ jobs:
             }
           }
           console.log('LIVE_PUBLIC_TRIPS=' + trips.length);
-          console.log('LIVE_CLICKABLE_BLABLA_CARDS=' + linked);
+          console.log('LIVE_BLABLA_VIEW_ACTION_LINKS=' + linked);
           console.log('LIVE_MISSING_BLABLA_LINKS=' + missing);
           console.log('LIVE_INVALID_BLABLA_LINKS=' + invalid);
           console.log('LIVE_SEARCH_CONTEXT_LINKS=' + searchContext);
           if (missing || invalid || searchContext || linked !== trips.length) {
-            throw new Error('not every public Agenda card resolves to a clean official BlaBlaCar trip permalink');
+            throw new Error('not every public Agenda trip exposes a clean official BlaBlaCar trip permalink');
           }
-          console.log('PUBLIC_AGENDA_BLABLA_CARD_NAVIGATION_0582_LIVE=PASS');
+          console.log('PUBLIC_AGENDA_BLABLA_VIEW_ACTION_0584_LIVE=PASS');
           NODE
 
           curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
           curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
-          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.2' live-index-0582.html
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.3' live-index-0582.html
           grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
-          grep -Fq 'card.href = publicUrl' live-shell-0582.js
-          echo 'PUBLIC_AGENDA_BLABLA_SHELL_0582_LIVE=PASS'
+          grep -Fq 'viewRide.href = publicUrl' live-shell-0582.js
+          grep -Fq 'segmentWhatsappHref0584' live-shell-0582.js
+          grep -Fq 'Reservar agora este trecho' live-shell-0582.js
+          ! grep -Fq 'card.href = publicUrl' live-shell-0582.js
+          echo 'PUBLIC_AGENDA_BLABLA_SHELL_0584_LIVE=PASS'
 
       - name: Upload Firebase proof
         uses: actions/upload-artifact@v4
