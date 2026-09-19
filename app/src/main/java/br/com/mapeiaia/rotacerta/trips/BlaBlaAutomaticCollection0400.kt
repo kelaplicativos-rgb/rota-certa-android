@@ -59,6 +59,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         commandId: String,
         origin: String,
         timeoutMillis: Long = HEADLESS_TARGET_TIMEOUT_MS_0407,
+        enabledScripts: List<String>? = null,
     ): BlaBlaCommandResult0407 {
         val appContext = context.applicationContext
         val startedAt = System.currentTimeMillis()
@@ -131,7 +132,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             val effectiveTimeoutMillis = timeoutMillis.coerceIn(5_000L, HEADLESS_TARGET_TIMEOUT_MS_0407)
             val hostResult = try {
                 withTimeout(effectiveTimeoutMillis) {
-                    runTargetTripHeadless0407(appContext, account, target, origin)
+                    runTargetTripHeadless0407(appContext, account, target, origin, enabledScripts)
                 }
             } catch (timeout: TimeoutCancellationException) {
                 UnifiedDebugEventStore.record(
@@ -213,6 +214,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         account: BlaBlaDynamicAccount,
         target: BlaBlaTripTarget0407,
         origin: String,
+        enabledScripts: List<String>?,
     ): Pair<Int, android.content.Intent> = withContext(Dispatchers.Main.immediate) {
         suspendCancellableCoroutine { continuation ->
             var controller: BlaBlaDynamicAccountSessionController0401? = null
@@ -220,6 +222,14 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 .putExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_TRIP_ID, target.tripId)
                 .putExtra(BlaBlaDynamicSessionIntents.EXTRA_TARGET_URL, target.tripHref)
                 .putExtra(BlaBlaDynamicSessionIntents.EXTRA_AUTOMATIC_COLLECTION_ORIGIN, origin.take(80))
+                .also { intent ->
+                    enabledScripts?.let { names ->
+                        intent.putStringArrayListExtra(
+                            BlaBlaDynamicSessionIntents.EXTRA_ENABLED_SCRIPTS_0449,
+                            ArrayList(names.distinct()),
+                        )
+                    }
+                }
             controller = BlaBlaDynamicAccountSessionController0401(
                 baseContext = context,
                 launchIntent = payload,
