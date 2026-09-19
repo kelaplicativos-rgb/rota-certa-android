@@ -390,7 +390,7 @@ test("0586 exact hidden projection closes transport without being promoted to pu
   assert.match(direct, /backendCanonicalVisible0469 = readback0468\.agendaVisible/);
   assert.match(direct, /!backendCanonicalVisible0469 -> "COMMITTED"/);
   assert.match(direct, /expectVisible = backendCanonicalVisible0469/);
-  assert.match(direct, /green=" \+ \(backendCanonicalVisible0469 && !backendCanonicalBlue0469\)/);
+  assert.match(outbox, /" green=" \+ \(backendCanonicalVisible0469 && !backendCanonicalBlue0469\)/);
 
   const attestation = between(admin, "  async function recordDriverPublicAttestation0417", "  async function listAdminLogs0417");
   assert.match(attestation, /const proofCommitted =/);
@@ -436,7 +436,7 @@ test("0469 direct canonical outbox keeps no-URL public card green and reserves b
   assert.match(outbox, /else -> "VERIFIED"/);
   assert.match(outbox, /BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469/);
   assert.match(outbox, /serverPublicProjectionConfirmed0469/);
-  assert.match(outbox, /green=" \+ \(!backendCanonicalBlue0469\)/);
+  assert.match(outbox, /" green=" \+ \(backendCanonicalVisible0469 && !backendCanonicalBlue0469\)/);
 });
 
 test("0468 Android transport contract carries server canonical ACK rather than inventing it", () => {
