@@ -290,20 +290,31 @@ function appendSegmentAvailability0580(card, item, stops) {
 
     row.append(route, dots, seats);
 
-    if (segment.availableSeats > 0) {
-      const reservationHref = segmentWhatsappHref0584(item, segment, stops, segmentIndex);
-      if (reservationHref) {
-        const reserve = document.createElement("a");
-        reserve.className = "agendaSegmentReserve0584";
-        reserve.href = reservationHref;
-        reserve.rel = "noopener noreferrer";
-        reserve.textContent = "Reservar agora este trecho";
-        reserve.setAttribute(
-          "aria-label",
-          `Reservar pelo WhatsApp o trecho ${segment.from} para ${segment.to}`,
-        );
-        row.appendChild(reserve);
-      }
+    const reservationHref = segment.availableSeats > 0
+      ? segmentWhatsappHref0584(item, segment, stops, segmentIndex)
+      : "";
+    if (reservationHref) {
+      const reserve = document.createElement("a");
+      reserve.className = "agendaSegmentReserve0584";
+      reserve.href = reservationHref;
+      reserve.rel = "noopener noreferrer";
+      reserve.textContent = "Reserve Já";
+      reserve.setAttribute(
+        "aria-label",
+        `Reserve Já pelo WhatsApp o trecho ${segment.from} para ${segment.to}`,
+      );
+      row.appendChild(reserve);
+    } else {
+      const unavailable = document.createElement("button");
+      unavailable.className = "agendaSegmentReserve0584 agendaSegmentReserveUnavailable0584";
+      unavailable.type = "button";
+      unavailable.disabled = true;
+      unavailable.textContent = "Indisponível";
+      unavailable.setAttribute(
+        "aria-label",
+        `Trecho ${segment.from} para ${segment.to} indisponível para reserva`,
+      );
+      row.appendChild(unavailable);
     }
 
     section.appendChild(row);
