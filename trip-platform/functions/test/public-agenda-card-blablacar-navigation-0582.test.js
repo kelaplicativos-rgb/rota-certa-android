@@ -34,6 +34,19 @@ function backendShareNormalizer0582() {
   return context.result.normalizeBlaBlaPublicShareUrl0571;
 }
 
+function backendDurablePublicLink0585() {
+  const code = [
+    functionSource(backend, "cleanText", "blaBlaExternalTripId"),
+    functionSource(backend, "blaBlaExternalTripId", "isOfficialBlaBlaHost"),
+    functionSource(backend, "isOfficialBlaBlaHost", "normalizeBlaBlaUrl"),
+    functionSource(backend, "normalizeBlaBlaPublicShareUrl0571", "publicAgendaExactBlaBlaLinks0570"),
+    "result = { resolvedPublicAgendaBlaBlaUrl0585 };",
+  ].join("\n");
+  const context = { URL, Array, Set, String, result: null };
+  vm.runInNewContext(code, context);
+  return context.result.resolvedPublicAgendaBlaBlaUrl0585;
+}
+
 function shellNormalizer0582() {
   const start = shell.indexOf("function isOfficialBlaBlaHost0569(");
   const end = shell.indexOf("\nfunction whatsappDigits0569(", start);
@@ -81,6 +94,47 @@ test("0582 server-canonical ingestion may retain an authoritative public token d
 
 test("0582 unbound public URL validation remains strict and cannot accept an unrelated token", () => {
   assert.match(backend, /normalizeBlaBlaPublicUrl\(raw\.blablaPublicUrl, blablaTripId\)/);
-  assert.match(backend, /normalizeBlaBlaPublicUrl\(previous && previous\.blablaPublicUrl, blablaTripId\)/);
   assert.match(backend, /allowCanonicalBoundBlaBlaPublicUrl0582 = false/);
+});
+
+test("0585 same strong identity preserves a previously canonical-bound public permalink", () => {
+  const normalize = functionSource(backend, "normalizeDriverTrip", "isExternalBlaBlaTrip");
+  assert.match(normalize, /samePersistentProfile0585/);
+  assert.match(
+    normalize,
+    /previousPublicUrl = samePersistentIdentity[\s\S]*normalizeCanonicalBoundBlaBlaPublicUrl0423\(previous && previous\.blablaPublicUrl, blablaTripId\)/,
+  );
+  assert.match(
+    normalize,
+    /canonicalBoundPublicUrl0582 = allowCanonicalBoundBlaBlaPublicUrl0582[\s\S]*normalizeBlaBlaPublicUrl\(raw\.blablaPublicUrl, blablaTripId\)/,
+  );
+  assert.doesNotMatch(
+    normalize,
+    /previousPublicUrl[\s\S]{0,220}normalizeBlaBlaPublicUrl\(previous && previous\.blablaPublicUrl, blablaTripId\)/,
+  );
+});
+
+test("0585 durable public Agenda link falls back only to an existing valid official permalink", () => {
+  const resolve = backendDurablePublicLink0585();
+  const existing =
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=ExistingPublicToken_0585&search_uuid=temporary&p0%5Bac%5D=adult";
+  const expectedExisting =
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=ExistingPublicToken_0585&p0%5Bac%5D=adult";
+  const fresh =
+    "http://www.blablacar.com.br/trip?source=CARPOOLING&id=FreshPublicToken_0585&requested_seats=2";
+
+  assert.equal(resolve("", existing), expectedExisting);
+  assert.equal(
+    resolve(fresh, existing),
+    "https://www.blablacar.com.br/trip?source=CARPOOLING&id=FreshPublicToken_0585",
+  );
+  assert.equal(resolve("", "https://example.com/trip?id=forged-public-token"), "");
+});
+
+test("0585 private mirror read failure cannot bypass root canonical public-link resolution", () => {
+  const enrich = functionSource(backend, "publicAgendaExactBlaBlaLinks0570", "getPublicDriverAgenda");
+  assert.match(enrich, /let mirrorSnapshot = null/);
+  assert.doesNotMatch(enrich, /catch \(_\) \{\s*return trips;/);
+  assert.match(enrich, /\(\(mirrorSnapshot && mirrorSnapshot\.docs\) \|\| \[\]\)/);
+  assert.match(enrich, /resolvedPublicAgendaBlaBlaUrl0585\([\s\S]*exactPublicUrl,[\s\S]*trip && trip\.blablaPublicUrl/);
 });
