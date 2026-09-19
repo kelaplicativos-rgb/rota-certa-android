@@ -1,22 +1,17 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
-const backend = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+const agendaDomain0582 = require("../agenda-domain-0582");
 
 function operationalWindowContext0577() {
-  const start = backend.indexOf("const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577");
-  const end = backend.indexOf("\nfunction publicAgendaTripVisibility0466(", start);
-  assert.ok(start >= 0 && end > start, "missing 0577 operational window implementation");
-  const code = backend.slice(start, end) +
-    "\nresult = { publicAgendaVisibleUntil0577, publicAgendaTripStillVisible0577 };";
-  const context = { Date, Math, Number, Array, result: null };
-  vm.runInNewContext(code, context);
-  return context.result;
+  return {
+    publicAgendaVisibleUntil0577: agendaDomain0582.canonicalAgendaVisibleUntil0582,
+    publicAgendaTripStillVisible0577(data, nowMillis) {
+      return agendaDomain0582.canonicalAgendaLifecycleDecision0582(data, nowMillis).visible;
+    },
+  };
 }
 
 function trip0577(departure, arrival) {
