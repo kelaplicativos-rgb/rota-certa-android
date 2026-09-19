@@ -127,7 +127,11 @@ internal fun canonicalPublicProjectionPayload0411(
     publicationRevision: Long,
     nowMillis: Long = System.currentTimeMillis(),
     canonicalTripId: String = trip.id,
-    operationalSnapshot: CanonicalOperationalSnapshot0434 = canonicalOperationalSnapshot0434(trip, bookings, nowMillis),
+    operationalSnapshot: CanonicalOperationalSnapshot0434 = canonicalOperationalSnapshot0434(
+        trip.copy(capacity = operationalInventoryCapacity(trip, bookings)),
+        bookings,
+        nowMillis,
+    ),
 ): CanonicalPublicTripPayload0411 {
     val reliable = trip.capacityReliable
     return CanonicalPublicTripPayload0411(
