@@ -355,3 +355,25 @@ internal fun mergeSelectiveCollectorTrip0449(
 
     return merged
 }
+
+/**
+ * A collection that explicitly requested the passenger-facing BlaBlaCar permalink
+ * is not operationally complete while an accepted trip still lacks a validated link.
+ * The trip remains publishable: this signal only prevents a false COMPLETE state so
+ * the normal, rate-limited collector cycle can retry later.
+ */
+internal fun collectorMissingPublicLinks0585(
+    trips: List<BlaBlaCollectorTrip>,
+    selection: BlaBlaDateScopeScriptSelection0449,
+): Int {
+    if (!selection.wantsPublicUrl()) return 0
+    return trips.count { trip ->
+        val administrativeTripId = trip.trip_id?.trim().orEmpty()
+        administrativeTripId.isBlank() ||
+            BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                raw = trip.public_trip_href,
+                expectedTripId = administrativeTripId,
+                binding = trip.public_trip_href_binding,
+            ) == null
+    }
+}

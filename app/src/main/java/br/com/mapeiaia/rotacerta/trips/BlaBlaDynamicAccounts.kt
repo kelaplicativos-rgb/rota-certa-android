@@ -4743,15 +4743,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) == targetTripId
                 } == 1
         )
+        val missingPublicLinks0585 = collectorMissingPublicLinks0585(
+            trips = collected,
+            selection = scriptSelection0449,
+        )
         val finalStatus = if (
             !exactTargetFresh ||
             skipped > 0 ||
-            quarantinedCardTraversalKeys.isNotEmpty()
+            quarantinedCardTraversalKeys.isNotEmpty() ||
+            missingPublicLinks0585 > 0
         ) "partial" else "success"
+        if (missingPublicLinks0585 > 0) {
+            UnifiedDebugEventStore.recordAlways(
+                "PUBLIC_TRIP_LINKS_INCOMPLETE_0585",
+                packageName,
+                "accountKey=${seatSyncDiagnosticKey(account.id)} missing=$missingPublicLinks0585 trips=$count action=preserve_trip_mark_partial retry=periodic_rate_limited",
+            )
+        }
         UnifiedDebugEventStore.record(
             "SYNC_END",
             packageName,
-            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration targeted=$targeted exactTargetFresh=$exactTargetFresh siblingCardsPreserved=${!targeted || targetedSnapshotSaved0407}",
+            "account=${account.displayLabel} status=$finalStatus trips=$count skipped=$skipped completedCards=${completedCardTraversalKeys.size} quarantinedCards=${quarantinedCardTraversalKeys.size} missingPublicLinks0585=$missingPublicLinks0585 identityVerified=$identityConfirmedThisSync automaticGeneration=$automaticCollectionGeneration targeted=$targeted exactTargetFresh=$exactTargetFresh siblingCardsPreserved=${!targeted || targetedSnapshotSaved0407}",
         )
         if (automaticCollectionClaimed && !automaticCollectionReported) {
             automaticCollectionReported = true
@@ -4760,7 +4772,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 generation = automaticCollectionGeneration,
                 accountId = account.id,
                 accountResult = finalStatus,
-                error = if (finalStatus == "success") "" else "skipped=$skipped quarantined=${quarantinedCardTraversalKeys.size}",
+                error = if (finalStatus == "success") {
+                    ""
+                } else {
+                    "skipped=$skipped quarantined=${quarantinedCardTraversalKeys.size} missingPublicLinks0585=$missingPublicLinks0585"
+                },
             )
         }
         if (targeted && !exactTargetFresh) {
