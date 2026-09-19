@@ -75,6 +75,26 @@ class PublicMirrorAttestation0411Test {
         assertTrue(serverPublicProjectionConfirmed0469(12, 18, expectBlue = true, response = blue))
         assertFalse(serverPublicProjectionConfirmed0469(12, 18, expectBlue = false, response = blue))
         assertFalse(serverPublicProjectionConfirmed0469(12, 19, expectBlue = true, response = blue))
+
+        val hiddenCommitted = green.copy(state = "COMMITTED", verified = false)
+        assertTrue(
+            serverPublicProjectionConfirmed0469(
+                12,
+                18,
+                expectBlue = false,
+                expectVisible = false,
+                response = hiddenCommitted,
+            ),
+        )
+        assertFalse(
+            serverPublicProjectionConfirmed0469(
+                12,
+                18,
+                expectBlue = false,
+                expectVisible = true,
+                response = hiddenCommitted,
+            ),
+        )
     }
 
     @Test

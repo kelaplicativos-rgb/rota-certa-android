@@ -925,6 +925,7 @@ internal class TripMutationCoordinator0387(
             try {
                 var backendCanonicalVerified0468 = false
                 var backendCanonicalBlue0469 = false
+                var backendCanonicalVisible0469 = false
                 when (event.operation) {
                     TripPublicationOperation0387.UPSERT_LOCAL -> {
                         val snapshotTrip = requireNotNull(event.snapshot.trip) { "Snapshot local ausente." }
@@ -1127,12 +1128,16 @@ internal class TripMutationCoordinator0387(
                                 if (readback0468.payload.canonicalStateHash != canonicalAck0468.canonicalStateHash) add("canonicalStateHash")
                                 if (readback0468.publicProjectionHash != canonicalAck0468.publicProjectionHash) add("publicProjectionHash")
                                 if (readbackComputedHash0468 != readback0468.publicProjectionHash) add("serverHash")
-                                if (!readback0468.agendaVisible) add("agendaVisibility")
                                 if (readback0468.persistedAtMillis <= 0L) add("persistedAtMillis")
                             }
+                            // Visibility is a lifecycle/presentation result, not transport proof.
+                            // An exact committed projection may legitimately be hidden (expired,
+                            // completed, cancelled or explicitly offline) and must not retry forever.
                             val proofOk0468 = mismatch0468.isEmpty()
+                            backendCanonicalVisible0469 = readback0468.agendaVisible
                             val blablaUrlPending0469 =
                                 proofOk0468 &&
+                                    backendCanonicalVisible0469 &&
                                     readback0468.payload.blablaTripId.isNotBlank() &&
                                     canonicalBoundBlaBlaPublicUrl0423(
                                         readback0468.payload.blablaPublicUrl,
@@ -1143,12 +1148,14 @@ internal class TripMutationCoordinator0387(
                             } else {
                                 mismatch0468
                             }
-                            backendCanonicalBlue0469 = proofOk0468 && !blablaUrlPending0469
+                            backendCanonicalBlue0469 =
+                                proofOk0468 && backendCanonicalVisible0469 && !blablaUrlPending0469
                             recordEvidence0421(
                                 stage = "SERVER_CANONICAL_PUBLIC_READBACK_0468",
                                 status = if (proofOk0468) "OK" else "FAILED",
                                 reason = when {
                                     !proofOk0468 -> "SERVER_CANONICAL_PUBLIC_MISMATCH_0468"
+                                    !backendCanonicalVisible0469 -> "SERVER_CANONICAL_PUBLIC_MATCH_HIDDEN_COMMITTED_0586"
                                     blablaUrlPending0469 -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469"
                                     else -> "SERVER_CANONICAL_PUBLIC_MATCH_0468"
                                 },
@@ -1168,6 +1175,7 @@ internal class TripMutationCoordinator0387(
                                 request = DriverPublicAttestationRequest0417(
                                     state = when {
                                         !proofOk0468 -> "DIVERGENT"
+                                        !backendCanonicalVisible0469 -> "COMMITTED"
                                         blablaUrlPending0469 -> "PUBLISHED"
                                         else -> "VERIFIED"
                                     },
@@ -1179,6 +1187,9 @@ internal class TripMutationCoordinator0387(
                                     mismatchFields = attestationMismatch0469,
                                     reason = when {
                                         !proofOk0468 -> readback0468.agendaVisibilityReason.ifBlank { "PUBLIC_READBACK_MISMATCH_0468" }
+                                        !backendCanonicalVisible0469 -> readback0468.agendaVisibilityReason.ifBlank {
+                                            "PUBLIC_READBACK_MATCH_HIDDEN_COMMITTED_0586"
+                                        }
                                         blablaUrlPending0469 -> "BLABLACAR_PUBLIC_URL_PENDING_AGENDA_VISIBLE_0469"
                                         else -> "PUBLIC_READBACK_MATCH_AGENDA_VISIBLE_0469"
                                     },
@@ -1191,6 +1202,7 @@ internal class TripMutationCoordinator0387(
                                         expectedCanonicalRevision = canonicalAck0468.canonicalRevision,
                                         expectedPublicationRevision = canonicalAck0468.publicationRevision,
                                         expectBlue = backendCanonicalBlue0469,
+                                        expectVisible = backendCanonicalVisible0469,
                                         response = attestation0468,
                                     )
                             require(backendCanonicalVerified0468) {
@@ -1365,7 +1377,8 @@ internal class TripMutationCoordinator0387(
                         "TRIP_MUTATION_OUTBOX_DELIVERED",
                         event,
                         "publicationResult=server_canonical_readback_confirmed_0469 blue=" + backendCanonicalBlue0469 +
-                            " green=" + (!backendCanonicalBlue0469) +
+                            " green=" + (backendCanonicalVisible0469 && !backendCanonicalBlue0469) +
+                            " agendaVisible=" + backendCanonicalVisible0469 +
                             " localCanonicalRead=false retryCount=" + event.attempts +
                             " latencyMs=" + ((System.nanoTime() - startedNs) / 1_000_000L),
                     )

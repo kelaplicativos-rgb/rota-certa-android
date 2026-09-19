@@ -1321,7 +1321,7 @@ function createAgendaAdmin0417({
           readbackHash,
         })
       : { committed: false, visible: false, currentHash: "", reason: "ATTESTATION_VALIDATOR_UNAVAILABLE_0468" };
-    const proofCurrent =
+    const proofCommitted =
       requestedRevision > 0 &&
       requestedRevision === currentRevision &&
       requestedCanonicalRevision > 0 &&
@@ -1330,21 +1330,27 @@ function createAgendaAdmin0417({
       expectedHash &&
       readbackHash === expectedHash &&
       independent0468.committed === true &&
-      independent0468.visible === true &&
       expectedHash === clean0417(independent0468.currentHash, 160) &&
       readbackHash === clean0417(independent0468.currentHash, 160) &&
       (!requestedCanonicalHash || requestedCanonicalHash === canonicalHash);
+    const proofCurrent = proofCommitted && independent0468.visible === true;
     const verified = requestedState === "VERIFIED" && proofCurrent;
     const publishedWithoutUrl = requestedState === "PUBLISHED" &&
       proofCurrent &&
       clean0417(body.reason, 160).toUpperCase().startsWith("BLABLACAR_PUBLIC_URL_") &&
       requestedMismatchFields.length > 0 &&
       requestedMismatchFields.every((item) => item === "blablaPublicUrl");
+    const committedHidden = requestedState === "COMMITTED" &&
+      proofCommitted &&
+      independent0468.visible !== true &&
+      requestedMismatchFields.length === 0;
     const state = verified
       ? "VERIFIED"
       : (publishedWithoutUrl
         ? "PUBLISHED"
-        : (requestedState === "DIVERGENT" || requestedState === "ERROR" ? "DIVERGENT" : "PENDING"));
+        : (committedHidden
+          ? "COMMITTED"
+          : (requestedState === "DIVERGENT" || requestedState === "ERROR" ? "DIVERGENT" : "PENDING")));
     const now = Date.now();
     await ref.set({
       publicAttestationState0417: state,

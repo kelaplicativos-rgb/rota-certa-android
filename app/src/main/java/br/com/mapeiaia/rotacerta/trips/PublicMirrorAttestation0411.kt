@@ -103,6 +103,7 @@ internal fun serverPublicProjectionConfirmed0469(
     expectedCanonicalRevision: Long,
     expectedPublicationRevision: Long,
     expectBlue: Boolean,
+    expectVisible: Boolean = true,
     response: DriverPublicAttestationResponse0417?,
 ): Boolean {
     if (
@@ -113,6 +114,9 @@ internal fun serverPublicProjectionConfirmed0469(
         response.publicationRevision != expectedPublicationRevision
     ) {
         return false
+    }
+    if (!expectVisible) {
+        return !response.verified && response.state.equals("COMMITTED", ignoreCase = true)
     }
     return if (expectBlue) {
         response.verified && response.state.equals("VERIFIED", ignoreCase = true)

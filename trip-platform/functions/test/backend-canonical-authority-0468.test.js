@@ -384,6 +384,23 @@ test("0468 server independently refuses blue when projection is stale, uncommitt
   assert.match(attestation, /independent0468\.visible === true/);
 });
 
+test("0586 exact hidden projection closes transport without being promoted to public green or blue", () => {
+  const direct = between(outbox, "val backendCanonicalDirectTransport0468", "} else {\n                        val currentCanonicalMatches0456");
+  assert.doesNotMatch(direct, /if \(!readback0468\.agendaVisible\) add\("agendaVisibility"\)/);
+  assert.match(direct, /backendCanonicalVisible0469 = readback0468\.agendaVisible/);
+  assert.match(direct, /!backendCanonicalVisible0469 -> "COMMITTED"/);
+  assert.match(direct, /expectVisible = backendCanonicalVisible0469/);
+  assert.match(direct, /green=" \+ \(backendCanonicalVisible0469 && !backendCanonicalBlue0469\)/);
+
+  const attestation = between(admin, "  async function recordDriverPublicAttestation0417", "  async function listAdminLogs0417");
+  assert.match(attestation, /const proofCommitted =/);
+  assert.match(attestation, /const proofCurrent = proofCommitted && independent0468\.visible === true/);
+  assert.match(attestation, /requestedState === "COMMITTED"/);
+  assert.match(attestation, /proofCommitted/);
+  assert.match(attestation, /independent0468\.visible !== true/);
+  assert.match(attestation, /\? "COMMITTED"/);
+});
+
 test("0491 public visibility preserves canonical online policy and exact committed renderability", () => {
   const visibility = between(api, "function publicAgendaTripVisibility0466", "async function getPublicDriverAgenda");
   assert.match(visibility, /tripPublicOnline0471\(data\)/);
