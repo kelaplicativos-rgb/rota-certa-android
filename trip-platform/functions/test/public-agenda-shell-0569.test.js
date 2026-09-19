@@ -15,7 +15,7 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.3/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.4/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
@@ -118,8 +118,13 @@ test("0584 each available segment gets its own WhatsApp request and full segment
     ),
     "",
   );
-  assert.match(app, /reserve\.textContent = "Reservar agora este trecho"/);
-  assert.match(app, /if \(segment\.availableSeats > 0\)/);
+  assert.match(app, /reserve\.textContent = "Reserve Já"/);
+  assert.match(app, /unavailable\.textContent = "Indisponível"/);
+  assert.match(app, /unavailable\.disabled = true/);
+  assert.match(app, /segment\.availableSeats > 0/);
+  assert.match(html, /\.agendaSegmentReserve0584\{grid-column:3;grid-row:1 \/ span 2/);
+  assert.match(html, /\.agendaSegmentReserveUnavailable0584\{background:/);
+  assert.doesNotMatch(html, /\.agendaSegmentReserve0584\{grid-column:1 \/ -1/);
   assert.doesNotMatch(app, /wa\.me\/[0-9]{10,15}/);
 });
 
