@@ -218,11 +218,23 @@ return when {
 
 private fun stableSpecificHref(raw: String?): String? {
 val value = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
-val withoutQuery = value.substringBefore('?').substringBefore('#').trimEnd('/')
+val withoutFragment = value.substringBefore('#')
 val path = runCatching {
-  if (withoutQuery.contains("://")) URI(withoutQuery).path else withoutQuery
+  if (withoutFragment.contains("://")) URI(withoutFragment).path else URI(withoutFragment).path
 }.getOrNull()?.trimEnd('/')?.takeIf(String::isNotEmpty) ?: return null
 val normalized = if (path.startsWith('/')) path else "/$path"
+val pathIsTripScoped =
+  normalized == "/rides/offer" ||
+      normalized == "/trip" ||
+      normalized.startsWith("/rides/offer/") ||
+      normalized.startsWith("/ride-plan/trip-edit/") ||
+      normalized.startsWith("/trip/")
+val boundTripId = externalTripIdFromHref(value)
+if (pathIsTripScoped && boundTripId != null) {
+  // Query-bound management URLs such as /rides/offer?id=<trip> are exact trip
+  // navigation, even though the path by itself looks generic.
+  return "$normalized?id=$boundTripId"
+}
 if (normalized in setOf("/rides", "/rides/offer", "/trip")) return null
 return normalized.takeIf { candidate ->
   candidate.startsWith("/rides/offer/") ||

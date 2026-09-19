@@ -80,6 +80,20 @@ class BlaBlaCollectorBoundaries0265Test {
     }
 
     @Test
+    fun queryBoundAdministrativeRideHrefCountsAsSpecificTripIdentity() {
+        val evidence = BlaBlaTripIdentity.evidence(trip("trip-a"))
+
+        assertTrue(evidence.externalTripIdPresent)
+        assertTrue(evidence.specificHrefPresent)
+        assertFalse(evidence.fallbackIdentityUsed)
+
+        val generic = BlaBlaTripIdentity.evidence(
+            trip("trip-a").copy(trip_href = "https://www.blablacar.com.br/rides"),
+        )
+        assertFalse(generic.specificHrefPresent)
+    }
+
+    @Test
     fun manageTargetAcceptsPassengerPageWithoutWeakeningOriginBoundary() {
         assertTrue(
             BlaBlaCollectorUrlModule.isManageTarget(

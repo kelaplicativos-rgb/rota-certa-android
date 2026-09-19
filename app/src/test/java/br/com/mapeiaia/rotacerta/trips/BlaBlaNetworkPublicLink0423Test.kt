@@ -100,6 +100,112 @@ class BlaBlaNetworkPublicLink0423Test {
     }
 
     @Test
+    fun exactPublicSearchUsesProfileUuidWhenPublicDisplayNameDiffers() {
+        val profileUuid = "7371f028-9c55-4903-8444-308015823efd"
+        val resolved = resolveExactPublicSearchTripLink0448(
+            expectedAdministrativeTripId = adminA,
+            expectedProfileUuid = profileUuid,
+            expectedDriverName = "Barbosa",
+            expectedDepartureTime = "19:00",
+            cards = listOf(
+                DynamicPublicSearchLinkCard(
+                    driverName = "Nome público diferente",
+                    departureTime = "19:00",
+                    href = href(publicA),
+                    profileHrefs = listOf("https://www.blablacar.com.br/member/$profileUuid"),
+                ),
+            ),
+            providerOrigin = "https://www.blablacar.com.br/search",
+        )
+
+        assertEquals(href(publicA), resolved?.href)
+    }
+
+    @Test
+    fun exactPublicSearchRejectsConflictingProfileUuidEvenWhenNameAndTimeMatch() {
+        assertNull(
+            resolveExactPublicSearchTripLink0448(
+                expectedAdministrativeTripId = adminA,
+                expectedProfileUuid = "7371f028-9c55-4903-8444-308015823efd",
+                expectedDriverName = "Barbosa",
+                expectedDepartureTime = "19:00",
+                cards = listOf(
+                    DynamicPublicSearchLinkCard(
+                        driverName = "Barbosa",
+                        departureTime = "19:00",
+                        href = href(publicA),
+                        profileHrefs = listOf(
+                            "https://www.blablacar.com.br/member/175a7068-50d8-40c3-a27a-214b9c6e0461",
+                        ),
+                    ),
+                ),
+                providerOrigin = "https://www.blablacar.com.br/search",
+            ),
+        )
+    }
+
+    @Test
+    fun exactPublicSearchMayUseUniqueRouteTimeAndPriceWhenProfileLabelIsUnavailable() {
+        val resolved = resolveExactPublicSearchTripLink0448(
+            expectedAdministrativeTripId = adminA,
+            expectedDriverName = "",
+            expectedDepartureTime = "19:00",
+            expectedArrivalTime = "22:10",
+            expectedDeparturePlace = "Três Corações",
+            expectedArrivalPlace = "São Paulo",
+            expectedPrice = "R$ 92",
+            cards = listOf(
+                DynamicPublicSearchLinkCard(
+                    driverName = "",
+                    departureTime = "19:00",
+                    arrivalTime = "22:10",
+                    actualDeparture = "Três Corações",
+                    actualArrival = "São Paulo",
+                    priceText = "R$ 92",
+                    href = href(publicA),
+                ),
+            ),
+            providerOrigin = "https://www.blablacar.com.br/search",
+        )
+
+        assertEquals(href(publicA), resolved?.href)
+    }
+
+    @Test
+    fun exactPublicSearchFailsClosedWhenContextualFallbackIsAmbiguous() {
+        assertNull(
+            resolveExactPublicSearchTripLink0448(
+                expectedAdministrativeTripId = adminA,
+                expectedDriverName = "",
+                expectedDepartureTime = "19:00",
+                expectedArrivalTime = "22:10",
+                expectedDeparturePlace = "Três Corações",
+                expectedArrivalPlace = "São Paulo",
+                expectedPrice = "R$ 92",
+                cards = listOf(
+                    DynamicPublicSearchLinkCard(
+                        departureTime = "19:00",
+                        arrivalTime = "22:10",
+                        actualDeparture = "Três Corações",
+                        actualArrival = "São Paulo",
+                        priceText = "R$ 92",
+                        href = href(publicA),
+                    ),
+                    DynamicPublicSearchLinkCard(
+                        departureTime = "19:00",
+                        arrivalTime = "22:10",
+                        actualDeparture = "Três Corações",
+                        actualArrival = "São Paulo",
+                        priceText = "R$ 92",
+                        href = href(publicB),
+                    ),
+                ),
+                providerOrigin = "https://www.blablacar.com.br/search",
+            ),
+        )
+    }
+
+    @Test
     fun exactPublicSearchFailsClosedWhenProfileAndTimeMatchMoreThanOnePublicCard() {
         assertNull(
             resolveExactPublicSearchTripLink0448(
