@@ -88,12 +88,6 @@ jobs:
           if (!admin.apps.length) admin.initializeApp({ projectId: process.env.PROJECT });
           const db = admin.firestore();
           const publicUsername = 'ezequiel';
-          let driverUsername = publicUsername;
-          const directDriver = await db.collection('tripDrivers').doc(publicUsername).get();
-          if (!directDriver.exists) {
-            const alias = await db.collection('tripDriverAliases').doc(publicUsername).get();
-            driverUsername = alias.exists ? String(alias.data().canonicalUsername || publicUsername) : publicUsername;
-          }
           const hash = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
           const officialTrip = (raw) => {
             try {
@@ -105,6 +99,13 @@ jobs:
             } catch (_) { return false; }
           };
           (async () => {
+            let driverUsername = publicUsername;
+            const directDriver = await db.collection('tripDrivers').doc(publicUsername).get();
+            if (!directDriver.exists) {
+              const alias = await db.collection('tripDriverAliases').doc(publicUsername).get();
+              driverUsername = alias.exists ? String(alias.data().canonicalUsername || publicUsername) : publicUsername;
+            }
+            console.log('PUBLIC_LINK_DRIVER_KEY_0582=' + hash(driverUsername));
             const [tripSnap, mirrorSnap] = await Promise.all([
               db.collection('trips').where('driverUsername','==',driverUsername).limit(300).get(),
               db.collection('tripPrivateMirrors0434').where('driverUsername','==',driverUsername).limit(300).get(),
