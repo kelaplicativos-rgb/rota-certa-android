@@ -1,0 +1,158 @@
+name: Public Agenda BlaBla card navigation 0.1.581
+
+on:
+  push:
+    branches:
+      - agent/agenda-canonical-visibility-0.1.581
+    paths:
+      - '.github/workflows/public-agenda-card-blablacar-navigation-0.1.581.yml'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/public/public-agenda-shell-0569.js'
+      - 'trip-platform/public/index.html'
+      - 'trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js'
+      - 'trip-platform/functions/test/public-agenda-shell-0569.test.js'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-agenda-card-blablacar-navigation-0582-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-deploy-prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate public navigation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --test             trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js             trip-platform/functions/test/public-agenda-shell-0569.test.js             trip-platform/functions/test/public-blablacar-link-0409.test.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.2' trip-platform/public/index.html
+          grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo 'USE_FIREBASE_TOKEN=1' >> "$GITHUB_ENV"
+          else
+            echo 'Firebase deployment credential is missing.' >&2
+            exit 3
+          fi
+
+      - name: Deploy trip API and Hosting
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          cd trip-platform
+          AUTH_ARGS=()
+          if [ "${USE_FIREBASE_TOKEN:-0}" = '1' ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
+          npx --yes firebase-tools@latest deploy             --project "$PROJECT"             --only functions:trip-api,hosting             --non-interactive             --force             "${AUTH_ARGS[@]}"
+
+      - name: Prove live public cards open exact BlaBlaCar trips
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://rota-certa-7ccc8.web.app'
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/health?proof=$GITHUB_RUN_ID" | tee live-health-0582.json
+          grep -Fq '"ok":true' live-health-0582.json
+
+          curl --retry 12 --retry-delay 5 --retry-all-errors --fail --silent --show-error             "$BASE/v1/public/agenda/ezequiel?proof=$GITHUB_RUN_ID" > live-agenda-0582.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('live-agenda-0582.json', 'utf8'));
+          const trips = Array.isArray(body.trips) ? body.trips : [];
+          if (!trips.length) throw new Error('live public Agenda returned no trips');
+          let linked = 0;
+          let missing = 0;
+          let invalid = 0;
+          let searchContext = 0;
+          for (const trip of trips) {
+            const raw = String(trip && trip.blablaPublicUrl || '').trim();
+            if (!raw) { missing += 1; continue; }
+            try {
+              const u = new URL(raw);
+              const host = u.hostname.toLowerCase().replace(/^www\./, '');
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              const official = host.startsWith('blablacar.');
+              const publicPath = path === '/trip' || path.startsWith('/trip/');
+              const publicId = path === '/trip'
+                ? String(u.searchParams.get('id') || '')
+                : String((u.pathname.match(/\/trip\/([^/?#]+)/i) || [])[1] || '');
+              if (!official || u.protocol !== 'https:' || !publicPath || !/^[A-Za-z0-9_-]{6,}$/.test(publicId)) {
+                invalid += 1;
+                continue;
+              }
+              const keys = [...u.searchParams.keys()].map((key) => key.toLowerCase());
+              if (keys.some((key) => ['requested_seats','search_origin','search_uuid'].includes(key))) searchContext += 1;
+              linked += 1;
+            } catch (_) {
+              invalid += 1;
+            }
+          }
+          console.log('LIVE_PUBLIC_TRIPS=' + trips.length);
+          console.log('LIVE_CLICKABLE_BLABLA_CARDS=' + linked);
+          console.log('LIVE_MISSING_BLABLA_LINKS=' + missing);
+          console.log('LIVE_INVALID_BLABLA_LINKS=' + invalid);
+          console.log('LIVE_SEARCH_CONTEXT_LINKS=' + searchContext);
+          if (missing || invalid || searchContext || linked !== trips.length) {
+            throw new Error('not every public Agenda card resolves to a clean official BlaBlaCar trip permalink');
+          }
+          console.log('PUBLIC_AGENDA_BLABLA_CARD_NAVIGATION_0582_LIVE=PASS');
+          NODE
+
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
+          curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.2' live-index-0582.html
+          grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
+          grep -Fq 'card.href = publicUrl' live-shell-0582.js
+          echo 'PUBLIC_AGENDA_BLABLA_SHELL_0582_LIVE=PASS'
+
+      - name: Upload Firebase proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-agenda-blablacar-navigation-0582-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            live-health-0582.json
+            live-agenda-0582.json
+            live-index-0582.html
+            live-shell-0582.js

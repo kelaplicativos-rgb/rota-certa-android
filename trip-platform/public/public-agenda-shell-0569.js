@@ -149,8 +149,8 @@ function validatedBlaBlaPublicUrl0569(raw) {
     }
     if (!/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
     const forbidden = new Set(["requested_seats", "search_origin", "search_uuid"]);
-    for (const key of url.searchParams.keys()) {
-      if (forbidden.has(String(key).toLowerCase())) return "";
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (forbidden.has(String(key).toLowerCase())) url.searchParams.delete(key);
     }
     const sourceParam = String(url.searchParams.get("source") || "").trim().toUpperCase();
     if (sourceParam && sourceParam !== "CARPOOLING") return "";

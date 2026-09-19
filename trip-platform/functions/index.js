@@ -1143,7 +1143,7 @@ function canonicalEndpointStopShapeMigration0439(previousStopsRaw, nextStopsRaw,
   return { changed: true, records: migrated, changes };
 }
 
-function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false) {
+function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration0439 = false, allowCanonicalBoundBlaBlaPublicUrl0582 = false) {
   const capacity = Number(raw.capacity);
   if (!Number.isInteger(capacity) || capacity < 0 || capacity > 999) throw new Error("Inventário operacional inválido.");
   const departureAtMillis = Number(raw.departureAtMillis);
@@ -1176,11 +1176,17 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
   const previousManageUrl = samePersistentIdentity
     ? normalizeBlaBlaManageUrl(previous && previous.blablaManageUrl, blablaTripId)
     : "";
+  const previousCanonicalBoundPublicUrl0582 = samePersistentIdentity && allowCanonicalBoundBlaBlaPublicUrl0582
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(previous && previous.blablaPublicUrl, blablaTripId)
+    : "";
   const previousPublicUrl = samePersistentIdentity
-    ? normalizeBlaBlaPublicUrl(previous && previous.blablaPublicUrl, blablaTripId)
+    ? previousCanonicalBoundPublicUrl0582 || normalizeBlaBlaPublicUrl(previous && previous.blablaPublicUrl, blablaTripId)
     : "";
   const blablaManageUrl = normalizeBlaBlaManageUrl(raw.blablaManageUrl, blablaTripId) || previousManageUrl;
-  const blablaPublicUrl = normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId) || previousPublicUrl;
+  const canonicalBoundPublicUrl0582 = allowCanonicalBoundBlaBlaPublicUrl0582
+    ? normalizeCanonicalBoundBlaBlaPublicUrl0423(raw.blablaPublicUrl, blablaTripId)
+    : "";
+  const blablaPublicUrl = canonicalBoundPublicUrl0582 || normalizeBlaBlaPublicUrl(raw.blablaPublicUrl, blablaTripId) || previousPublicUrl;
   const publicTimezoneId0411 = cleanText(
     raw.publicTimezoneId0411 == null ? (previous && previous.publicTimezoneId0411 || "") : raw.publicTimezoneId0411,
     80,
@@ -1760,7 +1766,7 @@ function canonicalPublicTripPayload0411(token, data) {
     capacityReliable: publicTrip.capacityReliable === true,
     itineraryAuthoritative: publicTrip.itineraryAuthoritative === true,
     publicUrl: cleanText(publicTrip.publicUrl, 1200),
-    blablaPublicUrl: normalizeBlaBlaPublicUrl(publicTrip.blablaPublicUrl, blablaTripId),
+    blablaPublicUrl: normalizeCanonicalBoundBlaBlaPublicUrl0423((data && data.blablaPublicUrl) || publicTrip.blablaPublicUrl, blablaTripId),
     publicationRevision: Math.max(0, Number(data.publicationRevision || 0)),
     canonicalStateHash: cleanText(data.canonicalStateHash, 160),
   };
@@ -4306,8 +4312,8 @@ function normalizeBlaBlaPublicShareUrl0571(raw) {
     const path = url.pathname.replace(/\/+$/, "").toLowerCase();
     if (path !== "/trip" && !path.startsWith("/trip/")) return "";
     const forbidden = new Set(["requested_seats", "search_origin", "search_uuid"]);
-    for (const key of url.searchParams.keys()) {
-      if (forbidden.has(String(key).toLowerCase())) return "";
+    for (const key of Array.from(url.searchParams.keys())) {
+      if (forbidden.has(String(key).toLowerCase())) url.searchParams.delete(key);
     }
     const publicId = blaBlaExternalTripId(url);
     if (!publicId || !/^[A-Za-z0-9_-]{6,}$/.test(publicId)) return "";
@@ -8519,7 +8525,7 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         canonicalRevision: serverCanonicalAuthority0468 ? Math.max(0, Number(previous.canonicalRevision || 0)) : rawTrip.canonicalRevision,
         canonicalStateHash: serverCanonicalAuthority0468 ? cleanText(previous.canonicalStateHash, 160) : rawTrip.canonicalStateHash,
         capacityReliable: preserveManagedClaims0436 ? rawTrip.capacityReliable === true : true,
-      }, previous, bookedStopShapeMigrationAuthorized0439);
+      }, previous, bookedStopShapeMigrationAuthorized0439, serverCanonicalAuthority0468);
       const normalized = serverCanonicalAuthority0468 ? {
         ...normalizedBase0468,
         notes: cleanText(previous.notes, 1200) || normalizedBase0468.notes,
