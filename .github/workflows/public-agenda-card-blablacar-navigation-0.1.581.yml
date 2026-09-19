@@ -50,10 +50,12 @@ jobs:
           node --test \
             trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js \
             trip-platform/functions/test/public-agenda-shell-0569.test.js
-          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.3' trip-platform/public/index.html
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' trip-platform/public/index.html
           grep -Fq 'viewRide.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
           grep -Fq 'segmentWhatsappHref0584' trip-platform/public/public-agenda-shell-0569.js
-          grep -Fq 'Reservar agora este trecho' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'Reserve Já' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'unavailable.textContent = "Indisponível"' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '.agendaSegmentReserve0584{grid-column:3' trip-platform/public/index.html
           ! grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
 
       - name: Install trip-api dependencies
@@ -226,11 +228,13 @@ jobs:
 
           curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/ezequiel?proof=$GITHUB_RUN_ID" > live-index-0582.html
           curl --retry 8 --retry-delay 3 --retry-all-errors --fail --silent --show-error             "$BASE/public-agenda-shell-0569.js?proof=$GITHUB_RUN_ID" > live-shell-0582.js
-          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.3' live-index-0582.html
+          grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.4' live-index-0582.html
           grep -Fq 'url.searchParams.delete(key)' live-shell-0582.js
           grep -Fq 'viewRide.href = publicUrl' live-shell-0582.js
           grep -Fq 'segmentWhatsappHref0584' live-shell-0582.js
-          grep -Fq 'Reservar agora este trecho' live-shell-0582.js
+          grep -Fq 'Reserve Já' live-shell-0582.js
+          grep -Fq 'unavailable.textContent = "Indisponível"' live-shell-0582.js
+          grep -Fq '.agendaSegmentReserve0584{grid-column:3' live-index-0582.html
           ! grep -Fq 'card.href = publicUrl' live-shell-0582.js
           echo 'PUBLIC_AGENDA_BLABLA_SHELL_0584_LIVE=PASS'
 
