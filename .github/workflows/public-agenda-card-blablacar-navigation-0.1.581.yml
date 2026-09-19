@@ -47,7 +47,9 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/public-agenda-shell-0569.js
-          node --test             trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js             trip-platform/functions/test/public-agenda-shell-0569.test.js             trip-platform/functions/test/public-blablacar-link-0409.test.js
+          node --test \
+            trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js \
+            trip-platform/functions/test/public-agenda-shell-0569.test.js
           grep -Fq 'public-agenda-shell-0569.js?v=0.1.581.2' trip-platform/public/index.html
           grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
 

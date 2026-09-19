@@ -13,7 +13,10 @@ const html = fs.readFileSync(path.join(root, "trip-platform", "public", "index.h
 
 function functionSource(source, name, nextName) {
   const start = source.indexOf("function " + name + "(");
-  const end = source.indexOf("\nfunction " + nextName + "(", start);
+  const syncEnd = source.indexOf("\nfunction " + nextName + "(", start);
+  const asyncEnd = source.indexOf("\nasync function " + nextName + "(", start);
+  const candidates = [syncEnd, asyncEnd].filter((value) => value > start);
+  const end = candidates.length ? Math.min(...candidates) : -1;
   assert.ok(start >= 0 && end > start, "missing function " + name);
   return source.slice(start, end);
 }
