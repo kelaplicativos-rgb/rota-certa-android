@@ -897,22 +897,19 @@ internal fun EnhancedPassengerTimelineSection(
                 onSave = { updated ->
                     scope.launch {
                         runCatching {
-                            val settings0494 = store.onlineSettings()
-                            val remoteId0494 = currentTrip.remoteId?.takeIf(String::isNotBlank)
-                                ?: error("Viagem sem identidade remota canônica.")
-                            check(settings0494.configured) { "Backend canônico indisponível." }
-                            val ack0494 = if (updated.source == BookingSource.ROTA_CERTA) {
-                                TripRemoteApi(settings0494).updateProtectedDriverBooking(remoteId0494, updated)
-                            } else {
-                                TripRemoteApi(settings0494).upsertDriverBooking(remoteId0494, updated)
-                            }
+                            persistCanonicalPassengerMutation0582(
+                                context = context,
+                                trip = currentTrip,
+                                updated = updated,
+                                store = store,
+                                mutationCoordinator = mutationCoordinator,
+                                mutationType = "BOOKING_CHANGED_BY_DRIVER",
+                            )
                             UnifiedDebugEventStore.record(
                                 "TIMELINE_CANONICAL_BOOKING_EDIT_0494",
                                 context.packageName,
-                                "canonicalTripId=${seatSyncDiagnosticKey(currentTrip.id)} entityRevision=${ack0494.entityRevision} authority=CANONICAL_BACKEND localBusinessWrite=false",
+                                "canonicalTripId=${seatSyncDiagnosticKey(currentTrip.id)} authority=LOCAL_CANONICAL_OUTBOX localBusinessWrite=true directHttp=false",
                             )
-                            BookingRealtimeEvents0356.notifyChanged()
-
                         }.onSuccess {
                             editManualRow = null
                             onChanged("Passageiro atualizado. Vagas por trecho recalculadas no estado canônico.")
@@ -954,26 +951,22 @@ internal fun EnhancedPassengerTimelineSection(
                             onChanged("Reserva canônica não localizada. Nada foi alterado.")
                         } else {
                             scope.launch {
-                                val settings0494 = store.onlineSettings()
-                                val remoteId0494 = selectedTrip.remoteId?.takeIf(String::isNotBlank)
-                                if (!settings0494.configured || remoteId0494 == null) {
-                                    onChanged("Backend canônico indisponível. Nada foi alterado; o coletor não será usado como fallback.")
-                                    return@launch
-                                }
                                 runCatching {
-                                    TripRemoteApi(settings0494).updateDriverPassengerOperationalStatus(
-                                        remoteTripId = remoteId0494,
-                                        bookingId = selectedBooking.id,
-                                        selection = "CANCELLED",
+                                    persistCanonicalPassengerMutation0582(
+                                        context = context,
+                                        trip = selectedTrip,
+                                        updated = passengerOperationalMutation0582(selectedBooking, "CANCELLED"),
+                                        store = store,
+                                        mutationCoordinator = mutationCoordinator,
+                                        mutationType = "BOOKING_CANCELLED_BY_DRIVER",
                                     )
-                                }.onSuccess { ack0494 ->
+                                }.onSuccess {
                                     cancelManualRow = null
                                     identityRevision++
-                                    BookingRealtimeEvents0356.notifyChanged()
                                     UnifiedDebugEventStore.record(
                                         "TIMELINE_CANONICAL_BOOKING_CANCEL_0494",
                                         context.packageName,
-                                        "authority=CANONICAL_BACKEND entityRevision=${ack0494.entityRevision} localBusinessWrite=false blablaPlatformChanged=false",
+                                        "authority=LOCAL_CANONICAL_OUTBOX localBusinessWrite=true directHttp=false blablaPlatformChanged=false",
                                     )
                                     onChanged(
                                         if (BookingSource.BLABLACAR in row.sources) {
@@ -1016,27 +1009,27 @@ internal fun EnhancedPassengerTimelineSection(
                     val remoteId0494 = canonicalTrip0494?.remoteId?.takeIf(String::isNotBlank)
                     if (canonicalBooking0494 != null && canonicalTrip0494 != null && remoteId0494 != null) {
                         scope.launch {
-                            val settings0494 = store.onlineSettings()
-                            if (!settings0494.configured) {
-                                onChanged("Backend canônico indisponível. O vínculo não foi aplicado ao booking.")
-                                return@launch
-                            }
                             runCatching {
-                                val updated0494 = canonicalBooking0494.copy(passengerId = profile.id)
-                                if (updated0494.source == BookingSource.ROTA_CERTA) {
-                                    TripRemoteApi(settings0494).updateProtectedDriverBooking(remoteId0494, updated0494)
-                                } else {
-                                    TripRemoteApi(settings0494).upsertDriverBooking(remoteId0494, updated0494)
-                                }
-                            }.onSuccess { ack0494 ->
+                                val updated0494 = canonicalBooking0494.copy(
+                                    passengerId = profile.id,
+                                    localMetadataTouched = true,
+                                )
+                                persistCanonicalPassengerMutation0582(
+                                    context = context,
+                                    trip = canonicalTrip0494,
+                                    updated = updated0494,
+                                    store = store,
+                                    mutationCoordinator = mutationCoordinator,
+                                    mutationType = "PASSENGER_ID_LINKED",
+                                )
+                            }.onSuccess {
                                 row.externalPassengerId?.let { externalId ->
                                     passengerStore.linkExternalPassengerId(profile.id, externalId)
                                 }
-                                BookingRealtimeEvents0356.notifyChanged()
                                 UnifiedDebugEventStore.record(
                                     "TIMELINE_CANONICAL_PASSENGER_ID_LINK_0494",
                                     context.packageName,
-                                    "canonicalTripId=${seatSyncDiagnosticKey(canonicalTrip0494.id)} entityRevision=${ack0494.entityRevision} passengerIdHash=${passengerDebugIdentityHash(profile.id)} authority=CANONICAL_BACKEND",
+                                    "canonicalTripId=${seatSyncDiagnosticKey(canonicalTrip0494.id)} passengerIdHash=${passengerDebugIdentityHash(profile.id)} authority=LOCAL_CANONICAL_OUTBOX directHttp=false",
                                 )
                                 onChanged("Cadastro do passageiro vinculado ao booking canônico.")
                             }.onFailure { error ->
