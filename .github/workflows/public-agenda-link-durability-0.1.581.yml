@@ -1,0 +1,62 @@
+name: Public Agenda link durability 0.1.581
+
+on:
+  push:
+    branches:
+      - agent/public-agenda-link-durability-0.1.581
+    paths:
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js'
+      - '.github/workflows/public-agenda-link-durability-0.1.581.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-agenda-link-durability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prove exact source and protected FAROL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git diff --name-only 0164396592c364952f6f6a4f09bbe0f2a294cdb3 "$GITHUB_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt)"
+          CHANGED="$(git diff --name-only 0164396592c364952f6f6a4f09bbe0f2a294cdb3 "$GITHUB_SHA")"
+          printf '%s\n' "$CHANGED"
+          test "$(printf '%s\n' "$CHANGED" | grep -Ev '^(trip-platform/functions/index\.js|trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582\.test\.js|\.github/workflows/public-agenda-link-durability-0\.1\.581\.yml)$' | wc -l)" -eq 0
+
+      - name: Validate backend syntax and focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --test \
+            trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js \
+            trip-platform/functions/test/public-agenda-shell-0569.test.js
+
+      - name: Prove durability guards remain structural
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'samePersistentProfile0585' trip-platform/functions/index.js
+          grep -Fq 'resolvedPublicAgendaBlaBlaUrl0585' trip-platform/functions/index.js
+          grep -Fq 'normalizeCanonicalBoundBlaBlaPublicUrl0423(previous && previous.blablaPublicUrl, blablaTripId)' trip-platform/functions/index.js
+          grep -Fq 'viewRide.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
+          ! grep -Fq 'card.href = publicUrl' trip-platform/public/public-agenda-shell-0569.js
