@@ -8446,7 +8446,11 @@ async function reconcileDriverCapacitySnapshot(req, res, token) {
         if (!sameIdempotentMutation && !sameRevisionProjectionRepair0425 && !sameRevisionCanonicalAdvance0436) {
           throw Object.assign(
             new Error("Reparo de mesma revisão exige a identidade idempotente original."),
-            { httpStatus: 409, code: "publication_revision_repair_identity_mismatch" },
+            {
+              httpStatus: 409,
+              code: "publication_revision_repair_identity_mismatch",
+              legacyConflictCode: "publication_revision_conflict",
+            },
           );
         }
         // Same mutation + same transport revision but stale/missing logical projection:
