@@ -299,7 +299,7 @@ class PublicMirrorAttestation0411Test {
     fun authoritativePublicTokenDifferentFromAdministrativeTripIdCanBeAttested() {
         val publicToken = "AaA1PublicTokenDifferentFromAdmin0411"
         val trip = canonicalTrip().copy(
-            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary&requested_seats=2",
+            blablaPublicUrl = "https://www.blablacar.fr/trip?id=$publicToken&search_uuid=temporary",
         )
         val expected = canonicalPublicProjectionPayload0411(
             trip = trip,
@@ -309,7 +309,7 @@ class PublicMirrorAttestation0411Test {
         )
 
         assertEquals(
-            "https://www.blablacar.fr/trip?id=$publicToken&requested_seats=2",
+            "https://www.blablacar.fr/trip?id=$publicToken",
             expected.blablaPublicUrl,
         )
 
