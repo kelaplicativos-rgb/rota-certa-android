@@ -4746,6 +4746,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         val missingPublicLinks0585 = collectorMissingPublicLinks0585(
             trips = collected,
             selection = scriptSelection0449,
+            persistedTrips = store.read(account)?.trips.orEmpty(),
         )
         val finalStatus = if (
             !exactTargetFresh ||

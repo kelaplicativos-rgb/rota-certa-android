@@ -365,15 +365,35 @@ internal fun mergeSelectiveCollectorTrip0449(
 internal fun collectorMissingPublicLinks0585(
     trips: List<BlaBlaCollectorTrip>,
     selection: BlaBlaDateScopeScriptSelection0449,
+    persistedTrips: List<BlaBlaCollectorTrip> = emptyList(),
 ): Int {
     if (!selection.wantsPublicUrl()) return 0
-    return trips.count { trip ->
-        val administrativeTripId = trip.trip_id?.trim().orEmpty()
-        administrativeTripId.isBlank() ||
-            BlaBlaCollectorUrlModule.publicTripForCollectorState(
-                raw = trip.public_trip_href,
-                expectedTripId = administrativeTripId,
-                binding = trip.public_trip_href_binding,
-            ) == null
+
+    fun strongIdentity(trip: BlaBlaCollectorTrip): String? {
+        val profileUuid = trip.profile_uuid.trim().lowercase().takeIf(String::isNotEmpty) ?: return null
+        val administrativeTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        return "$profileUuid|$administrativeTripId"
+    }
+
+    fun hasValidatedPublicLink(trip: BlaBlaCollectorTrip): Boolean {
+        val administrativeTripId = trip.trip_id?.trim()?.takeIf(String::isNotEmpty) ?: return false
+        return BlaBlaCollectorUrlModule.publicTripForCollectorState(
+            raw = trip.public_trip_href,
+            expectedTripId = administrativeTripId,
+            binding = trip.public_trip_href_binding,
+        ) != null
+    }
+
+    val persistedByIdentity = persistedTrips.mapNotNull { persisted ->
+        strongIdentity(persisted)?.let { identity -> identity to persisted }
+    }.toMap()
+
+    return trips.count { fresh ->
+        val identity = strongIdentity(fresh) ?: return@count true
+        if (hasValidatedPublicLink(fresh)) {
+            false
+        } else {
+            persistedByIdentity[identity]?.let(::hasValidatedPublicLink) != true
+        }
     }
 }

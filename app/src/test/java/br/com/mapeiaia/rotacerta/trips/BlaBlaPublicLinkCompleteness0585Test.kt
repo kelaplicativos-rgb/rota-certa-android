@@ -71,6 +71,44 @@ class BlaBlaPublicLinkCompleteness0585Test {
     }
 
     @Test
+    fun persistedValidatedPermalinkPreventsFalsePartialWhenFreshCaptureMissesIt() {
+        val missing = collectorMissingPublicLinks0585(
+            trips = listOf(trip(publicUrl = null)),
+            selection = BlaBlaDateScopeScriptSelection0449.legacyAll(),
+            persistedTrips = listOf(
+                trip(
+                    publicUrl = "https://www.blablacar.com.br/trip?id=PassengerTokenPersisted0585",
+                    binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+                ),
+            ),
+        )
+
+        assertEquals(0, missing)
+    }
+
+    @Test
+    fun persistedPermalinkCannotCrossProfileOrTripIdentity() {
+        val fresh = trip(publicUrl = null)
+        val wrongProfile = trip(
+            publicUrl = "https://www.blablacar.com.br/trip?id=PassengerTokenWrongProfile0585",
+            binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+        ).copy(profile_uuid = "different-profile-0585")
+        val wrongTrip = trip(
+            tripId = "DifferentAdminTrip0585",
+            publicUrl = "https://www.blablacar.com.br/trip?id=PassengerTokenWrongTrip0585",
+            binding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+        )
+
+        val missing = collectorMissingPublicLinks0585(
+            trips = listOf(fresh),
+            selection = BlaBlaDateScopeScriptSelection0449.legacyAll(),
+            persistedTrips = listOf(wrongProfile, wrongTrip),
+        )
+
+        assertEquals(1, missing)
+    }
+
+    @Test
     fun selectiveRunThatDidNotRequestPublicUrlDoesNotDegradeExistingTripState() {
         val selection = BlaBlaDateScopeScriptSelection0449.explicit(
             BlaBlaDateScopeScriptCatalog0449.all - BlaBlaDateScopeScriptCatalog0449.publicUrlRequests,
