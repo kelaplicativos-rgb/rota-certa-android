@@ -3,6 +3,8 @@ package br.com.mapeiaia.rotacerta.trips
 import java.io.File
 import java.net.URI
 import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 import java.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -116,6 +118,7 @@ internal data class BlaBlaRidesTripLink0582(
     val publicTripUrlSource: String = "",
     val publicTripUrlBinding: String = "",
     val publicTripStatus: String = "PENDING_UNKNOWN",
+    val shareEligibility: String = "UNKNOWN",
 )
 
 @Serializable
@@ -292,6 +295,46 @@ internal fun buildRidesTripLinks0582(
     }
 }
 
+internal fun ridesShareEligibility0583(
+    ride: ParsedExternalRide0535?,
+    now: LocalDateTime = LocalDateTime.now(),
+): String {
+    val date = ride?.date
+        ?.takeIf(String::isNotBlank)
+        ?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+        ?: return "UNKNOWN"
+    val time = ride.departureTime
+        .takeIf(String::isNotBlank)
+        ?.let { raw -> runCatching { LocalTime.parse(raw) }.getOrNull() }
+        ?: return "UNKNOWN"
+    val departure = LocalDateTime.of(date, time)
+    return if (departure.isAfter(now)) "ACTIVE" else "EXPIRED"
+}
+
+internal fun applyRidesShareEligibility0583(
+    links: List<BlaBlaRidesTripLink0582>,
+    rides: List<ParsedExternalRide0535>,
+    now: LocalDateTime = LocalDateTime.now(),
+): List<BlaBlaRidesTripLink0582> {
+    val byTripId = rides.associateBy { it.tripId }
+    return links.map { link ->
+        val eligibility = ridesShareEligibility0583(byTripId[link.tripId], now)
+        when {
+            eligibility == "EXPIRED" && link.publicTripUrl.isBlank() -> link.copy(
+                publicTripStatus = "NOT_REQUIRED_EXPIRED",
+                shareEligibility = eligibility,
+            )
+            else -> link.copy(shareEligibility = eligibility)
+        }
+    }
+}
+
+internal fun activeRidesPublicLinksComplete0583(
+    links: List<BlaBlaRidesTripLink0582>,
+): Boolean = links
+    .filter { it.shareEligibility != "EXPIRED" }
+    .all { it.publicTripStatus == "COMPLETE" }
+
 internal fun validateRidesTripLinks0582(
     tripIds: List<String>,
     links: List<BlaBlaRidesTripLink0582>,
@@ -315,7 +358,13 @@ internal fun validateRidesTripLinks0582(
                 verified != null && verified == link.publicTripUrl
             }
             "PENDING_UNKNOWN" ->
-                link.publicTripUrl.isBlank() &&
+                link.shareEligibility != "EXPIRED" &&
+                    link.publicTripUrl.isBlank() &&
+                    link.publicTripUrlSource.isBlank() &&
+                    link.publicTripUrlBinding.isBlank()
+            "NOT_REQUIRED_EXPIRED" ->
+                link.shareEligibility == "EXPIRED" &&
+                    link.publicTripUrl.isBlank() &&
                     link.publicTripUrlSource.isBlank() &&
                     link.publicTripUrlBinding.isBlank()
             else -> false
