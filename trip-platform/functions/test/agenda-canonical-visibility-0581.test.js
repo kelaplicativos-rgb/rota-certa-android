@@ -4,9 +4,9 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const vm = require("node:vm");
 
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+const agendaDomain0582 = require("../agenda-domain-0582");
 
 function between(source, startNeedle, endNeedle) {
   const start = source.indexOf(startNeedle);
@@ -16,14 +16,12 @@ function between(source, startNeedle, endNeedle) {
 }
 
 function lifecycleApi() {
-  const source = between(
-    api,
-    "const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577",
-    "function publicAgendaTripVisibility0466",
-  ) + "\nresult = { publicAgendaVisibleUntil0577, publicAgendaTripStillVisible0577 };";
-  const context = { Date, Math, Number, Array, result: null };
-  vm.runInNewContext(source, context);
-  return context.result;
+  return {
+    publicAgendaVisibleUntil0577: agendaDomain0582.canonicalAgendaVisibleUntil0582,
+    publicAgendaTripStillVisible0577(data, nowMillis) {
+      return agendaDomain0582.canonicalAgendaLifecycleDecision0582(data, nowMillis).visible;
+    },
+  };
 }
 
 test("0581 canonical cutoff wins over stale or incomplete transport shape", () => {
