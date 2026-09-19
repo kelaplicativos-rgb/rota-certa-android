@@ -751,7 +751,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         )
         scriptSelection0449 = if (
             mode == BlaBlaDynamicSessionIntents.MODE_SYNC &&
-            targetDates.isNotEmpty()
+            enabledScriptNames0449 != null &&
+            (targetDates.isNotEmpty() || targetTripId.isNotBlank())
         ) {
             BlaBlaDateScopeScriptSelection0449.fromNames(enabledScriptNames0449)
         } else {
