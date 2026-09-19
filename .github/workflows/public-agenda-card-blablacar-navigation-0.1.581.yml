@@ -78,6 +78,80 @@ jobs:
             exit 3
           fi
 
+      - name: Diagnose canonical public-link authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}" node <<'NODE'
+          const crypto = require('crypto');
+          const admin = require('./trip-platform/functions/node_modules/firebase-admin');
+          if (!admin.apps.length) admin.initializeApp({ projectId: process.env.PROJECT });
+          const db = admin.firestore();
+          const driverUsername = 'ezequiel';
+          const hash = (value) => crypto.createHash('sha256').update(String(value || '')).digest('hex').slice(0, 12);
+          const officialTrip = (raw) => {
+            try {
+              const u = new URL(String(raw || ''));
+              const host = u.hostname.toLowerCase().replace(/^www\./, '');
+              const path = u.pathname.replace(/\/+$/, '').toLowerCase();
+              return u.protocol === 'https:' && host.startsWith('blablacar.') &&
+                (path === '/trip' || path.startsWith('/trip/'));
+            } catch (_) { return false; }
+          };
+          (async () => {
+            const [tripSnap, mirrorSnap] = await Promise.all([
+              db.collection('trips').where('driverUsername','==',driverUsername).limit(300).get(),
+              db.collection('tripPrivateMirrors0434').where('driverUsername','==',driverUsername).limit(300).get(),
+            ]);
+            const mirrors = new Map();
+            mirrorSnap.docs.forEach((doc) => {
+              const m = doc.data() || {};
+              const id = String(m.canonicalTripId || '');
+              if (id) mirrors.set(id, m);
+            });
+            const rows = tripSnap.docs.map((doc) => {
+              const d = doc.data() || {};
+              const canonicalId = String(d.canonicalTripId || d.localTripId || doc.id);
+              const projection = d.canonicalPublicProjection0434 && typeof d.canonicalPublicProjection0434 === 'object'
+                ? d.canonicalPublicProjection0434 : {};
+              const mirror = mirrors.get(canonicalId) || {};
+              const payload = mirror.payload && typeof mirror.payload === 'object' ? mirror.payload : {};
+              const rootUrl = String(d.blablaPublicUrl || '');
+              const projectionUrl = String(projection.blablaPublicUrl || '');
+              const mirrorUrl = String(payload.blablaPublicUrl || '');
+              return {
+                key: hash(canonicalId),
+                departure: Number(d.departureAtMillis || 0),
+                departureIso: Number(d.departureAtMillis || 0) > 0 ? new Date(Number(d.departureAtMillis)).toISOString() : '',
+                status: String(d.status || ''),
+                deleted: d.deleted === true,
+                tombstone: d.publicationTombstone === true,
+                strongProfile: Boolean(String(d.blablaProfileUuid || '')),
+                strongTrip: Boolean(String(d.blablaTripId || '')),
+                rootUrl: officialTrip(rootUrl),
+                projectionUrl: officialTrip(projectionUrl),
+                mirrorUrl: officialTrip(mirrorUrl),
+                mirrorPresent: Boolean(mirror.canonicalTripId),
+                mirrorCanonicalRevision: Number(mirror.canonicalRevision || 0),
+                canonicalRevision: Number(d.canonicalRevision || 0),
+                mirrorIdentityMatch:
+                  String(payload.canonicalTripId || '') === canonicalId &&
+                  String(payload.blablaProfileUuid || '').toLowerCase() === String(d.blablaProfileUuid || '').toLowerCase() &&
+                  String(payload.blablaTripId || '') === String(d.blablaTripId || ''),
+              };
+            }).filter((row) => !row.deleted && !row.tombstone && row.departure >= Date.parse('2026-09-19T00:00:00Z'))
+              .sort((a,b) => a.departure-b.departure);
+            console.log('PUBLIC_LINK_AUTHORITY_DIAGNOSTIC_0582=' + JSON.stringify(rows));
+            console.log('PUBLIC_LINK_AUTHORITY_COUNTS_0582=' + JSON.stringify({
+              total: rows.length,
+              root: rows.filter(r=>r.rootUrl).length,
+              projection: rows.filter(r=>r.projectionUrl).length,
+              mirror: rows.filter(r=>r.mirrorUrl).length,
+              noAuthority: rows.filter(r=>!r.rootUrl && !r.projectionUrl && !r.mirrorUrl).length,
+            }));
+          })().then(()=>process.exit(0)).catch((e)=>{ console.error(e); process.exit(1); });
+          NODE
+
       - name: Deploy trip API and Hosting
         shell: bash
         run: |
