@@ -1157,6 +1157,8 @@ internal class TripMutationCoordinator0387(
                                     " canonicalRevision=" + canonicalAck0468.canonicalRevision +
                                     " publicationRevision=" + canonicalAck0468.publicationRevision +
                                     " agendaVisible=" + readback0468.agendaVisible +
+                                    " agendaVisibilityReason=" + readback0468.agendaVisibilityReason.take(120) +
+                                    " agendaVisibleUntilMillis=" + readback0468.payload.agendaVisibleUntilMillis0581 +
                                     " blue=" + backendCanonicalBlue0469 +
                                     " mismatchFields=" + attestationMismatch0469.joinToString(",") +
                                     " previousStage=SERVER_ACK nextStage=ATTESTATION",

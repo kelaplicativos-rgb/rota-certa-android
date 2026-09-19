@@ -580,6 +580,31 @@ class TripStore(context: Context) {
             ),
         )
         persistCanonicalTrip0406(normalized, allTrips)
+        if (existing?.agendaVisibleUntilMillis0581 != normalized.agendaVisibleUntilMillis0581) {
+            val lifecycleNow0581 = System.currentTimeMillis()
+            val lifecycleDecision0581 = canonicalAgendaLifecycleDecision0581(
+                departureAtMillis = normalized.departureAtMillis,
+                arrivalAtMillis = canonicalAgendaArrivalAtMillis0581(normalized),
+                nowMillis = lifecycleNow0581,
+            )
+            UnifiedDebugEventStore.record(
+                "AGENDA_VISIBILITY_CANONICALIZED_0581",
+                appContext.packageName,
+                "tripHash=" + seatSyncDiagnosticKey(normalized.tripKey.ifBlank { normalized.id }) +
+                    " timezone=" + normalized.publicTimezoneId0411.take(80) +
+                    " departureAtMillis=" + normalized.departureAtMillis +
+                    " previousVisibleUntilMillis=" + (existing?.agendaVisibleUntilMillis0581 ?: 0L) +
+                    " calculatedVisibleUntilMillis=" + normalized.agendaVisibleUntilMillis0581 +
+                    " previousAgendaVisible=" + (
+                        existing?.agendaVisibleUntilMillis0581?.let { it > 0L && lifecycleNow0581 <= it } ?: false
+                    ) +
+                    " calculatedAgendaVisible=" + lifecycleDecision0581.visible +
+                    " reasonCode=" + lifecycleDecision0581.reasonCode +
+                    " oldRevision=" + (existing?.canonicalRevision ?: 0L) +
+                    " newRevision=" + normalized.canonicalRevision +
+                    " mutationSource=TripStore",
+            )
+        }
         UnifiedDebugEventStore.record(
             "TRIP_CANONICAL_WRITE",
             appContext.packageName,
