@@ -109,6 +109,16 @@ internal data class BlaBlaRidesIdentityJson0528(
 )
 
 @Serializable
+internal data class BlaBlaRidesTripLink0582(
+    val tripId: String,
+    val administrativeUrl: String = "",
+    val publicTripUrl: String = "",
+    val publicTripUrlSource: String = "",
+    val publicTripUrlBinding: String = "",
+    val publicTripStatus: String = "PENDING_UNKNOWN",
+)
+
+@Serializable
 internal data class BlaBlaRidesIndexJson0528(
     val schemaVersion: String = "blablacar-rides-index-v1",
     val profileUuid: String,
@@ -117,6 +127,7 @@ internal data class BlaBlaRidesIndexJson0528(
     val tripIdsSha256: String,
     val duplicateCount: Int,
     val rideDateRange: BlaBlaRidesRideDateRange0528 = BlaBlaRidesRideDateRange0528(),
+    val tripLinks: List<BlaBlaRidesTripLink0582> = emptyList(),
 )
 
 internal data class BlaBlaRidesArtifactChecks0528(
@@ -234,6 +245,82 @@ internal fun buildRideDateRange0528(dates: Collection<LocalDate>): BlaBlaRidesRi
         earliest = ordered.firstOrNull()?.toString().orEmpty(),
         latest = ordered.lastOrNull()?.toString().orEmpty(),
     )
+}
+
+internal fun buildRidesTripLinks0582(
+    profileUuid: String,
+    tripIds: List<String>,
+    administrativeUrlsByTripId: Map<String, String>,
+    collectorTrips: List<BlaBlaCollectorTrip>,
+): List<BlaBlaRidesTripLink0582> {
+    val strongProfile = BlaBlaRidesSnapshotStore0526.strongUuid(profileUuid).orEmpty()
+    return canonicalTripIds0528(tripIds).map { tripId ->
+        val administrativeUrl = administrativeUrlsByTripId[tripId]
+            ?.let(BlaBlaCollectorUrlModule::absolute)
+            ?.takeIf { href ->
+                BlaBlaCollectorUrlModule.isSpecificTrip(href) &&
+                    BlaBlaCollectorUrlModule.tripId(href) == tripId
+            }
+            ?.let(BlaBlaCollectorUrlModule::canonical)
+            .orEmpty()
+        val collector = collectorTrips.singleOrNull { trip ->
+            trip.profile_uuid.trim().equals(strongProfile, ignoreCase = true) &&
+                trip.trip_id?.trim() == tripId
+        }
+        val publicTripUrl = collector?.let { trip ->
+            BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                trip.public_trip_href,
+                tripId,
+                trip.public_trip_href_binding,
+            )
+        }.orEmpty()
+        val strictSameId = publicTripUrl.takeIf(String::isNotBlank)?.let { href ->
+            BlaBlaCollectorUrlModule.publicTrip(href, tripId) != null
+        } == true
+        BlaBlaRidesTripLink0582(
+            tripId = tripId,
+            administrativeUrl = administrativeUrl,
+            publicTripUrl = publicTripUrl,
+            publicTripUrlSource = if (publicTripUrl.isBlank()) "" else
+                collector?.public_trip_href_source?.ifBlank { "collector_state" }.orEmpty(),
+            publicTripUrlBinding = if (publicTripUrl.isBlank()) "" else
+                collector?.public_trip_href_binding?.ifBlank {
+                    if (strictSameId) BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID else ""
+                }.orEmpty(),
+            publicTripStatus = if (publicTripUrl.isBlank()) "PENDING_UNKNOWN" else "COMPLETE",
+        )
+    }
+}
+
+internal fun validateRidesTripLinks0582(
+    tripIds: List<String>,
+    links: List<BlaBlaRidesTripLink0582>,
+): Boolean {
+    val canonicalIds = canonicalTripIds0528(tripIds)
+    if (links.map { it.tripId } != canonicalIds) return false
+    if (links.map { it.tripId }.distinct().size != links.size) return false
+    return links.all { link ->
+        val adminValid = link.administrativeUrl.isNotBlank() &&
+            BlaBlaCollectorUrlModule.isSpecificTrip(link.administrativeUrl) &&
+            BlaBlaCollectorUrlModule.tripId(link.administrativeUrl) == link.tripId
+        if (!adminValid) return@all false
+        when (link.publicTripStatus) {
+            "COMPLETE" -> {
+                if (link.publicTripUrlSource.isBlank() || link.publicTripUrlBinding.isBlank()) return@all false
+                val verified = BlaBlaCollectorUrlModule.publicTripForCollectorState(
+                    link.publicTripUrl,
+                    link.tripId,
+                    link.publicTripUrlBinding,
+                )
+                verified != null && verified == link.publicTripUrl
+            }
+            "PENDING_UNKNOWN" ->
+                link.publicTripUrl.isBlank() &&
+                    link.publicTripUrlSource.isBlank() &&
+                    link.publicTripUrlBinding.isBlank()
+            else -> false
+        }
+    }
 }
 
 internal fun sanitizedIdentityLocators0528(
@@ -504,7 +591,9 @@ internal fun BlaBlaRidesSnapshotStore0526.validateProfileForComplete0528(
         indexPayload.tripIdsSha256 == profile.tripInventory.tripIdsSha256 &&
         indexPayload.tripIds.size == profile.tripInventory.uniqueCount &&
         indexPayload.duplicateCount == profile.tripInventory.duplicateCount &&
-        indexPayload.rideDateRange == profile.rideDateRange
+        indexPayload.rideDateRange == profile.rideDateRange &&
+        (indexPayload.tripLinks.isEmpty() ||
+            validateRidesTripLinks0582(indexPayload.tripIds, indexPayload.tripLinks))
 
     var actualCross: BlaBlaRidesCrossFormatConsistency0528? = null
     if (htmlFileValid && mhtmlFileValid && htmlFile != null && mhtmlFile != null) {
