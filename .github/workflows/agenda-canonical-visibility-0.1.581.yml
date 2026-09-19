@@ -1,0 +1,171 @@
+name: Agenda canonical visibility 0.1.581
+
+on:
+  push:
+    branches:
+      - agent/agenda-canonical-visibility-0.1.581
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-canonical-visibility-0.1.581-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-deploy-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GOOGLE_MAPS_API_KEY: canonical_visibility_validation_dummy_key
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git diff --check 3be9618bb10d3250ab19c382d6fce3ccc12d947c...HEAD
+          grep -Fq 'val releaseVersionCode = 5_872' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.581"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.581"' app/src/main/assets/release_history.json
+          grep -Fq 'agendaVisibleUntilMillis0581' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'canonicalAgendaLifecycleDecision0581' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripLifecycle0581.kt
+          grep -Fq 'projectionCommitted0581 = publicProjectionCommittedCurrent0434' trip-platform/functions/index.js
+          git rev-parse HEAD | tee validated-source-head.txt
+
+      - name: Validate backend JavaScript and public Agenda regressions
+        shell: bash
+        working-directory: trip-platform/functions
+        run: |
+          set -euo pipefail
+          node --check index.js
+          node --check ../public/public-agenda-shell-0569.js
+          node --test             test/agenda-canonical-visibility-0581.test.js             test/public-agenda-operational-window-0577.test.js             test/backend-canonical-authority-0468.test.js             test/agenda-segment-cards-0580.test.js             test/public-agenda-shell-0569.test.js             | tee ../../agenda-visibility-js-tests.log
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_SDK_ROOT"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-35"
+          find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1 | tee android-build-tools-dir.txt
+          test -s android-build-tools-dir.txt
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run canonical visibility, publication and segment regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaCanonicalVisibility0581Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineTemporalCutoff0548Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicMirrorAttestation0411Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaDeterministicTripOutbox0387Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentAvailabilityCards0580Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TripSegmentSeatSync0292Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaCardParity0549Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace             | tee agenda-visibility-android-tests.log
+
+      - name: Assemble exact debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble-debug.log
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5872'" aapt-badging.txt
+          grep -q "versionName='0.1.581'" aapt-badging.txt
+          cp "$APK" rota-certa-0.1.581-agenda-canonical-visibility.apk
+          stat -c '%s' rota-certa-0.1.581-agenda-canonical-visibility.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.581-agenda-canonical-visibility.apk | tee apk-sha256.txt
+
+      - name: Install trip-api dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase authentication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_PROJECT_ID:-}" || { echo "FIREBASE_PROJECT_ID secret is missing." >&2; exit 3; }
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json" >> "$GITHUB_ENV"
+          elif [ -n "${FIREBASE_TOKEN:-}" ]; then
+            echo "USE_FIREBASE_TOKEN=1" >> "$GITHUB_ENV"
+          else
+            echo "Firebase deployment credential is missing." >&2
+            exit 3
+          fi
+
+      - name: Deploy public Agenda backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd trip-platform
+          AUTH_ARGS=()
+          if [ "${USE_FIREBASE_TOKEN:-0}" = "1" ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
+          npx --yes firebase-tools@latest deploy             --project "$FIREBASE_PROJECT_ID"             --only functions:trip-api             --non-interactive             --force             "${AUTH_ARGS[@]}"
+
+      - name: Prove live backend health without tenant hardcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="https://${FIREBASE_PROJECT_ID}.web.app"
+          curl --retry 10 --retry-delay 4 --retry-all-errors --fail --silent --show-error             "$BASE/v1/health?proof=${GITHUB_RUN_ID}" | tee live-health.json
+          grep -Fq '"ok":true' live-health.json
+
+      - name: Upload exact-SHA validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.581-agenda-canonical-visibility-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            rota-certa-0.1.581-agenda-canonical-visibility.apk
+            validated-source-head.txt
+            agenda-visibility-js-tests.log
+            agenda-visibility-android-tests.log
+            assemble-debug.log
+            apksigner.txt
+            aapt-badging.txt
+            apk-size-bytes.txt
+            apk-sha256.txt
+            live-health.json
+            app/build/reports/tests/testDebugUnitTest
+
+      - name: Confirm exact SHA artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s rota-certa-0.1.581-agenda-canonical-visibility.apk
+          test -s apk-sha256.txt
+          test -s validated-source-head.txt
+          test "$(cat validated-source-head.txt)" = "$GITHUB_SHA"
+          echo "APK published for exact SHA $GITHUB_SHA"

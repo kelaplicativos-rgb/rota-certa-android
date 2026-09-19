@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.581",
+      "build": 5872,
+      "commit": null,
+      "branch": "agent/agenda-canonical-visibility-0.1.581",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A decisão temporal da Agenda passa a ser materializada uma única vez no estado canônico como agendaVisibleUntilMillis0581 e reutilizada pela Agenda interna, publicação pública e readback.",
+        "O ciclo operacional preserva a regra existente de término pelo último trecho canônico e sua janela já definida, sem criar expiração por data, meia-noite ou primeiro horário.",
+        "Logs sanitizados registram hash da identidade, timezone, cutoff anterior/calculado, decisão, reasonCode e revisões somente quando o cutoff canônico muda."
+      ],
+      "fixed": [
+        "Projeção pública pendente, retry ou readback ainda não committed deixam de converter uma viagem futura válida em agendaVisible=false.",
+        "Removida a duplicação de cálculo temporal entre Timeline, sincronização da Agenda e backend público; o backend usa fallback de shape somente para migração de documentos anteriores à 0.1.581.",
+        "Snapshot parcial, href ausente e atualização de capacidade permanecem ortogonais ao ciclo de vida e não autorizam ocultação da viagem.",
+        "A escolha do fim canônico considera a última parada e o maior timestamp final válido de chegada/partida, evitando expiração pelo primeiro trecho."
+      ],
+      "improved": [
+        "Readback continua validando revisão, hash, identidade e transporte sem usar a confirmação do transporte como predicado de existência do card.",
+        "Os guards existentes de revisão stale, idempotência e preserveOnPartial continuam sendo reutilizados; nenhum segundo store, outbox ou reconciliador foi criado.",
+        "Vagas por trecho da 0.1.580 e a casca visual da Agenda permanecem inalteradas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.580: uma viagem canônica futura podia sumir da Agenda Pública quando publicProjectionCommittedCurrent0434 ainda era falso, produzindo agendaVisibility divergente e retries."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Agenda Pública",
+        "Timeline",
+        "Ciclo de vida canônico",
+        "Publicação/readback",
+        "Sincronização parcial",
+        "Vagas por trecho",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.580",
       "build": 5871,
       "commit": null,
