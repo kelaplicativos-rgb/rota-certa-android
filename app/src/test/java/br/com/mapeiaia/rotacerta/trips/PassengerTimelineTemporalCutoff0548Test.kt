@@ -1,5 +1,6 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -7,11 +8,15 @@ import org.junit.Test
 class PassengerTimelineTemporalCutoff0548Test {
     private val now = 100_000_000L
 
+    @Test fun operationalArrivalGraceIsTwoHours() {
+        assertEquals(2L * 60L * 60L * 1000L, OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577)
+    }
+
     @Test fun tripThatJustArrivedRemainsVisibleForOperationalGrace() {
         assertTrue(isPassengerTimelineCurrentOrUpcoming0548(now - 20_000L, now - 1L, now))
     }
 
-    @Test fun tripDisappearsOnlyAfterArrivalPlusOneHour() {
+    @Test fun tripDisappearsOnlyAfterArrivalPlusTwoHours() {
         val arrival = now - OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 - 1L
         val departure = arrival - 2L * 60L * 60L * 1000L
         assertFalse(isPassengerTimelineCurrentOrUpcoming0548(departure, arrival, now))

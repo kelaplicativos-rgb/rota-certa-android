@@ -143,26 +143,59 @@ internal fun fullSyncEntityRevision0502(
     remotePublicationRevision.coerceAtLeast(0L)
 }
 
-internal const val OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 = 60L * 60L * 1000L
+internal const val OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 = 2L * 60L * 60L * 1000L
 internal const val OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12L * 60L * 60L * 1000L
 
-internal fun operationalTripVisibleUntil0577(trip: Trip): Long {
-    val arrival = trip.stops
-        .sortedBy(TripStop::order)
-        .lastOrNull()
-        ?.plannedArrivalMillis
-        ?.takeIf { it >= trip.departureAtMillis }
+/**
+ * Single Android operational visibility policy shared by Agenda and Timeline.
+ * Cards remain visible through the final arrival plus the operational grace.
+ * Missing/invalid arrival keeps the safe retention window so a started trip
+ * never disappears merely because its departure time passed.
+ */
+internal fun operationalTripVisibleUntil0577(
+    departureAtMillis: Long,
+    arrivalAtMillis: Long?,
+): Long {
+    val departure = departureAtMillis.takeIf { it > 0L } ?: return 0L
+    val arrival = arrivalAtMillis?.takeIf { it >= departure }
     return if (arrival != null) {
         arrival + OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577
     } else {
-        trip.departureAtMillis + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
+        departure + OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577
     }
+}
+
+internal fun operationalTripVisibleUntil0577(trip: Trip): Long {
+    val lastStop = trip.stops
+        .sortedBy(TripStop::order)
+        .lastOrNull()
+    val arrival = lastStop?.plannedArrivalMillis ?: lastStop?.plannedDepartureMillis
+    return operationalTripVisibleUntil0577(
+        departureAtMillis = trip.departureAtMillis,
+        arrivalAtMillis = arrival,
+    )
+}
+
+internal fun operationalTripStillVisible0577(
+    departureAtMillis: Long,
+    arrivalAtMillis: Long?,
+    nowMillis: Long,
+): Boolean {
+    val visibleUntil = operationalTripVisibleUntil0577(departureAtMillis, arrivalAtMillis)
+    return visibleUntil > 0L && nowMillis <= visibleUntil
 }
 
 internal fun operationalTripStillVisible0577(
     trip: Trip,
     nowMillis: Long,
-): Boolean = nowMillis <= operationalTripVisibleUntil0577(trip)
+): Boolean = operationalTripStillVisible0577(
+    departureAtMillis = trip.departureAtMillis,
+    arrivalAtMillis = trip.stops
+        .sortedBy(TripStop::order)
+        .lastOrNull()
+        ?.let { it.plannedArrivalMillis ?: it.plannedDepartureMillis },
+    nowMillis = nowMillis,
+)
 
 internal object PublicAgendaAutoSync0300 {
     suspend fun sync(

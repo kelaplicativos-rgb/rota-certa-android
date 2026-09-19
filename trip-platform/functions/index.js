@@ -4155,7 +4155,7 @@ async function convergeLegacyCanonicalTripDocuments0495(docs) {
   return { migrated, migratedBookings, unresolvedLegacy, bookingConflicts };
 }
 
-const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 60 * 60 * 1000;
+const PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 2 * 60 * 60 * 1000;
 const PUBLIC_AGENDA_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 = 12 * 60 * 60 * 1000;
 
 function publicAgendaVisibleUntil0577(data) {

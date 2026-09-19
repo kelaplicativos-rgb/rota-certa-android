@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.581",
+      "build": 5872,
+      "commit": null,
+      "branch": "agent/agenda-timeline-operational-window-0.1.581",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Agenda e Timeline passam a compartilhar a mesma política operacional de expiração do card no Android.",
+        "A viagem permanece visível até duas horas após a chegada prevista ao destino final.",
+        "Quando não existe chegada final válida, a retenção segura continua em doze horas após a partida para evitar desaparecimento prematuro."
+      ],
+      "fixed": [
+        "Eliminada a divergência estrutural entre o corte temporal da Timeline e a política operacional usada pela Agenda.",
+        "A tolerância após a chegada deixa de ser uma hora e passa a ser duas horas em Agenda, Timeline e Agenda Pública.",
+        "O destino final pode usar a chegada planejada e, quando ela estiver ausente, a partida planejada do último ponto antes de recorrer à retenção segura."
+      ],
+      "improved": [
+        "A Timeline delega ao mesmo resolvedor temporal da Agenda em vez de manter uma cópia independente do cálculo.",
+        "Testes de paridade cobrem viagem em andamento, limite exato, expiração após o limite e chegada desconhecida.",
+        "O backend público mantém o mesmo contrato temporal de duas horas usado no Android."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.580: Agenda e Timeline tinham implementações separadas do mesmo corte temporal e tolerância real de apenas uma hora."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Agenda Pública",
+        "Política temporal",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.580",
       "build": 5871,
       "commit": null,

@@ -1,0 +1,123 @@
+name: Agenda Timeline operational window 0.1.581
+
+on:
+  push:
+    branches:
+      - agent/agenda-timeline-operational-window-0.1.581
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agenda-timeline-operational-window-0.1.581-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOOGLE_MAPS_API_KEY: operational_window_validation_dummy_key
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout exact triggering SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          git diff --check 3be9618bb10d3250ab19c382d6fce3ccc12d947c...HEAD
+          grep -Fq 'val releaseVersionCode = 5_872' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.581"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.581"' app/src/main/assets/release_history.json
+          grep -Fq 'OPERATIONAL_TRIP_ARRIVAL_GRACE_MILLIS_0577 = 2L * 60L * 60L * 1000L' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'operationalTripStillVisible0577(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineTemporalCutoff0548.kt
+          grep -Fq 'PUBLIC_AGENDA_ARRIVAL_GRACE_MILLIS_0577 = 2 * 60 * 60 * 1000' trip-platform/functions/index.js
+          git rev-parse HEAD | tee validated-source-head.txt
+
+      - name: Validate public Agenda operational window
+        shell: bash
+        working-directory: trip-platform/functions
+        run: |
+          set -euo pipefail
+          node --check index.js
+          node --check ../public/public-agenda-shell-0569.js
+          node --test             test/public-agenda-operational-window-0577.test.js             test/public-agenda-shell-0569.test.js             test/agenda-segment-cards-0580.test.js | tee ../../public-agenda-window-tests.log
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$ANDROID_SDK_ROOT"
+          test -d "$ANDROID_SDK_ROOT/platforms/android-35"
+          find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1 | tee android-build-tools-dir.txt
+          test -s android-build-tools-dir.txt
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Agenda Timeline operational parity regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests 'br.com.mapeiaia.rotacerta.trips.PassengerTimelineTemporalCutoff0548Test'             --tests 'br.com.mapeiaia.rotacerta.trips.AgendaTimelineOperationalWindow0581Test'             --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaCardParity0549Test'             --tests 'br.com.mapeiaia.rotacerta.trips.SegmentAvailabilityCards0580Test'             --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee operational-window-tests.log
+
+      - name: Assemble exact debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee assemble-debug.log
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          BUILD_TOOLS="$(find "$ANDROID_SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee aapt-badging.txt
+          grep -q "package: name='br.com.mapeiaia.rotacerta'" aapt-badging.txt
+          grep -q "versionCode='5872'" aapt-badging.txt
+          grep -q "versionName='0.1.581'" aapt-badging.txt
+          cp "$APK" rota-certa-0.1.581-agenda-timeline-operational-window.apk
+          stat -c '%s' rota-certa-0.1.581-agenda-timeline-operational-window.apk | tee apk-size-bytes.txt
+          sha256sum rota-certa-0.1.581-agenda-timeline-operational-window.apk | tee apk-sha256.txt
+
+      - name: Upload validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.581-agenda-timeline-operational-window-${{ github.sha }}
+          retention-days: 90
+          if-no-files-found: error
+          path: |
+            rota-certa-0.1.581-agenda-timeline-operational-window.apk
+            validated-source-head.txt
+            public-agenda-window-tests.log
+            operational-window-tests.log
+            assemble-debug.log
+            apksigner.txt
+            aapt-badging.txt
+            apk-size-bytes.txt
+            apk-sha256.txt
+            app/build/reports/tests/testDebugUnitTest
+
+      - name: Confirm exact SHA artifact publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s rota-certa-0.1.581-agenda-timeline-operational-window.apk
+          test -s apk-sha256.txt
+          test -s validated-source-head.txt
+          test "$(cat validated-source-head.txt)" = "$GITHUB_SHA"
+          echo "APK published for exact SHA $GITHUB_SHA"

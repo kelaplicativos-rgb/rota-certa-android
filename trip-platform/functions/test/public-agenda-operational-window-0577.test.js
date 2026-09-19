@@ -38,11 +38,13 @@ test("ongoing public trip remains visible after departure", () => {
   assert.equal(api.publicAgendaTripStillVisible0577(trip0577(departure, arrival), arrival), true);
 });
 
-test("public trip remains visible through arrival plus one hour then expires", () => {
+test("public trip remains visible through arrival plus two hours then expires", () => {
   const api = operationalWindowContext0577();
   const departure = 1_000_000;
   const arrival = departure + 4 * 60 * 60 * 1000;
-  const grace = 60 * 60 * 1000;
+  const oneHour = 60 * 60 * 1000;
+  const grace = 2 * oneHour;
+  assert.equal(api.publicAgendaTripStillVisible0577(trip0577(departure, arrival), arrival + oneHour), true);
   assert.equal(api.publicAgendaTripStillVisible0577(trip0577(departure, arrival), arrival + grace), true);
   assert.equal(api.publicAgendaTripStillVisible0577(trip0577(departure, arrival), arrival + grace + 1), false);
 });
