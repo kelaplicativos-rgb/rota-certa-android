@@ -175,20 +175,30 @@ function publicWhatsappHref0569() {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
 
-function segmentWhatsappMessage0584(item, segment) {
+function segmentBoardingMillis0584(item, stops, segmentIndex) {
+  const index = Math.max(0, Math.floor(Number(segmentIndex || 0)));
+  const stop = Array.isArray(stops) ? stops[index] : null;
+  if (index === 0) {
+    return Number(item?.departureAtMillis || stop?.plannedDepartureMillis || stop?.plannedArrivalMillis || 0);
+  }
+  return Number(stop?.plannedDepartureMillis || stop?.plannedArrivalMillis || item?.departureAtMillis || 0);
+}
+
+function segmentWhatsappMessage0584(item, segment, stops, segmentIndex) {
   const from = String(segment?.from || "").trim();
   const to = String(segment?.to || "").trim();
   const availableSeats = Math.max(0, Math.floor(Number(segment?.availableSeats || 0)));
   if (!from || !to || availableSeats < 1) return "";
-  const date = dateLabel0569(item?.departureAtMillis, item?.timezoneId);
-  const time = timeLabel0569(item?.departureAtMillis, item?.timezoneId);
+  const boardingMillis = segmentBoardingMillis0584(item, stops, segmentIndex);
+  const date = dateLabel0569(boardingMillis, item?.timezoneId);
+  const time = timeLabel0569(boardingMillis, item?.timezoneId);
   const when = [date, time ? "às " + time : ""].filter(Boolean).join(" ");
-  return `Olá! Quero reservar 1 lugar no trecho ${from} → ${to}${when ? ", na viagem de " + when : ""}. Enviei esta solicitação pela Agenda Rota Certa.`;
+  return `Olá! Quero reservar 1 lugar no trecho ${from} → ${to}${when ? ", com embarque " + when : ""}. Enviei esta solicitação pela Agenda Rota Certa.`;
 }
 
-function segmentWhatsappHref0584(item, segment) {
+function segmentWhatsappHref0584(item, segment, stops, segmentIndex) {
   const digits = whatsappDigits0569(publicDriverWhatsapp0569);
-  const message = segmentWhatsappMessage0584(item, segment);
+  const message = segmentWhatsappMessage0584(item, segment, stops, segmentIndex);
   if (!digits || !message) return "";
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 }
@@ -261,7 +271,7 @@ function appendSegmentAvailability0580(card, item, stops) {
     return;
   }
 
-  rows.forEach((segment) => {
+  rows.forEach((segment, segmentIndex) => {
     const row = document.createElement("div");
     row.className = "agendaSegmentRow0580";
 
@@ -281,7 +291,7 @@ function appendSegmentAvailability0580(card, item, stops) {
     row.append(route, dots, seats);
 
     if (segment.availableSeats > 0) {
-      const reservationHref = segmentWhatsappHref0584(item, segment);
+      const reservationHref = segmentWhatsappHref0584(item, segment, stops, segmentIndex);
       if (reservationHref) {
         const reserve = document.createElement("a");
         reserve.className = "agendaSegmentReserve0584";
