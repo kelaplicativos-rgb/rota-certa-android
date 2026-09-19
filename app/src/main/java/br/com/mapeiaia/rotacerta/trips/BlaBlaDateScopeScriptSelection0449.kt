@@ -372,7 +372,7 @@ internal fun collectorMissingPublicLinks0585(
         administrativeTripId.isBlank() ||
             BlaBlaCollectorUrlModule.publicTripForCollectorState(
                 raw = trip.public_trip_href,
-                tripId = administrativeTripId,
+                expectedTripId = administrativeTripId,
                 binding = trip.public_trip_href_binding,
             ) == null
     }
