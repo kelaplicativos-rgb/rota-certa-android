@@ -129,10 +129,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           cd trip-platform
           AUTH_ARGS=()
           if [ "${USE_FIREBASE_TOKEN:-0}" = "1" ]; then AUTH_ARGS+=(--token "$FIREBASE_TOKEN"); fi
-          npx --yes firebase-tools@latest deploy             --project "$FIREBASE_PROJECT_ID"             --only functions:trip-api             --non-interactive             --force             "${AUTH_ARGS[@]}"
+          npx --yes firebase-tools@latest deploy             --project "$PROJECT"             --only functions:trip-api             --non-interactive             --force             "${AUTH_ARGS[@]}"
 
       - name: Prove live backend health without tenant hardcode
         shell: bash
