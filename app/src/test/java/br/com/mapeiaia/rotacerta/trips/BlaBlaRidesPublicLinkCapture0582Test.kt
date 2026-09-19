@@ -158,5 +158,9 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         assertTrue(script.contains("['http:', 'https:'].includes(url.protocol)"))
         assertTrue(script.contains("url.protocol = 'https:'"))
         assertTrue(script.contains("sourceParam && sourceParam !== 'CARPOOLING'"))
+        assertTrue(script.contains("installClipboardIntercept"))
+        assertTrue(script.contains("shareInterceptReady"))
+        assertTrue(script.contains("clipboardInterceptReady"))
+        assertTrue(script.contains("copiar link"))
     }
 }
