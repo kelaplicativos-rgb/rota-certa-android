@@ -207,15 +207,15 @@
     if (marker.includes('perfil') || marker.includes('profile')) return false;
     return marker.includes('compartilhar esta carona') ||
       marker.includes('compartilhar carona') ||
+      marker.includes('compartilhar') ||
       marker.includes('share this ride') ||
-      marker === 'compartilhar' ||
-      marker === 'share' ||
       marker.includes('share-ride') ||
       marker.includes('share_ride') ||
       marker.includes('ride-share') ||
       marker.includes('trip-share') ||
       marker.includes('share-trip') ||
-      marker.includes('e2e-share');
+      marker.includes('e2e-share') ||
+      marker.includes('share');
   });
 
   const shareSurfaces = Array.from(document.querySelectorAll(
@@ -271,8 +271,10 @@
     });
   }
 
+  const shareInterceptReady = installShareIntercept();
+  const clipboardInterceptReady = installClipboardIntercept();
   const canCaptureWithoutOpeningSystemShare =
-    installShareIntercept() || installClipboardIntercept();
+    shareInterceptReady || clipboardInterceptReady;
   if (
     !state.publicTripHref &&
     canCaptureWithoutOpeningSystemShare &&
