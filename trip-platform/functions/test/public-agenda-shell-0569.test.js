@@ -85,26 +85,36 @@ test("0584 each available segment gets its own WhatsApp request and full segment
   assert.ok(start >= 0 && end > start);
   const source = [
     'let publicDriverWhatsapp0569 = "+55 11 99999-0000";',
-    'function dateLabel0569(){ return "Dom, 20 set"; }',
-    'function timeLabel0569(){ return "10:30"; }',
+    'function dateLabel0569(ms){ return ms === 2000 ? "Dom, 20 set" : "Dom, 20 set"; }',
+    'function timeLabel0569(ms){ return ms === 2000 ? "20:20" : "10:30"; }',
     app.slice(start, end),
-    "return { segmentWhatsappMessage0584, segmentWhatsappHref0584 };",
+    "return { segmentWhatsappMessage0584, segmentWhatsappHref0584, segmentBoardingMillis0584 };",
   ].join("\n");
   const helpers = Function(source)();
   const available = { from: "Pouso Alegre", to: "Três Corações", availableSeats: 1 };
-  const message = helpers.segmentWhatsappMessage0584({ departureAtMillis: 1, timezoneId: "America/Sao_Paulo" }, available);
+  const trip = { departureAtMillis: 1000, timezoneId: "America/Sao_Paulo" };
+  const stops = [
+    { plannedDepartureMillis: 1000 },
+    { plannedDepartureMillis: 2000 },
+    { plannedDepartureMillis: 3000 },
+  ];
+  assert.equal(helpers.segmentBoardingMillis0584(trip, stops, 1), 2000);
+  const message = helpers.segmentWhatsappMessage0584(trip, available, stops, 1);
   assert.match(message, /Pouso Alegre → Três Corações/);
   assert.match(message, /Dom, 20 set/);
-  assert.match(message, /10:30/);
-  const href = helpers.segmentWhatsappHref0584({ departureAtMillis: 1, timezoneId: "America/Sao_Paulo" }, available);
+  assert.match(message, /20:20/);
+  assert.doesNotMatch(message, /10:30/);
+  const href = helpers.segmentWhatsappHref0584(trip, available, stops, 1);
   const url = new URL(href);
   assert.equal(url.hostname, "wa.me");
   assert.equal(url.pathname, "/5511999990000");
   assert.match(url.searchParams.get("text"), /Pouso Alegre → Três Corações/);
   assert.equal(
     helpers.segmentWhatsappHref0584(
-      { departureAtMillis: 1, timezoneId: "America/Sao_Paulo" },
+      trip,
       { ...available, availableSeats: 0 },
+      stops,
+      1,
     ),
     "",
   );
