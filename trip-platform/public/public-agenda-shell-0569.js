@@ -340,8 +340,14 @@ function publicSegmentRows0580(item, stops) {
     const from = String(segment?.from || "").trim();
     const to = String(segment?.to || "").trim();
     const availableSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.availableSeats || 0))));
-    if (!from || !to || !Number.isFinite(Number(segment?.availableSeats))) return null;
-    return { from, to, availableSeats, capacity };
+    const passengerSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.passengerSeats || 0))));
+    if (
+      !from ||
+      !to ||
+      !Number.isFinite(Number(segment?.availableSeats)) ||
+      !Number.isFinite(Number(segment?.passengerSeats))
+    ) return null;
+    return { from, to, availableSeats, passengerSeats, capacity };
   }).filter(Boolean);
 }
 
@@ -392,11 +398,19 @@ function appendSegmentAvailability0580(card, item, stops) {
     dots.setAttribute("aria-hidden", "true");
     dots.textContent = segmentSeatDots0580(segment.capacity, segment.availableSeats);
 
+    const occupancy = document.createElement("span");
+    occupancy.className = "agendaSegmentOccupancy0596";
+    occupancy.textContent = "👥 " + segment.passengerSeats + "/" + segment.capacity;
+    occupancy.setAttribute(
+      "aria-label",
+      segment.passengerSeats + " de " + segment.capacity + " lugares ocupados neste trecho",
+    );
+
     const seats = document.createElement("strong");
     seats.className = "agendaSegmentSeats0580";
     seats.textContent = segmentAvailabilityLabel0580(segment.availableSeats);
 
-    row.append(route, dots, seats);
+    row.append(route, dots, occupancy, seats);
 
     const reservationHref = segment.availableSeats > 0
       ? segmentWhatsappHref0584(item, segment, stops, segmentIndex)
@@ -428,6 +442,44 @@ function appendSegmentAvailability0580(card, item, stops) {
     section.appendChild(row);
   });
   card.appendChild(section);
+}
+
+const AGENDA_CARD_REFRESH_KEY_0596 = "rota_certa_agenda_card_refresh_0596";
+let agendaCardRefreshArmed0596 = false;
+
+function armAgendaCardRefresh0596() {
+  agendaCardRefreshArmed0596 = true;
+  try {
+    window.sessionStorage.setItem(AGENDA_CARD_REFRESH_KEY_0596, "1");
+  } catch (_) {
+    // Storage is only an optimization; focus/pageshow refresh remains available.
+  }
+}
+
+function consumeAgendaCardRefresh0596() {
+  let armed = agendaCardRefreshArmed0596;
+  try {
+    if (window.sessionStorage.getItem(AGENDA_CARD_REFRESH_KEY_0596) === "1") armed = true;
+    if (armed) window.sessionStorage.removeItem(AGENDA_CARD_REFRESH_KEY_0596);
+  } catch (_) {
+    // Fall back to the in-memory marker.
+  }
+  agendaCardRefreshArmed0596 = false;
+  if (armed && document.visibilityState === "visible" && navigator.onLine !== false) {
+    loadAgenda0569(true);
+  }
+}
+
+function bindTripCardNavigation0596(card, publicUrl) {
+  if (!card || !publicUrl) return;
+  card.classList.add("agendaTripClickable0596");
+  card.addEventListener("click", (event) => {
+    if (event.defaultPrevented) return;
+    const interactive = event.target?.closest?.("a,button,input,select,textarea,label");
+    if (interactive) return;
+    armAgendaCardRefresh0596();
+    window.location.assign(publicUrl);
+  });
 }
 
 function appendJourney0569(card, item, firstStop, lastStop) {
@@ -498,6 +550,7 @@ function renderTripCard0569(item) {
     viewRide.rel = "noopener noreferrer";
     viewRide.textContent = "Ver carona";
     viewRide.setAttribute("aria-label", `Ver carona ${from} para ${to} na BlaBlaCar`);
+    viewRide.addEventListener("click", armAgendaCardRefresh0596);
     actions.appendChild(viewRide);
   } else {
     const unavailable = document.createElement("span");
@@ -507,6 +560,7 @@ function renderTripCard0569(item) {
     actions.appendChild(unavailable);
   }
   card.appendChild(actions);
+  bindTripCardNavigation0596(card, publicUrl);
   return card;
 }
 
@@ -611,6 +665,20 @@ window.setInterval(() => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
 }, 15000);
 window.addEventListener("online", () => loadAgenda0569(true));
+window.addEventListener("pageshow", () => {
+  if (navigator.onLine !== false) {
+    consumeAgendaCardRefresh0596();
+    loadAgenda0569(true);
+  }
+});
+window.addEventListener("focus", () => {
+  if (document.visibilityState === "visible" && navigator.onLine !== false) {
+    consumeAgendaCardRefresh0596();
+  }
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
+  if (document.visibilityState === "visible" && navigator.onLine !== false) {
+    consumeAgendaCardRefresh0596();
+    loadAgenda0569(true);
+  }
 });
