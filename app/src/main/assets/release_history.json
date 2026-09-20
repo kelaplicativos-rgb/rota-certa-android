@@ -2,6 +2,36 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.590",
+      "build": 5881,
+      "commit": null,
+      "branch": "agent/agenda-active-trip-retention-0.1.590",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Ausência de uma viagem em um snapshot completo do coletor deixa de ser tratada como cancelamento enquanto a viagem ainda estiver dentro da janela operacional canônica."
+      ],
+      "fixed": [
+        "Corrigido o caminho em que uma viagem futura ou em andamento podia receber tombstone, status CANCELLED e deleted=true apenas porque deixou de aparecer na listagem coletada, fazendo o card sumir da Timeline antes da hora."
+      ],
+      "improved": [
+        "A remoção por ausência do coletor agora respeita exatamente a mesma política de ciclo de vida usada pela Agenda e Timeline: viagem futura/ativa é preservada e a ausência só pode expirar o registro depois do encerramento operacional canônico.",
+        "Testes de regressão cobrem viagem futura, viagem em andamento e expiração posterior à janela canônica, preservando as mudanças da 0.1.589."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.589 e anteriores: snapshot completo do coletor podia apagar uma viagem operacional não observada antes do término da janela canônica."
+      ],
+      "modulesAffected": [
+        "Agenda canônica",
+        "Timeline",
+        "Coletor BlaBlaCar",
+        "Sincronização",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.589",
       "build": 5880,
       "commit": null,
