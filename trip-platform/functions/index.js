@@ -4396,12 +4396,19 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     }
   }
   const driver = driverSnap.data();
-  // 0475: the public Agenda is deliberately read-only and never asks for
-  // passenger/admin credentials. Canonical integrity gates remain below.
+  // 0589: Viagem Certa is no longer anonymously readable. The first surface
+  // identifies an already-authorized passenger by WhatsApp and exchanges it for
+  // a short-lived, driver-scoped view token. Private passenger data still
+  // requires the stronger passenger session below /v1/passenger/*.
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
+  }
+  let passengerView0589 = null;
+  if (!tester) {
+    passengerView0589 = await requirePassengerAgendaView(req, res, username);
+    if (!passengerView0589) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
@@ -4432,6 +4439,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
     authenticationRequired: false,
+    identifiedAccessRequired0589: true,
+    accessMode0589: "PASSENGER_WHATSAPP_VIEW",
     readOnly: true,
     changeCursor0495: canonicalDocs0495.reduce(
       (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
@@ -4451,6 +4460,15 @@ async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agenda
     if (!tokenMatches(agendaToken, agendaHash)) {
       return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
     }
+  }
+  let tester0589 = null;
+  if (testerSessionHeader(req)) {
+    tester0589 = await requireTesterSession(req, res, username);
+    if (!tester0589) return;
+  }
+  if (!tester0589) {
+    const passengerView0589 = await requirePassengerAgendaView(req, res, username);
+    if (!passengerView0589) return;
   }
   const query = db.collection("trips").where("driverUsername", "==", username).limit(300);
   return await waitForCanonicalInvalidation0495(
@@ -5044,6 +5062,10 @@ async function getPublicTrip(res, req, token) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
   }
+  if (!tester) {
+    const passengerView0589 = await requirePassengerAgendaView(req, res, driverUsername);
+    if (!passengerView0589) return;
+  }
   if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
     return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
   }
@@ -5086,8 +5108,9 @@ async function getPublicTrip(res, req, token) {
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : "OPEN",
+    sessionType: tester ? "TESTER" : "PASSENGER_WHATSAPP_VIEW",
     authenticationRequired: false,
+    identifiedAccessRequired0589: true,
   });
 }
 
