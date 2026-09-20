@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.585",
+      "build": 5876,
+      "commit": null,
+      "branch": "agent/multi-account-single-flight-adoption-0.1.585",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A coleta automática multiperfil passa a adotar o término de uma sincronização completa da mesma conta que já estava em andamento quando a geração automática começou.",
+        "Quando o single-flight da conta está ocupado, o claim automático é liberado sem terminalizar a conta; a fila aguarda e reavalia o mesmo perfil com limite temporal antes de seguir."
+      ],
+      "fixed": [
+        "Corrigido o caso físico da 0.1.584 em que Barbosa já estava sincronizando, o host automático recebia SINGLE_FLIGHT_BUSY e a conta era indevidamente marcada como falha antes de Ezequiel.",
+        "Resultado de coleta de conta partial deixa de ser classificado como falha de execução; partial continua representando qualidade/cobertura de dados, enquanto a conta é considerada terminalmente processada."
+      ],
+      "improved": [
+        "Adoção só aceita sincronização integral da conta: verificações targeted ou limitadas por datas não podem satisfazer uma coleta automática global.",
+        "O handoff mantém o single-flight existente, evita segunda cadeia externa concorrente e preserva os snapshots anteriores em falhas reais.",
+        "A fila continua isolada por conta e callbacks atrasados permanecem impedidos de limpar o perfil ativo seguinte."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.584: geração 209 terminou PARTIAL com completed=0 e failed=2 apesar de o snapshot combinado conter 19 viagens válidas das duas contas, porque SINGLE_FLIGHT_BUSY era terminalizado como falha e partial também alimentava failedAccountIds."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor multiperfil",
+        "Single-flight",
+        "Sincronização automática",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.584",
       "build": 5875,
       "commit": null,
