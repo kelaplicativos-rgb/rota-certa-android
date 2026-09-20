@@ -95,6 +95,72 @@ class CentralDoDia0552Test {
     }
 
     @Test
+    fun centralCardCarriesCanonicalVacanciesAndOccupancyForEverySegment() {
+        val trip = trip(
+            id = "segments",
+            departure = start,
+            profileUuid = "",
+            externalTripId = "",
+            origin = "São Paulo",
+            destination = "Pouso Alegre",
+            arrival = start + 3L * 60L * 60_000L,
+        ).copy(
+            capacity = 4,
+            capacityReliable = true,
+            stops = listOf(
+                TripStop(id = "sp", order = 0, name = "São Paulo", plannedDepartureMillis = start),
+                TripStop(id = "ext", order = 1, name = "Extrema", plannedArrivalMillis = start + 90L * 60_000L),
+                TripStop(id = "pa", order = 2, name = "Pouso Alegre", plannedArrivalMillis = start + 3L * 60L * 60_000L),
+            ),
+        )
+        val bookings = listOf(
+            Booking(
+                id = "sp-ext",
+                tripId = trip.id,
+                passengerName = "Grupo A",
+                boardingStopId = "sp",
+                dropoffStopId = "ext",
+                seats = 2,
+                status = BookingStatus.CONFIRMED,
+                operationalStatus = PassengerOperationalStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+            ),
+            Booking(
+                id = "ext-pa",
+                tripId = trip.id,
+                passengerName = "Pessoa B",
+                boardingStopId = "ext",
+                dropoffStopId = "pa",
+                seats = 1,
+                status = BookingStatus.CONFIRMED,
+                operationalStatus = PassengerOperationalStatus.CONFIRMED,
+                source = BookingSource.BLABLACAR,
+            ),
+        )
+
+        val model = CentralDayReadModelBuilder0552.build(
+            trips = listOf(trip),
+            bookings = bookings,
+            accounts = emptyList(),
+            date = day,
+            nowMillis = start,
+            zoneId = zone,
+        )
+
+        val card = model.trips.single()
+        assertEquals(4, card.operationalCapacity)
+        assertEquals(2, card.segmentLoads.size)
+        assertEquals("São Paulo", card.segmentLoads[0].from.name)
+        assertEquals("Extrema", card.segmentLoads[0].to.name)
+        assertEquals(2, card.segmentLoads[0].passengerSeats)
+        assertEquals(2, card.segmentLoads[0].availableSeats)
+        assertEquals("Extrema", card.segmentLoads[1].from.name)
+        assertEquals("Pouso Alegre", card.segmentLoads[1].to.name)
+        assertEquals(1, card.segmentLoads[1].passengerSeats)
+        assertEquals(3, card.segmentLoads[1].availableSeats)
+    }
+
+    @Test
     fun ongoingTripRemainsGreenInAllTripsVisibilityAfterDeparture() {
         val profile = "33333333-3333-4333-8333-333333333333"
         val ongoing = trip(
@@ -182,6 +248,10 @@ class CentralDoDia0552Test {
         assertTrue(source.contains("↻ Corrigir"))
         assertFalse(source.contains("Text(\"🔄 Corrigir esta viagem\")"))
         assertTrue(source.contains("all_trips_visibility"))
+        assertTrue(source.contains("\"Vagas por trecho\""))
+        assertTrue(source.contains("item.segmentLoads.forEach"))
+        assertTrue(source.contains("Text(\"👥 $occupancy0595\""))
+        assertTrue(source.contains("\"LOTADO\""))
         assertFalse(source.contains("Text(\"expectedHash:"))
         assertFalse(source.contains("Text(\"actualHash:"))
     }
