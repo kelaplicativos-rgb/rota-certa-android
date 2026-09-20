@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.589",
+      "build": 5880,
+      "commit": null,
+      "branch": "agent/viagem-certa-passenger-portal-0.1.589",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A experiência do passageiro passa a se chamar Viagem Certa, mantendo Rota Certa como operação do motorista.",
+        "A primeira tela do Viagem Certa solicita o WhatsApp e libera somente passageiros já autorizados no diretório canônico do motorista.",
+        "A leitura da agenda e da viagem individual passa a exigir uma sessão de visualização vinculada ao motorista; a área privada continua usando a sessão autenticada do passageiro.",
+        "O Android passa a abrir o portal com o nome Viagem Certa sem alterar a autoridade canônica de viagens, reservas ou capacidade."
+      ],
+      "fixed": [
+        "Removido o acesso anônimo à Agenda pelo endpoint público quando não há sessão de visualização do passageiro.",
+        "Removido o fallback estático do navegador que poderia contornar a nova barreira de acesso em caso de indisponibilidade do backend."
+      ],
+      "improved": [
+        "O número informado não é persistido no navegador; apenas o token opaco e temporário de visualização fica em sessionStorage.",
+        "O acesso de teste interno continua isolado, enquanto passageiros reais precisam de vínculo autorizado com o motorista.",
+        "A área Minhas viagens permanece separada e protegida por credencial para dados privados, reservas e notificações."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Agenda",
+        "Área do passageiro",
+        "Backend",
+        "Android",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.588",
       "build": 5879,
       "commit": null,
