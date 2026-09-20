@@ -1811,6 +1811,19 @@ internal object AgendaBackgroundSync0392 {
         store: TripStore,
         canonicalTrip: Trip? = null,
     ): Int {
+        if (canonicalTrip == null) {
+            val recovered0590 = store.recoverOperationalExternalAbsenceTombstones0590()
+            if (recovered0590.isNotEmpty()) {
+                BookingRealtimeEvents0356.notifyChanged()
+                UnifiedDebugEventStore.recordAlways(
+                    "AGENDA_ACTIVE_TRIP_RECOVERY_BATCH_0590",
+                    context.packageName,
+                    "recovered=" + recovered0590.size +
+                        " action=restore_internal_operational_cards" +
+                        " publicStateNotForced=true",
+                )
+            }
+        }
         val identityStore = PassengerIdentityStore(context.applicationContext)
         val candidates = if (canonicalTrip != null) {
             listOf(canonicalTrip)
