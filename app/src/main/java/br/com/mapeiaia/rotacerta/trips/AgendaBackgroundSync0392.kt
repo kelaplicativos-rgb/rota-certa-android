@@ -547,6 +547,40 @@ internal object AgendaBackgroundSyncConfig0392 {
         collectorState0400(context)
     }
 
+    internal fun releaseCollectorAccountClaim0585(
+        context: Context,
+        generation: Long,
+        accountId: String,
+        reason: String,
+    ): AgendaAutomaticCollectorState0400 = synchronized(this) {
+        val current = collectorState0400(context)
+        val id = accountId.trim()
+        if (
+            current.generation != generation ||
+            !current.pending ||
+            id.isBlank() ||
+            current.activeAccountId != id ||
+            id in current.completedAccountIds ||
+            id in current.failedAccountIds ||
+            id in current.pendingAuthAccountIds
+        ) return@synchronized current
+        val prefs = prefs(context)
+        val scope = scope(context)
+        require(
+            prefs.edit()
+                .putString(scope.key(KEY_COLLECTOR_ACTIVE), "")
+                .putString(scope.key(KEY_COLLECTOR_STATUS), "PENDING")
+                .putString(scope.key(KEY_COLLECTOR_LAST_ERROR), reason.take(500))
+                .commit(),
+        ) { "Falha ao liberar claim da coleta BlaBlaCar automática." }
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_SINGLE_FLIGHT_DEFERRED_0585",
+            context.applicationContext.packageName,
+            "generation=$generation accountKey=${seatSyncDiagnosticKey(id)} action=release_claim_keep_target_pending reason=${reason.take(120)}",
+        )
+        collectorState0400(context)
+    }
+
     internal fun recoverStaleCollectorHost0401(context: Context): AgendaAutomaticCollectorState0400 = synchronized(this) {
         val current = collectorState0400(context)
         if (!current.pending || current.activeAccountId.isBlank()) return@synchronized current
