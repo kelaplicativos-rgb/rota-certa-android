@@ -769,9 +769,9 @@ internal fun CentralDoDiaScreen0552(
                             else -> "${load0595.availableSeats.coerceAtLeast(0)} vagas"
                         }
                         val occupancy0595 = capacity0595?.let { cap ->
-                            val occupied = load0595.occupiedSeats.coerceAtLeast(0)
-                            "$occupied/$cap"
-                        } ?: load0595.occupiedSeats.coerceAtLeast(0).toString()
+                            val passengers = load0595.passengerSeats.coerceAtLeast(0)
+                            "$passengers/$cap"
+                        } ?: load0595.passengerSeats.coerceAtLeast(0).toString()
                         val dots0595 = capacity0595?.takeIf { it in 1..12 }?.let { cap ->
                             val occupiedDots = load0595.occupiedSeats.coerceIn(0, cap)
                             "●".repeat(occupiedDots) + "○".repeat((cap - occupiedDots).coerceAtLeast(0))
