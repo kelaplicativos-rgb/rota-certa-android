@@ -31,6 +31,114 @@ const agendaToken0569 = String(params0569.get("agenda") || "").replace(/[^A-Za-z
 let agendaLoadInFlight0569 = false;
 let publicDriverWhatsapp0569 = "";
 let publicDriverDisplayName0569 = "";
+const agendaViewStorageKey0589 = "viagem-certa:agenda-view:0589:" + (driverUsername0569 || publicSlug0569 || "unknown");
+let agendaViewToken0589 = sessionStorage.getItem(agendaViewStorageKey0589) || "";
+let passengerAccessInFlight0589 = false;
+
+function setPassengerAccessMessage0589(message) {
+  const node = $0569("passengerAccessMessage0589");
+  if (!node) return;
+  node.textContent = String(message || "");
+  node.classList.toggle("hidden", !message);
+}
+
+function configurePassengerAreaLink0589() {
+  const link = $0569("passengerAreaLink0589");
+  if (!link || !driverUsername0569) return;
+  link.href = "/minha-area.html?motorista=" + encodeURIComponent(driverUsername0569);
+}
+
+function showPassengerAccessGate0589(message = "") {
+  setVisible0569("accessGate0589", true);
+  setVisible0569("passengerNav0589", false);
+  setVisible0569("loading", false);
+  setVisible0569("agenda", false);
+  setVisible0569("error", false);
+  setPassengerAccessMessage0589(message);
+}
+
+function showPassengerAgendaAccess0589() {
+  setVisible0569("accessGate0589", false);
+  setVisible0569("passengerNav0589", true);
+  setPassengerAccessMessage0589("");
+  configurePassengerAreaLink0589();
+}
+
+function clearPassengerAgendaAccess0589() {
+  agendaViewToken0589 = "";
+  sessionStorage.removeItem(agendaViewStorageKey0589);
+}
+
+async function requestPassengerAgendaAccess0589() {
+  if (passengerAccessInFlight0589) return;
+  const input = $0569("passengerWhatsapp0589");
+  const button = $0569("passengerAccessContinue0589");
+  const passengerContact = String(input?.value || "").trim();
+  if (!passengerContact) {
+    setPassengerAccessMessage0589("Informe seu WhatsApp para continuar.");
+    return;
+  }
+  passengerAccessInFlight0589 = true;
+  if (button) button.disabled = true;
+  setPassengerAccessMessage0589("");
+  try {
+    const response = await fetch("/v1/public/passenger-access", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        passengerContact,
+        publicSlug: publicSlug0569,
+        driverUsername: driverUsername0569,
+        agendaToken: agendaToken0569,
+      }),
+    });
+    const raw = await response.text();
+    let body = null;
+    try { body = JSON.parse(raw); } catch (_) { body = null; }
+    if (!response.ok) {
+      throw new Error(safeMessage0569(body?.message) || "Não foi possível liberar o acesso com este WhatsApp.");
+    }
+    const viewToken = String(body?.viewToken || "");
+    if (!/^[A-Za-z0-9_-]{32,200}$/.test(viewToken)) {
+      throw new Error("Não foi possível confirmar o acesso agora.");
+    }
+    agendaViewToken0589 = viewToken;
+    sessionStorage.setItem(agendaViewStorageKey0589, agendaViewToken0589);
+    if (input) input.value = "";
+    showPassengerAgendaAccess0589();
+    setVisible0569("loading", true);
+    await loadAgenda0569(false);
+  } catch (error) {
+    clearPassengerAgendaAccess0589();
+    showPassengerAccessGate0589(error?.message || "Não foi possível confirmar seu acesso.");
+  } finally {
+    passengerAccessInFlight0589 = false;
+    if (button) button.disabled = false;
+  }
+}
+
+function initPassengerAccess0589() {
+  configurePassengerAreaLink0589();
+  $0569("passengerAccessContinue0589")?.addEventListener("click", requestPassengerAgendaAccess0589);
+  $0569("passengerWhatsapp0589")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") requestPassengerAgendaAccess0589();
+  });
+  $0569("passengerAgendaLogout0589")?.addEventListener("click", () => {
+    clearPassengerAgendaAccess0589();
+    publicDriverWhatsapp0569 = "";
+    syncWhatsappFab0569();
+    showPassengerAccessGate0589("");
+    $0569("passengerWhatsapp0589")?.focus();
+  });
+  if (agendaViewToken0589) {
+    showPassengerAgendaAccess0589();
+    setVisible0569("loading", true);
+    loadAgenda0569(false);
+  } else {
+    showPassengerAccessGate0589("");
+  }
+}
 
 function setVisible0569(id, visible) {
   const node = $0569(id);
@@ -427,16 +535,27 @@ function safeMessage0569(raw) {
   return value.slice(0, 180);
 }
 
-async function fetchJson0569(url, timeoutMillis = 12000) {
+async function fetchJson0569(url, timeoutMillis = 12000, extraHeaders = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMillis);
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json" }, cache: "no-store", signal: controller.signal });
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", ...extraHeaders },
+      cache: "no-store",
+      signal: controller.signal,
+    });
     const raw = await response.text();
     let body = null;
     try { body = JSON.parse(raw); } catch (_) { body = null; }
-    if (!response.ok) throw new Error(safeMessage0569(body?.message) || `Agenda temporariamente indisponível (HTTP ${response.status}).`);
-    if (!body || typeof body !== "object" || !Array.isArray(body.trips)) throw new Error("Agenda temporariamente indisponível: resposta inválida.");
+    if (!response.ok) {
+      const error = new Error(safeMessage0569(body?.message) || `Viagem Certa temporariamente indisponível (HTTP ${response.status}).`);
+      error.status = response.status;
+      error.code = String(body?.code || "");
+      throw error;
+    }
+    if (!body || typeof body !== "object" || !Array.isArray(body.trips)) {
+      throw new Error("Viagem Certa temporariamente indisponível: resposta inválida.");
+    }
     return body;
   } finally {
     window.clearTimeout(timeout);
@@ -451,12 +570,6 @@ function primaryEndpoint0569() {
   return "";
 }
 
-function fallbackEndpoint0569() {
-  const slug = normalizePublicSlug0569(publicSlug0569 || driverUsername0569);
-  if (slug.length < 3 || RESERVED_PUBLIC_SLUGS_0569.has(slug)) return "";
-  return `/__agenda_fallback/${encodeURIComponent(slug)}.json?ts=${Date.now()}`;
-}
-
 function applyAgendaBody0569(body) {
   publicDriverDisplayName0569 = String(body?.driver?.displayName || driverUsername0569 || "").trim();
   publicDriverWhatsapp0569 = String(body?.driver?.whatsapp || "").trim();
@@ -466,21 +579,26 @@ function applyAgendaBody0569(body) {
 
 async function loadAgenda0569(silent = false) {
   if (agendaLoadInFlight0569) return;
+  if (!agendaViewToken0589) {
+    showPassengerAccessGate0589("");
+    return;
+  }
   const endpoint = primaryEndpoint0569();
   if (!endpoint) {
-    if (!silent) showError0569("Este link não identifica uma Agenda de Viagens válida.");
+    if (!silent) showError0569("Este link não identifica uma área Viagem Certa válida.");
     return;
   }
   agendaLoadInFlight0569 = true;
   try {
-    applyAgendaBody0569(await fetchJson0569(endpoint));
+    showPassengerAgendaAccess0589();
+    applyAgendaBody0569(await fetchJson0569(endpoint, 12000, {
+      "X-Rota-Certa-Agenda-View-Token": agendaViewToken0589,
+    }));
   } catch (primaryError) {
-    const fallback = fallbackEndpoint0569();
-    if (fallback) {
-      try {
-        applyAgendaBody0569(await fetchJson0569(fallback, 8000));
-        return;
-      } catch (_) {}
+    if (primaryError?.status === 401 || primaryError?.status === 403) {
+      clearPassengerAgendaAccess0589();
+      showPassengerAccessGate0589(primaryError?.message || "Informe seu WhatsApp novamente para continuar.");
+      return;
     }
     if (!silent) showError0569(primaryError?.message || "Não foi possível carregar as viagens.");
   } finally {
@@ -488,7 +606,7 @@ async function loadAgenda0569(silent = false) {
   }
 }
 
-loadAgenda0569(false);
+initPassengerAccess0589();
 window.setInterval(() => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
 }, 15000);
