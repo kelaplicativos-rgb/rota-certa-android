@@ -8,7 +8,7 @@ on:
       - '.github/workflows/blablacar-multi-account-isolation-0.1.584.yml'
       - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt'
       - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt'
-      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaMultiAccountIsolation0584Test.kt'
       - 'app/build.gradle.kts'
       - 'app/src/main/assets/release_history.json'
   workflow_dispatch:
@@ -49,7 +49,7 @@ jobs:
           app/src/main/assets/release_history.json
           app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAutomaticCollection0400.kt
-          app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaOperationalTimeline0400Test.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaMultiAccountIsolation0584Test.kt
           EOF
           sort -o /tmp/allowed.txt /tmp/allowed.txt
           diff -u /tmp/allowed.txt /tmp/changed.txt
@@ -81,9 +81,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaOperationalTimeline0400Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSync0397Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaAutomaticSyncPhysicalFix0402Test'
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMultiAccountIsolation0584Test'
 
       - name: Assemble exact-head APK
         shell: bash
