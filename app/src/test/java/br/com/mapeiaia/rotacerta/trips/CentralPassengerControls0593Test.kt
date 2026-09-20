@@ -41,6 +41,19 @@ class CentralPassengerControls0593Test {
     }
 
     @Test
+    fun compactOperatorEmitsCentralDayContextualDiagnostics() {
+        val centralSource = File("src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt").readText()
+        val passengerSource = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
+
+        assertTrue(centralSource.contains("CENTRAL_DAY_RENDER_READY_0594"))
+        assertTrue(centralSource.contains("CENTRAL_DAY_PASSENGER_PANEL_TOGGLE_0594"))
+        assertTrue(centralSource.contains("DiagnosticModule0507.CENTRAL_DAY"))
+        assertTrue(passengerSource.contains("CENTRAL_DAY_PASSENGER_STATUS_REQUEST_0594"))
+        assertTrue(passengerSource.contains("CENTRAL_DAY_PASSENGER_STATUS_RESULT_0594"))
+        assertTrue(passengerSource.contains("CENTRAL_DAY_PASSENGER_SHORTCUT_0594"))
+    }
+
+    @Test
     fun compactOperatorReusesCanonicalMutationPath() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
         assertTrue(source.contains("persistCanonicalPassengerMutation0582("))
