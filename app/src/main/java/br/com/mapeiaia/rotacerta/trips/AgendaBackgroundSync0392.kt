@@ -774,6 +774,19 @@ internal fun externalCanonicalTripWithinCompleteScope0408(
         externalCanonicalTripWithinCompleteScope0406(trip, response)
 }
 
+internal fun externalCollectorAbsenceCanTombstone0590(
+    trip: Trip,
+    response: BlaBlaCollectorMonthResponse,
+    completeProfileUuids: Set<String>,
+    nowMillis: Long,
+): Boolean {
+    if (!externalCanonicalTripWithinCompleteScope0408(trip, response, completeProfileUuids)) return false
+    // A complete collector snapshot is not proof that an operational ride was cancelled:
+    // providers may stop listing an offer while it is starting/in progress. Preserve the
+    // canonical trip until the same lifecycle used by Agenda/Timeline has actually expired.
+    return !canonicalAgendaTripStillVisible0581(trip, nowMillis)
+}
+
 internal fun externalCanonicalTripWithinCompleteScope0406(
     trip: Trip,
     response: BlaBlaCollectorMonthResponse,
@@ -2167,7 +2180,12 @@ internal object AgendaBackgroundSync0392 {
                     ?.let { it !in observedStrongKeys } == true
         }
         val scopedMissing = missingActive.filter {
-            externalCanonicalTripWithinCompleteScope0408(it, response, completeProfileUuids)
+            externalCollectorAbsenceCanTombstone0590(
+                trip = it,
+                response = response,
+                completeProfileUuids = completeProfileUuids,
+                nowMillis = nowMillis,
+            )
         }
         scopedMissing.forEach { missing ->
             val tombstoned = store.tombstoneExternalTrip0406(
