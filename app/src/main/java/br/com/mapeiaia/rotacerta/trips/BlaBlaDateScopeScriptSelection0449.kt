@@ -287,6 +287,92 @@ internal data class BlaBlaDateScopeScriptSelection0449(
     }
 }
 
+internal fun reconcileCollectorItineraryRefresh0597(
+    previous: BlaBlaCollectorTrip?,
+    fresh: BlaBlaCollectorTrip,
+): BlaBlaCollectorTrip {
+    val prior = previous ?: return fresh
+    val priorTripId = prior.trip_id?.trim().orEmpty()
+    val freshTripId = fresh.trip_id?.trim().orEmpty()
+    val sameStrongIdentity =
+        prior.profile_uuid.trim().equals(fresh.profile_uuid.trim(), ignoreCase = true) &&
+            priorTripId.isNotBlank() &&
+            priorTripId == freshTripId
+    if (!sameStrongIdentity) return fresh
+
+    fun key(raw: String?): String = java.text.Normalizer
+        .normalize(raw.orEmpty().substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    fun origin(trip: BlaBlaCollectorTrip): String =
+        trip.actual_departure?.takeIf(String::isNotBlank)
+            ?: trip.search_from.orEmpty()
+
+    fun destination(trip: BlaBlaCollectorTrip): String =
+        trip.actual_arrival?.takeIf(String::isNotBlank)
+            ?: trip.search_to.orEmpty()
+
+    if (key(origin(prior)).isBlank() ||
+        key(destination(prior)).isBlank() ||
+        key(origin(prior)) != key(origin(fresh)) ||
+        key(destination(prior)) != key(destination(fresh))
+    ) {
+        return fresh
+    }
+
+    fun normalizedStops(trip: BlaBlaCollectorTrip): List<String> =
+        trip.itinerary_stops.map(String::trim).filter(String::isNotBlank)
+
+    fun isOrderedSubsequence(needle: List<String>, haystack: List<String>): Boolean {
+        if (needle.isEmpty()) return true
+        val haystackKeys = haystack.map(::key)
+        var cursor = 0
+        for (raw in needle) {
+            val wanted = key(raw)
+            var found = false
+            while (cursor < haystackKeys.size) {
+                if (haystackKeys[cursor] == wanted) {
+                    found = true
+                    cursor++
+                    break
+                }
+                cursor++
+            }
+            if (!found) return false
+        }
+        return true
+    }
+
+    val previousStops = normalizedStops(prior)
+    val freshStops = normalizedStops(fresh)
+
+    // Positive authoritative evidence can replace the old topology. Absence or a
+    // shorter non-authoritative observation cannot erase already observed stops.
+    if (fresh.itinerary_authoritative) return fresh
+    if (previousStops.size >= 2 && prior.itinerary_authoritative) {
+        return fresh.copy(
+            itinerary_stops = previousStops,
+            itinerary_authoritative = true,
+        )
+    }
+
+    val freshIsOnlyAWeakerView =
+        previousStops.size > freshStops.size &&
+            (freshStops.isEmpty() || isOrderedSubsequence(freshStops, previousStops))
+
+    return if (freshIsOnlyAWeakerView) {
+        fresh.copy(
+            itinerary_stops = previousStops,
+            itinerary_authoritative = prior.itinerary_authoritative,
+        )
+    } else {
+        fresh
+    }
+}
+
 /**
  * Applies only the outputs explicitly requested by the date/period run.
  *
@@ -298,7 +384,7 @@ internal fun mergeSelectiveCollectorTrip0449(
     fresh: BlaBlaCollectorTrip,
     selection: BlaBlaDateScopeScriptSelection0449,
 ): BlaBlaCollectorTrip? {
-    if (!selection.selective) return fresh
+    if (!selection.selective) return reconcileCollectorItineraryRefresh0597(previous, fresh)
 
     val wantsCore = selection.wantsCoreTripData()
     val base = previous ?: if (wantsCore) fresh.copy(
@@ -353,7 +439,7 @@ internal fun mergeSelectiveCollectorTrip0449(
         )
     }
 
-    return merged
+    return reconcileCollectorItineraryRefresh0597(previous, merged)
 }
 
 /**
