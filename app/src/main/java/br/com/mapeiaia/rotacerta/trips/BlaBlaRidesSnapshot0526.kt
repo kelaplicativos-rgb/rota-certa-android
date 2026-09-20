@@ -440,6 +440,35 @@ internal object BlaBlaRidesSnapshotIdentityPolicy0526 {
     }
 }
 
+/**
+ * 0.1.586: current-session fallback for pages where /profile no longer exposes the UUID.
+ *
+ * The fallback is deliberately fail-closed. A ride must first come from the authenticated
+ * "Suas viagens" list and the administrative trip id must match the detail page before any
+ * driver-profile link can be considered identity evidence.
+ */
+internal fun resolveRidesSnapshotTripIdentityBootstrap0586(
+    expectedProfileUuid: String?,
+    candidateHref: String?,
+    detailHref: String?,
+    driverProfileLinks: List<String>,
+    detailProfileLinks: List<String>,
+): BlaBlaRidesSnapshotIdentity0526 {
+    val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidateHref)
+    val detailTripId = BlaBlaTripIdentity.externalTripIdFromHref(detailHref)
+    if (candidateTripId.isNullOrBlank() || detailTripId.isNullOrBlank() || candidateTripId != detailTripId) {
+        return BlaBlaRidesSnapshotIdentity0526(
+            confirmed = false,
+            errorCode = "IDENTITY_BOOTSTRAP_TRIP_MISMATCH",
+        )
+    }
+    return BlaBlaRidesSnapshotIdentityPolicy0526.resolve(
+        expectedProfileUuid = expectedProfileUuid,
+        profileLinks = (driverProfileLinks + detailProfileLinks).distinct(),
+        observedUuids = emptyList(),
+    )
+}
+
 internal data class BlaBlaRidesSnapshotObservation0526(
     val cardCount: Int,
     val scrollY: Int,
