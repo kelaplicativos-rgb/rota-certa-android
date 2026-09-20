@@ -25,6 +25,6 @@ class AgendaPublicOpenDrawer0487Test {
         assertTrue(automaticSync.contains("val url = store.onlineSettings().publicAgendaUrl"))
         assertTrue(automaticSync.contains("Intent(Intent.ACTION_VIEW, Uri.parse(url))"))
         assertTrue(automaticSync.contains("message = openPublicAgenda0397(context, store)"))
-        assertTrue(automaticSync.contains("Text(\"ABRIR AGENDA PÚBLICA\")"))
+        assertTrue(automaticSync.contains("Text(\"ABRIR VIAGEM CERTA\")"))
     }
 }

@@ -35,13 +35,13 @@ internal fun openPublicAgenda0397(
 ): String {
     val url = store.onlineSettings().publicAgendaUrl
     if (url.isNullOrBlank()) {
-        return "Configure a integração online para abrir a Agenda Pública."
+        return "Configure a integração online para abrir o Viagem Certa."
     }
     return runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }.fold(
-        onSuccess = { "Abrindo a Agenda Pública do Rota Certa." },
-        onFailure = { "Não foi possível abrir a Agenda Pública neste aparelho." },
+        onSuccess = { "Abrindo o Viagem Certa." },
+        onFailure = { "Não foi possível abrir o Viagem Certa neste aparelho." },
     )
 }
 
@@ -191,7 +191,7 @@ internal fun AgendaAutomaticSyncScreen0397(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = onlineSettings.configured,
                 ) {
-                    Text("ABRIR AGENDA PÚBLICA")
+                    Text("ABRIR VIAGEM CERTA")
                 }
             }
         }
@@ -210,7 +210,7 @@ internal fun AgendaAutomaticSyncScreen0397(
         message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
 
         Text(
-            "Esta é a central de coleta BlaBlaCar do Android. O resultado confirmado é persistido no Backend Rota Certa; a Agenda Pública somente leitura exibe o mesmo estado canônico. O Android mantém apenas cache, sessão e transporte offline. O WorkManager pode ser adiado por Doze, App Standby, economia de bateria ou restrições do fabricante.",
+            "Esta é a central de coleta BlaBlaCar do Android. O resultado confirmado é persistido no Backend Rota Certa; o Viagem Certa exibe o mesmo estado canônico para passageiros identificados. O Android mantém apenas cache, sessão e transporte offline. O WorkManager pode ser adiado por Doze, App Standby, economia de bateria ou restrições do fabricante.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

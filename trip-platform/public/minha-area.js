@@ -594,7 +594,7 @@ async function logout0491() {
 
 function init0491() {
   if (driverUsername0491.length < 3) {
-    $("contextError0491").textContent = "Abra Minha Área a partir da Agenda Pública.";
+    $("contextError0491").textContent = "Abra Minhas viagens a partir do Viagem Certa.";
     show0491("contextError0491", true);
     show0491("loginPanel0491", false);
     return;
