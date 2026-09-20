@@ -1371,6 +1371,14 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 " action=no_second_external_chain",
         )
         statusView.text = account.displayLabel + " • já existe uma sincronização desta conta em andamento."
+        if (automaticCollectionClaimed && !automaticCollectionReported) {
+            automaticCollectionReported = true
+            BlaBlaAutomaticCollectionCoordinator0400.onAccountSingleFlightBusy0585(
+                context = this,
+                generation = automaticCollectionGeneration,
+                accountId = account.id,
+            )
+        }
         setResult(
             Activity.RESULT_CANCELED,
             Intent()
@@ -4866,6 +4874,21 @@ internal class BlaBlaDynamicAccountSessionController0401(
             BlaBlaAutomaticCollectionCoordinator0400.onAccountFinished(
                 context = this,
                 generation = automaticCollectionGeneration,
+                accountId = account.id,
+                accountResult = finalStatus,
+                error = if (finalStatus == "success") {
+                    ""
+                } else {
+                    "skipped=$skipped quarantined=${quarantinedCardTraversalKeys.size} missingPublicLinks0585=$missingPublicLinks0585"
+                },
+            )
+        } else if (
+            automaticCollectionGeneration <= 0L &&
+            !targeted &&
+            targetDates.isEmpty()
+        ) {
+            BlaBlaAutomaticCollectionCoordinator0400.onCompatibleExternalSyncFinished0585(
+                context = this,
                 accountId = account.id,
                 accountResult = finalStatus,
                 error = if (finalStatus == "success") {
