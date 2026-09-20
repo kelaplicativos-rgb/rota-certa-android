@@ -62,6 +62,16 @@ internal data class CentralPassenger0552(
     val source: BookingSource,
 )
 
+internal data class CentralSegmentAvailability0552(
+    val from: String,
+    val to: String,
+    val occupiedSeats: Int,
+    val availableSeats: Int,
+    val capacity: Int,
+    val overbookingSeats: Int,
+    val reliable: Boolean,
+)
+
 internal data class CentralTrip0552(
     val canonicalTripId: String,
     val departureAtMillis: Long,
@@ -72,6 +82,7 @@ internal data class CentralTrip0552(
     val destination: String,
     val passengerSeats: Int,
     val availableSeats: Int?,
+    val segments: List<CentralSegmentAvailability0552>,
     val passengers: List<CentralPassenger0552>,
     val checks: List<CentralIntegrityCheck0552>,
     val integrity: CentralIntegrityLevel0552,
@@ -207,6 +218,19 @@ internal object CentralDayReadModelBuilder0552 {
         val stops = trip.stops.sortedBy(TripStop::order)
         val summary = operationalSeatSummary(trip, bookings, nowMillis)
         val segmentLoads = SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis)
+        val segmentCapacity = operationalInventoryCapacity(trip, bookings).coerceAtLeast(0)
+        val segmentCapacityReliable = trip.capacityReliable && summary.operationalLimitConfigured
+        val centralSegments = segmentLoads.map { load ->
+            CentralSegmentAvailability0552(
+                from = load.from.name.trim(),
+                to = load.to.name.trim(),
+                occupiedSeats = load.occupiedSeats.coerceAtLeast(0),
+                availableSeats = load.availableSeats.coerceAtLeast(0),
+                capacity = segmentCapacity,
+                overbookingSeats = load.overbookingSeats.coerceAtLeast(0),
+                reliable = segmentCapacityReliable,
+            )
+        }
         val worstOverbooking = segmentLoads
             .filter { it.overbookingSeats > 0 }
             .maxByOrNull(SegmentLoad::overbookingSeats)
@@ -411,6 +435,7 @@ internal object CentralDayReadModelBuilder0552 {
             destination = stops.lastOrNull()?.name.orEmpty(),
             passengerSeats = summary.confirmedPassengerSeats,
             availableSeats = summary.availableSeats.takeIf { trip.capacityReliable && summary.operationalLimitConfigured },
+            segments = centralSegments,
             passengers = passengers,
             checks = checks,
             integrity = aggregate(checks),
@@ -596,6 +621,27 @@ internal object CentralDayCommandBridge0552 {
     }
 }
 
+internal fun centralSegmentOccupancyDots0594(segment: CentralSegmentAvailability0552): String {
+    if (!segment.reliable || segment.capacity !in 1..8) return ""
+    val filled = segment.occupiedSeats.coerceIn(0, segment.capacity)
+    return "●".repeat(filled) + "○".repeat(segment.capacity - filled)
+}
+
+internal fun centralSegmentAvailabilityLabel0594(segment: CentralSegmentAvailability0552): String {
+    if (!segment.reliable) return "❔ vagas não verificáveis"
+    val occupancy = "👥 ${segment.occupiedSeats}/${segment.capacity}"
+    return when {
+        segment.overbookingSeats > 0 ->
+            "🔴 $occupancy LOTADO +${segment.overbookingSeats}"
+        segment.availableSeats <= 0 ->
+            "🔴 $occupancy LOTADO"
+        segment.availableSeats == 1 ->
+            "🟠 $occupancy 1 vaga"
+        else ->
+            "🟢 $occupancy ${segment.availableSeats} vagas"
+    }
+}
+
 @Composable
 internal fun CentralDoDiaScreen0552(
     trips: List<Trip>,
@@ -725,6 +771,36 @@ internal fun CentralDoDiaScreen0552(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                 )
+
+                Text("Vagas por trecho", style = MaterialTheme.typography.titleSmall)
+                if (item.segments.isEmpty()) {
+                    Text(
+                        "Trechos ainda não verificáveis.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    item.segments.forEach { segment ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                "${segment.from} → ${segment.to}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                            )
+                            val dots = centralSegmentOccupancyDots0594(segment)
+                            Text(
+                                listOf(dots, centralSegmentAvailabilityLabel0594(segment))
+                                    .filter(String::isNotBlank)
+                                    .joinToString(" "),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
