@@ -130,11 +130,12 @@ internal fun operationalBrowserNavigationResult0564(
 }
 
 /**
- * 0.1.566 — temporal partition used by Todas as viagens.
+ * Temporal partition used by Todas as viagens.
  *
- * A departure remains active at the exact departure instant and becomes archived only
- * after its departure timestamp is strictly in the past. Active items are chronological;
- * archived items are most-recent-first so the latest completed departure is easiest to find.
+ * 0.1.592 aligns this surface with the canonical Agenda/Timeline lifecycle. A trip does
+ * NOT leave the active operational list just because its departure time passed. It
+ * remains active through its canonical arrival plus the operational grace period; when
+ * arrival evidence is unavailable, the shared safe-retention window is used.
  */
 internal data class OperationalArchiveSelection0566<T>(
     val active: List<T>,
@@ -145,15 +146,22 @@ internal fun <T> operationalArchiveSelection0566(
     items: List<T>,
     nowMillis: Long,
     departureAtMillis: (T) -> Long,
+    arrivalAtMillis: (T) -> Long?,
 ): OperationalArchiveSelection0566<T> {
+    fun isOperational(item: T): Boolean = isPassengerTimelineCurrentOrUpcoming0548(
+        departureAtMillis = departureAtMillis(item),
+        arrivalAtMillis = arrivalAtMillis(item),
+        nowMillis = nowMillis,
+    )
+
     val active = items
         .asSequence()
-        .filter { item -> departureAtMillis(item) >= nowMillis }
+        .filter(::isOperational)
         .sortedBy(departureAtMillis)
         .toList()
     val archived = items
         .asSequence()
-        .filter { item -> departureAtMillis(item) < nowMillis }
+        .filterNot(::isOperational)
         .sortedByDescending(departureAtMillis)
         .toList()
     return OperationalArchiveSelection0566(
