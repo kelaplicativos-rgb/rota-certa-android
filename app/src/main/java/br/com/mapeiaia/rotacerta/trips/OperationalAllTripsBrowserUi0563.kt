@@ -43,7 +43,8 @@ import kotlinx.coroutines.delay
  * This screen remains an INDEX, not a second BlaBlaCar implementation:
  * - it shows trips from every currently connected/verified BlaBlaCar account;
  * - ordering is global by the canonical departure timestamp;
- * - departures strictly older than the current clock leave the active sequence and move
+ * - trips stay in the active sequence for the full canonical operational lifecycle
+ *   (arrival + grace, or safe retention when arrival is unknown) and only then move
  *   automatically to the collapsible archive while the screen remains open;
  * - the card carries no Rota Certa operational shortcuts;
  * - tapping a card opens the original administrative trip URL inside the isolated
@@ -190,6 +191,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
             items = rows,
             nowMillis = nowMillis,
             departureAtMillis = { row -> row.entry.departureAtMillis },
+            arrivalAtMillis = { row -> row.entry.arrivalAtMillis },
         )
     }
     val activeRows = archiveSelection.active
