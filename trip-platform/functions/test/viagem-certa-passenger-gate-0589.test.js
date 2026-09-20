@@ -82,5 +82,5 @@ test("0589 Android and package metadata expose the new passenger product name wi
   assert.match(android, /ABRIR VIAGEM CERTA/);
   assert.match(android, /Abrindo o Viagem Certa\./);
   assert.match(gradle, /releaseVersionCode = 5_880/);
-  assert.match(gradle, /versionName = "0\.1\.589"/);
+  assert.match(gradle, /releaseVersionName = "0\.1\.589"/);
 });
