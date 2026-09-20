@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.585",
+      "build": 5876,
+      "commit": null,
+      "branch": "agent/multi-account-collector-single-flight-0.1.585",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A coleta automática multi-conta passa a ter single-flight no nível do lote inteiro: somente um worker pode recuperar/percorrer uma geração de contas por vez no processo.",
+        "O encerramento da geração agora é fail-closed: se qualquer conta-alvo ainda não tiver resultado terminal, a geração permanece pendente e registra diagnóstico explícito."
+      ],
+      "fixed": [
+        "Corrigida a corrida observada na 0.1.583/0.1.584 em que um segundo worker podia chamar recoverStaleCollectorHost0401 enquanto o primeiro host ainda estava vivo, limpar activeAccountId e iniciar uma cadeia concorrente na mesma geração.",
+        "Corrigido o cenário em que uma conta podia chegar a IDENTITY_VERIFIED sem completar RIDE_LIST/SYNC_END enquanto outra conta seguia normalmente."
+      ],
+      "improved": [
+        "A recuperação de host órfão continua disponível após morte real do processo, mas agora só é executada dentro da exclusividade do lote.",
+        "A ordem lógica das contas configuradas e os estados COMPLETE/FAILED/PENDING_AUTH continuam preservados; não há hardcode de motorista, perfil, UUID ou quantidade de contas.",
+        "Nenhuma alteração foi feita em Agenda, Timeline, projeção pública, vagas por trecho ou captura do permalink público."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.584: múltiplos workers podiam disputar a mesma geração e interromper silenciosamente a coleta completa de uma das contas."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor",
+        "Sincronização multi-conta",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.584",
       "build": 5875,
       "commit": null,
