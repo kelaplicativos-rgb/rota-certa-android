@@ -279,12 +279,10 @@ object OperationalHealthTechnicalPackage0575 {
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             entries.forEach { (name, raw) ->
-                val safe = if (name.endsWith(".ndjson", ignoreCase = true)) {
-                    raw.lineSequence()
-                        .map(UnifiedDebugEventStore::sanitizeForExport)
-                        .joinToString("\n")
-                } else {
-                    UnifiedDebugEventStore.sanitizeForExport(raw)
+                val safe = when {
+                    name.endsWith(".ndjson", ignoreCase = true) -> sanitizeNdjson0575(raw)
+                    name.endsWith(".json", ignoreCase = true) -> sanitizeJsonDocument0575(raw)
+                    else -> UnifiedDebugEventStore.sanitizeForExport(raw)
                 }
                 zip.putNextEntry(ZipEntry(name))
                 zip.write(safe.toByteArray(Charsets.UTF_8))
@@ -292,6 +290,55 @@ object OperationalHealthTechnicalPackage0575 {
             }
         }
         return output.toByteArray()
+    }
+
+    /**
+     * Sanitizes JSON without ever applying regex replacements to serialized numeric syntax.
+     *
+     * 0.1.587 regression guard: observability counters/timestamps can legitimately contain
+     * 10-13 digit values that resemble Brazilian phone numbers. Sanitizing the already
+     * serialized JSON would replace those tokens with an unquoted mask and corrupt the
+     * document. Parse first, sanitize only textual values, then serialize again.
+     */
+    internal fun sanitizeJsonDocument0575(raw: String): String {
+        val trimmed = raw.trim()
+        require(trimmed.isNotEmpty()) { "JSON document is empty" }
+        return when {
+            trimmed.startsWith("{") -> sanitizeJsonValue0575(JSONObject(trimmed)).toString(2)
+            trimmed.startsWith("[") -> sanitizeJsonValue0575(JSONArray(trimmed)).toString(2)
+            else -> error("Unsupported JSON root")
+        }
+    }
+
+    internal fun sanitizeNdjson0575(raw: String): String =
+        raw.lineSequence()
+            .map { line ->
+                if (line.isBlank()) {
+                    ""
+                } else {
+                    val parsed = JSONObject(line)
+                    (sanitizeJsonValue0575(parsed) as JSONObject).toString()
+                }
+            }
+            .joinToString("\n")
+
+    private fun sanitizeJsonValue0575(value: Any?): Any = when {
+        value == null || value === JSONObject.NULL -> JSONObject.NULL
+        value is String -> UnifiedDebugEventStore.sanitizeForExport(value)
+        value is Number || value is Boolean -> value
+        value is JSONObject -> JSONObject().also { safe ->
+            val keys = value.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                safe.put(key, sanitizeJsonValue0575(value.opt(key)))
+            }
+        }
+        value is JSONArray -> JSONArray().also { safe ->
+            for (index in 0 until value.length()) {
+                safe.put(sanitizeJsonValue0575(value.opt(index)))
+            }
+        }
+        else -> UnifiedDebugEventStore.sanitizeForExport(value.toString())
     }
 
     private fun saveToDownloads0575(
