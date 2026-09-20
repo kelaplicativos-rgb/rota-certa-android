@@ -161,6 +161,30 @@ class CentralDoDia0552Test {
     }
 
     @Test
+    fun unreliableCapacityNeverTurnsUnknownSegmentsIntoFalseLotado() {
+        val trip = trip(
+            id = "unknown-capacity",
+            departure = start,
+            profileUuid = "",
+            externalTripId = "",
+        ).copy(capacity = 0, capacityReliable = false)
+
+        val model = CentralDayReadModelBuilder0552.build(
+            trips = listOf(trip),
+            bookings = emptyList(),
+            accounts = emptyList(),
+            date = day,
+            nowMillis = start,
+            zoneId = zone,
+        )
+
+        val card = model.trips.single()
+        assertEquals(null, card.operationalCapacity)
+        assertTrue(card.segmentLoads.isEmpty())
+        assertEquals(null, card.availableSeats)
+    }
+
+    @Test
     fun ongoingTripRemainsGreenInAllTripsVisibilityAfterDeparture() {
         val profile = "33333333-3333-4333-8333-333333333333"
         val ongoing = trip(
