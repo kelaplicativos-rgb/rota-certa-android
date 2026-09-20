@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.591",
+      "build": 5882,
+      "commit": null,
+      "branch": "agent/central-day-operational-density-0.1.591",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central do Dia passa a operar em modo compacto: resumo do dia reduzido, cards de viagem com ações essenciais visíveis e passageiros recolhidos por padrão."
+      ],
+      "fixed": [
+        "Removido o título duplicado Central do Dia dentro do conteúdo, mantendo apenas o cabeçalho do módulo.",
+        "Removido o botão gigante Corrigir esta viagem e substituído por ação compacta no cabeçalho do card.",
+        "A lista completa de passageiros deixa de ocupar permanentemente a tela; ela abre somente quando o motorista toca em Passageiros."
+      ],
+      "improved": [
+        "Atalhos, Integridade e Passageiros ficam na mesma faixa operacional do card.",
+        "O motorista consegue enxergar mais de uma viagem simultaneamente sem rolagem excessiva e ainda acessar Operar por passageiro quando expandir a lista.",
+        "A atualização individual continua usando a cadeia canônica BlaBlaCar → Agenda → Timeline sem criar estado paralelo."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.590 e anteriores: Central do Dia tinha densidade visual inadequada para operação real, com cards muito altos, passageiros sempre expandidos e ações grandes ocupando a maior parte da tela."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Timeline",
+        "Operação do motorista",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.590",
       "build": 5881,
       "commit": null,
