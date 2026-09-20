@@ -105,7 +105,7 @@ class CentralDoDia0552Test {
             destination = "Pouso Alegre",
             arrival = start + 3L * 60L * 60_000L,
         ).copy(
-            capacity = 4,
+            capacity = 99,
             publishedSeats = 4,
             capacityReliable = true,
             stops = listOf(
