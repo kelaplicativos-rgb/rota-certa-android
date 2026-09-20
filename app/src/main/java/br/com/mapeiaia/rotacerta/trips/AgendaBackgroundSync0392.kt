@@ -1065,6 +1065,54 @@ internal fun reconciledCollectorNavigationIdentity0578(
     }
 }
 
+internal fun preserveCanonicalRouteTopologyOnPartialRefresh0597(
+    existing: Trip?,
+    observed: Trip,
+    source: BlaBlaCollectorTrip,
+): Trip {
+    val current = existing ?: return observed
+    if (source.itinerary_authoritative) return observed
+
+    val previousStops = current.stops.sortedBy(TripStop::order)
+    val incomingStops = observed.stops.sortedBy(TripStop::order)
+    if (previousStops.size <= incomingStops.size || previousStops.size < 3 || incomingStops.size < 2) return observed
+
+    fun key(stop: TripStop): String = java.text.Normalizer
+        .normalize(stop.name.substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{M}+"), "")
+        .lowercase()
+        .replace(Regex("[^a-z0-9]+"), " ")
+        .trim()
+
+    if (key(previousStops.first()) != key(incomingStops.first()) ||
+        key(previousStops.last()) != key(incomingStops.last())
+    ) {
+        return observed
+    }
+
+    val previousKeys = previousStops.map(::key)
+    var cursor = 0
+    val incomingIsSubsequence = incomingStops.all { stop ->
+        val wanted = key(stop)
+        var found = false
+        while (cursor < previousKeys.size) {
+            if (previousKeys[cursor] == wanted) {
+                found = true
+                cursor++
+                break
+            }
+            cursor++
+        }
+        found
+    }
+    if (!incomingIsSubsequence) return observed
+
+    return observed.copy(
+        stops = previousStops,
+        itineraryAuthoritative = current.itineraryAuthoritative,
+    )
+}
+
 internal fun externalCollectorDeltaDecision0403(
     existingFingerprint: String,
     incomingFingerprint: String,
@@ -2038,7 +2086,11 @@ internal object AgendaBackgroundSync0392 {
                         blockedTrips++
                         null
                     } else {
-                        val observed = synthesized.trip
+                        val observed = preserveCanonicalRouteTopologyOnPartialRefresh0597(
+                            existing = existing,
+                            observed = synthesized.trip,
+                            source = source,
+                        )
                         val saved = store.saveTrip(
                             observed.copy(
                                 id = canonicalTripId,
