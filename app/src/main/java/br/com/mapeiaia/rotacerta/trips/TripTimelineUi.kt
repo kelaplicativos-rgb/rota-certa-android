@@ -2213,38 +2213,63 @@ private fun TimelineEntryCard(
                 )
             } else {
                 publicLoads0549.forEach { load0580 ->
-                    val seatCapacity0580 = operationalInventory0549?.coerceAtLeast(0) ?: 0
-                    val availableForDots0580 = load0580.availableSeats.coerceIn(0, seatCapacity0580)
-                    val occupiedForDots0580 = (seatCapacity0580 - availableForDots0580).coerceAtLeast(0)
-                    val seatDots0580 = "●".repeat(occupiedForDots0580) + "○".repeat(availableForDots0580)
+                    val seatCapacity0580 = operationalInventory0549?.coerceAtLeast(0)
                     val availabilityLabel0580 = when (load0580.availableSeats.coerceAtLeast(0)) {
                         0 -> "LOTADO"
                         1 -> "1 vaga"
                         else -> "${load0580.availableSeats.coerceAtLeast(0)} vagas"
                     }
+                    val occupancy0580 = seatCapacity0580?.let { cap ->
+                        "${load0580.passengerSeats.coerceAtLeast(0)}/$cap"
+                    } ?: load0580.passengerSeats.coerceAtLeast(0).toString()
+                    val seatDots0580 = seatCapacity0580
+                        ?.takeIf { it in 1..12 }
+                        ?.let { cap ->
+                            val occupiedDots = load0580.occupiedSeats.coerceIn(0, cap)
+                            "●".repeat(occupiedDots) + "○".repeat((cap - occupiedDots).coerceAtLeast(0))
+                        }
+                        .orEmpty()
+                    val blocked0580 = load0580.blockedSeats.coerceAtLeast(0)
+                    val overbooking0580 = load0580.overbookingSeats.coerceAtLeast(0)
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
                             "${load0580.from.name} → ${load0580.to.name}",
                             modifier = Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
                         )
                         if (seatDots0580.isNotEmpty()) {
                             Text(
                                 seatDots0580,
-                                style = MaterialTheme.typography.bodyMedium,
+                                style = MaterialTheme.typography.bodySmall,
                                 color = agendaSeatAccent0549,
                                 fontWeight = FontWeight.Bold,
+                                maxLines = 1,
                             )
                         }
                         Text(
-                            availabilityLabel0580,
-                            style = MaterialTheme.typography.bodyMedium,
+                            "👥 $occupancy0580",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                        )
+                        if (blocked0580 > 0) {
+                            Text(
+                                "🚫$blocked0580",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                            )
+                        }
+                        Text(
+                            if (overbooking0580 > 0) "$availabilityLabel0580 +$overbooking0580" else availabilityLabel0580,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
                         )
                     }
                 }
