@@ -989,6 +989,43 @@ class TripStore(context: Context) {
         )
     }
 
+    fun recoverOperationalExternalAbsenceTombstones0590(
+        nowMillis: Long = System.currentTimeMillis(),
+    ): List<Trip> = synchronized(CANONICAL_LOCK) {
+        val recoverable = trips().filter { trip ->
+            canonicalAgendaRecoverableCollectorAbsenceTombstone0590(trip, nowMillis)
+        }
+        if (recoverable.isEmpty()) return@synchronized emptyList()
+
+        recoverable.map { current ->
+            val restoredStatus = if (
+                current.externalSnapshot?.availability?.trim()?.equals("full", ignoreCase = true) == true
+            ) {
+                TripStatus.FULL
+            } else {
+                TripStatus.PUBLISHED
+            }
+            saveTrip(
+                current.copy(
+                    status = restoredStatus,
+                    deleted = false,
+                    deletedAtMillis = 0L,
+                ),
+            ).also { restored ->
+                UnifiedDebugEventStore.recordAlways(
+                    "AGENDA_ACTIVE_TRIP_TOMBSTONE_RECOVERED_0590",
+                    appContext.packageName,
+                    "tripHash=" + seatSyncDiagnosticKey(restored.tripKey.ifBlank { restored.id }) +
+                        " departureAtMillis=" + restored.departureAtMillis +
+                        " visibleUntilMillis=" + restored.agendaVisibleUntilMillis0581 +
+                        " restoredStatus=" + restored.status.name +
+                        " publicBookingEnabledPreserved=" + restored.publicBookingEnabled +
+                        " source=collector_absence_upgrade_recovery",
+                )
+            }
+        }
+    }
+
     /**
      * Reconciles active/future trips to the channel-derived inventory. The old
      * vehicle_capacity preference is intentionally absent from this calculation.
