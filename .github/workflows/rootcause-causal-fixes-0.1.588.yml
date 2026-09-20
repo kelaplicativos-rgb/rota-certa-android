@@ -95,12 +95,62 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run complete Android unit suite
+      - name: Compare unit-test failures against exact 0.1.587 baseline
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          git worktree add --detach /tmp/rc-0587 "$BASE_SHA"
+          chmod +x /tmp/rc-0587/gradlew
+
+          set +e
+          (
+            cd /tmp/rc-0587
+            ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ) > /tmp/base-tests.log 2>&1
+          BASE_EXIT=$?
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel --stacktrace > /tmp/head-tests.log 2>&1
+          HEAD_EXIT=$?
+          set -e
+
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def failures(root):
+              result = set()
+              result_dir = pathlib.Path(root) / "app/build/test-results/testDebugUnitTest"
+              for file in result_dir.glob("*.xml"):
+                  tree = ET.parse(file)
+                  for case in tree.getroot().iter("testcase"):
+                      if case.find("failure") is not None or case.find("error") is not None:
+                          result.add(f"{case.attrib.get('classname','')}::{case.attrib.get('name','')}")
+              return result
+
+          base = failures("/tmp/rc-0587")
+          head = failures(".")
+          new = sorted(head - base)
+          fixed = sorted(base - head)
+
+          pathlib.Path("/tmp/base-failures.txt").write_text("\n".join(sorted(base)) + ("\n" if base else ""))
+          pathlib.Path("/tmp/head-failures.txt").write_text("\n".join(sorted(head)) + ("\n" if head else ""))
+          pathlib.Path("/tmp/new-failures.txt").write_text("\n".join(new) + ("\n" if new else ""))
+          pathlib.Path("/tmp/fixed-baseline-failures.txt").write_text("\n".join(fixed) + ("\n" if fixed else ""))
+
+          print(f"baseline_failures={len(base)}")
+          print(f"head_failures={len(head)}")
+          print(f"new_failures={len(new)}")
+          print(f"fixed_baseline_failures={len(fixed)}")
+          if new:
+              print("New failures introduced by 0.1.588:")
+              print("\n".join(new))
+              raise SystemExit(1)
+          PY
+
+          echo "base_gradle_exit=$BASE_EXIT" | tee /tmp/unit-regression-summary.txt
+          echo "head_gradle_exit=$HEAD_EXIT" | tee -a /tmp/unit-regression-summary.txt
+          echo "new_failure_count=$(wc -l < /tmp/new-failures.txt)" | tee -a /tmp/unit-regression-summary.txt
+          echo "No new unit-test failures versus exact 0.1.587 baseline."
 
       - name: Assemble exact-head APK
         shell: bash
@@ -138,7 +188,7 @@ jobs:
           FINAL="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$FINAL"
           sha256sum "$FINAL" | tee "$OUT/apk.sha256"
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed.txt              /tmp/farol-before.sha256 /tmp/farol-after.sha256              /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt "$OUT/"
+          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/changed.txt /tmp/farol-before.sha256 /tmp/farol-after.sha256 /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/base-failures.txt /tmp/head-failures.txt /tmp/new-failures.txt /tmp/fixed-baseline-failures.txt /tmp/unit-regression-summary.txt "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
