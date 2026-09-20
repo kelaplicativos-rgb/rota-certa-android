@@ -1,9 +1,11 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class CentralDoDia0552Test {
@@ -90,6 +92,18 @@ class CentralDoDia0552Test {
         )
 
         assertEquals(expected, model.trips.single().availableSeats)
+    }
+
+    @Test
+    fun centralDayUiStaysCompactUntilOperatorAsksForPassengerDetails() {
+        val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt").readText()
+
+        assertFalse(source.contains("Text(\"Central do Dia\", style = MaterialTheme.typography.titleLarge)"))
+        assertTrue(source.contains("expandedPassengerTripIds0591"))
+        assertTrue(source.contains("Passageiros ${item.passengers.size} ▼"))
+        assertTrue(source.contains("if (passengersExpanded0591)"))
+        assertTrue(source.contains("↻ Corrigir"))
+        assertFalse(source.contains("Text(\"🔄 Corrigir esta viagem\")"))
     }
 
     private fun trip(
