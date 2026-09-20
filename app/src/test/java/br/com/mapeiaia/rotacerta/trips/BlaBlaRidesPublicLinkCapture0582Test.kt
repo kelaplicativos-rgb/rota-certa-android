@@ -163,4 +163,20 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         assertTrue(script.contains("clipboardInterceptReady"))
         assertTrue(script.contains("copiar link"))
     }
+    @Test
+    fun shareScriptCanUseConnectedHiddenShareControlWithoutWeakeningPublicUrlProof() {
+        val script = File("src/main/assets/blablacar/scripts/trip_public_share.js").readText()
+        assertTrue(script.contains("const enabledShareControl = (node) =>"))
+        assertTrue(script.contains("node.disabled === true"))
+        assertTrue(script.contains("aria-disabled"))
+        assertTrue(script.contains("const allShareControls = Array.from"))
+        assertTrue(script.contains("enabledShareControl(node) && shareMarkerMatches(node)"))
+        assertTrue(script.contains("const visibleShareControls = allShareControls.filter(visible)"))
+        assertTrue(script.contains("const hiddenShareControls = allShareControls.filter((node) => !visible(node))"))
+        assertTrue(script.contains("const shareControls = visibleShareControls.concat(hiddenShareControls)"))
+        assertTrue(script.contains("shareControls[0].click()"))
+        assertTrue(script.contains("authoritativeSharedPublicTripUrl"))
+        assertTrue(script.contains("generic page links are not public-share authority"))
+    }
+
 }

@@ -1,0 +1,136 @@
+name: BlaBla hidden share control 0.1.582
+
+on:
+  push:
+    branches:
+      - agent/public-share-hidden-control-0.1.582
+    paths:
+      - '.github/workflows/blablacar-hidden-share-control-0.1.582.yml'
+      - 'app/src/main/assets/blablacar/scripts/trip_public_share.js'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesPublicLinkCapture0582Test.kt'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blablacar-hidden-share-0582-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GOOGLE_MAPS_API_KEY: blablacar_hidden_share_0582_ci_dummy_key
+      EXPECTED_VERSION_CODE: '5873'
+      EXPECTED_VERSION_NAME: '0.1.582'
+      BASE_SHA: 'c5889c04783e8de5c83470f51534b76bc61f644a'
+
+    steps:
+      - name: Checkout exact SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove surgical diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git diff --check "$BASE_SHA"...HEAD
+          git diff --name-only "$BASE_SHA"...HEAD | sort > /tmp/changed.txt
+          cat > /tmp/allowed.txt <<'EOF'
+          .github/workflows/blablacar-hidden-share-control-0.1.582.yml
+          app/build.gradle.kts
+          app/src/main/assets/blablacar/scripts/trip_public_share.js
+          app/src/main/assets/release_history.json
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesPublicLinkCapture0582Test.kt
+          EOF
+          sort -o /tmp/allowed.txt /tmp/allowed.txt
+          diff -u /tmp/allowed.txt /tmp/changed.txt
+          grep -Fq 'val releaseVersionCode = 5_873' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.582"' app/build.gradle.kts
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate share script fail-closed contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'const allShareControls = Array.from' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'const visibleShareControls = allShareControls.filter(visible)' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'const hiddenShareControls = allShareControls.filter((node) => !visible(node))' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'const shareControls = visibleShareControls.concat(hiddenShareControls)' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq "node.disabled === true" app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq "aria-disabled" app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'generic page links are not public-share authority' app/src/main/assets/blablacar/scripts/trip_public_share.js
+          grep -Fq 'authoritativeSharedPublicTripUrl' app/src/main/assets/blablacar/scripts/trip_public_share.js
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify hosted Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          test -d "$SDK_ROOT/platforms/android-35"
+          BUILD_TOOLS="$(find "$SDK_ROOT/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          test -n "$BUILD_TOOLS"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          printf 'sdk=%s\nbuild_tools=%s\n' "$SDK_ROOT" "$BUILD_TOOLS"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run public-link regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPublicLinkCapture0582Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaCollectorPublicLinkProof0551Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkPublicLink0423Test'
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ROTA_CERTA_GIT_SHA="$GITHUB_SHA"
+          export ROTA_CERTA_GIT_BRANCH="$GITHUB_REF_NAME"
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          APK='app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$APK"
+          unzip -t "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          mkdir -p /tmp/0582
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          FINAL="/tmp/0582/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          sha256sum "$FINAL" | tee /tmp/0582/apk.sha256
+          cp /tmp/aapt.txt /tmp/apksigner.txt /tmp/0582/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.582-5873-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0582

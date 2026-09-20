@@ -199,10 +199,16 @@
     ((node.getAttribute && node.getAttribute('name')) || '')
   );
 
-  const shareControls = Array.from(document.querySelectorAll(
-    'button, a, [role="button"], [data-testid], [aria-label], [title]'
-  )).filter((node) => {
-    if (!visible(node)) return false;
+  const enabledShareControl = (node) => {
+    if (!node || !node.isConnected) return false;
+    if (node.disabled === true) return false;
+    const ariaDisabled = normalize(
+      (node.getAttribute && node.getAttribute('aria-disabled')) || ''
+    );
+    return ariaDisabled !== 'true';
+  };
+
+  const shareMarkerMatches = (node) => {
     const marker = markerFor(node);
     if (marker.includes('perfil') || marker.includes('profile')) return false;
     return marker.includes('compartilhar esta carona') ||
@@ -216,7 +222,18 @@
       marker.includes('share-trip') ||
       marker.includes('e2e-share') ||
       marker.includes('share');
-  });
+  };
+
+  // 0.1.582: a real share action can remain connected to the current trip
+  // while WebView layout/CSS makes it non-visible. Visibility is an ordering
+  // preference, not an authority requirement. The candidate must still be
+  // enabled, connected and explicitly identified as a share action.
+  const allShareControls = Array.from(document.querySelectorAll(
+    'button, a, [role="button"], [data-testid], [aria-label], [title]'
+  )).filter((node) => enabledShareControl(node) && shareMarkerMatches(node));
+  const visibleShareControls = allShareControls.filter(visible);
+  const hiddenShareControls = allShareControls.filter((node) => !visible(node));
+  const shareControls = visibleShareControls.concat(hiddenShareControls);
 
   const shareSurfaces = Array.from(document.querySelectorAll(
     '[role="dialog"], [aria-modal="true"], [data-testid*="share" i], [class*="share" i]'
