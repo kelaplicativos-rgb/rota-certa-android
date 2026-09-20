@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.596",
+      "build": 5887,
+      "commit": null,
+      "branch": "agent/unified-segment-availability-refresh-0.1.596",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Central do Dia, Agenda do passageiro e Timeline passam a apresentar a mesma semântica canônica de vagas por trecho: rota, ocupação, capacidade e vagas restantes.",
+        "A Timeline torna visíveis, no próprio card, ocupação de passageiros, bloqueios e eventual excedente por segmento, sem depender do diálogo de detalhes.",
+        "A Agenda do passageiro mantém somente contagens anônimas por trecho e arma atualização imediata do estado canônico ao abrir uma carona e ao retornar para a Agenda."
+      ],
+      "fixed": [
+        "Eliminada a diferença visual em que a Central mostrava ocupação detalhada por trecho, enquanto Timeline e Agenda exibiam apenas parte do mesmo estado canônico.",
+        "O retorno da BlaBlaCar deixa de depender exclusivamente do polling de 15 segundos: pageshow, foco e retorno de visibilidade solicitam nova leitura canônica imediatamente."
+      ],
+      "improved": [
+        "Nenhuma nova fonte de verdade foi criada: Android continua usando SeatAvailabilityEngine/canonicalTimelineSegmentLoads e a web apenas renderiza segmentAvailability já resolvido pelo backend.",
+        "LOTADO continua sendo uma condição do trecho; bloqueios e overbooking permanecem explícitos sem transformar toda a viagem em lotada quando outros segmentos ainda possuem vagas.",
+        "O clique no corpo de um card público com permalink válido abre a mesma carona, preservando os botões Reserve Já e Ver carona como ações independentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.595: Central do Dia já possuía o detalhamento completo, mas Agenda/Timeline ainda não tinham paridade visual e a Agenda não possuía refresh de retorno orientado pelo clique."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Agenda / Viagem Certa",
+        "Timeline",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Refresh por viagem",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.595",
       "build": 5886,
       "commit": null,
