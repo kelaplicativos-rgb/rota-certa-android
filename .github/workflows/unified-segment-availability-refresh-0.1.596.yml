@@ -11,6 +11,7 @@ on:
       - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt'
       - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552Test.kt'
+      - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/SegmentAvailabilityCards0580Test.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/UnifiedSegmentAvailability0596Test.kt'
       - 'trip-platform/public/index.html'
       - 'trip-platform/public/public-agenda-shell-0569.js'
@@ -105,6 +106,7 @@ jobs:
           ./gradlew \
             :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.trips.CentralDoDia0552Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.SegmentAvailabilityCards0580Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.UnifiedSegmentAvailability0596Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace \
             | tee /tmp/targeted-tests.log
