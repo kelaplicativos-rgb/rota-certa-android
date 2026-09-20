@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-  <title>Rota Certa — Agenda de Viagens</title>
+  <title>Viagem Certa — Suas viagens</title>
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
     *{box-sizing:border-box}
@@ -54,20 +54,43 @@
     .whatsappFab0569{position:fixed;z-index:1000;right:max(14px,env(safe-area-inset-right,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));display:flex;align-items:center;justify-content:center;gap:8px;min-height:54px;max-width:calc(100vw - 28px);padding:13px 18px;overflow:hidden;border-radius:999px;background:#128c4a;color:#fff;box-shadow:0 8px 28px #0003;font-size:17px;line-height:1;font-weight:850;text-decoration:none;white-space:nowrap;text-overflow:ellipsis;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .whatsappFab0569:focus-visible{outline:3px solid #0b6033;outline-offset:3px}
     .whatsappFab0569:active{transform:translateY(1px)}
+    .accessGate0589{margin-top:18px;padding:22px 18px;border:1px solid #e6e0e7;border-radius:24px;background:#fff;box-shadow:0 8px 30px #0000000a}
+    .accessGate0589 h1{margin:0;font-size:27px;line-height:1.12;letter-spacing:-.02em}
+    .accessLead0589{margin:8px 0 0;color:var(--muted);font-size:16px;line-height:1.4}
+    .accessLabel0589{display:grid;gap:7px;margin-top:18px;font-size:15px;font-weight:850}
+    .accessInput0589{width:100%;min-height:52px;border:1px solid #cfc8d0;border-radius:14px;padding:12px 14px;background:#fff;color:var(--ink);font:inherit}
+    .accessButton0589{width:100%;min-height:50px;margin-top:12px;border:0;border-radius:14px;padding:12px 16px;background:#7055bd;color:#fff;font:inherit;font-weight:900;cursor:pointer}
+    .accessButton0589:disabled{opacity:.62;cursor:wait}
+    .accessMessage0589{margin:11px 0 0;color:#8f1d1d;font-size:14px;line-height:1.35;font-weight:750}
+    .passengerNav0589{display:flex;justify-content:center;gap:8px;margin-top:12px}
+    .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:14px;font-weight:850;text-decoration:none;cursor:pointer}
     @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaSegmentRow0580{grid-template-columns:minmax(0,1fr) auto auto;column-gap:6px;row-gap:3px}.agendaSegmentSeats0580{min-width:52px;font-size:13px}.agendaSegmentReserve0584{min-width:82px;min-height:32px;padding:6px 8px;font-size:12px}.agendaCardActions0584{justify-content:stretch}.agendaViewRide0584{width:100%}}
   </style>
 </head>
 <body>
   <main>
-    <header class="top0569" aria-label="Rota Certa">
-      <div class="brand0569">Rota Certa</div>
-      <div class="title0569">Todas as viagens</div>
+    <header class="top0569" aria-label="Viagem Certa">
+      <div class="brand0569">Viagem Certa</div>
+      <div class="title0569">Viagens disponíveis</div>
+      <nav id="passengerNav0589" class="passengerNav0589 hidden" aria-label="Área do passageiro">
+        <a id="passengerAreaLink0589" href="/minha-area.html">Minhas viagens</a>
+        <button id="passengerAgendaLogout0589" type="button">Sair</button>
+      </nav>
     </header>
-    <section id="loading" class="state0569">Carregando viagens…</section>
+    <section id="accessGate0589" class="accessGate0589">
+      <h1>Entre com seu WhatsApp</h1>
+      <p class="accessLead0589">Use o mesmo número cadastrado com o motorista para consultar as viagens.</p>
+      <label class="accessLabel0589">WhatsApp
+        <input id="passengerWhatsapp0589" class="accessInput0589" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
+      </label>
+      <button id="passengerAccessContinue0589" class="accessButton0589" type="button">Continuar</button>
+      <p id="passengerAccessMessage0589" class="accessMessage0589 hidden" role="alert"></p>
+    </section>
+    <section id="loading" class="state0569 hidden">Carregando viagens…</section>
     <section id="error" class="state0569 error0569 hidden" role="alert"></section>
     <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
   </main>
   <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
-  <script src="/public-agenda-shell-0569.js?v=0.1.581.4" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.589-viagem-certa0589" defer></script>
 </body>
 </html>
