@@ -95,6 +95,83 @@ class CentralDoDia0552Test {
     }
 
     @Test
+    fun ongoingTripRemainsGreenInAllTripsVisibilityAfterDeparture() {
+        val profile = "33333333-3333-4333-8333-333333333333"
+        val ongoing = trip(
+            id = "ongoing",
+            departure = start,
+            profileUuid = profile,
+            externalTripId = "ongoing-trip",
+            arrival = start + 4L * 60L * 60_000L,
+        )
+        val account = BlaBlaDynamicAccount(
+            id = "account-1",
+            label = "Motorista",
+            webProfileName = "profile-account-1",
+            profileUuid = profile,
+        )
+
+        val model = CentralDayReadModelBuilder0552.build(
+            trips = listOf(ongoing),
+            bookings = emptyList(),
+            accounts = listOf(account),
+            date = day,
+            nowMillis = start + 90L * 60_000L,
+            zoneId = zone,
+        )
+
+        val check = model.trips.single().checks.single { it.key == "all_trips_visibility" }
+        assertEquals(CentralIntegrityLevel0552.OK, check.level)
+        assertTrue(check.title.contains("mantém esta viagem operacional"))
+    }
+
+    @Test
+    fun overbookingDiagnosticNamesTheExactSegmentInsteadOfOnlyAHashOrCounter() {
+        val profile = "44444444-4444-4444-8444-444444444444"
+        val overloaded = trip(
+            id = "overloaded",
+            departure = start,
+            profileUuid = profile,
+            externalTripId = "overloaded-trip",
+            origin = "Origem Teste",
+            destination = "Destino Teste",
+            arrival = start + 2L * 60L * 60_000L,
+        ).copy(capacity = 2, publishedSeats = 2, capacityReliable = true)
+        val booking = Booking(
+            id = "overloaded-booking",
+            tripId = overloaded.id,
+            passengerName = "Grupo",
+            boardingStopId = overloaded.stops.first().id,
+            dropoffStopId = overloaded.stops.last().id,
+            seats = 3,
+            status = BookingStatus.CONFIRMED,
+            operationalStatus = PassengerOperationalStatus.CONFIRMED,
+            source = BookingSource.BLABLACAR,
+        )
+        val account = BlaBlaDynamicAccount(
+            id = "account-2",
+            label = "Motorista",
+            webProfileName = "profile-account-2",
+            profileUuid = profile,
+        )
+
+        val model = CentralDayReadModelBuilder0552.build(
+            trips = listOf(overloaded),
+            bookings = listOf(booking),
+            accounts = listOf(account),
+            date = day,
+            nowMillis = start + 30L * 60_000L,
+            zoneId = zone,
+        )
+
+        val capacity = model.trips.single().checks.single { it.key == "capacity" }
+        assertEquals(CentralIntegrityLevel0552.ACTION_REQUIRED, capacity.level)
+        assertTrue(capacity.actual.contains("Origem Teste → Destino Teste"))
+        assertTrue(capacity.actual.contains("1 acima"))
+        assertTrue(capacity.detail.contains("simultaneidade"))
+    }
+
+    @Test
     fun centralDayUiStaysCompactUntilOperatorAsksForPassengerDetails() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt").readText()
 
@@ -104,6 +181,9 @@ class CentralDoDia0552Test {
         assertTrue(source.contains("if (passengersExpanded0591)"))
         assertTrue(source.contains("↻ Corrigir"))
         assertFalse(source.contains("Text(\"🔄 Corrigir esta viagem\")"))
+        assertTrue(source.contains("all_trips_visibility"))
+        assertFalse(source.contains("Text(\"expectedHash:"))
+        assertFalse(source.contains("Text(\"actualHash:"))
     }
 
     private fun trip(
