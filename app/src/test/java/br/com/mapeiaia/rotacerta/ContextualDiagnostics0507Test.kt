@@ -145,6 +145,17 @@ class ContextualDiagnostics0507Test {
     }
 
     @Test
+    fun centralDayHasDedicatedReportInsteadOfBeingMixedIntoAllTrips() {
+        val central = event(26, "CENTRAL_DAY_RENDER_READY_0594", DiagnosticModule0507.CENTRAL_DAY, correlation = "corr-central")
+        val allTrips = event(27, "TIMELINE_STARTUP", DiagnosticModule0507.ALL_TRIPS, correlation = "corr-central")
+        val selectedCentral = ContextualDebugReport0507.select(snapshot(listOf(central, allTrips)), DiagnosticModule0507.CENTRAL_DAY)
+        val selectedAllTrips = ContextualDebugReport0507.select(snapshot(listOf(central, allTrips)), DiagnosticModule0507.ALL_TRIPS)
+        assertEquals(listOf("CENTRAL_DAY_RENDER_READY_0594"), selectedCentral.map { it.stage })
+        assertEquals(listOf("TIMELINE_STARTUP"), selectedAllTrips.map { it.stage })
+        assertEquals("Central do Dia", DiagnosticModule0507.CENTRAL_DAY.label)
+    }
+
+    @Test
     fun sanitizerIsIdempotentAndRemovesControlledSecretsButKeepsTechnicalIds() {
         val raw = "authorization=Bearer SECRET_TOKEN password=hunter2 sessionId=SESSION_SECRET " +
             "phone=+551199998888 address=Rua_A_123 latitude=-23.55 email=private@example.com " +
