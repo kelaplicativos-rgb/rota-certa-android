@@ -296,6 +296,28 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                     runAccountHeadless(appContext, state.generation, account, origin)
                 }
             } catch (timeout: TimeoutCancellationException) {
+                val liveAfterTimeout0584 = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
+                if (
+                    liveAfterTimeout0584.pending &&
+                    accountId !in liveAfterTimeout0584.completedAccountIds &&
+                    accountId !in liveAfterTimeout0584.failedAccountIds &&
+                    accountId !in liveAfterTimeout0584.pendingAuthAccountIds
+                ) {
+                    AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+                        appContext,
+                        state.generation,
+                        accountId,
+                        "FAILED",
+                        "headless_account_timeout_0404",
+                    )
+                    publishCurrentSessions(appContext, "account_timeout_0584")
+                    AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "account_timeout_0584")
+                    UnifiedDebugEventStore.record(
+                        "BLABLACAR_AUTOMATIC_TIMEOUT_TERMINAL_0584",
+                        appContext.packageName,
+                        "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} action=terminalize_timed_out_account_continue_batch previousSnapshotPreserved=true",
+                    )
+                }
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_AUTOMATIC_COLLECTION_HEADLESS_TIMEOUT_0404", appContext.packageName,
                     "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} timeoutMs=$HEADLESS_ACCOUNT_TIMEOUT_MS_0404 origin=${origin.take(80)} previousSnapshotPreserved=true browserOpened=false",
