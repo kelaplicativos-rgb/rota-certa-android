@@ -9,6 +9,8 @@ on:
       - 'app/build.gradle.kts'
       - 'app/src/main/assets/release_history.json'
       - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTripLifecycle0581.kt'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt'
       - 'app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCanonicalIntegrity0406Test.kt'
   workflow_dispatch:
 
@@ -138,6 +140,8 @@ jobs:
           RESULTS='app/build/test-results/testDebugUnitTest'
           grep -R -Fq 'completeCollectorAbsenceCannotTombstoneFutureOrActiveOperationalTrip' "$RESULTS"
           grep -R -Fq 'completeCollectorAbsenceCanTombstoneOnlyAfterCanonicalOperationalWindowExpires' "$RESULTS"
+          grep -R -Fq 'olderCollectorTombstoneIsRecoverableWhileTripIsStillOperational' "$RESULTS"
+          grep -R -Fq 'expiredCollectorTombstoneIsNotRecoveredAfterCanonicalWindow' "$RESULTS"
           grep -R -Fq 'tripInProgressRemainsVisibleUntilCanonicalEndWindow' "$RESULTS"
           grep -R -Fq 'tripDisappearsOnlyAfterArrivalPlusOneHour' "$RESULTS"
 
@@ -185,6 +189,7 @@ jobs:
           source_branch=$GITHUB_REF_NAME
           future_trip_preserved_on_collector_absence=PASS_BY_TEST
           active_trip_preserved_on_collector_absence=PASS_BY_TEST
+          already_missing_active_trip_self_heal=PASS_BY_TEST
           absence_tombstone_after_canonical_window=PASS_BY_TEST
           agenda_timeline_shared_lifecycle=PASS_BY_TEST
           farol_untouched=PASS
