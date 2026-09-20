@@ -210,7 +210,15 @@ internal object CentralDayReadModelBuilder0552 {
     ): CentralTrip0552 {
         val stops = trip.stops.sortedBy(TripStop::order)
         val summary = operationalSeatSummary(trip, bookings, nowMillis)
-        val segmentLoads = SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis)
+        val segmentLoads = if (summary.operationalLimitConfigured && summary.operationalInventorySeats > 0) {
+            SeatAvailabilityEngine.segmentLoads(
+                trip.copy(capacity = summary.operationalInventorySeats),
+                bookings,
+                nowMillis,
+            )
+        } else {
+            emptyList()
+        }
         val worstOverbooking = segmentLoads
             .filter { it.overbookingSeats > 0 }
             .maxByOrNull(SegmentLoad::overbookingSeats)
@@ -415,8 +423,12 @@ internal object CentralDayReadModelBuilder0552 {
             destination = stops.lastOrNull()?.name.orEmpty(),
             passengerSeats = summary.confirmedPassengerSeats,
             availableSeats = summary.availableSeats.takeIf { trip.capacityReliable && summary.operationalLimitConfigured },
-            operationalCapacity = trip.capacity.takeIf { trip.capacityReliable && it > 0 },
-            segmentLoads = segmentLoads.takeIf { trip.capacityReliable && trip.capacity > 0 }.orEmpty(),
+            operationalCapacity = summary.operationalInventorySeats.takeIf {
+                trip.capacityReliable && summary.operationalLimitConfigured && it > 0
+            },
+            segmentLoads = segmentLoads.takeIf {
+                trip.capacityReliable && summary.operationalLimitConfigured
+            }.orEmpty(),
             passengers = passengers,
             checks = checks,
             integrity = aggregate(checks),
