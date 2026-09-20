@@ -316,8 +316,15 @@ object OperationalHealthTechnicalPackage0575 {
                 if (line.isBlank()) {
                     ""
                 } else {
-                    val parsed = JSONObject(line)
-                    (sanitizeJsonValue0575(parsed) as JSONObject).toString()
+                    val parsed = runCatching { JSONObject(line) }.getOrNull()
+                    if (parsed != null) {
+                        (sanitizeJsonValue0575(parsed) as JSONObject).toString()
+                    } else {
+                        JSONObject()
+                            .put("sanitizedText", UnifiedDebugEventStore.sanitizeForExport(line))
+                            .put("sourceFormat", "legacy_non_json_line")
+                            .toString()
+                    }
                 }
             }
             .joinToString("\n")
