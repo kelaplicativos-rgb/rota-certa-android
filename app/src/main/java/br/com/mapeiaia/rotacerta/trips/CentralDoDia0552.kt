@@ -562,69 +562,141 @@ internal fun CentralDoDiaScreen0552(
         if (commandRevision > 0L) onRefreshLocal()
     }
 
-    Text("Central do Dia", style = MaterialTheme.typography.titleLarge)
+    var expandedPassengerTripIds0591 by remember { mutableStateOf(emptySet<String>()) }
+
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
-                "OPERAÇÃO DE HOJE — " + (model.summary.integrityPercent?.let { "$it% íntegra" } ?: "integridade ainda não verificável"),
-                style = MaterialTheme.typography.titleMedium,
+                (model.summary.integrityPercent?.let { "${it}% íntegra" } ?: "Integridade pendente") +
+                    " • ${model.summary.trips} viagens • ${model.summary.passengerSeats} lugares • ${model.summary.availableSeats} vagas",
+                style = MaterialTheme.typography.titleSmall,
             )
-            Text("${model.summary.trips} viagens • ${model.summary.passengerSeats} passageiros/lugares • ${model.summary.availableSeats} vagas verificadas")
-            Text("⚠ ${model.summary.divergenceCount} divergência(s) • 🔴 ${model.summary.actionRequiredCount} ação(ões) necessária(s) • ? ${model.summary.unknownCount} não verificável(is)")
-            Text("Próxima ação: ${model.nextAction}", style = MaterialTheme.typography.bodyMedium)
-            Button(
+            Text(
+                "⚠ ${model.summary.divergenceCount} • 🔴 ${model.summary.actionRequiredCount} • ? ${model.summary.unknownCount}  |  ${model.nextAction}",
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+            )
+            TextButton(
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     val todayIds = model.trips.map(CentralTrip0552::canonicalTripId).toSet()
                     val queued = CentralDayCommandBridge0552.refreshAll(context, trips.filter { it.id in todayIds })
-                    onMessage(if (queued > 0) "📡 $queued viagem(ns) enviada(s) ao sincronizador canônico existente." else "Nenhuma viagem elegível foi enfileirada; verifique identidade/sessão.")
+                    onMessage(
+                        if (queued > 0) {
+                            "📡 ${queued} viagem(ns) enviada(s) ao sincronizador canônico existente."
+                        } else {
+                            "Nenhuma viagem elegível foi enfileirada; verifique identidade/sessão."
+                        },
+                    )
                 },
-            ) { Text("📡 Atualizar operação de hoje") }
+            ) { Text("↻ Atualizar operação de hoje") }
         }
     }
 
     if (model.trips.isEmpty()) {
-        Text("Nenhuma viagem canônica encontrada para hoje.")
+        Text("Nenhuma viagem canônica encontrada para hoje.", style = MaterialTheme.typography.bodyMedium)
     }
 
     model.trips.forEach { item ->
+        val passengersExpanded0591 = item.canonicalTripId in expandedPassengerTripIds0591
         Card(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
                 val icon = when (item.integrity) {
                     CentralIntegrityLevel0552.OK -> "🟢"
                     CentralIntegrityLevel0552.DIVERGENCE -> "🟡"
                     CentralIntegrityLevel0552.ACTION_REQUIRED -> "🔴"
                     CentralIntegrityLevel0552.UNKNOWN -> "⚪"
                 }
-                Text("$icon ${formatter.format(Instant.ofEpochMilli(item.departureAtMillis))} • ${item.profileLabel}", style = MaterialTheme.typography.titleMedium)
-                Text("${item.origin} → ${item.destination}")
-                Text("${item.passengerSeats} passageiros/lugares • ${item.availableSeats?.let { "$it vagas" } ?: "vagas não verificáveis"}")
-                Text("Próxima ação: ${item.nextAction}")
-                item.passengers.forEach { passenger ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${passenger.name} — ${passenger.stateLabel}", modifier = Modifier.weight(1f))
-                        TextButton(onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) }) { Text("Operar") }
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(
+                        "${icon} ${formatter.format(Instant.ofEpochMilli(item.departureAtMillis))} • ${item.profileLabel}",
+                        style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f),
-                        onClick = { diagnosticTripId = item.canonicalTripId },
-                    ) { Text("Integridade") }
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = { onOpenTimeline(item.canonicalTripId, null) },
-                    ) { Text("Atalhos") }
-                }
-                if (item.integrity in setOf(CentralIntegrityLevel0552.DIVERGENCE, CentralIntegrityLevel0552.ACTION_REQUIRED)) {
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 1,
+                    )
+                    TextButton(
                         onClick = {
                             val trip = trips.firstOrNull { it.id == item.canonicalTripId }
                             val queued = trip?.let { CentralDayCommandBridge0552.refreshTrip(context, it) } == true
-                            onMessage(if (queued) "🔄 Corrigindo esta viagem pela cadeia BlaBlaCar → Agenda → Timeline…" else "Correção não iniciada: identidade forte indisponível ou atualização já em andamento.")
+                            onMessage(
+                                if (queued) {
+                                    "🔄 Atualizando esta viagem pela cadeia BlaBlaCar → Agenda → Timeline…"
+                                } else {
+                                    "Atualização não iniciada: identidade forte indisponível ou atualização já em andamento."
+                                },
+                            )
                         },
-                    ) { Text("🔄 Corrigir esta viagem") }
+                    ) {
+                        Text(
+                            if (item.integrity in setOf(
+                                    CentralIntegrityLevel0552.DIVERGENCE,
+                                    CentralIntegrityLevel0552.ACTION_REQUIRED,
+                                )
+                            ) {
+                                "↻ Corrigir"
+                            } else {
+                                "↻ Atualizar"
+                            },
+                        )
+                    }
+                }
+
+                Text("${item.origin} → ${item.destination}", style = MaterialTheme.typography.bodyLarge, maxLines = 2)
+                Text(
+                    "${item.passengerSeats} lugares • ${item.availableSeats?.let { "${it} vagas" } ?: "vagas não verificáveis"} • ${item.nextAction}",
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                )
+
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            expandedPassengerTripIds0591 =
+                                if (passengersExpanded0591) {
+                                    expandedPassengerTripIds0591 - item.canonicalTripId
+                                } else {
+                                    expandedPassengerTripIds0591 + item.canonicalTripId
+                                }
+                        },
+                    ) {
+                        Text(
+                            if (passengersExpanded0591) {
+                                "Passageiros ${item.passengers.size} ▲"
+                            } else {
+                                "Passageiros ${item.passengers.size} ▼"
+                            },
+                            maxLines = 1,
+                        )
+                    }
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { onOpenTimeline(item.canonicalTripId, null) },
+                    ) { Text("Atalhos", maxLines = 1) }
+                    TextButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = { diagnosticTripId = item.canonicalTripId },
+                    ) { Text("Integridade", maxLines = 1) }
+                }
+
+                if (passengersExpanded0591) {
+                    item.passengers.forEach { passenger ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                "${passenger.name} • ${passenger.stateLabel}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                            )
+                            TextButton(
+                                onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) },
+                            ) { Text("Operar") }
+                        }
+                    }
                 }
             }
         }
