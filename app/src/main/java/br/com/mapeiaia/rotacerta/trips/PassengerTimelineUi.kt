@@ -177,6 +177,7 @@ internal fun EnhancedPassengerTimelineSection(
     focusedBookingId: String? = null,
     canonicalBookings0494: List<Booking>? = null,
     showTripActions0549: Boolean = true,
+    compactEmbeddedControls0593: Boolean = false,
 ) {
     val context = LocalContext.current
     val passengerStore = remember(context) { PassengerIdentityStore(context) }
@@ -423,8 +424,201 @@ internal fun EnhancedPassengerTimelineSection(
             }
         }
 
-        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            val phone = passenger.phone
+        if (compactEmbeddedControls0593) {
+            val phone0593 = passenger.phone
+            val pickupTarget0593 = passengerPickupMapTarget(passenger)
+            val dropoffTarget0593 = passengerDropoffMapTarget(passenger)
+            val passengerTarget0593 = externalPassengerTarget(passenger)
+
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    TextButton(
+                        onClick = {
+                            historyRow = passenger.copy(passengerId = rowProfile?.id ?: passenger.passengerId)
+                        },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = COMPACT_NAME_PADDING,
+                    ) {
+                        Text(
+                            (if (rowProfile?.blocked == true) "🚫 " else "") +
+                                passenger.name.ifBlank { "Passageiro" },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+
+                    if (pendingApproval || rejected || currentBooking?.status == BookingStatus.CANCELLED) {
+                        OutlinedButton(
+                            onClick = {},
+                            enabled = false,
+                            contentPadding = COMPACT_ACTION_PADDING,
+                            modifier = Modifier.heightIn(min = 36.dp),
+                        ) {
+                            Text(statusLabel, maxLines = 1)
+                        }
+                    } else {
+                        Column {
+                            OutlinedButton(
+                                onClick = { statusMenuOpen = true },
+                                contentPadding = COMPACT_ACTION_PADDING,
+                                modifier = Modifier.heightIn(min = 36.dp),
+                            ) {
+                                Text(statusLabel + " ▼", maxLines = 1)
+                            }
+                            DropdownMenu(
+                                expanded = statusMenuOpen,
+                                onDismissRequest = { statusMenuOpen = false },
+                            ) {
+                                DropdownMenuItem(text = { Text("Confirmado") }, onClick = { selectOperationalStatus("CONFIRMED") })
+                                DropdownMenuItem(text = { Text("No local") }, onClick = { selectOperationalStatus("AT_LOCATION") })
+                                DropdownMenuItem(text = { Text("No carro") }, onClick = { selectOperationalStatus("IN_CAR") })
+                                DropdownMenuItem(text = { Text("Pago") }, onClick = { selectOperationalStatus("PAID") })
+                                DropdownMenuItem(text = { Text("Concluído") }, onClick = { selectOperationalStatus("COMPLETED") })
+                                if (!completed && passenger.operationalStatus != PassengerOperationalStatus.CANCELLED) {
+                                    DropdownMenuItem(text = { Text("Cancelar") }, onClick = { selectOperationalStatus("CANCELLED") })
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    IconButton(
+                        onClick = {
+                            if (!phone0593.isNullOrBlank()) {
+                                UnifiedDebugEventStore.record(
+                                    "PASSENGER_WHATSAPP_OPEN",
+                                    context.packageName,
+                                    "timeline=true centralDay=true phone_present=true",
+                                )
+                                openPassengerWhatsApp(context, phone0593)
+                            }
+                        },
+                        enabled = !phone0593.isNullOrBlank(),
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_whatsapp_action),
+                            contentDescription = "WhatsApp do passageiro",
+                            tint = Color.Unspecified,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+
+                    TextButton(
+                        onClick = {
+                            if (pickupTarget0593 != null) openPassengerPickupMap(context, pickupTarget0593)
+                        },
+                        enabled = pickupTarget0593 != null,
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("📍", maxLines = 1) }
+
+                    TextButton(
+                        onClick = {
+                            if (dropoffTarget0593 != null) openPassengerDropoffMap(context, dropoffTarget0593)
+                        },
+                        enabled = dropoffTarget0593 != null,
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("🏁", maxLines = 1) }
+
+                    TextButton(
+                        onClick = {
+                            if (passenger.fareMinorUnits != null) {
+                                copyPassengerFareValue(context, passenger)
+                            } else {
+                                fareEditRow = passenger
+                            }
+                        },
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("💰", maxLines = 1) }
+
+                    TextButton(
+                        onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
+                        modifier = Modifier.size(36.dp),
+                        contentPadding = ADDRESS_ICON_PADDING,
+                    ) { Text("💬", maxLines = 1) }
+
+                    if (passengerTarget0593 != null) {
+                        IconButton(
+                            onClick = {
+                                if (!openExternalPassengerBlaBla(context, passenger)) {
+                                    Toast.makeText(
+                                        context,
+                                        "Conta BlaBlaCar deste passageiro não está conectada.",
+                                        Toast.LENGTH_LONG,
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_blablacar_action),
+                                contentDescription = "Abrir passageiro no BlaBlaCar",
+                                tint = Color.Unspecified,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                }
+
+                if (pendingApproval) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(
+                            enabled = decisionRunning == null,
+                            onClick = {
+                                val selectedTrip = trip
+                                val booking = currentBooking
+                                if (selectedTrip == null || booking == null) {
+                                    onChanged("Não foi possível localizar a viagem/reserva canônica para aprovar.")
+                                } else {
+                                    decisionRunning = "APPROVE"
+                                    scope.launch {
+                                        runCatching {
+                                            persistCanonicalPassengerMutation0582(
+                                                context = context,
+                                                trip = selectedTrip,
+                                                updated = passengerDecisionMutation0582(booking, "APPROVE"),
+                                                store = store,
+                                                mutationCoordinator = mutationCoordinator,
+                                                mutationType = "RESERVATION_APPROVED",
+                                            )
+                                        }.onSuccess {
+                                            onChanged("Reserva aprovada no estado canônico ✅")
+                                        }.onFailure {
+                                            onChanged("Nada foi alterado: falha ao aprovar a reserva.")
+                                        }
+                                        decisionRunning = null
+                                    }
+                                }
+                            },
+                        ) { Text(if (decisionRunning == "APPROVE") "Aprovando…" else "Aprovar") }
+                        TextButton(
+                            enabled = decisionRunning == null,
+                            onClick = { rejectConfirmOpen = true },
+                        ) { Text("Recusar") }
+                    }
+                }
+            }
+        }
+
+        if (!compactEmbeddedControls0593) {
+            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                val phone = passenger.phone
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -763,6 +957,7 @@ internal fun EnhancedPassengerTimelineSection(
                     },
                     contentPadding = COMPACT_NAME_PADDING,
                 ) { Text(label, style = MaterialTheme.typography.bodySmall) }
+            }
             }
         }
     }
