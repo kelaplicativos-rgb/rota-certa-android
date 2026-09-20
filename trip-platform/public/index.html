@@ -20,7 +20,7 @@
     .error0569{color:#8f1d1d;font-weight:750}
     .empty0569{margin-top:18px;padding:20px;border:1px solid #ebe6ec;border-radius:22px;background:#fff;color:var(--muted);font-size:17px;line-height:1.4}
     .agendaTrip0569{position:relative;display:block;width:100%;margin-top:16px;padding:20px 18px 22px;border:2px solid var(--line);border-radius:26px;background:#fffaff;color:inherit;text-decoration:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
-    .agendaTop0569{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:22px}
+    .agendaTripClickable0596{cursor:pointer}\n    .agendaTop0569{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:22px}
     .agendaDate0569{min-width:0;font-size:28px;line-height:1.08;font-weight:900;letter-spacing:-.025em}
     .agendaDriver0569{max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#514b54;font-size:20px;line-height:1.12;font-weight:800;text-align:right}
     .agendaJourney0569{display:grid;grid-template-columns:76px 26px minmax(0,1fr);grid-template-rows:minmax(70px,auto) minmax(60px,auto);column-gap:9px;align-items:start}
@@ -40,7 +40,8 @@
     .agendaSegmentRow0580{display:grid;grid-template-columns:minmax(0,1fr) auto auto;grid-template-rows:auto auto;align-items:center;column-gap:8px;row-gap:4px;padding:3px 0;font-size:15px;line-height:1.2}
     .agendaSegmentRoute0580{grid-column:1;grid-row:1;min-width:0;overflow-wrap:anywhere;font-weight:720}
     .agendaSegmentDots0580{grid-column:1;grid-row:2;font-size:15px;line-height:1;letter-spacing:1px;color:#1186d8;text-align:left}
-    .agendaSegmentSeats0580{grid-column:2;grid-row:1 / span 2;min-width:58px;text-align:right;white-space:nowrap;font-size:14px}
+    .agendaSegmentOccupancy0596{grid-column:2;grid-row:1;min-width:58px;text-align:right;white-space:nowrap;font-size:13px;color:var(--muted);font-weight:750}
+    .agendaSegmentSeats0580{grid-column:2;grid-row:2;min-width:58px;text-align:right;white-space:nowrap;font-size:14px}
     .agendaSegmentPending0580{color:var(--muted);font-size:14px;line-height:1.25}
     .agendaSegmentReserve0584{grid-column:3;grid-row:1 / span 2;display:inline-flex;align-items:center;justify-content:center;min-width:88px;min-height:34px;padding:7px 10px;border:0;border-radius:10px;background:#128c4a;color:#fff;font:inherit;font-size:13px;line-height:1;font-weight:850;text-decoration:none;text-align:center;white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .agendaSegmentReserve0584:focus-visible{outline:3px solid #0b6033;outline-offset:2px}
@@ -91,6 +92,6 @@
     <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
   </main>
   <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
-  <script src="/public-agenda-shell-0569.js?v=0.1.589-viagem-certa0589" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.596-unified-segments0596" defer></script>
 </body>
 </html>
