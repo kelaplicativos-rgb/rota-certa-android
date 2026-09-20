@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.594",
+      "build": 5885,
+      "commit": null,
+      "branch": "agent/central-segment-availability-glance-0.1.594",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central do Dia passa a exibir, dentro da casca fechada de cada card, todos os trechos consecutivos da viagem com ocupação e vagas restantes."
+      ],
+      "fixed": [
+        "Eliminada a visão cega de uma única disponibilidade global quando a capacidade varia ao longo do itinerário.",
+        "Cada linha usa diretamente o motor canônico SeatAvailabilityEngine, preservando a mesma ocupação por segmento usada pela Agenda."
+      ],
+      "improved": [
+        "Trechos com duas ou mais vagas recebem indicador verde; uma vaga recebe indicador laranja; trecho lotado ou em overbooking recebe indicador vermelho.",
+        "Capacidade não confiável é mostrada como não verificável em vez de inventar vagas.",
+        "A seção Vagas por trecho permanece sempre visível e não depende de expandir passageiros, atalhos ou integridade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.593: a Central do Dia mostrava apenas o resumo da viagem e não permitia identificar imediatamente em qual trecho ainda havia vaga."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Vagas por trecho",
+        "Motor canônico de capacidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.593",
       "build": 5884,
       "commit": null,
