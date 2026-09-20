@@ -383,11 +383,25 @@ internal fun resolvePreferredPublicTripLink0423(
 private data class DynamicPublicTripShareEvidence(
     val tripId: String = "",
     val shareControlPresent: Boolean = false,
+    val menuControlPresent: Boolean = false,
+    val menuInvoked: Boolean = false,
+    val menuClickCount: Int = 0,
     val shareInterceptInstalled: Boolean = false,
     val shareInvoked: Boolean = false,
     val clickCount: Int = 0,
     val publicTripHref: String = "",
 )
+
+internal fun shouldRetryPublicTripShare0583(
+    readAttempts: Int,
+    maxReadAttempts: Int,
+    shareControlPresent: Boolean,
+    menuControlPresent: Boolean,
+    shareInterceptInstalled: Boolean,
+): Boolean =
+    readAttempts < maxReadAttempts &&
+        shareInterceptInstalled &&
+        (shareControlPresent || menuControlPresent)
 
 @Serializable
 internal data class DynamicPublicSearchLinkCard(
@@ -3467,6 +3481,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         " exactAdministrativeTrip=true publicIdRelation=" +
                         (if (sharedPublicTripId == tripId) "same" else "different") +
                         " shareControlPresent=${evidence?.shareControlPresent == true}" +
+                        " menuControlPresent=${evidence?.menuControlPresent == true}" +
+                        " menuInvoked=${evidence?.menuInvoked == true}" +
+                        " menuClickCount=${evidence?.menuClickCount ?: 0}" +
                         " shareInterceptInstalled=${evidence?.shareInterceptInstalled == true}" +
                         " shareInvoked=${evidence?.shareInvoked == true}" +
                         " clickCount=${evidence?.clickCount ?: 0}",
@@ -3475,10 +3492,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val shouldRetry =
-                publicTripShareReadAttempts < MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS &&
-                    evidence?.shareControlPresent == true &&
-                    evidence.shareInterceptInstalled
+            val shouldRetry = shouldRetryPublicTripShare0583(
+                readAttempts = publicTripShareReadAttempts,
+                maxReadAttempts = MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS,
+                shareControlPresent = evidence?.shareControlPresent == true,
+                menuControlPresent = evidence?.menuControlPresent == true,
+                shareInterceptInstalled = evidence?.shareInterceptInstalled == true,
+            )
             if (shouldRetry) {
                 publicTripShareReadAttempts++
                 statusView.text =
@@ -3492,7 +3512,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             UnifiedDebugEventStore.record(
                 "PUBLIC_TRIP_SHARE_FALLBACK_REQUIRED",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId shareControlPresent=${evidence?.shareControlPresent == true} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0} attempts=${publicTripShareReadAttempts + 1} systemShareOpened=false next=exact_public_search",
+                "account=${account.displayLabel} tripId=$tripId shareControlPresent=${evidence?.shareControlPresent == true} menuControlPresent=${evidence?.menuControlPresent == true} menuInvoked=${evidence?.menuInvoked == true} menuClickCount=${evidence?.menuClickCount ?: 0} shareInterceptInstalled=${evidence?.shareInterceptInstalled == true} shareInvoked=${evidence?.shareInvoked == true} clickCount=${evidence?.clickCount ?: 0} attempts=${publicTripShareReadAttempts + 1} systemShareOpened=false next=exact_public_search",
             )
             beginExactPublicTripSearch(expectedSync, expectedCandidate)
         }
