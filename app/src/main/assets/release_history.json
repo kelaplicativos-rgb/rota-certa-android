@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.583",
+      "build": 5874,
+      "commit": null,
+      "branch": "agent/public-share-overflow-0.1.583",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Quando a ação Compartilhar não está materializada no DOM da página administrativa, o coletor procura um menu de ações/mais opções visível, habilitado e semanticamente identificado dentro da superfície da viagem e o abre antes de abandonar a captura autoritativa.",
+        "Depois da expansão do menu, o coletor faz uma nova leitura do mesmo contexto de viagem, permitindo que a ação Compartilhar recém-materializada seja interceptada sem recorrer imediatamente à busca pública."
+      ],
+      "fixed": [
+        "Corrigida a causa observada fisicamente na 0.1.582: shareControlPresent=false em seis viagens apesar de tripId + specificHref estarem corretos, fazendo o fluxo pular diretamente para exact_public_search.",
+        "O retry de compartilhamento agora permanece ativo quando existe um menu de ações candidato, desde que a interceptação segura de share/clipboard esteja instalada."
+      ],
+      "improved": [
+        "Menus de perfil, conta, passageiro e controles de header/nav são excluídos do fallback para reduzir falsos cliques.",
+        "A política de autoridade do permalink não mudou: somente payload real de compartilhamento, rede autoritativa, navegação autoritativa ou vínculo canônico previamente validado podem aceitar token público diferente do tripId administrativo.",
+        "exact_public_search continua fail-closed e só é usado após esgotar o caminho de compartilhamento da própria viagem."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.582: a correção para controle Compartilhar oculto não resolvia páginas em que a ação só passa a existir depois da abertura do menu de ações/mais opções."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor",
+        "Link público",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.582",
       "build": 5873,
       "commit": null,
