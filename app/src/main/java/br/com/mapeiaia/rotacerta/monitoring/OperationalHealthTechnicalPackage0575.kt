@@ -304,8 +304,8 @@ object OperationalHealthTechnicalPackage0575 {
         val trimmed = raw.trim()
         require(trimmed.isNotEmpty()) { "JSON document is empty" }
         return when {
-            trimmed.startsWith("{") -> sanitizeJsonValue0575(JSONObject(trimmed)).toString(2)
-            trimmed.startsWith("[") -> sanitizeJsonValue0575(JSONArray(trimmed)).toString(2)
+            trimmed.startsWith("{") -> (sanitizeJsonValue0575(JSONObject(trimmed)) as JSONObject).toString(2)
+            trimmed.startsWith("[") -> (sanitizeJsonValue0575(JSONArray(trimmed)) as JSONArray).toString(2)
             else -> error("Unsupported JSON root")
         }
     }
