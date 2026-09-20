@@ -338,6 +338,15 @@ private data class DynamicTripDetail(
     val domHtml: String = "",
 )
 
+@Serializable
+private data class DynamicTripItinerary0598(
+    val url: String = "",
+    val tripId: String = "",
+    val domStops: List<String> = emptyList(),
+    val networkStops: List<String> = emptyList(),
+    val authoritative: Boolean = false,
+)
+
 internal data class ResolvedPublicTripLink0423(
     val href: String,
     val source: String,
@@ -813,6 +822,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var syncGeneration = 0L
     private var navigationGeneration = 0L
     private var detailCaptureInFlight = false
+    private var itineraryCaptureInFlight0598 = false
     private var passengerCaptureInFlight = false
     private var passengerCardCaptureInFlight = false
     private var editCaptureInFlight = false
@@ -1602,6 +1612,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         navigationGeneration = 0L
         headlessPageFinishedNavigationGeneration0404 = -1L
         detailCaptureInFlight = false
+        itineraryCaptureInFlight0598 = false
+        itineraryCaptureInFlight0598 = false
         passengerCaptureInFlight = false
         passengerCardCaptureInFlight = false
         editCaptureInFlight = false
@@ -3673,36 +3685,140 @@ internal class BlaBlaDynamicAccountSessionController0401(
             passengerCardReadAttempts = 0
             publicTripShareReadAttempts = 0
             publicTripShareCaptureInFlight = false
-            if (!scriptSelection0449.wantsPublicUrl()) {
-                loadNextPassengerContact(expectedSync, expectedCandidate)
-            } else if (resolvedPublicLink != null) {
-                val event = when (resolvedPublicLink.source) {
-                    "network_structured" -> "PUBLIC_TRIP_LINK_CAPTURED"
-                    "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
-                    "persisted_canonical" -> "PUBLIC_TRIP_LINK_PRESERVED"
-                    else -> "PUBLIC_TRIP_LINK_CAPTURED"
-                }
-                UnifiedDebugEventStore.record(
-                    event,
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId source=${resolvedPublicLink.source} binding=${resolvedPublicLink.binding} fingerprint=${publicTripHrefFingerprint0423(resolvedPublicLink.href)} networkFirst=${networkPublicLink != null}",
-                )
-                loadNextPassengerContact(expectedSync, expectedCandidate)
-            } else {
-                enterBrowserPhase(
-                    Phase.PUBLIC_SHARE,
-                    BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
-                    "capture_documented_share_action",
-                )
-                statusView.text = "${account.displayLabel} • capturando link público do card…"
-                UnifiedDebugEventStore.record(
-                    "PUBLIC_TRIP_LINK_SHARE_FALLBACK",
-                    packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId reason=network_dom_persisted_unavailable",
-                )
-                capturePublicTripShare(expectedSync, navigationGeneration, expectedCandidate)
-            }
+            captureDedicatedTripItinerary0598(
+                expectedSync = expectedSync,
+                expectedNavigation = expectedNavigation,
+                expectedCandidate = expectedCandidate,
+            )
         }
+    }
+
+    private fun captureDedicatedTripItinerary0598(
+        expectedSync: Long,
+        expectedNavigation: Long,
+        expectedCandidate: Int,
+    ) {
+        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+            recordStale("trip_itinerary_pending_mismatch_0598", expectedSync, expectedCandidate)
+            return
+        }
+        if (!scriptSelection0449.requested(BlaBlaBrowserRequest.TRIP_ITINERARY)) {
+            UnifiedDebugEventStore.record(
+                "ORCHESTRATOR_SCRIPT_SKIPPED_0449",
+                packageName,
+                "account=${account.displayLabel} tripId=${candidates.getOrNull(expectedCandidate)?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }.orEmpty()} group=trip_itinerary requested=false action=preserve_previous",
+            )
+            continueAfterTripItinerary0598(expectedSync, expectedCandidate)
+            return
+        }
+        if (!detailCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate)) {
+            recordStale("trip_itinerary_before_evaluate_0598", expectedSync, expectedCandidate)
+            return
+        }
+        if (itineraryCaptureInFlight0598) return
+
+        val candidateTripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+            .orEmpty()
+        val pending = pendingTripDetail ?: run {
+            recordStale("trip_itinerary_pending_missing_0598", expectedSync, expectedCandidate)
+            return
+        }
+        itineraryCaptureInFlight0598 = true
+        evaluateRequest<DynamicTripItinerary0598>(BlaBlaBrowserRequest.TRIP_ITINERARY) { evidence ->
+            itineraryCaptureInFlight0598 = false
+            if (!detailCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate) ||
+                !pendingTripIsCurrent(expectedSync, expectedCandidate)
+            ) {
+                recordStale("trip_itinerary_after_evaluate_0598", expectedSync, expectedCandidate)
+                return@evaluateRequest
+            }
+
+            val exactEvidence = evidence?.takeIf { captured ->
+                val capturedTripId = captured.tripId.trim()
+                val capturedUrlTripId = BlaBlaTripIdentity.externalTripIdFromHref(captured.url).orEmpty()
+                candidateTripId.isNotBlank() &&
+                    capturedTripId == candidateTripId &&
+                    capturedUrlTripId == candidateTripId
+            }
+            val passengerRecovered = BlaBlaItineraryRecovery0598.recoverFromPassengerSegments(
+                origin = pending.detail.origin,
+                destination = pending.detail.destination,
+                passengers = pendingTripPassengers,
+            )
+            val merged = BlaBlaItineraryRecovery0598.merge(
+                origin = pending.detail.origin,
+                destination = pending.detail.destination,
+                currentStops = pending.itineraryStops,
+                currentAuthoritative = pending.itineraryAuthoritative,
+                dedicatedDomStops = exactEvidence?.domStops.orEmpty(),
+                dedicatedDomAuthoritative = exactEvidence?.authoritative == true,
+                dedicatedNetworkStops = exactEvidence?.networkStops.orEmpty(),
+                passengerStops = passengerRecovered,
+            )
+            pendingTripDetail = pending.copy(
+                itineraryStops = merged.stops,
+                itineraryAuthoritative = merged.authoritative,
+            )
+
+            UnifiedDebugEventStore.recordAlways(
+                "TRIP_ITINERARY_CAPTURED_0598",
+                packageName,
+                "account=${account.displayLabel} tripId=$candidateTripId exactEvidence=${exactEvidence != null} detailStops=${pending.itineraryStops.size} domStops=${exactEvidence?.domStops?.size ?: 0} networkStops=${exactEvidence?.networkStops?.size ?: 0} passengerRecoveredStops=${passengerRecovered.size} effectiveStops=${merged.stops.size} authoritative=${merged.authoritative} source=${merged.source} failClosed=true",
+            )
+            continueAfterTripItinerary0598(expectedSync, expectedCandidate)
+        }
+    }
+
+    private fun continueAfterTripItinerary0598(
+        expectedSync: Long,
+        expectedCandidate: Int,
+    ) {
+        if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
+            recordStale("trip_itinerary_continue_pending_mismatch_0598", expectedSync, expectedCandidate)
+            return
+        }
+        val detail = pendingTripDetail ?: return
+        val candidateTripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+            .orEmpty()
+
+        if (!scriptSelection0449.wantsPublicUrl()) {
+            loadNextPassengerContact(expectedSync, expectedCandidate)
+            return
+        }
+
+        val resolvedHref = detail.publicTripHref.trim().takeIf(String::isNotEmpty)
+        if (resolvedHref != null) {
+            val source = detail.publicTripHrefSource.ifBlank { "unknown" }
+            val event = when (source) {
+                "network_structured", "network_structured_response_id", "network_structured_request_id" ->
+                    "PUBLIC_TRIP_LINK_CAPTURED"
+                "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
+                "persisted_canonical" -> "PUBLIC_TRIP_LINK_PRESERVED"
+                else -> "PUBLIC_TRIP_LINK_CAPTURED"
+            }
+            UnifiedDebugEventStore.record(
+                event,
+                packageName,
+                "account=${account.displayLabel} tripId=$candidateTripId source=$source binding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref)} networkFirst=${source.startsWith("network_")}",
+            )
+            loadNextPassengerContact(expectedSync, expectedCandidate)
+            return
+        }
+
+        enterBrowserPhase(
+            Phase.PUBLIC_SHARE,
+            BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE,
+            "capture_documented_share_action",
+        )
+        statusView.text = "${account.displayLabel} • capturando link público do card…"
+        UnifiedDebugEventStore.record(
+            "PUBLIC_TRIP_LINK_SHARE_FALLBACK",
+            packageName,
+            "account=${account.displayLabel} tripId=$candidateTripId reason=network_dom_persisted_unavailable",
+        )
+        capturePublicTripShare(expectedSync, navigationGeneration, expectedCandidate)
     }
 
     private fun capturePublicTripShare(expectedSync: Long, expectedNavigation: Long, expectedCandidate: Int) {
