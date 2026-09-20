@@ -21,7 +21,7 @@ class OperationalTripAutoArchive0566Test {
 
     @Test
     fun `trip stays active after departure while canonical arrival is still ahead`() {
-        val now = 1_000_000L
+        val now = 1_000_000_000L
         val ongoing = Window("ongoing", now - 2L * 60L * 60_000L, now + 2L * 60L * 60_000L)
         val future = Window("future", now + 3L * 60L * 60_000L, now + 5L * 60L * 60_000L)
 
@@ -33,7 +33,7 @@ class OperationalTripAutoArchive0566Test {
 
     @Test
     fun `trip remains active during one hour post arrival grace`() {
-        val now = 2_000_000L
+        val now = 1_100_000_000L
         val justArrived = Window(
             "grace",
             now - 3L * 60L * 60_000L,
@@ -48,7 +48,7 @@ class OperationalTripAutoArchive0566Test {
 
     @Test
     fun `trip archives only after canonical arrival plus grace expires`() {
-        val now = 3_000_000L
+        val now = 1_200_000_000L
         val expired = Window(
             "expired",
             now - 4L * 60L * 60_000L,
