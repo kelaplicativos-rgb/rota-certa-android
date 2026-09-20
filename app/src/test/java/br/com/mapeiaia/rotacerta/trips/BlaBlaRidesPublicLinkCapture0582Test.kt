@@ -180,49 +180,32 @@ class BlaBlaRidesPublicLinkCapture0582Test {
     }
 
     @Test
-    fun tripActionsMenuKeepsShareCaptureInAuthoritativeRetryPath() {
+    fun publicShareCaptureWaitsForHydrationEvenWhenControlsAreInitiallyAbsent() {
         assertTrue(
-            shouldRetryPublicTripShare0583(
+            shouldRetryPublicTripShare0584(
                 readAttempts = 0,
                 maxReadAttempts = 2,
-                shareControlPresent = false,
-                menuControlPresent = true,
                 shareInterceptInstalled = true,
             ),
         )
         assertTrue(
-            shouldRetryPublicTripShare0583(
-                readAttempts = 0,
+            shouldRetryPublicTripShare0584(
+                readAttempts = 1,
                 maxReadAttempts = 2,
-                shareControlPresent = true,
-                menuControlPresent = false,
                 shareInterceptInstalled = true,
             ),
         )
         assertFalse(
-            shouldRetryPublicTripShare0583(
-                readAttempts = 0,
-                maxReadAttempts = 2,
-                shareControlPresent = false,
-                menuControlPresent = false,
-                shareInterceptInstalled = true,
-            ),
-        )
-        assertFalse(
-            shouldRetryPublicTripShare0583(
+            shouldRetryPublicTripShare0584(
                 readAttempts = 2,
                 maxReadAttempts = 2,
-                shareControlPresent = false,
-                menuControlPresent = true,
                 shareInterceptInstalled = true,
             ),
         )
         assertFalse(
-            shouldRetryPublicTripShare0583(
+            shouldRetryPublicTripShare0584(
                 readAttempts = 0,
                 maxReadAttempts = 2,
-                shareControlPresent = false,
-                menuControlPresent = true,
                 shareInterceptInstalled = false,
             ),
         )
