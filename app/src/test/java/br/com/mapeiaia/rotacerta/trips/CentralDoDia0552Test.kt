@@ -106,6 +106,7 @@ class CentralDoDia0552Test {
             arrival = start + 3L * 60L * 60_000L,
         ).copy(
             capacity = 4,
+            publishedSeats = 4,
             capacityReliable = true,
             stops = listOf(
                 TripStop(id = "sp", order = 0, name = "São Paulo", plannedDepartureMillis = start),
