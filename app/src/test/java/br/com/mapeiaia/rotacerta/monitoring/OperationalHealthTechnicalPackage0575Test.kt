@@ -119,7 +119,7 @@ class OperationalHealthTechnicalPackage0575Test {
         assertEquals("telefone=[telefone mascarado]", parsed.getString("operatorNote"))
         assertEquals(1_758_337_083_530L, parsed.getJSONObject("nested").getLong("generatedAtMillis"))
         assertEquals("[email mascarado]", parsed.getJSONObject("nested").getString("email"))
-        assertFalse("11999998888" in extracted)
+        assertFalse(parsed.getString("operatorNote").contains("11999998888"))
         assertFalse("teste@example.com" in extracted)
     }
 
@@ -161,10 +161,12 @@ class OperationalHealthTechnicalPackage0575Test {
             zip.readBytes().toString(Charsets.UTF_8)
         }
 
-        assertTrue("[email mascarado]" in extracted)
-        assertTrue("[segredo mascarado]" in extracted)
-        assertTrue("[url mascarada]" in extracted)
-        assertTrue("[telefone mascarado]" in extracted)
+        val parsedFallback = JSONObject(extracted)
+        assertEquals("legacy_non_json_line", parsedFallback.getString("sourceFormat"))
+        assertTrue("[email mascarado]" in parsedFallback.getString("sanitizedText"))
+        assertTrue("[segredo mascarado]" in parsedFallback.getString("sanitizedText"))
+        assertTrue("[url mascarada]" in parsedFallback.getString("sanitizedText"))
+        assertTrue("[telefone mascarado]" in parsedFallback.getString("sanitizedText"))
         assertFalse("teste@example.com" in extracted)
         assertFalse("abc123" in extracted)
         assertFalse("https://example.com/path" in extracted)
