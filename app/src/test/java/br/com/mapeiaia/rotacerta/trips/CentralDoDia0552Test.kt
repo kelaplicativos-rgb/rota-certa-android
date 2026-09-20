@@ -100,7 +100,7 @@ class CentralDoDia0552Test {
 
         assertFalse(source.contains("Text(\"Central do Dia\", style = MaterialTheme.typography.titleLarge)"))
         assertTrue(source.contains("expandedPassengerTripIds0591"))
-        assertTrue(source.contains("Passageiros ${item.passengers.size} ▼"))
+        assertTrue(source.contains("Passageiros \${item.passengers.size} ▼"))
         assertTrue(source.contains("if (passengersExpanded0591)"))
         assertTrue(source.contains("↻ Corrigir"))
         assertFalse(source.contains("Text(\"🔄 Corrigir esta viagem\")"))
