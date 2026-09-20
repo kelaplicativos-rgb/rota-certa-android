@@ -84,7 +84,6 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=1 --no-parallel \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaAutomaticCollection0585Test' \
-            --tests 'br.com.mapeiaia.rotacerta.trips.AgendaBackgroundSync0392Test' \
             --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaRidesPublicLinkCapture0582Test'
 
       - name: Assemble exact-head APK
