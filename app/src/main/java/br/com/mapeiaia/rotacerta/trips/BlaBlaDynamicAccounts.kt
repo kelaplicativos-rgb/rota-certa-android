@@ -750,6 +750,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
     private var ridesSnapshotTotal0526 = 0
     private var ridesSnapshotTerminal0526 = false
     private var ridesSnapshotIdentityAttempts0526 = 0
+    private var ridesSnapshotIdentityBootstrap0586 = false
+    private var ridesSnapshotIdentityBootstrapRideAttempts0586 = 0
     private var ridesSnapshotStabilizer0526: BlaBlaRidesSnapshotStabilizer0526? = null
     private val ridesSnapshotEvidenceGate0529 = BlaBlaRidesSnapshotFinalizationGate0529()
     private val ridesSnapshotIdentityProbeGate0530 = BlaBlaRidesSnapshotIdentityProbeGate0530()
@@ -1064,7 +1066,13 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     captureRideList()
                 }
             }, 900)
-            Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) scheduleTripDetailCapture(view)
+            Phase.DETAIL -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
+                if (mode == BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 && ridesSnapshotIdentityBootstrap0586) {
+                    postSessionDelayed0405({ captureRidesSnapshotIdentityFromTrip0586() }, 650)
+                } else {
+                    scheduleTripDetailCapture(view)
+                }
+            }
             Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
                 val expectedSync = syncGeneration
                 val expectedNavigation = navigationGeneration
@@ -1591,6 +1599,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
         identityConfirmedThisSync = false
         ridesSnapshotTerminal0526 = false
         ridesSnapshotIdentityAttempts0526 = 0
+        ridesSnapshotIdentityBootstrap0586 = false
+        ridesSnapshotIdentityBootstrapRideAttempts0586 = 0
         rideReadAttempts = 0
         ridesSnapshotStabilizer0526 = BlaBlaRidesSnapshotStabilizer0526()
         ridesSnapshotEvidenceGate0529.reset()
@@ -1662,6 +1672,11 @@ internal class BlaBlaDynamicAccountSessionController0401(
                         errorCode = resolution.errorCode,
                         authenticatedProfileUuid = resolution.authenticatedProfileUuid,
                     )
+                } else if (
+                    resolution.errorCode == "PROFILE_IDENTITY_NOT_STRONG" &&
+                    ridesSnapshotIdentityAttempts0526 >= 1
+                ) {
+                    beginRidesSnapshotIdentityBootstrap0586()
                 } else {
                     retryRidesSnapshotIdentity0526(
                         reason = resolution.errorCode.ifBlank { "PROFILE_IDENTITY_NOT_STRONG" },
@@ -1671,97 +1686,211 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val sessionHealth0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
-                context = this,
-                account = account,
-                actualProfileUuid = resolution.authenticatedProfileUuid,
-                operation = "RIDES_SNAPSHOT_IDENTITY",
-            )
-            if (sessionHealth0553.state != BlaBlaSessionState0552.VALID) {
-                failRidesSnapshot0526(
-                    status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
-                    errorCode = "SESSION_" + sessionHealth0553.state.name,
-                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
-                )
-                return@evaluateRequest
-            }
-            identityConfirmedThisSync = true
-            ridesSnapshotIdentityAttempts0526 = 0
-            val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid).orEmpty()
-            val identityCapturedAt = java.time.Instant.now().toString()
-            val store0528 = ridesSnapshotStore0526()
-            val identityLocators0528 = sanitizedIdentityLocators0528(
+            completeRidesSnapshotIdentity0586(
                 profileLinks = evidence.profileLinks,
                 authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                evidenceType = "AUTHENTICATED_PROFILE_UUID_LINK",
+                proofOrigin = "profile_page",
             )
-            if (identityLocators0528.isEmpty()) {
+        }
+    }
+
+    private fun beginRidesSnapshotIdentityBootstrap0586() {
+        if (ridesSnapshotTerminal0526 || ridesSnapshotIdentityBootstrap0586) return
+        ridesSnapshotIdentityBootstrap0586 = true
+        ridesSnapshotIdentityBootstrapRideAttempts0586 = 0
+        rideReadAttempts = 0
+        snapshotProgress0526(
+            "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Confirmando identidade pela viagem",
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_IDENTITY_BOOTSTRAP_0586",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 stage=RIDES_LIST reason=profile_uuid_not_observable failClosed=true",
+        )
+        enterBrowserPhase(
+            Phase.RIDES,
+            BlaBlaBrowserRequest.RIDE_LIST,
+            "rides_snapshot_identity_bootstrap_list_0586",
+        )
+        loadTrackedUrl(RIDES_URL)
+    }
+
+    private fun captureRidesSnapshotIdentityFromTrip0586() {
+        if (
+            mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+            phase != Phase.DETAIL ||
+            !ridesSnapshotIdentityBootstrap0586 ||
+            ridesSnapshotTerminal0526
+        ) return
+
+        val candidate = candidates.getOrNull(candidateIndex)
+        if (candidate == null) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "IDENTITY_BOOTSTRAP_TRIP_UNAVAILABLE",
+            )
+            return
+        }
+
+        evaluateRequest<DynamicTripDetail>(BlaBlaBrowserRequest.TRIP_DETAIL) { result ->
+            if (
+                mode != BlaBlaDynamicSessionIntents.MODE_RIDES_SNAPSHOT_0526 ||
+                phase != Phase.DETAIL ||
+                !ridesSnapshotIdentityBootstrap0586 ||
+                ridesSnapshotTerminal0526
+            ) return@evaluateRequest
+            if (result == null) {
                 failRidesSnapshot0526(
                     status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
-                    errorCode = "IDENTITY_EVIDENCE_NOT_AUDITABLE",
-                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                    errorCode = "IDENTITY_BOOTSTRAP_DETAIL_UNREADABLE",
+                    finalUrl = webView.url.orEmpty(),
                 )
                 return@evaluateRequest
             }
-            val identityPayload0528 = BlaBlaRidesIdentityJson0528(
-                accountKey = store0528.accountKey(account.id),
-                expectedProfileUuid = expected,
-                authenticatedProfileUuid = resolution.authenticatedProfileUuid,
-                confirmedAt = identityCapturedAt,
-                locators = identityLocators0528,
+
+            val identityLinks0586 = (result.driverProfileLinks + result.detail.profileLinks).distinct()
+            val resolution = resolveRidesSnapshotTripIdentityBootstrap0586(
+                expectedProfileUuid = account.profileUuid,
+                candidateHref = candidate.href,
+                detailHref = result.detail.url,
+                driverProfileLinks = result.driverProfileLinks,
+                detailProfileLinks = result.detail.profileLinks,
             )
-            val identityArtifact0528 = runCatching {
-                store0528.writeIdentityJson0528(
-                    captureId = ridesSnapshotCaptureId0526,
-                    profileUuid = expected,
-                    payload = identityPayload0528,
-                )
-            }.getOrElse {
+            if (!resolution.confirmed) {
                 failRidesSnapshot0526(
-                    status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
-                    errorCode = "IDENTITY_EVIDENCE_WRITE_FAILED",
+                    status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                    errorCode = resolution.errorCode.ifBlank { "IDENTITY_BOOTSTRAP_NOT_STRONG" },
                     authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                    finalUrl = webView.url.orEmpty(),
                 )
                 return@evaluateRequest
             }
-            val identityEvidence0528 = BlaBlaRidesIdentityEvidence0528(
-                source = identityPayload0528.source,
-                capturedAt = identityCapturedAt,
-                evidenceType = identityPayload0528.evidenceType,
-                evidenceHashSha256 = identityArtifact0528.sha256,
-                accountKey = identityPayload0528.accountKey,
-                locators = identityLocators0528,
-            )
-            store0528.updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
-                previous.copy(
-                    authenticatedProfileUuid = resolution.authenticatedProfileUuid,
-                    identityConfirmed = true,
-                    identityEvidence = identityEvidence0528,
-                    identityFile = identityArtifact0528.relativePath,
-                    identityBytes = identityArtifact0528.bytes,
-                    identitySha256 = identityArtifact0528.sha256,
-                    status = BlaBlaRidesSnapshotStatus0526.IDENTITY_CONFIRMED,
-                    errorCode = "",
-                )
-            }
+
             UnifiedDebugEventStore.recordAlways(
-                "RIDES_SNAPSHOT_IDENTITY_CONFIRMED",
+                "RIDES_SNAPSHOT_IDENTITY_BOOTSTRAP_0586",
                 packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuid=$expected authenticatedUuid=${resolution.authenticatedProfileUuid} identityStrong=true",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 stage=TRIP_DETAIL tripIdMatch=true expectedUuidMatch=true locatorCandidates=${identityLinks0586.size} failClosed=true",
             )
-            UnifiedDebugEventStore.recordAlways(
-                "BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED",
-                packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${identityPayload0528.accountKey} source=SESSION_IDENTITY evidenceType=${identityPayload0528.evidenceType} locatorCount=${identityLocators0528.size} identitySha256=${identityArtifact0528.sha256}",
+            completeRidesSnapshotIdentity0586(
+                profileLinks = identityLinks0586,
+                authenticatedProfileUuid = resolution.authenticatedProfileUuid,
+                evidenceType = "AUTHENTICATED_TRIP_DRIVER_PROFILE_UUID_LINK",
+                proofOrigin = "authenticated_ride_detail",
             )
-            snapshotProgress0526(
-                "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Carregando Suas viagens",
-            )
-            enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "rides_snapshot_open_list_0526")
-            ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) {
-                it.copy(status = BlaBlaRidesSnapshotStatus0526.RIDES_LOADING)
-            }
-            loadTrackedUrl(RIDES_URL)
         }
+    }
+
+    private fun completeRidesSnapshotIdentity0586(
+        profileLinks: List<String>,
+        authenticatedProfileUuid: String,
+        evidenceType: String,
+        proofOrigin: String,
+    ) {
+        val sessionHealth0553 = BlaBlaCarSessionKeeper0552.observeIdentity(
+            context = this,
+            account = account,
+            actualProfileUuid = authenticatedProfileUuid,
+            operation = "RIDES_SNAPSHOT_IDENTITY_$proofOrigin",
+        )
+        if (sessionHealth0553.state != BlaBlaSessionState0552.VALID) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "SESSION_" + sessionHealth0553.state.name,
+                authenticatedProfileUuid = authenticatedProfileUuid,
+            )
+            return
+        }
+
+        val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
+        if (expected == null || expected != BlaBlaRidesSnapshotStore0526.strongUuid(authenticatedProfileUuid)) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "PROFILE_UUID_MISMATCH",
+                authenticatedProfileUuid = authenticatedProfileUuid,
+            )
+            return
+        }
+
+        val identityLocators0528 = sanitizedIdentityLocators0528(
+            profileLinks = profileLinks,
+            authenticatedProfileUuid = authenticatedProfileUuid,
+        )
+        if (identityLocators0528.isEmpty()) {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                errorCode = "IDENTITY_EVIDENCE_NOT_AUDITABLE",
+                authenticatedProfileUuid = authenticatedProfileUuid,
+            )
+            return
+        }
+
+        identityConfirmedThisSync = true
+        ridesSnapshotIdentityAttempts0526 = 0
+        ridesSnapshotIdentityBootstrap0586 = false
+        ridesSnapshotIdentityBootstrapRideAttempts0586 = 0
+        val identityCapturedAt = java.time.Instant.now().toString()
+        val store0528 = ridesSnapshotStore0526()
+        val identityPayload0528 = BlaBlaRidesIdentityJson0528(
+            accountKey = store0528.accountKey(account.id),
+            expectedProfileUuid = expected,
+            authenticatedProfileUuid = authenticatedProfileUuid,
+            confirmedAt = identityCapturedAt,
+            evidenceType = evidenceType,
+            locators = identityLocators0528,
+        )
+        val identityArtifact0528 = runCatching {
+            store0528.writeIdentityJson0528(
+                captureId = ridesSnapshotCaptureId0526,
+                profileUuid = expected,
+                payload = identityPayload0528,
+            )
+        }.getOrElse {
+            failRidesSnapshot0526(
+                status = BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
+                errorCode = "IDENTITY_EVIDENCE_WRITE_FAILED",
+                authenticatedProfileUuid = authenticatedProfileUuid,
+            )
+            return
+        }
+        val identityEvidence0528 = BlaBlaRidesIdentityEvidence0528(
+            source = identityPayload0528.source,
+            capturedAt = identityCapturedAt,
+            evidenceType = identityPayload0528.evidenceType,
+            evidenceHashSha256 = identityArtifact0528.sha256,
+            accountKey = identityPayload0528.accountKey,
+            locators = identityLocators0528,
+        )
+        store0528.updateProfile(ridesSnapshotCaptureId0526, account.id) { previous ->
+            previous.copy(
+                authenticatedProfileUuid = authenticatedProfileUuid,
+                identityConfirmed = true,
+                identityEvidence = identityEvidence0528,
+                identityFile = identityArtifact0528.relativePath,
+                identityBytes = identityArtifact0528.bytes,
+                identitySha256 = identityArtifact0528.sha256,
+                status = BlaBlaRidesSnapshotStatus0526.IDENTITY_CONFIRMED,
+                errorCode = "",
+            )
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "RIDES_SNAPSHOT_IDENTITY_CONFIRMED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 expectedUuid=$expected authenticatedUuid=$authenticatedProfileUuid identityStrong=true proofOrigin=$proofOrigin",
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_RIDES_IDENTITY_EVIDENCE_CAPTURED",
+            packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} accountKey=${identityPayload0528.accountKey} source=SESSION_IDENTITY evidenceType=${identityPayload0528.evidenceType} locatorCount=${identityLocators0528.size} identitySha256=${identityArtifact0528.sha256}",
+        )
+        snapshotProgress0526(
+            "Capturando perfil ${ridesSnapshotPosition0526}/${ridesSnapshotTotal0526} • Carregando Suas viagens",
+        )
+        enterBrowserPhase(Phase.RIDES, BlaBlaBrowserRequest.RIDE_LIST, "rides_snapshot_open_list_0526")
+        ridesSnapshotStore0526().updateProfile(ridesSnapshotCaptureId0526, account.id) {
+            it.copy(status = BlaBlaRidesSnapshotStatus0526.RIDES_LOADING)
+        }
+        loadTrackedUrl(RIDES_URL)
     }
 
     private fun retryRidesSnapshotIdentity0526(
@@ -1839,6 +1968,49 @@ internal class BlaBlaDynamicAccountSessionController0401(
             val visibleCards = result.candidates
                 .filter { BlaBlaCollectorUrlModule.isSpecificTrip(it.href) }
                 .distinctBy { BlaBlaCollectorUrlModule.canonical(it.href) }
+
+            if (ridesSnapshotIdentityBootstrap0586 && !identityConfirmedThisSync) {
+                val identityCandidate0586 = visibleCards.firstOrNull()
+                if (identityCandidate0586 == null) {
+                    ridesSnapshotIdentityBootstrapRideAttempts0586++
+                    val stillLoading0586 = result.loadingActive || !result.documentReady || !result.atBottom
+                    if (stillLoading0586 && ridesSnapshotIdentityBootstrapRideAttempts0586 < 3) {
+                        UnifiedDebugEventStore.record(
+                            "RIDES_SNAPSHOT_IDENTITY_BOOTSTRAP_0586",
+                            packageName,
+                            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 stage=RIDES_LIST_WAIT attempt=$ridesSnapshotIdentityBootstrapRideAttempts0586 loading=$stillLoading0586",
+                        )
+                        postSessionDelayed0405(
+                            { captureRideListSnapshot0526() },
+                            RIDES_SNAPSHOT_RETRY_MS_0526,
+                        )
+                    } else {
+                        failRidesSnapshot0526(
+                            status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
+                            errorCode = "IDENTITY_BOOTSTRAP_TRIP_UNAVAILABLE",
+                            finalUrl = finalUrl,
+                        )
+                    }
+                    return@evaluateRequest
+                }
+
+                ridesSnapshotIdentityBootstrapRideAttempts0586 = 0
+                candidates = listOf(identityCandidate0586)
+                candidateIndex = 0
+                enterBrowserPhase(
+                    Phase.DETAIL,
+                    BlaBlaBrowserRequest.TRIP_DETAIL,
+                    "rides_snapshot_identity_bootstrap_detail_0586",
+                )
+                UnifiedDebugEventStore.recordAlways(
+                    "RIDES_SNAPSHOT_IDENTITY_BOOTSTRAP_0586",
+                    packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(ridesSnapshotCaptureId0526)} profile=$ridesSnapshotPosition0526/$ridesSnapshotTotal0526 stage=TRIP_OPEN candidateTripIdPresent=${!BlaBlaTripIdentity.externalTripIdFromHref(identityCandidate0586.href).isNullOrBlank()}",
+                )
+                loadTrackedUrl(identityCandidate0586.href)
+                return@evaluateRequest
+            }
+
             val rawTripIds0528 = result.candidates.mapNotNull { candidate ->
                 BlaBlaCollectorUrlModule.tripId(candidate.href)
             }
