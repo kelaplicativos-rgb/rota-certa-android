@@ -104,6 +104,36 @@ test("0580 public card renders only server-resolved segment rows and capacity do
   const renderer = between(shell, "function publicSegmentRows0580", "function appendJourney0569");
   assert.match(renderer, /item\?\.segmentAvailability/);
   assert.match(renderer, /segment\.availableSeats/);
+  assert.match(renderer, /segment\.passengerSeats/);
+  assert.match(renderer, /agendaSegmentOccupancy0596/);
   assert.match(renderer, /segmentSeatDots0580/);
   assert.doesNotMatch(renderer, /passengerName|passengerId|bookingId|phone|email|address|sourceReference|segmentPassengerLoads/);
 });
+
+test("0596 public Agenda keeps segment occupancy anonymous and server-resolved", () => {
+  const renderer = between(shell, "function publicSegmentRows0580", "function appendJourney0569");
+  assert.match(renderer, /const passengerSeats =/);
+  assert.match(renderer, /segment\.passengerSeats/);
+  assert.match(renderer, /"👥 " \+ segment\.passengerSeats \+ "\/" \+ segment\.capacity/);
+  assert.doesNotMatch(
+    renderer,
+    /passengerName|passengerId|bookingId|phone|email|address|sourceReference|canonicalTripId|blablaTripId/,
+  );
+});
+
+test("0596 card navigation arms refresh and return paths immediately reload canonical Agenda", () => {
+  const navigation = between(shell, "const AGENDA_CARD_REFRESH_KEY_0596", "function appendJourney0569");
+  assert.match(navigation, /sessionStorage\.setItem/);
+  assert.match(navigation, /bindTripCardNavigation0596/);
+  assert.match(navigation, /loadAgenda0569\(true\)/);
+
+  const card = between(shell, "function renderTripCard0569", "function renderAgenda0569");
+  assert.match(card, /viewRide\.addEventListener\("click", armAgendaCardRefresh0596\)/);
+  assert.match(card, /bindTripCardNavigation0596\(card, publicUrl\)/);
+
+  assert.match(shell, /addEventListener\("pageshow"/);
+  assert.match(shell, /addEventListener\("focus"/);
+  assert.match(shell, /visibilitychange/);
+  assert.match(shell, /consumeAgendaCardRefresh0596/);
+});
+
