@@ -81,6 +81,6 @@ test("0589 private passenger data remains behind the stronger passenger session"
 test("0589 Android and package metadata expose the new passenger product name without changing the package", () => {
   assert.match(android, /ABRIR VIAGEM CERTA/);
   assert.match(android, /Abrindo o Viagem Certa\./);
-  assert.match(gradle, /versionCode = 5880/);
+  assert.match(gradle, /releaseVersionCode = 5_880/);
   assert.match(gradle, /versionName = "0\.1\.589"/);
 });
