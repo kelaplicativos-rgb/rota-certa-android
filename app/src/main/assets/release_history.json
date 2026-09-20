@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.598",
+      "build": 5889,
+      "commit": null,
+      "branch": "agent/dedicated-itinerary-recovery-0.1.598",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O coletor passa a executar explicitamente o request TRIP_ITINERARY para cada viagem aceita antes de finalizar o card.",
+        "TRIP_ITINERARY combina evidência estrutural do DOM, waypoints de rede vinculados ao tripId administrativo exato e, quando necessário, a ordem única inferível dos trechos dos próprios passageiros.",
+        "A recuperação por passageiros é fail-closed: só materializa a rota quando as restrições embarque → desembarque produzem uma única ordenação topológica."
+      ],
+      "fixed": [
+        "Corrigida a situação em que Central do Dia, Agenda e Timeline recebiam somente origem → destino mesmo com passageiros contendo embarques e desembarques intermediários.",
+        "O request TRIP_ITINERARY deixa de existir apenas no catálogo e passa a fazer parte do fluxo real do coletor dinâmico.",
+        "A Central deixa de marcar ocupação/vagas como coerentes quando a topologia canônica não contém os pontos necessários para posicionar os passageiros."
+      ],
+      "improved": [
+        "Evidência de itinerário é aceita somente quando vinculada ao mesmo tripId administrativo da página atual.",
+        "Evidência de rede incompatível com a ordem estrutural observada não substitui a rota.",
+        "A 0.1.597 continua protegendo contra redução de topologia; a 0.1.598 adiciona aquisição ativa e recuperação segura quando o estado anterior já nasceu com apenas duas paradas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.597: a preservação impedia perder uma rota rica já conhecida, mas não recuperava intermediários quando a viagem já estava persistida somente com origem e destino."
+      ],
+      "modulesAffected": [
+        "Coletor BlaBlaCar",
+        "TRIP_ITINERARY",
+        "Itinerário canônico",
+        "Central do Dia",
+        "Agenda / Viagem Certa",
+        "Timeline",
+        "Vagas por trecho",
+        "Diagnóstico de integridade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.597",
       "build": 5888,
       "commit": null,
