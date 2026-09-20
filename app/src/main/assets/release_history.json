@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.594",
+      "build": 5885,
+      "commit": null,
+      "branch": "agent/central-day-diagnostics-0.1.594",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central do Dia passa a ter módulo diagnóstico próprio, separado de Todas as viagens.",
+        "Abertura do painel de passageiros registra se os controles operacionais reais ou o fallback somente leitura foram renderizados.",
+        "Alterações de status e atalhos da Central passam a registrar eventos contextuais dedicados para WhatsApp, embarque, desembarque, valor e mensagem pronta."
+      ],
+      "fixed": [
+        "Corrigida a classificação de CENTRAL_DAY como ALL_TRIPS no relatório contextual.",
+        "O relatório deixa de ser incapaz de distinguir falha de renderização, fallback somente leitura e toque efetivo nos controles da Central."
+      ],
+      "improved": [
+        "Os eventos da Central agora carregam parent/origin/executor CENTRAL_DAY e aparecem no relatório da própria Central sem misturar inicialização de Todas as viagens."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.593: o relatório podia mostrar apenas MODULE_VIEW_OPENED screen=CENTRAL_DAY sem qualquer evidência sobre os controles operacionais, tornando impossível concluir se os atalhos/status haviam sido renderizados ou acionados."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Relatório de depuração",
+        "Passageiros",
+        "Atalhos operacionais",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.593",
       "build": 5884,
       "commit": null,
