@@ -40,6 +40,52 @@ class BlaBlaRidesSnapshot0526Test {
     }
 
     @Test
+    fun currentAuthenticatedRideDetailCanBootstrapExpectedIdentityWhenProfilePageDoesNotExposeUuid() {
+        val tripId = "01a0359e-de23-7a2b-ab27-43990c399a74"
+        val result = resolveRidesSnapshotTripIdentityBootstrap0586(
+            expectedProfileUuid = ezequiel,
+            candidateHref = "https://www.blablacar.com.br/rides/offer?id=$tripId",
+            detailHref = "https://www.blablacar.com.br/rides/offer?id=$tripId",
+            driverProfileLinks = listOf("https://www.blablacar.com.br/member/$ezequiel"),
+            detailProfileLinks = emptyList(),
+        )
+
+        assertTrue(result.confirmed)
+        assertEquals(ezequiel, result.authenticatedProfileUuid)
+        assertEquals("", result.errorCode)
+    }
+
+    @Test
+    fun identityBootstrapRejectsDetailFromAnotherTrip() {
+        val result = resolveRidesSnapshotTripIdentityBootstrap0586(
+            expectedProfileUuid = ezequiel,
+            candidateHref = "https://www.blablacar.com.br/rides/offer?id=trip-current-1234",
+            detailHref = "https://www.blablacar.com.br/rides/offer?id=trip-other-5678",
+            driverProfileLinks = listOf("https://www.blablacar.com.br/member/$ezequiel"),
+            detailProfileLinks = emptyList(),
+        )
+
+        assertFalse(result.confirmed)
+        assertEquals("IDENTITY_BOOTSTRAP_TRIP_MISMATCH", result.errorCode)
+    }
+
+    @Test
+    fun identityBootstrapNeverAcceptsOtherProfileFromCurrentRideDetail() {
+        val tripId = "trip-current-1234"
+        val result = resolveRidesSnapshotTripIdentityBootstrap0586(
+            expectedProfileUuid = ezequiel,
+            candidateHref = "https://www.blablacar.com.br/rides/offer?id=$tripId",
+            detailHref = "https://www.blablacar.com.br/rides/offer?id=$tripId",
+            driverProfileLinks = listOf("https://www.blablacar.com.br/member/$barbosa"),
+            detailProfileLinks = emptyList(),
+        )
+
+        assertFalse(result.confirmed)
+        assertEquals(barbosa, result.authenticatedProfileUuid)
+        assertEquals("PROFILE_UUID_MISMATCH", result.errorCode)
+    }
+
+    @Test
     fun multipleStrongProfileUuidsAreAmbiguousEvenWhenExpectedIsAmongThem() {
         val result = BlaBlaRidesSnapshotIdentityPolicy0526.resolve(
             expectedProfileUuid = ezequiel,
