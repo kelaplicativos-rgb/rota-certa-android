@@ -606,6 +606,7 @@ internal fun CentralDoDiaScreen0552(
     onMessage: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val store0593 = remember(context) { TripStore(context.applicationContext) }
     val commandRevision by BlaBlaTripControlEvents0407.revision.collectAsState()
     val accounts = remember(commandRevision, trips) { BlaBlaDynamicAccountRegistry(context).list() }
     val today = LocalDate.now()
@@ -617,6 +618,16 @@ internal fun CentralDoDiaScreen0552(
             date = today,
             localProfileLabel = localProfileLabel,
         )
+    }
+    val operationalProjection0593 = remember(trips, bookings, commandRevision, localProfileLabel) {
+        localAgendaTimelineProjection0515(
+            trips = trips,
+            bookings = bookings,
+            localProfileLabel = localProfileLabel,
+        )
+    }
+    val entryByTripId0593 = remember(operationalProjection0593.entries) {
+        operationalProjection0593.entries.associateBy(TripTimelineEntry::tripId)
     }
     var diagnosticTripId by remember { mutableStateOf<String?>(null) }
     val formatter = remember { DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault()).withZone(ZoneId.systemDefault()) }
@@ -747,19 +758,40 @@ internal fun CentralDoDiaScreen0552(
                 }
 
                 if (passengersExpanded0591) {
-                    item.passengers.forEach { passenger ->
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(
-                                "${passenger.name} • ${passenger.stateLabel}",
-                                modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                            )
-                            TextButton(
-                                onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) },
-                            ) { Text("Operar") }
+                    val canonicalTrip0593 = trips.firstOrNull { trip -> trip.id == item.canonicalTripId }
+                    val timelineEntry0593 = entryByTripId0593[item.canonicalTripId]
+                    if (canonicalTrip0593 != null && timelineEntry0593 != null) {
+                        EnhancedPassengerTimelineSection(
+                            entry = timelineEntry0593,
+                            trip = canonicalTrip0593,
+                            store = store0593,
+                            currentCoordinate = null,
+                            onChanged = { message ->
+                                onMessage(message)
+                                onRefreshLocal()
+                            },
+                            canonicalBookings0494 = bookings.filter { booking ->
+                                booking.tripId == item.canonicalTripId
+                            },
+                            showTripActions0549 = false,
+                            compactEmbeddedControls0593 = true,
+                        )
+                    } else {
+                        item.passengers.forEach { passenger ->
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    passenger.name + " • " + passenger.stateLabel,
+                                    modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                )
+                                TextButton(
+                                    onClick = { onOpenTimeline(item.canonicalTripId, passenger.bookingId) },
+                                ) { Text("Operar") }
+                            }
                         }
                     }
+                }
                 }
             }
         }
