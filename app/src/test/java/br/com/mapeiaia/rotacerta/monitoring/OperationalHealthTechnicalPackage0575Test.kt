@@ -7,8 +7,10 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.json.JSONObject
 
 class OperationalHealthTechnicalPackage0575Test {
     @Test
@@ -78,6 +80,31 @@ class OperationalHealthTechnicalPackage0575Test {
         assertTrue(lines[1].contains("\"stage\":\"TWO\""))
         assertFalse("one@example.com" in extracted)
         assertFalse("two@example.com" in extracted)
+    }
+
+    @Test
+    fun jsonEntriesPreserveNumericTypesWhileSanitizingStringValues() {
+        val metric = 11_999_998_888L
+        val bytes = OperationalHealthTechnicalPackage0575.zipSanitized0575(
+            mapOf(
+                "buffer-stats.json" to
+                    JSONObject()
+                        .put("recordOverheadTotalNs", metric)
+                        .put("details", "telefone=11999998888")
+                        .toString(),
+            ),
+        )
+
+        val extracted = ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            val entry = zip.nextEntry
+            assertTrue(entry != null && entry.name == "buffer-stats.json")
+            zip.readBytes().toString(Charsets.UTF_8)
+        }
+        val parsed = JSONObject(extracted)
+
+        assertEquals(metric, parsed.getLong("recordOverheadTotalNs"))
+        assertTrue("[telefone mascarado]" in parsed.getString("details"))
+        assertFalse("11999998888" in parsed.getString("details"))
     }
 
     @Test
