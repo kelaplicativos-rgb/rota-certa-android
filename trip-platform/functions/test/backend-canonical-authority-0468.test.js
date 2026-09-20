@@ -462,9 +462,9 @@ test("0494 Android opens canonical Timeline by default while collector remains a
   assert.match(navigation0468, /ALL_TRIPS\("Todas as viagens"\)/);
 });
 
-test("0475 collector panel identifies backend as authority and opens only the public Agenda", () => {
+test("0589 collector panel identifies backend as authority and opens only Viagem Certa", () => {
   assert.match(syncUi0468, /O servidor é a fonte canônica/);
-  assert.match(syncUi0468, /ABRIR AGENDA PÚBLICA/);
+  assert.match(syncUi0468, /ABRIR VIAGEM CERTA/);
   assert.doesNotMatch(syncUi0468, /ABRIR ÁREA ADMINISTRATIVA/);
   assert.match(syncUi0468, /store\.onlineSettings\(\)\.publicAgendaUrl/);
   assert.match(syncUi0468, /Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\)\)/);
