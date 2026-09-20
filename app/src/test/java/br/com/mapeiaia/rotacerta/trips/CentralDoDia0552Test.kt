@@ -250,7 +250,7 @@ class CentralDoDia0552Test {
         assertTrue(source.contains("all_trips_visibility"))
         assertTrue(source.contains("\"Vagas por trecho\""))
         assertTrue(source.contains("item.segmentLoads.forEach"))
-        assertTrue(source.contains("Text(\"👥 \\$occupancy0595\""))
+        assertTrue(source.contains("Text(\"👥 \$occupancy0595\""))
         assertTrue(source.contains("\"LOTADO\""))
         assertFalse(source.contains("Text(\"expectedHash:"))
         assertFalse(source.contains("Text(\"actualHash:"))
