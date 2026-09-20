@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.597",
+      "build": 5888,
+      "commit": null,
+      "branch": "agent/canonical-itinerary-segment-preservation-0.1.597",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A coleta passa a enriquecer o itinerário operacional com waypoints ordenados do payload de rede da mesma viagem, somente quando essa ordem é compatível com a rota estrutural observada no DOM.",
+        "O estado canônico mantém a topologia de paradas mais rica já comprovada quando uma atualização não autoritativa traz apenas origem e destino."
+      ],
+      "fixed": [
+        "Corrigida a causa que fazia uma viagem multi-trecho voltar a apenas origem → destino após refresh parcial, deixando Central do Dia, Agenda e Timeline sem os segmentos intermediários.",
+        "Refresh completo do coletor deixa de apagar itinerary_stops anteriores quando a nova leitura é apenas uma visão mais pobre e compatível da mesma viagem.",
+        "A ingestão canônica ganha uma segunda trava contra redução compatível da lista de paradas em snapshot não autoritativo."
+      ],
+      "improved": [
+        "Nenhuma ordem de paradas é inventada: evidência de rede só é aceita quando uma sequência é subsequência ordenada da outra; conflito preserva a evidência estrutural do DOM.",
+        "Uma nova evidência autoritativa continua podendo substituir a topologia antiga, permitindo alterações reais de rota.",
+        "O SeatAvailabilityEngine continua sendo a única autoridade para ocupação e vagas por segmento; a correção atua somente na topologia canônica que alimenta esse motor."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.596: a interface já renderizava Vagas por trecho, mas um refresh parcial podia reduzir a viagem a dois pontos e, consequentemente, produzir somente um segmento."
+      ],
+      "modulesAffected": [
+        "Coletor BlaBlaCar",
+        "Itinerário canônico",
+        "Agenda canônica",
+        "Central do Dia",
+        "Agenda / Viagem Certa",
+        "Timeline",
+        "Vagas por trecho",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.596",
       "build": 5887,
       "commit": null,
