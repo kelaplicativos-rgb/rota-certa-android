@@ -144,6 +144,87 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
         )
     }
 
+    /**
+     * 0.1.597: route topology may be observed through more than one read-only channel.
+     *
+     * The DOM itinerary remains the preferred structural evidence. The exact-trip network
+     * payload is allowed to enrich it only when both ordered observations are compatible
+     * (one is an ordered subsequence of the other). This prevents a partial DOM refresh from
+     * collapsing a known multi-stop trip to origin -> destination while still refusing to
+     * invent an ordering when the two observations disagree.
+     *
+     * Network waypoints never upgrade itineraryAuthoritative; callers keep that flag tied to
+     * structural DOM evidence.
+     */
+    internal fun reconcileOperationalItinerary0597(
+        origin: String,
+        destination: String,
+        domItinerary: List<String>,
+        networkItinerary: List<String>,
+    ): List<String> {
+        fun key(raw: String): String = java.text.Normalizer
+            .normalize(raw.substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+
+        fun bounded(rawStops: List<String>): List<String> {
+            val ordered = mutableListOf<String>()
+            fun add(raw: String) {
+                val value = raw.trim().take(240).takeIf(String::isNotBlank) ?: return
+                if (ordered.lastOrNull()?.let { key(it) == key(value) } == true) return
+                ordered += value
+            }
+            add(origin)
+            rawStops.forEach(::add)
+            add(destination)
+            return ordered
+        }
+
+        fun structurallyBounded(stops: List<String>): Boolean {
+            if (stops.size < 2) return false
+            val originKey = key(origin)
+            val destinationKey = key(destination)
+            if (originKey.isBlank() || destinationKey.isBlank() || originKey == destinationKey) return false
+            val keys = stops.map(::key)
+            if (keys.firstOrNull() != originKey || keys.lastOrNull() != destinationKey) return false
+            if (keys.drop(1).dropLast(1).any { it == originKey || it == destinationKey }) return false
+            return true
+        }
+
+        fun isOrderedSubsequence(needle: List<String>, haystack: List<String>): Boolean {
+            if (needle.isEmpty()) return true
+            val haystackKeys = haystack.map(::key)
+            var cursor = 0
+            for (raw in needle) {
+                val wanted = key(raw)
+                var found = false
+                while (cursor < haystackKeys.size) {
+                    if (haystackKeys[cursor] == wanted) {
+                        found = true
+                        cursor++
+                        break
+                    }
+                    cursor++
+                }
+                if (!found) return false
+            }
+            return true
+        }
+
+        val dom = bounded(domItinerary)
+        val network = bounded(networkItinerary)
+        if (!structurallyBounded(dom)) return emptyList()
+        if (!structurallyBounded(network) || network.size <= 2) return dom
+
+        return when {
+            isOrderedSubsequence(dom, network) -> network
+            isOrderedSubsequence(network, dom) -> dom
+            else -> dom
+        }
+    }
+
     fun parseCanonicalMinorUnits(rawAmount: String?, rawCurrencyCode: String?): Long? {
         val amount = rawAmount?.trim()?.takeIf(String::isNotEmpty) ?: return null
         if (!amount.matches(Regex("[0-9]{1,10}(?:\\.[0-9]{1,3})?"))) return null
