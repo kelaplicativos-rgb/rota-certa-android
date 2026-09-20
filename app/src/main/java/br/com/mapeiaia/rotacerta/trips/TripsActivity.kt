@@ -155,7 +155,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 }
 
 private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this) {
-    TripScreen.CENTRAL_DAY -> DiagnosticModule0507.ALL_TRIPS
+    TripScreen.CENTRAL_DAY -> DiagnosticModule0507.CENTRAL_DAY
     TripScreen.TIMELINE -> DiagnosticModule0507.ALL_TRIPS
     TripScreen.ASSISTANT -> DiagnosticModule0507.ASSISTANT
     TripScreen.AUTO_SYNC -> DiagnosticModule0507.BLABLACAR
