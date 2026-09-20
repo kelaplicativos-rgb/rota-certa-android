@@ -131,7 +131,11 @@ class SegmentAvailabilityCards0580Test {
         assertTrue(expandedAfterAvailability > title)
         assertTrue(passengerSection > expandedAfterAvailability)
         assertTrue(card.contains("0 -> \"LOTADO\""))
-        assertTrue(card.contains("\"●\".repeat(occupiedForDots0580) + \"○\".repeat(availableForDots0580)"))
+        assertTrue(card.contains("load0580.occupiedSeats.coerceIn(0, cap)"))
+        assertTrue(card.contains("\"●\".repeat(occupiedDots) + \"○\".repeat((cap - occupiedDots).coerceAtLeast(0))"))
+        assertTrue(card.contains("load0580.passengerSeats"))
+        assertTrue(card.contains("load0580.blockedSeats"))
+        assertTrue(card.contains("load0580.overbookingSeats"))
         assertTrue(!card.contains("coerceAtMost(8)"))
     }
 }
