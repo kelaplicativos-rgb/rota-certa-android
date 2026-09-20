@@ -868,8 +868,10 @@ internal object PublicAgendaAutoSync0300 {
             store.adoptRemoteCanonicalAuthority0588(
                 canonicalTripId = original.id,
                 expectedLocalRevision = original.canonicalRevision,
+                committedSnapshot = publicTrip,
                 remoteCanonicalRevision = response.canonicalRevision,
                 remoteCanonicalStateHash = response.canonicalStateHash,
+                remotePublicationRevision = response.entityRevision,
             ) ?: run {
                 UnifiedDebugEventStore.record(
                     "PRIVATE_MIRROR_DEFERRED_0588",
