@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.586",
+      "build": 5877,
+      "commit": null,
+      "branch": "agent/rides-snapshot-identity-bootstrap-0.1.586",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O snapshot multiperfil ganhou revalidação fail-closed pela própria sessão autenticada de Suas viagens quando a página de perfil não expõe um UUID forte.",
+        "A revalidação alternativa abre uma viagem pertencente à lista autenticada, exige igualdade do tripId entre lista e detalhe e só então usa o link do perfil do motorista como prova atual."
+      ],
+      "fixed": [
+        "Corrigido o PROFILE_IDENTITY_NOT_STRONG observado no segundo perfil quando /profile deixa de materializar um link com UUID, sem aumentar a janela temporal de confiança da sessão.",
+        "A coleta deixa de depender exclusivamente da exposição do UUID no DOM da página de perfil e passa a obter uma nova prova auditável da identidade na viagem autenticada."
+      ],
+      "improved": [
+        "UUID conflitante, tripId divergente, detalhe ilegível, ausência de viagem ou ausência de locator auditável continuam falhando de forma fechada.",
+        "A evidência forense registra AUTHENTICATED_TRIP_DRIVER_PROFILE_UUID_LINK quando a identidade é comprovada pelo detalhe da viagem, preservando o contrato SESSION_IDENTITY e os hashes de auditoria.",
+        "A correção não altera single-flight, fila multiperfil, capacidade, Agenda, Timeline ou publicação pública."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.585: perfil 2/2 podia terminar FAILED_IDENTITY/PROFILE_IDENTITY_NOT_STRONG mesmo com a sessão WebView isolada válida, produzindo coleta global INCOMPLETE."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Snapshot multiperfil",
+        "Identidade de sessão",
+        "Evidência forense",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.585",
       "build": 5876,
       "commit": null,
@@ -311,7 +344,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.576",
       "build": 5867,
       "commit": null,
@@ -353,7 +387,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.575",
       "build": 5866,
       "commit": null,
@@ -388,7 +423,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.574",
       "build": 5865,
       "commit": null,
@@ -422,7 +458,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.573",
       "build": 5864,
       "commit": null,
