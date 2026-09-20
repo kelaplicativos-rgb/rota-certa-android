@@ -136,4 +136,3 @@ test("0596 card navigation arms refresh and return paths immediately reload cano
   assert.match(shell, /visibilitychange/);
   assert.match(shell, /consumeAgendaCardRefresh0596/);
 });
-
