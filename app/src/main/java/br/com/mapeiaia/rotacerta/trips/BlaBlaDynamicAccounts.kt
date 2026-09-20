@@ -392,16 +392,13 @@ private data class DynamicPublicTripShareEvidence(
     val publicTripHref: String = "",
 )
 
-internal fun shouldRetryPublicTripShare0583(
+internal fun shouldRetryPublicTripShare0584(
     readAttempts: Int,
     maxReadAttempts: Int,
-    shareControlPresent: Boolean,
-    menuControlPresent: Boolean,
     shareInterceptInstalled: Boolean,
 ): Boolean =
     readAttempts < maxReadAttempts &&
-        shareInterceptInstalled &&
-        (shareControlPresent || menuControlPresent)
+        shareInterceptInstalled
 
 @Serializable
 internal data class DynamicPublicSearchLinkCard(
@@ -3492,11 +3489,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val shouldRetry = shouldRetryPublicTripShare0583(
+            val shouldRetry = shouldRetryPublicTripShare0584(
                 readAttempts = publicTripShareReadAttempts,
                 maxReadAttempts = MAX_PUBLIC_TRIP_SHARE_READ_ATTEMPTS,
-                shareControlPresent = evidence?.shareControlPresent == true,
-                menuControlPresent = evidence?.menuControlPresent == true,
                 shareInterceptInstalled = evidence?.shareInterceptInstalled == true,
             )
             if (shouldRetry) {
