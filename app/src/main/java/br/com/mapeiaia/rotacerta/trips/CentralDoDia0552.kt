@@ -23,6 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.text.Normalizer
@@ -636,6 +638,23 @@ internal fun CentralDoDiaScreen0552(
         if (commandRevision > 0L) onRefreshLocal()
     }
 
+    LaunchedEffect(model.date, model.trips.size, bookings.size) {
+        UnifiedDebugEventStore.recordAlways(
+            "CENTRAL_DAY_RENDER_READY_0594",
+            context.packageName,
+            "trips=${model.trips.size} bookings=${bookings.size} passengers=${model.summary.passengerSeats}",
+            diagnosticContext = DiagnosticEventContext0507(
+                parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                originModule = DiagnosticModule0507.CENTRAL_DAY,
+                executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                submodule = "PASSENGER_CONTROLS",
+                component = "CentralDoDiaScreen0552",
+                operation = "CENTRAL_DAY_RENDER",
+                result = "READY",
+            ),
+        )
+    }
+
     var expandedPassengerTripIds0591 by remember { mutableStateOf(emptySet<String>()) }
 
     Card(Modifier.fillMaxWidth()) {
@@ -673,6 +692,8 @@ internal fun CentralDoDiaScreen0552(
 
     model.trips.forEach { item ->
         val passengersExpanded0591 = item.canonicalTripId in expandedPassengerTripIds0591
+        val canonicalTrip0593 = trips.firstOrNull { trip -> trip.id == item.canonicalTripId }
+        val timelineEntry0593 = entryByTripId0593[item.canonicalTripId]
         Card(Modifier.fillMaxWidth()) {
             Column(
                 Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -730,6 +751,24 @@ internal fun CentralDoDiaScreen0552(
                     TextButton(
                         modifier = Modifier.weight(1f),
                         onClick = {
+                            val opening0594 = !passengersExpanded0591
+                            val controlsAvailable0594 = canonicalTrip0593 != null && timelineEntry0593 != null
+                            UnifiedDebugEventStore.recordAlways(
+                                "CENTRAL_DAY_PASSENGER_PANEL_TOGGLE_0594",
+                                context.packageName,
+                                "opening=$opening0594 controlsAvailable=$controlsAvailable0594 passengers=${item.passengers.size}",
+                                diagnosticContext = DiagnosticEventContext0507(
+                                    parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    submodule = "PASSENGER_CONTROLS",
+                                    component = "CentralDoDiaScreen0552",
+                                    operation = "CENTRAL_DAY_PASSENGER_PANEL",
+                                    entityType = "trip",
+                                    entityId = seatSyncDiagnosticKey(item.canonicalTripId),
+                                    result = if (controlsAvailable0594) "OPERATIONAL_CONTROLS" else "READ_ONLY_FALLBACK",
+                                ),
+                            )
                             expandedPassengerTripIds0591 =
                                 if (passengersExpanded0591) {
                                     expandedPassengerTripIds0591 - item.canonicalTripId
@@ -758,8 +797,6 @@ internal fun CentralDoDiaScreen0552(
                 }
 
                 if (passengersExpanded0591) {
-                    val canonicalTrip0593 = trips.firstOrNull { trip -> trip.id == item.canonicalTripId }
-                    val timelineEntry0593 = entryByTripId0593[item.canonicalTripId]
                     if (canonicalTrip0593 != null && timelineEntry0593 != null) {
                         EnhancedPassengerTimelineSection(
                             entry = timelineEntry0593,
