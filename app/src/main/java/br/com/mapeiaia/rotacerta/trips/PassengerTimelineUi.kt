@@ -613,6 +613,64 @@ internal fun EnhancedPassengerTimelineSection(
                         ) { Text("Recusar") }
                     }
                 }
+
+                if (rejectConfirmOpen) {
+                    AlertDialog(
+                        onDismissRequest = { if (decisionRunning == null) rejectConfirmOpen = false },
+                        title = { Text("Recusar solicitação?") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("A mesma reserva será marcada como Recusada e as vagas deste trecho serão liberadas.")
+                                OutlinedTextField(
+                                    value = rejectReason,
+                                    onValueChange = { rejectReason = it.take(240) },
+                                    label = { Text("Motivo opcional") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = decisionRunning == null,
+                                onClick = {
+                                    val selectedTrip = trip
+                                    val booking = currentBooking
+                                    if (selectedTrip == null || booking == null) {
+                                        rejectConfirmOpen = false
+                                        onChanged("Não foi possível localizar a viagem/reserva canônica para recusar.")
+                                    } else {
+                                        decisionRunning = "REJECT"
+                                        scope.launch {
+                                            runCatching {
+                                                persistCanonicalPassengerMutation0582(
+                                                    context = context,
+                                                    trip = selectedTrip,
+                                                    updated = passengerDecisionMutation0582(booking, "REJECT"),
+                                                    store = store,
+                                                    mutationCoordinator = mutationCoordinator,
+                                                    mutationType = "RESERVATION_REJECTED",
+                                                )
+                                            }.onSuccess {
+                                                rejectConfirmOpen = false
+                                                rejectReason = ""
+                                                onChanged("Solicitação recusada no estado canônico")
+                                            }.onFailure { error ->
+                                                onChanged("Nada foi alterado: ${error.message ?: error.javaClass.simpleName}")
+                                            }
+                                            decisionRunning = null
+                                        }
+                                    }
+                                },
+                            ) { Text(if (decisionRunning == "REJECT") "Recusando…" else "Recusar") }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                enabled = decisionRunning == null,
+                                onClick = { rejectConfirmOpen = false },
+                            ) { Text("Voltar") }
+                        },
+                    )
+                }
             }
         }
 
