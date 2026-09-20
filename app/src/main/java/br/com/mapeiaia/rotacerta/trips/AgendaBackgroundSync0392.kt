@@ -86,6 +86,25 @@ internal data class AgendaAutomaticCollectorState0400(
         get() = generation > completedGeneration && targetAccountIds.isNotEmpty()
 }
 
+internal fun collectorActiveAfterTerminal0584(
+    currentActiveAccountId: String,
+    terminalAccountId: String,
+): String {
+    val active = currentActiveAccountId.trim()
+    val terminal = terminalAccountId.trim()
+    return if (active.isNotEmpty() && active == terminal) "" else currentActiveAccountId
+}
+
+internal fun collectorStatusAfterTerminal0584(
+    survivingActiveAccountId: String,
+    result: String,
+): String = when {
+    survivingActiveAccountId.isNotBlank() -> "RUNNING"
+    result == "INTERRUPTED" -> "INTERRUPTED"
+    result == "PENDING_AUTH" -> "PENDING_AUTH"
+    else -> "PENDING"
+}
+
 internal data class TenantSeatAllocationFanOut0395(
     val configVersion: Long,
     val localCanonicalUpdated: Int = 0,
@@ -496,11 +515,20 @@ internal object AgendaBackgroundSyncConfig0392 {
         val completed = current.completedAccountIds.toMutableSet()
         val failed = current.failedAccountIds.toMutableSet()
         val pendingAuth = current.pendingAuthAccountIds.toMutableSet()
+        if (id in completed || id in failed || id in pendingAuth) {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_AUTOMATIC_STALE_TERMINAL_IGNORED_0584",
+                context.applicationContext.packageName,
+                "generation=$generation accountKey=${seatSyncDiagnosticKey(id)} result=${result.take(40)} activeAccountPreserved=${current.activeAccountId.isNotBlank()}",
+            )
+            return@synchronized current
+        }
         when (result) {
             "COMPLETE" -> { failed.remove(id); pendingAuth.remove(id); completed += id }
             "PENDING_AUTH" -> { completed.remove(id); failed.remove(id); pendingAuth += id }
             else -> { completed.remove(id); pendingAuth.remove(id); failed += id }
         }
+        val survivingActiveAccountId0584 = collectorActiveAfterTerminal0584(current.activeAccountId, id)
         val prefs = prefs(context)
         val scope = scope(context)
         require(
@@ -508,9 +536,12 @@ internal object AgendaBackgroundSyncConfig0392 {
                 .putString(scope.key(KEY_COLLECTOR_COMPLETED), encodeCollectorIds0400(completed))
                 .putString(scope.key(KEY_COLLECTOR_FAILED), encodeCollectorIds0400(failed))
                 .putString(scope.key(KEY_COLLECTOR_PENDING_AUTH), encodeCollectorIds0400(pendingAuth))
-                .putString(scope.key(KEY_COLLECTOR_ACTIVE), "")
-                .putString(scope.key(KEY_COLLECTOR_STATUS), when (result) { "INTERRUPTED" -> "INTERRUPTED"; "PENDING_AUTH" -> "PENDING_AUTH"; else -> "PENDING" })
-                .putString(scope.key(KEY_COLLECTOR_LAST_ERROR), error.take(500))
+                .putString(scope.key(KEY_COLLECTOR_ACTIVE), survivingActiveAccountId0584)
+                .putString(scope.key(KEY_COLLECTOR_STATUS), collectorStatusAfterTerminal0584(survivingActiveAccountId0584, result))
+                .putString(
+                    scope.key(KEY_COLLECTOR_LAST_ERROR),
+                    if (survivingActiveAccountId0584.isNotBlank()) current.lastError else error.take(500),
+                )
                 .commit(),
         ) { "Falha ao persistir avanço da coleta BlaBlaCar automática." }
         collectorState0400(context)
