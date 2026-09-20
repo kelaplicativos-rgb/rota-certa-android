@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.595",
+      "build": 5886,
+      "commit": null,
+      "branch": "agent/central-segment-occupancy-0.1.595",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cada card da Central do Dia passa a exibir Vagas por trecho de forma permanente, sem exigir abrir Passageiros, Atalhos ou Integridade.",
+        "Cada trecho mostra origem → destino, ocupação de passageiros, capacidade operacional, bolinhas de ocupação, bloqueios e vagas restantes."
+      ],
+      "fixed": [
+        "Corrigida a ausência de ocupação/vagas por segmento nos cards da Central do Dia, embora o motor canônico já calculasse esses dados.",
+        "Overbooking por trecho passa a ficar visível no próprio card com LOTADO e excedente, além de continuar disponível no diagnóstico de integridade."
+      ],
+      "improved": [
+        "A Central reutiliza diretamente SeatAvailabilityEngine.segmentLoads; não cria cálculo paralelo de vagas.",
+        "A apresentação é por segmento real da viagem, preservando diferenças de ocupação quando passageiros embarcam e desembarcam em pontos intermediários."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.593–0.1.594: a Central mostrava apenas passageiros/lugares e a menor disponibilidade agregada, escondendo quais trechos estavam cheios ou livres."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Passageiros",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.594",
       "build": 5885,
       "commit": null,
