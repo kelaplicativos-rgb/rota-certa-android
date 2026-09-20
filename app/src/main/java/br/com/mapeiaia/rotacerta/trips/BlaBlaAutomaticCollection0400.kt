@@ -1,6 +1,7 @@
 package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
@@ -10,6 +11,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +50,12 @@ internal fun automaticCollectorTerminalStatus0400(
     response.trips.isNotEmpty() -> "PARTIAL"
     else -> "FAILED"
 }
+
+internal fun automaticCollectorAccountTerminalResult0585(accountResult: String): String =
+    when (accountResult.trim().lowercase()) {
+        "success", "partial" -> "COMPLETE"
+        else -> "FAILED"
+    }
 
 /** Central automatic-sync coordinator. Automatic collection never launches an Activity. */
 internal object BlaBlaAutomaticCollectionCoordinator0400 {
@@ -260,6 +268,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         var state = AgendaBackgroundSyncConfig0392.recoverStaleCollectorHost0401(appContext)
         if (!state.pending) return state
         val registry = BlaBlaDynamicAccountRegistry(appContext)
+        val singleFlightBusySince0585 = mutableMapOf<String, Long>()
         while (state.pending) {
             val accountId = nextAutomaticCollectorAccountId0400(
                 state.targetAccountIds, state.completedAccountIds.toSet(), state.failedAccountIds.toSet(), state.pendingAuthAccountIds.toSet(),
@@ -292,9 +301,42 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                 "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} origin=${origin.take(80)} collector=existing_dynamic_session executionHost=worker_headless_webview activityLaunch=false windowAttached=false browserOpened=false",
             )
             try {
-                withTimeout(HEADLESS_ACCOUNT_TIMEOUT_MS_0404) {
+                val hostResult0585 = withTimeout(HEADLESS_ACCOUNT_TIMEOUT_MS_0404) {
                     runAccountHeadless(appContext, state.generation, account, origin)
                 }
+                val hostFailure0585 = hostResult0585.second
+                    ?.getStringExtra(BlaBlaDynamicSessionIntents.EXTRA_SYNC_FAILURE_0407)
+                    .orEmpty()
+                if (hostFailure0585 == "SINGLE_FLIGHT_BUSY") {
+                    val now0585 = System.currentTimeMillis()
+                    val busySince0585 = singleFlightBusySince0585.getOrPut(accountId) { now0585 }
+                    val busyMillis0585 = now0585 - busySince0585
+                    if (busyMillis0585 >= HEADLESS_ACCOUNT_TIMEOUT_MS_0404) {
+                        AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+                            appContext,
+                            state.generation,
+                            accountId,
+                            "FAILED",
+                            "single_flight_busy_timeout_0585",
+                        )
+                        singleFlightBusySince0585.remove(accountId)
+                        UnifiedDebugEventStore.record(
+                            "BLABLACAR_AUTOMATIC_SINGLE_FLIGHT_TIMEOUT_0585",
+                            appContext.packageName,
+                            "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} busyMillis=$busyMillis0585 action=terminalize_account_continue_batch",
+                        )
+                    } else {
+                        UnifiedDebugEventStore.record(
+                            "BLABLACAR_AUTOMATIC_SINGLE_FLIGHT_WAIT_0585",
+                            appContext.packageName,
+                            "generation=${state.generation} accountKey=${seatSyncDiagnosticKey(accountId)} busyMillis=$busyMillis0585 action=wait_for_existing_compatible_sync",
+                        )
+                        delay(SINGLE_FLIGHT_RECHECK_MS_0585)
+                    }
+                    state = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
+                    continue
+                }
+                singleFlightBusySince0585.remove(accountId)
             } catch (timeout: TimeoutCancellationException) {
                 val liveAfterTimeout0584 = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
                 if (
@@ -355,7 +397,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
 
     private suspend fun runAccountHeadless(context: Context, generation: Long, account: BlaBlaDynamicAccount, origin: String) =
         withContext(Dispatchers.Main.immediate) {
-            suspendCancellableCoroutine<Unit> { continuation ->
+            suspendCancellableCoroutine<Pair<Int, Intent?>> { continuation ->
                 var controller: BlaBlaDynamicAccountSessionController0401? = null
                 val payload = BlaBlaDynamicSessionIntents.syncPayload(account)
                     .putExtra(BlaBlaDynamicSessionIntents.EXTRA_AUTOMATIC_COLLECTION_GENERATION, generation)
@@ -364,9 +406,9 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
                     baseContext = context,
                     launchIntent = payload,
                     visualHost = null,
-                    finishHost = { _, _ ->
+                    finishHost = { resultCode, data ->
                         controller?.destroy("headless_terminal")
-                        if (continuation.isActive) continuation.resume(Unit)
+                        if (continuation.isActive) continuation.resume(resultCode to data)
                     },
                 )
                 continuation.invokeOnCancellation { cause ->
@@ -401,16 +443,66 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         return published
     }
 
+    fun onAccountSingleFlightBusy0585(
+        context: Context,
+        generation: Long,
+        accountId: String,
+    ) {
+        if (generation <= 0L) return
+        val appContext = context.applicationContext
+        AgendaBackgroundSyncConfig0392.releaseCollectorAccountClaim0585(
+            appContext,
+            generation,
+            accountId,
+            "single_flight_busy_existing_compatible_sync",
+        )
+    }
+
+    fun onCompatibleExternalSyncFinished0585(
+        context: Context,
+        accountId: String,
+        accountResult: String,
+        error: String = "",
+    ) {
+        val appContext = context.applicationContext
+        val current = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
+        val id = accountId.trim()
+        if (
+            !current.pending ||
+            id.isBlank() ||
+            id !in current.targetAccountIds ||
+            id in current.completedAccountIds ||
+            id in current.failedAccountIds ||
+            id in current.pendingAuthAccountIds ||
+            current.activeAccountId.isNotBlank()
+        ) return
+        val normalizedResult = automaticCollectorAccountTerminalResult0585(accountResult)
+        val state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(
+            appContext,
+            current.generation,
+            id,
+            normalizedResult,
+            error,
+        )
+        publishCurrentSessions(appContext, "external_sync_adopted_0585")
+        AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "external_sync_adopted_0585")
+        UnifiedDebugEventStore.record(
+            "BLABLACAR_AUTOMATIC_EXTERNAL_SYNC_ADOPTED_0585",
+            appContext.packageName,
+            "generation=${current.generation} accountKey=${seatSyncDiagnosticKey(id)} rawResult=${accountResult.take(40)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} target=${state.targetAccountIds.size}",
+        )
+    }
+
     fun onAccountFinished(context: Context, generation: Long, accountId: String, accountResult: String, error: String = "") {
         if (generation <= 0L) return
         val appContext = context.applicationContext
-        val normalizedResult = if (accountResult == "success") "COMPLETE" else "PARTIAL"
+        val normalizedResult = automaticCollectorAccountTerminalResult0585(accountResult)
         val state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, normalizedResult, error)
         publishCurrentSessions(appContext, "account_${normalizedResult.lowercase()}")
         AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "account_${normalizedResult.lowercase()}")
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_ACCOUNT_END_0400", appContext.packageName,
-            "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
+            "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} rawResult=${accountResult.take(40)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
         )
     }
 
@@ -495,6 +587,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
     }
 
     private const val HEADLESS_ACCOUNT_TIMEOUT_MS_0404 = 10L * 60L * 1000L
+    private const val SINGLE_FLIGHT_RECHECK_MS_0585 = 15_000L
     private const val HEADLESS_TARGET_TIMEOUT_MS_0407 = 5L * 60L * 1000L
 
     private fun rootCause0400(error: Throwable): String {
