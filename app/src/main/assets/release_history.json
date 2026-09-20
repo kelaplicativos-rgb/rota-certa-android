@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.582",
+      "build": 5873,
+      "commit": null,
+      "branch": "agent/public-share-hidden-control-0.1.582",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O coletor de compartilhamento da BlaBlaCar passa a tratar visibilidade do controle de compartilhar como preferência de interação, e não como requisito de existência: controles semanticamente válidos, conectados ao DOM e habilitados continuam utilizáveis mesmo quando o WebView os deixa ocultos.",
+        "Controles visíveis continuam tendo prioridade; controles ocultos só entram como fallback dentro da própria página administrativa da viagem."
+      ],
+      "fixed": [
+        "Corrigida a queda prematura para exact_public_search quando o botão real de compartilhar existe no DOM da viagem, mas CSS/layout do WebView faz visible(node) retornar falso.",
+        "A captura continua usando o payload real da ação de compartilhamento para permitir token público diferente do tripId administrativo sem inventar vínculo por semelhança."
+      ],
+      "improved": [
+        "Elementos disabled ou aria-disabled continuam proibidos e elementos de perfil continuam excluídos dos candidatos de compartilhamento.",
+        "A validação do permalink continua restrita a host oficial BlaBlaCar, rota pública /trip, HTTPS canônico e source CARPOOLING; links genéricos da página não recebem autoridade.",
+        "A busca pública exata permanece fail-closed e sua política de prova não foi afrouxada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.581: no Samsung SM-S911B, viagens com share action presente porém não visível no WebView podiam registrar shareControlPresent=false, cair para exact_public_search e terminar em PUBLIC_TRIP_LINK_UNAVAILABLE."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor",
+        "Link público",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.581",
       "build": 5872,
       "commit": null,
