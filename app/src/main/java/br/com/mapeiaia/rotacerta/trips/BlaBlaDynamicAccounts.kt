@@ -3294,19 +3294,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 )
             }
             val sourceBackedResult = (networkResolution?.let { resolution ->
-                // The trip-bound network response is high-quality passenger enrichment, but its
-                // bookings/waypoints arrays are not proof that the whole roster or itinerary was
-                // returned. Preserve the structural DOM evidence and merge identities monotonically.
+                // The trip-bound network response remains non-authoritative for publication shape,
+                // but exact-trip ordered waypoints are useful monotonic route evidence. 0.1.597
+                // accepts them only when they are order-compatible with the structural DOM route.
                 val mergedPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
                     result.detail.passengers + resolution.passengers,
                 )
+                val operationalItinerary0597 =
+                    BlaBlaCollectorNetworkSourceModule.reconcileOperationalItinerary0597(
+                        origin = result.detail.origin,
+                        destination = result.detail.destination,
+                        domItinerary = result.itineraryStops,
+                        networkItinerary = resolution.itineraryStops,
+                    )
                 result.copy(
                     detail = result.detail.copy(passengers = mergedPassengers),
                     passengerHrefs = (
                         result.passengerHrefs +
                             resolution.passengers.mapNotNull { passenger -> passenger.booking_href }
                         ).distinct(),
-                    itineraryStops = result.itineraryStops,
+                    itineraryStops = operationalItinerary0597,
+                    // Network waypoints enrich topology but never claim complete published itinerary.
                     itineraryAuthoritative = result.itineraryAuthoritative,
                 )
             } ?: result).let { source ->
@@ -3321,7 +3329,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 UnifiedDebugEventStore.record(
                     "BLABLACAR_NETWORK_SOURCE_APPLIED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} itineraryAuthority=${networkResolution.itineraryAuthoritative} exactTrip=true rosterAuthority=false piiLogged=false",
+                    "account=${account.displayLabel} tripId=$candidateTripId passengers=${networkResolution.passengers.size} seats=${networkResolution.passengers.sumOf { it.seats }} phones=${networkResolution.passengers.count { !it.phone.isNullOrBlank() }} fares=${networkResolution.bookings.count { it.fareMinorUnits != null }} addresses=${networkResolution.bookings.count { it.boardingAddress.isNotBlank() }} waypoints=${networkResolution.itineraryStops.size} effectiveItineraryStops=${sourceBackedResult.itineraryStops.size} itineraryAuthority=${sourceBackedResult.itineraryAuthoritative} exactTrip=true rosterAuthority=false piiLogged=false",
                 )
             }
             val acceptedResult = if (scriptSelection0449.wantsPassengerData()) {
