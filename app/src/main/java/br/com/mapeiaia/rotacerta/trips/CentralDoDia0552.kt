@@ -74,6 +74,8 @@ internal data class CentralTrip0552(
     val destination: String,
     val passengerSeats: Int,
     val availableSeats: Int?,
+    val operationalCapacity: Int?,
+    val segmentLoads: List<SegmentLoad>,
     val passengers: List<CentralPassenger0552>,
     val checks: List<CentralIntegrityCheck0552>,
     val integrity: CentralIntegrityLevel0552,
@@ -413,6 +415,8 @@ internal object CentralDayReadModelBuilder0552 {
             destination = stops.lastOrNull()?.name.orEmpty(),
             passengerSeats = summary.confirmedPassengerSeats,
             availableSeats = summary.availableSeats.takeIf { trip.capacityReliable && summary.operationalLimitConfigured },
+            operationalCapacity = trip.capacity.takeIf { trip.capacityReliable && it > 0 },
+            segmentLoads = segmentLoads,
             passengers = passengers,
             checks = checks,
             integrity = aggregate(checks),
@@ -746,6 +750,60 @@ internal fun CentralDoDiaScreen0552(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2,
                 )
+
+                Text(
+                    "Vagas por trecho",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                if (item.segmentLoads.isEmpty()) {
+                    Text(
+                        "Disponibilidade por trecho aguardando estado canônico.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                } else {
+                    item.segmentLoads.forEach { load0595 ->
+                        val capacity0595 = item.operationalCapacity
+                        val availability0595 = when (load0595.availableSeats.coerceAtLeast(0)) {
+                            0 -> "LOTADO"
+                            1 -> "1 vaga"
+                            else -> "${load0595.availableSeats.coerceAtLeast(0)} vagas"
+                        }
+                        val occupancy0595 = capacity0595?.let { cap ->
+                            val occupied = load0595.occupiedSeats.coerceAtLeast(0)
+                            "$occupied/$cap"
+                        } ?: load0595.occupiedSeats.coerceAtLeast(0).toString()
+                        val dots0595 = capacity0595?.takeIf { it in 1..12 }?.let { cap ->
+                            val occupiedDots = load0595.occupiedSeats.coerceIn(0, cap)
+                            "●".repeat(occupiedDots) + "○".repeat((cap - occupiedDots).coerceAtLeast(0))
+                        }.orEmpty()
+                        val blocked0595 = load0595.blockedSeats.coerceAtLeast(0)
+                        val overbooking0595 = load0595.overbookingSeats.coerceAtLeast(0)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(
+                                "${load0595.from.name} → ${load0595.to.name}",
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                            )
+                            if (dots0595.isNotBlank()) {
+                                Text(dots0595, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
+                            Text("👥 $occupancy0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            if (blocked0595 > 0) {
+                                Text("🚫$blocked0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            }
+                            Text(
+                                if (overbooking0595 > 0) "$availability0595 +$overbooking0595" else availability0595,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     TextButton(
