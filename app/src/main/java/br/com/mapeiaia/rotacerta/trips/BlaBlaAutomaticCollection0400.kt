@@ -49,9 +49,34 @@ internal fun automaticCollectorTerminalStatus0400(
     else -> "FAILED"
 }
 
+internal fun unresolvedAutomaticCollectorAccountIds0585(
+    state: AgendaAutomaticCollectorState0400,
+): List<String> {
+    val terminal = buildSet {
+        addAll(state.completedAccountIds)
+        addAll(state.failedAccountIds)
+        addAll(state.pendingAuthAccountIds)
+    }
+    return state.targetAccountIds.filter { id -> id.isNotBlank() && id !in terminal }
+}
+
+internal class AutomaticCollectorBatchSingleFlight0585 {
+    private val mutex = Mutex()
+
+    suspend fun <T> run(block: suspend () -> T): T {
+        mutex.lock()
+        return try {
+            block()
+        } finally {
+            mutex.unlock()
+        }
+    }
+}
+
 /** Central automatic-sync coordinator. Automatic collection never launches an Activity. */
 internal object BlaBlaAutomaticCollectionCoordinator0400 {
     private val targetedTripMutexes0407 = ConcurrentHashMap<String, Mutex>()
+    private val automaticBatchSingleFlight0585 = AutomaticCollectorBatchSingleFlight0585()
 
     suspend fun reverifyTripHeadless0407(
         context: Context,
@@ -255,8 +280,18 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             }
         }
     }
-    suspend fun runPendingHeadless(context: Context, origin: String): AgendaAutomaticCollectorState0400 {
+    suspend fun runPendingHeadless(context: Context, origin: String): AgendaAutomaticCollectorState0400 =
+        automaticBatchSingleFlight0585.run {
+            runPendingHeadlessExclusive0585(context, origin)
+        }
+
+    private suspend fun runPendingHeadlessExclusive0585(
+        context: Context,
+        origin: String,
+    ): AgendaAutomaticCollectorState0400 {
         val appContext = context.applicationContext
+        // Recovery is intentionally inside the batch-wide single-flight gate. A second
+        // worker must never clear an active host that still belongs to the first worker.
         var state = AgendaBackgroundSyncConfig0392.recoverStaleCollectorHost0401(appContext)
         if (!state.pending) return state
         val registry = BlaBlaDynamicAccountRegistry(appContext)
@@ -461,6 +496,15 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
     private fun finishRun(context: Context, generation: Long, reason: String): AgendaAutomaticCollectorState0400 {
         val before = AgendaBackgroundSyncConfig0392.collectorState0400(context)
         if (before.generation != generation || !before.pending) return before
+        val unresolved = unresolvedAutomaticCollectorAccountIds0585(before)
+        if (unresolved.isNotEmpty()) {
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_AUTOMATIC_COLLECTION_TERMINAL_BLOCKED_0585",
+                context.packageName,
+                "generation=$generation reason=${reason.take(80)} unresolved=${unresolved.size} target=${before.targetAccountIds.size} completed=${before.completedAccountIds.size} failed=${before.failedAccountIds.size} pendingAuth=${before.pendingAuthAccountIds.size} failClosed=true",
+            )
+            return before
+        }
         val response = publishCurrentSessions(context, "run_terminal")
         val result = automaticCollectorTerminalStatus0400(response, before.failedAccountIds.size, before.targetAccountIds.size, before.pendingAuthAccountIds.size)
         val finalState = AgendaBackgroundSyncConfig0392.finishCollectorRun0400(context, generation, result, before.lastError)
