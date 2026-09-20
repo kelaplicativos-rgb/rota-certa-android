@@ -279,12 +279,15 @@ object OperationalHealthTechnicalPackage0575 {
         val output = ByteArrayOutputStream()
         ZipOutputStream(output).use { zip ->
             entries.forEach { (name, raw) ->
-                val safe = if (name.endsWith(".ndjson", ignoreCase = true)) {
-                    raw.lineSequence()
-                        .map(UnifiedDebugEventStore::sanitizeForExport)
-                        .joinToString("\n")
-                } else {
-                    UnifiedDebugEventStore.sanitizeForExport(raw)
+                val safe = when {
+                    name.endsWith(".ndjson", ignoreCase = true) ->
+                        raw.lineSequence()
+                            .map(::sanitizeNdjsonLine0575)
+                            .joinToString("\n")
+                    name.endsWith(".json", ignoreCase = true) ->
+                        sanitizeJsonDocument0575(raw)
+                    else ->
+                        UnifiedDebugEventStore.sanitizeForExport(raw)
                 }
                 zip.putNextEntry(ZipEntry(name))
                 zip.write(safe.toByteArray(Charsets.UTF_8))
@@ -293,6 +296,51 @@ object OperationalHealthTechnicalPackage0575 {
         }
         return output.toByteArray()
     }
+
+    private fun sanitizeNdjsonLine0575(raw: String): String {
+        if (raw.isBlank()) return raw
+        val sanitized = runCatching {
+            sanitizeJsonValue0575(JSONObject(raw))
+        }.getOrNull()
+        return when (sanitized) {
+            is JSONObject -> sanitized.toString()
+            else -> UnifiedDebugEventStore.sanitizeForExport(raw)
+        }
+    }
+
+    private fun sanitizeJsonDocument0575(raw: String): String {
+        val trimmed = raw.trim()
+        val sanitized = runCatching {
+            when {
+                trimmed.startsWith("{") -> sanitizeJsonValue0575(JSONObject(trimmed))
+                trimmed.startsWith("[") -> sanitizeJsonValue0575(JSONArray(trimmed))
+                else -> null
+            }
+        }.getOrNull()
+        return when (sanitized) {
+            is JSONObject -> sanitized.toString(2)
+            is JSONArray -> sanitized.toString(2)
+            else -> UnifiedDebugEventStore.sanitizeForExport(raw)
+        }
+    }
+
+    private fun sanitizeJsonValue0575(value: Any?): Any? =
+        when (value) {
+            is JSONObject -> JSONObject().also { sanitized ->
+                val keys = value.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    sanitized.put(key, sanitizeJsonValue0575(value.opt(key)))
+                }
+            }
+            is JSONArray -> JSONArray().also { sanitized ->
+                for (index in 0 until value.length()) {
+                    sanitized.put(sanitizeJsonValue0575(value.opt(index)))
+                }
+            }
+            is String -> UnifiedDebugEventStore.sanitizeForExport(value)
+            else -> value
+        }
 
     private fun saveToDownloads0575(
         context: Context,
