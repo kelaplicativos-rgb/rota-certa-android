@@ -73,6 +73,48 @@ class AgendaOperationalTimeline0400Test {
     }
 
     @Test
+    fun staleTerminalFromPreviousAccountCannotClearTheNextActiveAccount0584() {
+        assertEquals(
+            "account-b",
+            collectorActiveAfterTerminal0584(
+                currentActiveAccountId = "account-b",
+                terminalAccountId = "account-a",
+            ),
+        )
+        assertEquals(
+            "RUNNING",
+            collectorStatusAfterTerminal0584(
+                survivingActiveAccountId = "account-b",
+                result = "INTERRUPTED",
+            ),
+        )
+        assertEquals(
+            "",
+            collectorActiveAfterTerminal0584(
+                currentActiveAccountId = "account-a",
+                terminalAccountId = "account-a",
+            ),
+        )
+        assertEquals(
+            "PENDING",
+            collectorStatusAfterTerminal0584(
+                survivingActiveAccountId = "",
+                result = "FAILED",
+            ),
+        )
+    }
+
+    @Test
+    fun timedOutAccountIsTerminalizedBeforeBatchContinues0584() {
+        assertTrue(coordinator.contains("BLABLACAR_AUTOMATIC_TIMEOUT_TERMINAL_0584"))
+        assertTrue(coordinator.contains("\"headless_account_timeout_0404\""))
+        assertTrue(coordinator.contains("publishCurrentSessions(appContext, \"account_timeout_0584\")"))
+        assertTrue(background.contains("BLABLACAR_AUTOMATIC_STALE_TERMINAL_IGNORED_0584"))
+        assertTrue(background.contains("collectorActiveAfterTerminal0584"))
+        assertTrue(background.contains("collectorStatusAfterTerminal0584"))
+    }
+
+    @Test
     fun terminalStatusDistinguishesCompletePartialAndFailed() {
         val complete = BlaBlaCollectorMonthResponse(
             status = "success",
