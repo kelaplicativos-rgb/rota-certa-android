@@ -2,6 +2,40 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.592",
+      "build": 5883,
+      "commit": null,
+      "branch": "agent/operational-lifecycle-central-consistency-0.1.592",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todas as viagens passa a usar o mesmo ciclo de vida canônico da Agenda e Timeline para decidir quando uma viagem deixa a sequência ativa."
+      ],
+      "fixed": [
+        "Corrigido o arquivamento prematuro no instante da partida: uma viagem em andamento deixa de sumir de Todas as viagens apenas porque o horário de saída ficou no passado.",
+        "A viagem permanece ativa até a chegada canônica + margem operacional; sem chegada confiável, aplica-se a janela segura compartilhada já usada pela Timeline.",
+        "A Central do Dia deixa de afirmar genericamente que a Timeline reflete a viagem quando o card não está na sequência operacional efetivamente visível."
+      ],
+      "improved": [
+        "A Central do Dia agora verifica separadamente a projeção operacional da Timeline e a presença em Todas as viagens.",
+        "Alertas de overbooking passam a apontar o trecho exato e explicar que a divergência é de ocupação simultânea por segmento.",
+        "Hashes técnicos de readback deixam de ocupar o diálogo operacional; a evidência continua preservada no relatório de depuração."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.566–0.1.591: Todas as viagens arquivava automaticamente qualquer card assim que departureAtMillis ficava menor que o relógio, mesmo durante a viagem.",
+        "0.1.591: Central do Dia podia mostrar 'Timeline reflete a viagem canônica' embora o card já tivesse sido removido visualmente de Todas as viagens."
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Timeline",
+        "Agenda canônica",
+        "Central do Dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.591",
       "build": 5882,
       "commit": null,
