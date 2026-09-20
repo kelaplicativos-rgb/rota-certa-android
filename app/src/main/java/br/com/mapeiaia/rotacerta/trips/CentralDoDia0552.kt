@@ -308,6 +308,32 @@ internal object CentralDayReadModelBuilder0552 {
             )
         }
 
+        val externalSegmentsResolved0598 =
+            external == null ||
+                external.passengers.isEmpty() ||
+                PublicAgendaAutoSync0300.externalPassengerSegmentsResolved(external, trip)
+        if (external != null && external.passengers.isNotEmpty()) {
+            checks += if (externalSegmentsResolved0598) {
+                CentralIntegrityCheck0552(
+                    key = "route_topology",
+                    level = CentralIntegrityLevel0552.OK,
+                    title = "Topologia dos trechos contém os embarques e desembarques observados",
+                    actual = "paradas canônicas=${stops.size} itinerário coletado=${external.itinerary_stops.size}",
+                    source = "BlaBlaCar → Agenda canônica",
+                )
+            } else {
+                CentralIntegrityCheck0552(
+                    key = "route_topology",
+                    level = CentralIntegrityLevel0552.ACTION_REQUIRED,
+                    title = "Topologia de trechos incompleta",
+                    expected = "cada embarque e desembarque deve corresponder a uma parada canônica ordenada",
+                    actual = "paradas canônicas=${stops.size} itinerário coletado=${external.itinerary_stops.size} passageiros=${external.passengers.size}",
+                    source = "TRIP_ITINERARY / passageiros → Agenda canônica",
+                    detail = "Sem as paradas intermediárias, o motor de vagas só consegue calcular o trecho agregado origem → destino.",
+                )
+            }
+        }
+
         checks += when {
             !trip.capacityReliable -> CentralIntegrityCheck0552(
                 key = "capacity",
@@ -326,6 +352,15 @@ internal object CentralDayReadModelBuilder0552 {
                 } ?: "overbooking=${summary.overbookingSeats}",
                 source = "SeatAvailabilityEngine por segmento",
                 detail = "O alerta é por simultaneidade no trecho, não pelo total de passageiros da viagem.",
+            )
+            !externalSegmentsResolved0598 -> CentralIntegrityCheck0552(
+                key = "capacity",
+                level = CentralIntegrityLevel0552.ACTION_REQUIRED,
+                title = "Vagas por trecho aguardam topologia completa",
+                expected = "paradas intermediárias resolvidas antes do cálculo por segmento",
+                actual = "segmentos calculáveis=${segmentLoads.size}",
+                source = "SeatAvailabilityEngine por segmento",
+                detail = "A Central não marca o cálculo como coerente enquanto passageiros conhecidos não puderem ser posicionados nas paradas canônicas.",
             )
             else -> CentralIntegrityCheck0552(
                 key = "capacity",
