@@ -6,6 +6,7 @@ import java.util.Locale
 
 enum class DiagnosticModule0507(val label: String) {
     ALL_TRIPS("Todas as viagens"),
+    CENTRAL_DAY("Central do Dia"),
     BLABLACAR("BlaBlaCar"),
     SCRIPTS("Scripts"),
     PUBLIC_QUERY("Consulta pública"),
