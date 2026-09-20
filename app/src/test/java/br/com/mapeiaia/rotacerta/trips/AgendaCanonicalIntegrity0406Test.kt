@@ -60,6 +60,47 @@ class AgendaCanonicalIntegrity0406Test {
     }
 
     @Test
+    fun completeCollectorAbsenceCannotTombstoneFutureOrActiveOperationalTrip() {
+        val canonical = trip()
+        val complete = response("success", complete = true, global = true)
+        val completeProfiles = setOf(profile.lowercase())
+
+        assertFalse(
+            externalCollectorAbsenceCanTombstone0590(
+                trip = canonical,
+                response = complete,
+                completeProfileUuids = completeProfiles,
+                nowMillis = canonical.departureAtMillis - 1L,
+            ),
+        )
+        assertFalse(
+            externalCollectorAbsenceCanTombstone0590(
+                trip = canonical,
+                response = complete,
+                completeProfileUuids = completeProfiles,
+                nowMillis = canonical.departureAtMillis + 30L * 60L * 1000L,
+            ),
+        )
+    }
+
+    @Test
+    fun completeCollectorAbsenceCanTombstoneOnlyAfterCanonicalOperationalWindowExpires() {
+        val canonical = trip()
+        val complete = response("success", complete = true, global = true)
+        val completeProfiles = setOf(profile.lowercase())
+
+        assertTrue(
+            externalCollectorAbsenceCanTombstone0590(
+                trip = canonical,
+                response = complete,
+                completeProfileUuids = completeProfiles,
+                nowMillis = canonical.departureAtMillis +
+                    OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 + 1L,
+            ),
+        )
+    }
+
+    @Test
     fun timelineCapacityIsProjectedFromCanonicalInsteadOfRecalculated() {
         val canonical = trip().copy(capacity = 7, rotaCertaSeatAllocation = 4)
         val entry = TripTimelineEntry(
