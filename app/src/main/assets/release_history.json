@@ -2,6 +2,37 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.584",
+      "build": 5875,
+      "commit": null,
+      "branch": "agent/multi-account-collector-isolation-0.1.584",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A fila automática multiperfil passa a terminalizar sincronamente uma conta que excede o timeout headless antes de avançar para o próximo perfil.",
+        "Callbacks terminais atrasados de uma conta já encerrada tornam-se idempotentes e não podem limpar nem alterar o host ativo de outra conta."
+      ],
+      "fixed": [
+        "Corrigida interferência cruzada em que o destroy assíncrono de uma conta expirada podia executar após a conta seguinte assumir a coleta e limpar indevidamente o activeAccountId global.",
+        "Após timeout de uma conta, o snapshot válido anterior é preservado, a conta é marcada como falha parcial e a varredura continua para os demais perfis configurados."
+      ],
+      "improved": [
+        "O status global permanece RUNNING quando existe outro perfil ativo, evitando que um callback atrasado rebaixe o estado da fila enquanto a próxima conta está em execução.",
+        "A publicação incremental do estado combinado é mantida no timeout, sem inventar cobertura completa e sem alterar sessão, parser, links públicos ou projeção da Agenda."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.583: uma coleta headless que atingia 600000 ms podia finalizar de forma assíncrona e interferir no estado ativo do próximo perfil, deixando a cobertura combinada parcial e aparentando coleta de apenas uma conta."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor multiperfil",
+        "Sincronização automática",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.583",
       "build": 5874,
       "commit": null,
