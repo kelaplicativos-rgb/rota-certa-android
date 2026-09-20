@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.593",
+      "build": 5884,
+      "commit": null,
+      "branch": "agent/central-passenger-controls-0.1.593",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Central do Dia passa a operar cada passageiro diretamente no próprio card, reutilizando a mesma lógica canônica da Timeline."
+      ],
+      "fixed": [
+        "O status do passageiro deixa de ser somente texto na Central do Dia e volta a ser alterável entre Confirmado, No local, No carro, Pago, Concluído e Cancelado, respeitando as mesmas travas operacionais existentes.",
+        "Os atalhos deixam de depender do botão genérico Operar: WhatsApp, embarque, desembarque, valor e mensagem pronta ficam disponíveis na própria Central do Dia."
+      ],
+      "improved": [
+        "Os atalhos compactos ficam agrupados à direita da linha operacional do passageiro.",
+        "A Central reutiliza o mesmo caminho de persistência canônica e outbox já usado pela Timeline, sem criar estado paralelo.",
+        "Aprovação e recusa de solicitações pendentes continuam disponíveis dentro do modo compacto da Central."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.591–0.1.592: a Central do Dia mostrava passageiros, mas exigia abrir a Timeline para alterar status ou usar os atalhos completos."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "Passageiros",
+        "Timeline compartilhada",
+        "Atalhos operacionais",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.592",
       "build": 5883,
       "commit": null,
