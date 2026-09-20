@@ -132,15 +132,40 @@ internal object CentralDayReadModelBuilder0552 {
             trips = trips,
             bookings = bookings,
             localProfileLabel = localProfileLabel,
+            nowMillis = nowMillis,
         )
-        val timelineIds = timelineProjection.entries.flatMap { entry -> listOfNotNull(entry.tripId, entry.localTripId) }.filter { it.isNotBlank() }.toSet()
+        val timelineLiveIds = timelineProjection.entries
+            .filter { entry ->
+                isPassengerTimelineCurrentOrUpcoming0548(
+                    departureAtMillis = entry.departureAtMillis,
+                    arrivalAtMillis = entry.arrivalAtMillis,
+                    nowMillis = nowMillis,
+                )
+            }
+            .flatMap { entry -> listOfNotNull(entry.tripId, entry.localTripId) }
+            .filter(String::isNotBlank)
+            .toSet()
+        val operationalEntries = operationalConnectedSelection0564(
+            entries = timelineProjection.entries,
+            accounts = accounts,
+        ).includedEntries
+        val operationalActiveIds = operationalArchiveSelection0566(
+            items = operationalEntries,
+            nowMillis = nowMillis,
+            departureAtMillis = TripTimelineEntry::departureAtMillis,
+            arrivalAtMillis = TripTimelineEntry::arrivalAtMillis,
+        ).active
+            .flatMap { entry -> listOfNotNull(entry.tripId, entry.localTripId) }
+            .filter(String::isNotBlank)
+            .toSet()
 
         val mutable = canonicalTrips.map { trip ->
             val tripBookings = byTrip[trip.id].orEmpty()
             buildTrip(
                 trip = trip,
                 bookings = tripBookings,
-                timelinePresent = trip.id in timelineIds || trip.tripKey in timelineIds,
+                timelinePresent = trip.id in timelineLiveIds || trip.tripKey in timelineLiveIds,
+                operationalBrowserPresent = trip.id in operationalActiveIds || trip.tripKey in operationalActiveIds,
                 profileLabel = trip.blablaProfileUuid?.trim()?.lowercase()?.let(profileLabels::get)
                     ?: trip.externalSnapshot?.profile_name?.takeIf(String::isNotBlank)
                     ?: localProfileLabel,
@@ -175,11 +200,18 @@ internal object CentralDayReadModelBuilder0552 {
         trip: Trip,
         bookings: List<Booking>,
         timelinePresent: Boolean,
+        operationalBrowserPresent: Boolean,
         profileLabel: String,
         nowMillis: Long,
     ): CentralTrip0552 {
         val stops = trip.stops.sortedBy(TripStop::order)
         val summary = operationalSeatSummary(trip, bookings, nowMillis)
+        val segmentLoads = SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis)
+        val worstOverbooking = segmentLoads
+            .filter { it.overbookingSeats > 0 }
+            .maxByOrNull(SegmentLoad::overbookingSeats)
+        val expectedOperationalVisibility =
+            trip.status != TripStatus.CANCELLED && canonicalAgendaTripStillVisible0581(trip, nowMillis)
         val checks = mutableListOf<CentralIntegrityCheck0552>()
         val profileUuid = trip.blablaProfileUuid?.trim()?.lowercase().orEmpty()
         val externalTripId = trip.blablaTripId?.trim().orEmpty()
@@ -218,21 +250,49 @@ internal object CentralDayReadModelBuilder0552 {
             )
         }
 
-        checks += if (timelinePresent) {
-            CentralIntegrityCheck0552(
+        checks += when {
+            !expectedOperationalVisibility -> CentralIntegrityCheck0552(
                 key = "timeline_projection",
                 level = CentralIntegrityLevel0552.OK,
-                title = "Timeline reflete a viagem canônica",
-                source = "localAgendaTimelineProjection0515",
+                title = "Viagem fora da janela operacional ativa",
+                source = "ciclo de vida canônico compartilhado",
             )
-        } else {
-            CentralIntegrityCheck0552(
+            timelinePresent -> CentralIntegrityCheck0552(
+                key = "timeline_projection",
+                level = CentralIntegrityLevel0552.OK,
+                title = "Projeção operacional da Timeline contém a viagem",
+                source = "localAgendaTimelineProjection0515 + ciclo de vida canônico",
+            )
+            else -> CentralIntegrityCheck0552(
                 key = "timeline_projection",
                 level = CentralIntegrityLevel0552.ACTION_REQUIRED,
-                title = "Viagem ausente da projeção da Timeline",
-                expected = "viagem canônica projetada",
-                actual = "ausente",
+                title = "Viagem operacional ausente da Timeline",
+                expected = "viagem ativa projetada",
+                actual = "ausente após filtro operacional",
                 source = "Agenda → Timeline",
+            )
+        }
+
+        checks += when {
+            !expectedOperationalVisibility -> CentralIntegrityCheck0552(
+                key = "all_trips_visibility",
+                level = CentralIntegrityLevel0552.OK,
+                title = "Todas as viagens: janela operacional encerrada",
+                source = "ciclo de vida canônico compartilhado",
+            )
+            operationalBrowserPresent -> CentralIntegrityCheck0552(
+                key = "all_trips_visibility",
+                level = CentralIntegrityLevel0552.OK,
+                title = "Todas as viagens mantém esta viagem operacional",
+                source = "OperationalAllTripsBrowser + ciclo de vida canônico",
+            )
+            else -> CentralIntegrityCheck0552(
+                key = "all_trips_visibility",
+                level = CentralIntegrityLevel0552.ACTION_REQUIRED,
+                title = "Viagem operacional ausente de Todas as viagens",
+                expected = "card visível durante toda a viagem",
+                actual = "card ausente da sequência ativa",
+                source = "Agenda → Todas as viagens",
             )
         }
 
@@ -247,10 +307,13 @@ internal object CentralDayReadModelBuilder0552 {
             summary.overbookingSeats > 0 -> CentralIntegrityCheck0552(
                 key = "capacity",
                 level = CentralIntegrityLevel0552.ACTION_REQUIRED,
-                title = "Ocupação excede o inventário operacional",
-                expected = "sem sobreposição de ${summary.overbookingSeats} vaga(s)",
-                actual = "overbooking=${summary.overbookingSeats}",
-                source = "operationalSeatSummary",
+                title = "Ocupação excede a capacidade em um trecho",
+                expected = "nenhum trecho acima da capacidade operacional",
+                actual = worstOverbooking?.let { load ->
+                    "${load.from.name} → ${load.to.name}: ${load.occupiedSeats} ocupada(s), ${load.overbookingSeats} acima"
+                } ?: "overbooking=${summary.overbookingSeats}",
+                source = "SeatAvailabilityEngine por segmento",
+                detail = "O alerta é por simultaneidade no trecho, não pelo total de passageiros da viagem.",
             )
             else -> CentralIntegrityCheck0552(
                 key = "capacity",
@@ -305,11 +368,11 @@ internal object CentralDayReadModelBuilder0552 {
             PublicMirrorAttestationState0411.DIVERGENT -> CentralIntegrityCheck0552(
                 key = "readback",
                 level = CentralIntegrityLevel0552.DIVERGENCE,
-                title = "Readback público divergente",
-                expected = trip.publicMirrorExpectedHash0411,
-                actual = trip.publicMirrorReadbackHash0411,
+                title = "Agenda pública ainda diverge do estado canônico",
                 source = "public-evidence-v2",
-                detail = trip.publicMirrorMismatchFields0411.joinToString(", "),
+                detail = trip.publicMirrorMismatchFields0411
+                    .joinToString(", ")
+                    .ifBlank { "A última leitura pública não confirmou exatamente a revisão canônica atual." },
             )
             PublicMirrorAttestationState0411.PENDING -> CentralIntegrityCheck0552(
                 key = "readback",
@@ -725,10 +788,10 @@ internal fun CentralDoDiaScreen0552(
                         Text("Revisão canônica: ${item.canonicalRevision}", style = MaterialTheme.typography.bodySmall)
                         if (item.canonicalStateHash.isNotBlank()) Text("Hash canônico: ${item.canonicalStateHash}", style = MaterialTheme.typography.bodySmall)
                         if (item.expectedHash.isNotBlank() || item.actualHash.isNotBlank()) {
-                            Text("expectedHash: ${item.expectedHash}", style = MaterialTheme.typography.bodySmall)
-                            Text("actualHash: ${item.actualHash}", style = MaterialTheme.typography.bodySmall)
-                            Text("bytes: ${item.expectedBytes}/${item.actualBytes} • primeiro diff: ${item.firstDifferentByteOffset}", style = MaterialTheme.typography.bodySmall)
-                            if (item.differentByteRanges.isNotEmpty()) Text("intervalos: ${item.differentByteRanges.joinToString()}", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "Evidência técnica de readback disponível no relatório de depuração.",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 },
