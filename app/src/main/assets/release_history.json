@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.584",
+      "build": 5875,
+      "commit": null,
+      "branch": "agent/public-share-rescan-0.1.584",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A captura do link público aguarda as duas janelas de retry já existentes mesmo quando o primeiro snapshot do DOM ainda não expõe Compartilhar nem Mais opções, desde que a interceptação segura de share/clipboard esteja instalada.",
+        "A sanitização do pacote técnico agora percorre valores JSON e NDJSON preservando números, booleanos e null como tipos estruturais, sanitizando apenas conteúdo textual."
+      ],
+      "fixed": [
+        "Corrigida a falha observada fisicamente na 0.1.583 em seis viagens: shareControlPresent=false e menuControlPresent=false no primeiro snapshot faziam o fluxo abandonar imediatamente a captura autoritativa sem permitir hidratação tardia da interface.",
+        "Corrigido buffer-stats.json inválido quando métricas numéricas longas eram confundidas com telefone pelo sanitizador textual e substituídas por marcador sem aspas."
+      ],
+      "improved": [
+        "Nenhum seletor genérico novo foi autorizado a clicar: o retry adicional apenas espera e reavalia; qualquer clique continua restrito aos controles semanticamente identificados já existentes.",
+        "A autoridade do permalink continua inalterada e exact_public_search permanece fail-closed.",
+        "O exportador mantém a mesma política de privacidade para strings enquanto preserva JSON parseável para análise automatizada."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.583: ausência inicial simultânea dos controles de compartilhar e overflow impedia os retries de hidratação e mantinha seis viagens sem permalink público."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor",
+        "Link público",
+        "Central de Saúde",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.583",
       "build": 5874,
       "commit": null,
@@ -247,7 +280,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.576",
       "build": 5867,
       "commit": null,
@@ -289,7 +323,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.575",
       "build": 5866,
       "commit": null,
@@ -324,7 +359,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.574",
       "build": 5865,
       "commit": null,
@@ -358,7 +394,8 @@
         "Build"
       ],
       "detailsComplete": true
-    },    {
+    },
+    {
       "version": "0.1.573",
       "build": 5864,
       "commit": null,
