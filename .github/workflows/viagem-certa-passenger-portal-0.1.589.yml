@@ -16,6 +16,21 @@ on:
       - 'trip-platform/public/public-agenda-shell-0569.js'
       - 'trip-platform/public/minha-area.html'
       - 'trip-platform/public/minha-area.js'
+  pull_request:
+    branches:
+      - agent/rootcause-causal-fixes-0.1.588
+    paths:
+      - '.github/workflows/viagem-certa-passenger-portal-0.1.589.yml'
+      - 'app/build.gradle.kts'
+      - 'app/src/main/assets/release_history.json'
+      - 'app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaAutomaticSyncUi0397.kt'
+      - 'trip-platform/functions/index.js'
+      - 'trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js'
+      - 'trip-platform/functions/test/public-agenda-card-blablacar-navigation-0582.test.js'
+      - 'trip-platform/public/index.html'
+      - 'trip-platform/public/public-agenda-shell-0569.js'
+      - 'trip-platform/public/minha-area.html'
+      - 'trip-platform/public/minha-area.js'
   workflow_dispatch:
 
 permissions:
