@@ -444,6 +444,12 @@ class BlaBlaCollectorStateStore(context: Context) {
     fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
         val persisted = lastResponse()
         if (persisted?.status == "cleared") return persisted
+        if (persisted?.trips?.isNotEmpty() == true) {
+            // 0.1.588: the durable combined snapshot is already the product of all-account
+            // reconciliation. Rebuilding every session synchronously from UI callers caused
+            // TIMELINE_STARTUP jank without changing the visible result.
+            return persisted
+        }
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
         if (accounts.isEmpty()) return persisted
 

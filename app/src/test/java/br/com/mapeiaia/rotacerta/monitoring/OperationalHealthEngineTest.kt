@@ -144,7 +144,7 @@ class OperationalHealthEngineTest {
     }
 
     @Test
-    fun recoveredAgendaCrashRemainsCriticalAtOriginalTimestamp() {
+    fun recoveredAgendaCrashIsHistoricalAndDoesNotKeepHealthRed() {
         val crash = UnifiedDebugEventStore.SnapshotEvent(
             atMillis = now - 5_000L,
             monotonicNs = (now - 5_000L) * 1_000_000L,
@@ -154,8 +154,25 @@ class OperationalHealthEngineTest {
             threadName = "main",
         )
         val result = OperationalHealthEngine.analyze(snapshot(listOf(crash)), now)
-        assertEquals(OperationalHealthState.RED, result.state)
+        assertEquals(OperationalHealthState.GREEN, result.state)
         assertEquals(OperationalIncidentSeverity.CRITICAL, result.incidents.single().severity)
+        assertEquals(OperationalIncidentLifecycle.HISTORICAL, result.incidents.single().lifecycle)
+        assertTrue(result.opportunities.isEmpty())
+    }
+
+    @Test
+    fun liveCriticalCrashRemainsActiveAndRed() {
+        val crash = UnifiedDebugEventStore.SnapshotEvent(
+            atMillis = now - 5_000L,
+            monotonicNs = (now - 5_000L) * 1_000_000L,
+            stage = "UNCAUGHT_AGENDA_SYNC_CRASH",
+            packageName = "br.com.mapeiaia.rotacerta",
+            details = "recovered=false",
+            threadName = "main",
+        )
+        val result = OperationalHealthEngine.analyze(snapshot(listOf(crash)), now)
+        assertEquals(OperationalHealthState.RED, result.state)
+        assertEquals(OperationalIncidentLifecycle.ACTIVE, result.incidents.single().lifecycle)
     }
 
     @Test

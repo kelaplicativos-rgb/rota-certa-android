@@ -421,6 +421,98 @@ private data class DynamicPublicSearchLinkPage(
     val cards: List<DynamicPublicSearchLinkCard> = emptyList(),
 )
 
+internal data class ExactPublicSearchMatchSummary0588(
+    val timeMatched: Int,
+    val acceptedPublicHref: Int,
+    val profileRank: Int,
+    val driverRank: Int,
+    val routeRank: Int,
+    val strongestRank: Int,
+    val strongestDistinctHrefs: Int,
+)
+
+internal fun exactPublicSearchMatchSummary0588(
+    expectedAdministrativeTripId: String?,
+    expectedDriverName: String?,
+    expectedDepartureTime: String?,
+    expectedProfileUuid: String? = null,
+    expectedArrivalTime: String? = null,
+    expectedDeparturePlace: String? = null,
+    expectedArrivalPlace: String? = null,
+    expectedPrice: String? = null,
+    cards: List<DynamicPublicSearchLinkCard>,
+    providerOrigin: String?,
+): ExactPublicSearchMatchSummary0588 {
+    val administrativeTripId = expectedAdministrativeTripId?.trim()?.takeIf(String::isNotEmpty)
+        ?: return ExactPublicSearchMatchSummary0588(0, 0, 0, 0, 0, 0, 0)
+    val departureTime = normalizedExactPublicSearchTime0448(expectedDepartureTime)
+        ?: return ExactPublicSearchMatchSummary0588(0, 0, 0, 0, 0, 0, 0)
+    val origin = BlaBlaCollectorUrlModule.origin(providerOrigin)
+        ?: return ExactPublicSearchMatchSummary0588(0, 0, 0, 0, 0, 0, 0)
+    val profileUuid = expectedProfileUuid?.trim()?.lowercase()?.takeIf(String::isNotEmpty)
+    val driverKey = BlaBlaPublicSearchPlanner.normalizePerson(expectedDriverName.orEmpty()).takeIf(String::isNotEmpty)
+    val arrivalTime = normalizedExactPublicSearchTime0448(expectedArrivalTime)
+    val departurePlace = BlaBlaPublicSearchPlanner.normalizePlace(expectedDeparturePlace.orEmpty()).takeIf(String::isNotEmpty)
+    val arrivalPlace = BlaBlaPublicSearchPlanner.normalizePlace(expectedArrivalPlace.orEmpty()).takeIf(String::isNotEmpty)
+    val expectedPriceKey = normalizedExactPublicSearchPrice0448(expectedPrice)
+
+    var timeMatched = 0
+    var acceptedPublicHref = 0
+    val ranked = mutableListOf<Pair<Int, String>>()
+    cards.forEach { card ->
+        if (normalizedExactPublicSearchTime0448(card.departureTime) != departureTime) return@forEach
+        timeMatched++
+        val raw = card.href?.trim()?.takeIf(String::isNotEmpty) ?: return@forEach
+        val absolute = if (raw.startsWith('/')) "$origin$raw" else raw
+        val href = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+            raw = absolute,
+            expectedAdministrativeTripId = administrativeTripId,
+            boundAdministrativeTripId = administrativeTripId,
+        ) ?: return@forEach
+        acceptedPublicHref++
+
+        val observedProfileUuids = BlaBlaCollectorIdentityModule.uuids(card.profileHrefs)
+        if (profileUuid != null && observedProfileUuids.isNotEmpty() && profileUuid !in observedProfileUuids) return@forEach
+        val profileMatch = profileUuid != null && profileUuid in observedProfileUuids
+        val nameMatch = driverKey != null &&
+            BlaBlaPublicSearchPlanner.normalizePerson(card.driverName) == driverKey
+        val cardDeparturePlace = BlaBlaPublicSearchPlanner.normalizePlace(card.actualDeparture.orEmpty())
+        val cardArrivalPlace = BlaBlaPublicSearchPlanner.normalizePlace(card.actualArrival.orEmpty())
+        val routeMatch =
+            departurePlace != null && arrivalPlace != null &&
+                cardDeparturePlace.isNotBlank() && cardArrivalPlace.isNotBlank() &&
+                cardDeparturePlace == departurePlace && cardArrivalPlace == arrivalPlace
+        val arrivalMatch = arrivalTime != null &&
+            normalizedExactPublicSearchTime0448(card.arrivalTime) == arrivalTime
+        val priceMatch = expectedPriceKey != null &&
+            normalizedExactPublicSearchPrice0448(card.priceText) == expectedPriceKey
+
+        val rank = when {
+            profileMatch -> 4
+            nameMatch -> 3
+            routeMatch && (arrivalMatch || priceMatch) -> 2
+            else -> 0
+        }
+        if (rank > 0) ranked += rank to href
+    }
+
+    val strongestRank = ranked.maxOfOrNull { it.first } ?: 0
+    val strongestDistinctHrefs = ranked
+        .filter { it.first == strongestRank && strongestRank > 0 }
+        .map { it.second }
+        .distinct()
+        .size
+    return ExactPublicSearchMatchSummary0588(
+        timeMatched = timeMatched,
+        acceptedPublicHref = acceptedPublicHref,
+        profileRank = ranked.count { it.first == 4 },
+        driverRank = ranked.count { it.first == 3 },
+        routeRank = ranked.count { it.first == 2 },
+        strongestRank = strongestRank,
+        strongestDistinctHrefs = strongestDistinctHrefs,
+    )
+}
+
 private fun normalizedExactPublicSearchTime0448(raw: String?): String? {
     val match = Regex("(?<!\\d)([01]?\\d|2[0-3]):([0-5]\\d)(?!\\d)")
         .find(raw.orEmpty())
@@ -3871,10 +3963,28 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
+            val matchSummary0588 = exactPublicSearchMatchSummary0588(
+                expectedAdministrativeTripId = tripId,
+                expectedProfileUuid = account.profileUuid,
+                expectedDriverName = pendingTripDetail?.detail?.driverName
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: account.profileName,
+                expectedDepartureTime = pendingTripDetail?.detail?.departureTime
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: candidate.departureTime,
+                expectedArrivalTime = pendingTripDetail?.detail?.arrivalTime
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: candidate.arrivalTime,
+                expectedDeparturePlace = pendingTripDetail?.detail?.origin
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: candidate.origin,
+                expectedArrivalPlace = pendingTripDetail?.detail?.destination
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: candidate.destination,
+                expectedPrice = pendingTripDetail?.detail?.price
+                    ?.trim()?.takeIf(String::isNotEmpty) ?: candidate.price,
+                cards = evidence?.cards.orEmpty(),
+                providerOrigin = providerOrigin,
+            )
             UnifiedDebugEventStore.record(
                 "PUBLIC_TRIP_LINK_UNAVAILABLE",
                 packageName,
-                "account=${account.displayLabel} tripId=$tripId source=exact_public_search cards=${evidence?.cards?.size ?: 0} attempts=${publicTripSearchReadAttempts + 1} reason=no_unique_verified_public_card_match action=continue_without_inventing_link",
+                "account=${account.displayLabel} tripId=$tripId source=exact_public_search cards=${evidence?.cards?.size ?: 0} attempts=${publicTripSearchReadAttempts + 1} reason=no_unique_verified_public_card_match timeMatched=${matchSummary0588.timeMatched} acceptedPublicHref=${matchSummary0588.acceptedPublicHref} rankProfile=${matchSummary0588.profileRank} rankDriver=${matchSummary0588.driverRank} rankRoute=${matchSummary0588.routeRank} strongestRank=${matchSummary0588.strongestRank} strongestDistinctHrefs=${matchSummary0588.strongestDistinctHrefs} action=continue_without_inventing_link",
             )
             loadNextPassengerContact(expectedSync, expectedCandidate)
         }

@@ -746,16 +746,9 @@ internal object PublicAgendaAutoSync0300 {
             revision = revision,
         )
         val api = TripRemoteApi(settings)
-        syncPrivateAgendaMirror0434(
-            api = api,
-            trip = publicTrip,
-            bookings = localBookings,
-            operationalSnapshot = canonicalOperational0434,
-            canonicalTripId = original.id,
-            correlationId = outboxEventId,
-            syncOperationId = mutationId0421,
-            idempotencyKey = idempotencyKey0421,
-        )
+        // 0.1.588: private mirror must never lead the canonical transport. The backend
+        // canonical ACK below is the authority barrier; writing before it caused the
+        // observed stale-revision/hash-conflict 409 loop.
         var remoteTripId = publicTrip.remoteId?.takeIf(String::isNotBlank) ?: publicTrip.publicToken
         var created = false
         val startedAt = System.nanoTime()
@@ -867,6 +860,68 @@ internal object PublicAgendaAutoSync0300 {
         if (response.stale) {
             throw PublicationStaleRevision0387(response.entityRevision)
         }
+
+        val committedPrivateTrip0588 = if (
+            response.canonicalRevision > 0L &&
+            response.canonicalStateHash.isNotBlank()
+        ) {
+            store.adoptRemoteCanonicalAuthority0588(
+                canonicalTripId = original.id,
+                expectedLocalRevision = original.canonicalRevision,
+                committedSnapshot = publicTrip,
+                remoteCanonicalRevision = response.canonicalRevision,
+                remoteCanonicalStateHash = response.canonicalStateHash,
+                remotePublicationRevision = response.entityRevision,
+            ) ?: run {
+                UnifiedDebugEventStore.record(
+                    "PRIVATE_MIRROR_DEFERRED_0588",
+                    context.packageName,
+                    "canonicalTripId=" + seatSyncDiagnosticKey(original.id) +
+                        " localRevision=" + (store.getTrip(original.id)?.canonicalRevision ?: -1L) +
+                        " remoteCanonicalRevision=" + response.canonicalRevision +
+                        " reason=CANONICAL_CAS_NOT_CURRENT",
+                )
+                return@withContext response.changed
+            }
+        } else {
+            publicTrip
+        }
+        val committedOperational0588 = canonicalOperationalSnapshot0434(
+            trip = committedPrivateTrip0588,
+            bookings = localBookings,
+            nowMillis = committedPrivateTrip0588.updatedAtMillis.takeIf { it > 0L } ?: nowMillis,
+        )
+        val committedEvidence0588 = outboxEventId.takeIf(String::isNotBlank)?.let { traceId ->
+            RemotePublicationEvidenceContext0421(
+                evidenceId = publicationEvidenceId0421(traceId, committedPrivateTrip0588.canonicalRevision),
+                traceId = traceId,
+                canonicalTripId = original.id,
+                logicalRevision = committedPrivateTrip0588.canonicalRevision,
+                transportRevision = response.entityRevision,
+                mutationId = mutationId0421,
+                idempotencyKey = idempotencyKey0421,
+            )
+        }
+        syncPrivateAgendaMirror0434(
+            api = api,
+            trip = committedPrivateTrip0588,
+            bookings = localBookings,
+            operationalSnapshot = committedOperational0588,
+            canonicalTripId = original.id,
+            correlationId = outboxEventId,
+            syncOperationId = mutationId0421,
+            idempotencyKey = idempotencyKey0421,
+            evidence0421 = committedEvidence0588,
+        )
+        UnifiedDebugEventStore.record(
+            "TIMELINE_PRIVATE_MIRROR_COMMITTED_0588",
+            context.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(original.id) +
+                " canonicalRevision=" + committedPrivateTrip0588.canonicalRevision +
+                " transportRevision=" + response.entityRevision +
+                " order=CANONICAL_ACK_THEN_PRIVATE_MIRROR",
+        )
+
         UnifiedDebugEventStore.record(
             if (response.changed) "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_PUBLISHED" else "PUBLIC_LOCAL_CAPACITY_INCREMENTAL_NO_OP",
             context.packageName,

@@ -10,11 +10,14 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -60,6 +63,7 @@ internal fun automaticCollectorAccountTerminalResult0585(accountResult: String):
 /** Central automatic-sync coordinator. Automatic collection never launches an Activity. */
 internal object BlaBlaAutomaticCollectionCoordinator0400 {
     private val targetedTripMutexes0407 = ConcurrentHashMap<String, Mutex>()
+    private val publicationScope0588 = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     suspend fun reverifyTripHeadless0407(
         context: Context,
@@ -431,6 +435,25 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
     fun claimHost(context: Context, generation: Long, accountId: String): Boolean =
         AgendaBackgroundSyncConfig0392.claimCollectorAccount0400(context.applicationContext, generation, accountId)
 
+    private fun publishCurrentSessionsAsync0588(
+        context: Context,
+        reason: String,
+        enqueueDelta: Boolean,
+    ) {
+        val appContext = context.applicationContext
+        publicationScope0588.launch {
+            publishCurrentSessions(appContext, reason)
+            if (enqueueDelta) {
+                AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, reason)
+            }
+            UnifiedDebugEventStore.record(
+                "BLABLACAR_TIMELINE_PROGRESS_OFF_MAIN_0588",
+                appContext.packageName,
+                "reason=" + reason.take(80) + " thread=" + Thread.currentThread().name,
+            )
+        }
+    }
+
     fun publishCurrentSessions(context: Context, reason: String): BlaBlaCollectorMonthResponse {
         val appContext = context.applicationContext
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
@@ -484,8 +507,11 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
             normalizedResult,
             error,
         )
-        publishCurrentSessions(appContext, "external_sync_adopted_0585")
-        AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "external_sync_adopted_0585")
+        publishCurrentSessionsAsync0588(
+            appContext,
+            "external_sync_adopted_0585",
+            enqueueDelta = true,
+        )
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_EXTERNAL_SYNC_ADOPTED_0585",
             appContext.packageName,
@@ -498,8 +524,11 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         val appContext = context.applicationContext
         val normalizedResult = automaticCollectorAccountTerminalResult0585(accountResult)
         val state = AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, normalizedResult, error)
-        publishCurrentSessions(appContext, "account_${normalizedResult.lowercase()}")
-        AgendaBackgroundSync0392.enqueueCollectorDelta0431(appContext, "account_${normalizedResult.lowercase()}")
+        publishCurrentSessionsAsync0588(
+            appContext,
+            "account_${normalizedResult.lowercase()}",
+            enqueueDelta = true,
+        )
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_ACCOUNT_END_0400", appContext.packageName,
             "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} rawResult=${accountResult.take(40)} result=$normalizedResult completed=${state.completedAccountIds.size} failed=${state.failedAccountIds.size} pendingAuth=${state.pendingAuthAccountIds.size} target=${state.targetAccountIds.size} automaticChainOwnedByWorker=true",
@@ -558,7 +587,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         if (generation <= 0L) return
         val appContext = context.applicationContext
         AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, "PENDING_AUTH", reason)
-        publishCurrentSessions(appContext, "account_pending_auth")
+        publishCurrentSessionsAsync0588(appContext, "account_pending_auth", enqueueDelta = false)
         UnifiedDebugEventStore.record(
             "BLABLACAR_AUTOMATIC_AUTH_REQUIRED_0401", appContext.packageName,
             "generation=$generation accountKey=${seatSyncDiagnosticKey(accountId)} reason=${reason.take(120)} action=user_reconnect_required browserOpened=false previousSnapshotPreserved=true",
@@ -569,7 +598,7 @@ internal object BlaBlaAutomaticCollectionCoordinator0400 {
         if (generation <= 0L) return
         val appContext = context.applicationContext
         AgendaBackgroundSyncConfig0392.recordCollectorAccountFinished0400(appContext, generation, accountId, "INTERRUPTED", reason)
-        publishCurrentSessions(appContext, "account_interrupted")
+        publishCurrentSessionsAsync0588(appContext, "account_interrupted", enqueueDelta = false)
     }
 
     private fun finishRun(context: Context, generation: Long, reason: String): AgendaAutomaticCollectorState0400 {

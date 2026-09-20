@@ -491,6 +491,103 @@ class TripStore(context: Context) {
         return getTrip(staged.id)
     }
 
+    /**
+     * Adopts a backend-confirmed canonical revision without creating a new local semantic
+     * mutation. The compare-and-swap guard prevents an older network response from
+     * overwriting a trip that changed while the request was in flight.
+     */
+    internal fun adoptRemoteCanonicalAuthority0588(
+        canonicalTripId: String,
+        expectedLocalRevision: Long,
+        committedSnapshot: Trip,
+        remoteCanonicalRevision: Long,
+        remoteCanonicalStateHash: String,
+        remotePublicationRevision: Long,
+    ): Trip? = synchronized(CANONICAL_LOCK) {
+        val remoteHash = remoteCanonicalStateHash.trim()
+        if (remoteCanonicalRevision <= 0L || remoteHash.isBlank()) return@synchronized null
+
+        val allTrips = trips()
+        val current = allTrips.firstOrNull { it.id == canonicalTripId } ?: return@synchronized null
+        if (committedSnapshot.id != current.id) {
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_CANONICAL_REBASE_REJECTED_0588",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                    " reason=SNAPSHOT_IDENTITY_MISMATCH",
+            )
+            return@synchronized null
+        }
+        if (current.canonicalRevision != expectedLocalRevision) {
+            UnifiedDebugEventStore.record(
+                "REMOTE_CANONICAL_REBASE_DEFERRED_0588",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                    " expectedLocalRevision=" + expectedLocalRevision +
+                    " currentLocalRevision=" + current.canonicalRevision +
+                    " remoteCanonicalRevision=" + remoteCanonicalRevision +
+                    " reason=LOCAL_MUTATION_ADVANCED",
+            )
+            return@synchronized null
+        }
+
+        if (remoteCanonicalRevision < current.canonicalRevision) {
+            UnifiedDebugEventStore.record(
+                "REMOTE_CANONICAL_REBASE_REJECTED_0588",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                    " currentLocalRevision=" + current.canonicalRevision +
+                    " remoteCanonicalRevision=" + remoteCanonicalRevision +
+                    " reason=REMOTE_REVISION_OLDER",
+            )
+            return@synchronized null
+        }
+
+        if (
+            remoteCanonicalRevision == current.canonicalRevision &&
+            current.canonicalStateHash.isNotBlank() &&
+            current.canonicalStateHash != remoteHash
+        ) {
+            UnifiedDebugEventStore.recordAlways(
+                "REMOTE_CANONICAL_SAME_REVISION_HASH_CONFLICT_0588",
+                appContext.packageName,
+                "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                    " canonicalRevision=" + current.canonicalRevision +
+                    " localHash=" + current.canonicalStateHash.takeLast(12) +
+                    " remoteHash=" + remoteHash.takeLast(12),
+            )
+            return@synchronized null
+        }
+
+        // Only fields actually changed in syncLocalTripIncremental are adopted from the
+        // transported snapshot. Everything else comes from the current record so metadata-only
+        // updates that do not advance canonicalRevision cannot be lost.
+        val rebased = current.copy(
+            capacity = committedSnapshot.capacity,
+            capacityReliable = committedSnapshot.capacityReliable,
+            rotaCertaSeatAllocation = committedSnapshot.rotaCertaSeatAllocation,
+            remoteId = committedSnapshot.remoteId?.takeIf(String::isNotBlank) ?: current.remoteId,
+            publicToken = committedSnapshot.publicToken.takeIf(String::isNotBlank) ?: current.publicToken,
+            publicUrl = committedSnapshot.publicUrl?.takeIf(String::isNotBlank) ?: current.publicUrl,
+            publicationRevision = maxOf(current.publicationRevision, remotePublicationRevision.coerceAtLeast(0L)),
+            canonicalRevision = remoteCanonicalRevision,
+            canonicalStateHash = remoteHash,
+        ).invalidatePublicMirror0411("REMOTE_CANONICAL_REBASE_0588")
+
+        if (rebased != current) {
+            persistCanonicalTrip0406(rebased, allTrips)
+        }
+        UnifiedDebugEventStore.record(
+            "REMOTE_CANONICAL_REBASE_COMMITTED_0588",
+            appContext.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(canonicalTripId) +
+                " oldRevision=" + current.canonicalRevision +
+                " newRevision=" + rebased.canonicalRevision +
+                " stateHash=" + rebased.canonicalStateHash.takeLast(12),
+        )
+        rebased
+    }
+
     fun saveTrip(trip: Trip): Trip = synchronized(CANONICAL_LOCK) {
         val keyedIncoming = canonicalizeTripIdentity0406(trip.normalizedRecordOrigin())
             .withCanonicalAgendaVisibility0581()

@@ -57,6 +57,7 @@ import kotlinx.coroutines.withContext
 
 enum class OperationalHealthState { GREEN, YELLOW, RED }
 enum class OperationalIncidentSeverity { WARNING, CRITICAL }
+enum class OperationalIncidentLifecycle { ACTIVE, RECOVERED, HISTORICAL, REGRESSION }
 enum class OperationalValidationState { IMPROVED, STABLE, REGRESSION, INSUFFICIENT_DATA }
 
 data class OperationalIncident(
@@ -72,6 +73,7 @@ data class OperationalIncident(
     val probableRootCause: String,
     val confidencePercent: Int,
     val suggestedCorrection: String,
+    val lifecycle: OperationalIncidentLifecycle = OperationalIncidentLifecycle.ACTIVE,
 )
 
 data class OperationalOpportunity(
@@ -145,22 +147,31 @@ object OperationalHealthEngine {
                 probableRootCause = diagnosis.rootCause,
                 confidencePercent = diagnosis.confidence,
                 suggestedCorrection = diagnosis.correction,
+                lifecycle = if (grouped.all(::isHistoricalRehydratedEvidence0576)) {
+                    OperationalIncidentLifecycle.HISTORICAL
+                } else {
+                    OperationalIncidentLifecycle.ACTIVE
+                },
             )
         }.sortedWith(
             compareByDescending<OperationalIncident> { it.severity == OperationalIncidentSeverity.CRITICAL }
                 .thenByDescending { it.lastSeenMillis },
         )
 
-        val recentCritical = incidents.any {
+        val activeIncidents = incidents.filter {
+            it.lifecycle == OperationalIncidentLifecycle.ACTIVE ||
+                it.lifecycle == OperationalIncidentLifecycle.REGRESSION
+        }
+        val recentCritical = activeIncidents.any {
             it.severity == OperationalIncidentSeverity.CRITICAL &&
                 it.lastSeenMillis >= nowMillis - 60L * 60L * 1000L
         }
         val state = when {
             recentCritical -> OperationalHealthState.RED
-            incidents.isNotEmpty() -> OperationalHealthState.YELLOW
+            activeIncidents.isNotEmpty() -> OperationalHealthState.YELLOW
             else -> OperationalHealthState.GREEN
         }
-        val opportunities = incidents
+        val opportunities = activeIncidents
             .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
             .take(12)
             .map(::opportunityFor)
@@ -445,7 +456,8 @@ object OperationalHealthStore {
                     .put("symptom", incident.symptom)
                     .put("probableRootCause", incident.probableRootCause)
                     .put("confidencePercent", incident.confidencePercent)
-                    .put("suggestedCorrection", incident.suggestedCorrection),
+                    .put("suggestedCorrection", incident.suggestedCorrection)
+                    .put("lifecycle", incident.lifecycle.name),
             )
         }
         json.put("incidents", incidents)
@@ -486,6 +498,10 @@ object OperationalHealthStore {
                             probableRootCause = item.optString("probableRootCause"),
                             confidencePercent = item.optInt("confidencePercent"),
                             suggestedCorrection = item.optString("suggestedCorrection"),
+                            lifecycle = enumValueOrDefault(
+                                item.optString("lifecycle"),
+                                OperationalIncidentLifecycle.HISTORICAL,
+                            ),
                         ),
                     )
                 }
@@ -550,9 +566,17 @@ object OperationalHealthCoordinator {
         val cutoff = fresh.scannedAtMillis - INCIDENT_RETENTION_MS
         val mergedByFingerprint = linkedMapOf<String, OperationalIncident>()
 
+        val freshFingerprints = fresh.incidents.mapTo(mutableSetOf(), OperationalIncident::fingerprint)
         previous.incidents
             .filter { it.lastSeenMillis >= cutoff }
-            .forEach { mergedByFingerprint[it.fingerprint] = it }
+            .forEach { previousIncident ->
+                val lifecycle = when {
+                    previousIncident.fingerprint in freshFingerprints -> previousIncident.lifecycle
+                    fresh.sourceEventCount > 0 -> OperationalIncidentLifecycle.RECOVERED
+                    else -> OperationalIncidentLifecycle.HISTORICAL
+                }
+                mergedByFingerprint[previousIncident.fingerprint] = previousIncident.copy(lifecycle = lifecycle)
+            }
 
         fresh.incidents.forEach { incoming ->
             val existing = mergedByFingerprint[incoming.fingerprint]
@@ -560,10 +584,19 @@ object OperationalHealthCoordinator {
                 incoming
             } else {
                 val newest = if (incoming.lastSeenMillis >= existing.lastSeenMillis) incoming else existing
+                val lifecycle = when {
+                    incoming.lifecycle == OperationalIncidentLifecycle.HISTORICAL ->
+                        OperationalIncidentLifecycle.HISTORICAL
+                    existing.lifecycle == OperationalIncidentLifecycle.RECOVERED ||
+                        existing.lifecycle == OperationalIncidentLifecycle.HISTORICAL ->
+                        OperationalIncidentLifecycle.REGRESSION
+                    else -> OperationalIncidentLifecycle.ACTIVE
+                }
                 newest.copy(
                     firstSeenMillis = minOf(existing.firstSeenMillis, incoming.firstSeenMillis),
                     lastSeenMillis = maxOf(existing.lastSeenMillis, incoming.lastSeenMillis),
                     count = maxOf(existing.count, incoming.count),
+                    lifecycle = lifecycle,
                 )
             }
         }
@@ -575,16 +608,20 @@ object OperationalHealthCoordinator {
             )
             .take(30)
 
+        val activeIncidents = incidents.filter {
+            it.lifecycle == OperationalIncidentLifecycle.ACTIVE ||
+                it.lifecycle == OperationalIncidentLifecycle.REGRESSION
+        }
         val state = when {
-            incidents.any {
+            activeIncidents.any {
                 it.severity == OperationalIncidentSeverity.CRITICAL &&
                     it.lastSeenMillis >= fresh.scannedAtMillis - RECENT_CRITICAL_MS
             } -> OperationalHealthState.RED
-            incidents.isNotEmpty() -> OperationalHealthState.YELLOW
+            activeIncidents.isNotEmpty() -> OperationalHealthState.YELLOW
             else -> OperationalHealthState.GREEN
         }
 
-        val opportunities = incidents
+        val opportunities = activeIncidents
             .filter { it.count >= 2 || it.severity == OperationalIncidentSeverity.CRITICAL }
             .take(12)
             .map(OperationalHealthEngine::opportunityForIncident0575)
@@ -766,6 +803,15 @@ class OperationalHealthActivity : ComponentActivity() {
                                 Text(if (incident.severity == OperationalIncidentSeverity.CRITICAL) "CRÍTICO" else "ATENÇÃO")
                             }
                             Text("${incident.module} • ocorrências ${incident.count}")
+                            Text(
+                                "Estado: " + when (incident.lifecycle) {
+                                    OperationalIncidentLifecycle.ACTIVE -> "ATIVO"
+                                    OperationalIncidentLifecycle.RECOVERED -> "RECUPERADO"
+                                    OperationalIncidentLifecycle.HISTORICAL -> "HISTÓRICO"
+                                    OperationalIncidentLifecycle.REGRESSION -> "REGRESSÃO"
+                                },
+                                fontWeight = FontWeight.Bold,
+                            )
                             Text("Código: ${incident.errorCode}")
                             Text("Sintoma: ${incident.symptom}", style = MaterialTheme.typography.bodySmall)
                             Text("Causa provável (${incident.confidencePercent}%): ${incident.probableRootCause}")

@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.588",
+      "build": 5879,
+      "commit": null,
+      "branch": "agent/rootcause-causal-fixes-0.1.588",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A publicação local passa a tratar o ACK canônico remoto como barreira de autoridade antes de escrever o espelho privado.",
+        "O rebase canônico usa compare-and-swap e adota somente os campos realmente transportados, preservando metadados locais concorrentes.",
+        "A aquisição do link público ganha evidência adicional pelo link de perfil do card e diagnóstico explícito de ambiguidade sem escolher candidatos por aproximação.",
+        "A consolidação multiperfil acionada por callbacks sai da Main Thread e a abertura da Timeline reutiliza o snapshot combinado durável quando ele já existe.",
+        "A Central de Saúde passa a distinguir incidentes ATIVOS, RECUPERADOS, HISTÓRICOS e REGRESSÕES."
+      ],
+      "fixed": [
+        "Corrigida a ordem que permitia PUT do private mirror antes do rebase e produzia private_mirror_stale_revision/private_mirror_revision_hash_conflict.",
+        "Reduzida a reconstrução redundante de todas as sessões durante a inicialização da Timeline e em callbacks do coletor.",
+        "Incidentes históricos reidratados deixam de manter o estado operacional vermelho ou amarelo quando não há falha viva correspondente."
+      ],
+      "improved": [
+        "O matcher de permalink continua fail-closed: empates entre candidatos fortes permanecem sem link em vez de selecionar uma viagem potencialmente incorreta.",
+        "O diagnóstico do link público registra candidatos por força de prova para diferenciar ausência de evidência de ambiguidade real.",
+        "Testes de regressão protegem ordem ACK→mirror, CAS canônico, ambiguidade de permalink, offload da consolidação e ciclo de vida dos incidentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.587: conflito de revisão/hash do private mirror após divergência entre revisão local e autoridade remota.",
+        "0.1.587: frames longos durante reconstrução multiperfil em caminhos executados pela Main Thread.",
+        "0.1.587: Health Center podia apresentar evidência histórica recuperada como incidente operacional atual."
+      ],
+      "modulesAffected": [
+        "Agenda canônica",
+        "Private mirror",
+        "Outbox",
+        "BlaBlaCar",
+        "Coletor multiperfil",
+        "Timeline",
+        "Central de Saúde",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.587",
       "build": 5878,
       "commit": null,
