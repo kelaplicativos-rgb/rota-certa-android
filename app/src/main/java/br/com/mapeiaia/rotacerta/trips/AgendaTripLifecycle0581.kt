@@ -86,3 +86,22 @@ internal fun canonicalAgendaTripStillVisible0581(
     arrivalAtMillis = canonicalAgendaArrivalAtMillis0581(trip),
     nowMillis = nowMillis,
 ).visible
+
+/**
+ * Upgrade/self-heal guard for collector-absence tombstones created by older builds.
+ *
+ * A durable external tombstone is recoverable while its canonical operational
+ * lifecycle is still active. Explicit local deletion is not affected because
+ * TripStore.deleteTrip removes the record instead of setting this tombstone.
+ */
+internal fun canonicalAgendaRecoverableCollectorAbsenceTombstone0590(
+    trip: Trip,
+    nowMillis: Long,
+): Boolean =
+    trip.deleted &&
+        trip.status == TripStatus.CANCELLED &&
+        resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
+        !trip.blablaProfileUuid.isNullOrBlank() &&
+        !trip.blablaTripId.isNullOrBlank() &&
+        trip.externalSnapshot != null &&
+        canonicalAgendaTripStillVisible0581(trip, nowMillis)
