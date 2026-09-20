@@ -7,8 +7,10 @@ import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.json.JSONObject
 
 class OperationalHealthTechnicalPackage0575Test {
     @Test
@@ -74,10 +76,51 @@ class OperationalHealthTechnicalPackage0575Test {
 
         val lines = extracted.lines().filter(String::isNotBlank)
         assertTrue(lines.size == 2)
-        assertTrue(lines[0].contains("\"stage\":\"ONE\""))
-        assertTrue(lines[1].contains("\"stage\":\"TWO\""))
+        assertEquals("ONE", JSONObject(lines[0]).getString("stage"))
+        assertEquals("TWO", JSONObject(lines[1]).getString("stage"))
+        assertEquals("[email mascarado]", JSONObject(lines[0]).getString("email"))
+        assertEquals("[email mascarado]", JSONObject(lines[1]).getString("email"))
         assertFalse("one@example.com" in extracted)
         assertFalse("two@example.com" in extracted)
+    }
+
+    @Test
+    fun jsonSanitizationPreservesNumericObservabilityFieldsAndMasksOnlyStringValues() {
+        val recordOverheadTotalNs = 11_999_998_888L
+        val raw = JSONObject()
+            .put("eventsInBuffer", 5_041)
+            .put("recordCalls", 5_041L)
+            .put("recordOverheadTotalNs", recordOverheadTotalNs)
+            .put("recordMaxNs", 11_888_887_777L)
+            .put("operatorNote", "telefone=11999998888")
+            .put(
+                "nested",
+                JSONObject()
+                    .put("generatedAtMillis", 1_758_337_083_530L)
+                    .put("email", "teste@example.com"),
+            )
+            .toString(2)
+
+        val bytes = OperationalHealthTechnicalPackage0575.zipSanitized0575(
+            mapOf("buffer-stats.json" to raw),
+        )
+
+        val extracted = ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+            val entry = zip.nextEntry
+            assertTrue(entry != null && entry.name == "buffer-stats.json")
+            zip.readBytes().toString(Charsets.UTF_8)
+        }
+
+        val parsed = JSONObject(extracted)
+        assertEquals(5_041, parsed.getInt("eventsInBuffer"))
+        assertEquals(5_041L, parsed.getLong("recordCalls"))
+        assertEquals(recordOverheadTotalNs, parsed.getLong("recordOverheadTotalNs"))
+        assertEquals(11_888_887_777L, parsed.getLong("recordMaxNs"))
+        assertEquals("telefone=[telefone mascarado]", parsed.getString("operatorNote"))
+        assertEquals(1_758_337_083_530L, parsed.getJSONObject("nested").getLong("generatedAtMillis"))
+        assertEquals("[email mascarado]", parsed.getJSONObject("nested").getString("email"))
+        assertFalse("11999998888" in extracted)
+        assertFalse("teste@example.com" in extracted)
     }
 
     @Test
