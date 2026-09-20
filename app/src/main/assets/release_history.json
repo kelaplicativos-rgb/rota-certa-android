@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.587",
+      "build": 5878,
+      "commit": null,
+      "branch": "agent/health-json-safe-sanitization-0.1.587",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A exportação da Central de Saúde passa a sanitizar documentos JSON e NDJSON por tipo de valor, em vez de aplicar regex sobre o texto JSON já serializado.",
+        "Valores String continuam sendo mascarados; Number, Boolean e null preservam tipo e sintaxe."
+      ],
+      "fixed": [
+        "Corrigido buffer-stats.json inválido quando métricas numéricas longas eram confundidas com telefone e substituídas por [telefone mascarado] sem aspas.",
+        "Corrigida a mesma classe de risco estrutural para os demais arquivos .json e events.ndjson do pacote técnico."
+      ],
+      "improved": [
+        "O pacote técnico falha ao encontrar raiz JSON inválida em vez de publicar silenciosamente um JSON estruturalmente corrompido.",
+        "Teste de regressão cobre números de 11 e 13 dígitos, strings com telefone/e-mail e validade sintática após extração do ZIP.",
+        "Nenhuma alteração em coletor multiperfil, single-flight, Agenda, Timeline, capacidade ou publicação pública."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.585/0.1.586: buffer-stats.json podia sair sintaticamente inválido após sanitização textual do JSON serializado."
+      ],
+      "modulesAffected": [
+        "Central de Saúde",
+        "Pacote técnico",
+        "Sanitização",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.586",
       "build": 5877,
       "commit": null,
