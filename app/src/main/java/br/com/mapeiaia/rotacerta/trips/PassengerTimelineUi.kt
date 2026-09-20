@@ -41,6 +41,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.Coordinate
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
 import br.com.mapeiaia.rotacerta.R
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
@@ -337,6 +339,24 @@ internal fun EnhancedPassengerTimelineSection(
         }
         val selectOperationalStatus: (String) -> Unit = select@{ selection ->
             statusMenuOpen = false
+            if (compactEmbeddedControls0593) {
+                UnifiedDebugEventStore.recordAlways(
+                    "CENTRAL_DAY_PASSENGER_STATUS_REQUEST_0594",
+                    context.packageName,
+                    "selection=$selection current=${passenger.operationalStatus.name} bookingPresent=${currentBooking != null}",
+                    diagnosticContext = DiagnosticEventContext0507(
+                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                        submodule = "PASSENGER_CONTROLS",
+                        component = "EnhancedPassengerTimelineSection",
+                        operation = "CENTRAL_DAY_PASSENGER_STATUS",
+                        entityType = "booking",
+                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                        result = "REQUESTED",
+                    ),
+                )
+            }
             val occurrenceCompleted =
                 completed || passenger.operationalStatus == PassengerOperationalStatus.COMPLETED
             if (occurrenceCompleted && selection !in setOf("COMPLETED", "PAID")) {
@@ -417,8 +437,45 @@ internal fun EnhancedPassengerTimelineSection(
                         "COMPLETED" -> "Passageiro concluído no estado canônico."
                         else -> "Status atualizado no estado canônico."
                     }
+                    if (compactEmbeddedControls0593) {
+                        UnifiedDebugEventStore.recordAlways(
+                            "CENTRAL_DAY_PASSENGER_STATUS_RESULT_0594",
+                            context.packageName,
+                            "selection=$selection result=COMMITTED",
+                            diagnosticContext = DiagnosticEventContext0507(
+                                parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                submodule = "PASSENGER_CONTROLS",
+                                component = "EnhancedPassengerTimelineSection",
+                                operation = "CENTRAL_DAY_PASSENGER_STATUS",
+                                entityType = "booking",
+                                entityId = passengerCancellationHash(booking.id),
+                                result = "COMMITTED",
+                            ),
+                        )
+                    }
                     onChanged(message)
                 }.onFailure { error ->
+                    if (compactEmbeddedControls0593) {
+                        UnifiedDebugEventStore.recordAlways(
+                            "CENTRAL_DAY_PASSENGER_STATUS_RESULT_0594",
+                            context.packageName,
+                            "selection=$selection result=FAILED reason=${error.message ?: error.javaClass.simpleName}",
+                            diagnosticContext = DiagnosticEventContext0507(
+                                parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                submodule = "PASSENGER_CONTROLS",
+                                component = "EnhancedPassengerTimelineSection",
+                                operation = "CENTRAL_DAY_PASSENGER_STATUS",
+                                entityType = "booking",
+                                entityId = passengerCancellationHash(booking.id),
+                                result = "FAILED",
+                                reason = error.message.orEmpty(),
+                            ),
+                        )
+                    }
                     onChanged("Nada foi alterado: ${error.message ?: "falha ao gravar no estado canônico"}")
                 }
             }
@@ -495,10 +552,21 @@ internal fun EnhancedPassengerTimelineSection(
                     IconButton(
                         onClick = {
                             if (!phone0593.isNullOrBlank()) {
-                                UnifiedDebugEventStore.record(
-                                    "PASSENGER_WHATSAPP_OPEN",
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
                                     context.packageName,
-                                    "timeline=true centralDay=true phone_present=true",
+                                    "shortcut=WHATSAPP phonePresent=true",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        submodule = "PASSENGER_CONTROLS",
+                                        component = "EnhancedPassengerTimelineSection",
+                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                        entityType = "booking",
+                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                        result = "WHATSAPP",
+                                    ),
                                 )
                                 openPassengerWhatsApp(context, phone0593)
                             }
@@ -516,7 +584,25 @@ internal fun EnhancedPassengerTimelineSection(
 
                     TextButton(
                         onClick = {
-                            if (pickupTarget0593 != null) openPassengerPickupMap(context, pickupTarget0593)
+                            if (pickupTarget0593 != null) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                    context.packageName,
+                                    "shortcut=PICKUP_PIN",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        submodule = "PASSENGER_CONTROLS",
+                                        component = "EnhancedPassengerTimelineSection",
+                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                        entityType = "booking",
+                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                        result = "PICKUP_PIN",
+                                    ),
+                                )
+                                openPassengerPickupMap(context, pickupTarget0593)
+                            }
                         },
                         enabled = pickupTarget0593 != null,
                         modifier = Modifier.size(36.dp),
@@ -525,7 +611,25 @@ internal fun EnhancedPassengerTimelineSection(
 
                     TextButton(
                         onClick = {
-                            if (dropoffTarget0593 != null) openPassengerDropoffMap(context, dropoffTarget0593)
+                            if (dropoffTarget0593 != null) {
+                                UnifiedDebugEventStore.recordAlways(
+                                    "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                    context.packageName,
+                                    "shortcut=DROPOFF_PIN",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                        submodule = "PASSENGER_CONTROLS",
+                                        component = "EnhancedPassengerTimelineSection",
+                                        operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                        entityType = "booking",
+                                        entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                        result = "DROPOFF_PIN",
+                                    ),
+                                )
+                                openPassengerDropoffMap(context, dropoffTarget0593)
+                            }
                         },
                         enabled = dropoffTarget0593 != null,
                         modifier = Modifier.size(36.dp),
@@ -534,6 +638,22 @@ internal fun EnhancedPassengerTimelineSection(
 
                     TextButton(
                         onClick = {
+                            UnifiedDebugEventStore.recordAlways(
+                                "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                context.packageName,
+                                "shortcut=FARE farePresent=${passenger.fareMinorUnits != null}",
+                                diagnosticContext = DiagnosticEventContext0507(
+                                    parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    submodule = "PASSENGER_CONTROLS",
+                                    component = "EnhancedPassengerTimelineSection",
+                                    operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                    entityType = "booking",
+                                    entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                    result = "FARE",
+                                ),
+                            )
                             if (passenger.fareMinorUnits != null) {
                                 copyPassengerFareValue(context, passenger)
                             } else {
@@ -545,7 +665,25 @@ internal fun EnhancedPassengerTimelineSection(
                     ) { Text("💰", maxLines = 1) }
 
                     TextButton(
-                        onClick = { copyPassengerConfirmationMessage(context, entry, passenger) },
+                        onClick = {
+                            UnifiedDebugEventStore.recordAlways(
+                                "CENTRAL_DAY_PASSENGER_SHORTCUT_0594",
+                                context.packageName,
+                                "shortcut=READY_MESSAGE",
+                                diagnosticContext = DiagnosticEventContext0507(
+                                    parentModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    originModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    executorModule = DiagnosticModule0507.CENTRAL_DAY,
+                                    submodule = "PASSENGER_CONTROLS",
+                                    component = "EnhancedPassengerTimelineSection",
+                                    operation = "CENTRAL_DAY_PASSENGER_SHORTCUT",
+                                    entityType = "booking",
+                                    entityId = passengerCancellationHash(currentBooking?.id ?: passenger.localBookingId.orEmpty()),
+                                    result = "READY_MESSAGE",
+                                ),
+                            )
+                            copyPassengerConfirmationMessage(context, entry, passenger)
+                        },
                         modifier = Modifier.size(36.dp),
                         contentPadding = ADDRESS_ICON_PADDING,
                     ) { Text("💬", maxLines = 1) }
