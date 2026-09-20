@@ -547,6 +547,31 @@ class PublicAgendaAutoSync0300Test {
     }
 
     @Test
+    fun localCanonicalSyncWritesPrivateMirrorOnlyAfterRemoteCanonicalAckAndCas() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
+        ).readText()
+        val functionStart = source.indexOf("suspend fun syncLocalTripIncremental(")
+        val functionEnd = source.indexOf("internal fun localCapacitySnapshotRevision(", functionStart)
+        assertTrue(functionStart >= 0)
+        assertTrue(functionEnd > functionStart)
+        val body = source.substring(functionStart, functionEnd)
+
+        val reconcile = body.indexOf("var response = try")
+        val staleGuard = body.indexOf("if (response.stale)")
+        val canonicalCas = body.indexOf("adoptRemoteCanonicalAuthority0588(")
+        val privateMirror = body.indexOf("syncPrivateAgendaMirror0434(")
+
+        assertTrue(reconcile >= 0)
+        assertTrue(staleGuard > reconcile)
+        assertTrue(canonicalCas > staleGuard)
+        assertTrue(privateMirror > canonicalCas)
+        assertTrue(!body.substring(0, reconcile).contains("syncPrivateAgendaMirror0434("))
+        assertTrue(body.contains("PRIVATE_MIRROR_DEFERRED_0588"))
+        assertTrue(body.contains("order=CANONICAL_ACK_THEN_PRIVATE_MIRROR"))
+    }
+
+    @Test
     fun serverCanonicalIngestionWritesPrivateMirrorOnlyAfterCanonicalRevisionAck() {
         val source = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt",
