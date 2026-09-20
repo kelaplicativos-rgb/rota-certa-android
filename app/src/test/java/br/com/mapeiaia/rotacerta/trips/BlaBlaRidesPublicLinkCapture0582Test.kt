@@ -179,4 +179,68 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         assertTrue(script.contains("generic page links are not public-share authority"))
     }
 
+    @Test
+    fun tripActionsMenuKeepsShareCaptureInAuthoritativeRetryPath() {
+        assertTrue(
+            shouldRetryPublicTripShare0583(
+                readAttempts = 0,
+                maxReadAttempts = 2,
+                shareControlPresent = false,
+                menuControlPresent = true,
+                shareInterceptInstalled = true,
+            ),
+        )
+        assertTrue(
+            shouldRetryPublicTripShare0583(
+                readAttempts = 0,
+                maxReadAttempts = 2,
+                shareControlPresent = true,
+                menuControlPresent = false,
+                shareInterceptInstalled = true,
+            ),
+        )
+        assertFalse(
+            shouldRetryPublicTripShare0583(
+                readAttempts = 0,
+                maxReadAttempts = 2,
+                shareControlPresent = false,
+                menuControlPresent = false,
+                shareInterceptInstalled = true,
+            ),
+        )
+        assertFalse(
+            shouldRetryPublicTripShare0583(
+                readAttempts = 2,
+                maxReadAttempts = 2,
+                shareControlPresent = false,
+                menuControlPresent = true,
+                shareInterceptInstalled = true,
+            ),
+        )
+        assertFalse(
+            shouldRetryPublicTripShare0583(
+                readAttempts = 0,
+                maxReadAttempts = 2,
+                shareControlPresent = false,
+                menuControlPresent = true,
+                shareInterceptInstalled = false,
+            ),
+        )
+    }
+
+    @Test
+    fun shareScriptOpensOnlyVisibleEnabledTripActionsMenuBeforeWeakSearchFallback() {
+        val script = File("src/main/assets/blablacar/scripts/trip_public_share.js").readText()
+        assertTrue(script.contains("const menuMarkerMatches = (node) =>"))
+        assertTrue(script.contains("const menuControls = Array.from"))
+        assertTrue(script.contains("visible(node)"))
+        assertTrue(script.contains("enabledShareControl(node)"))
+        assertTrue(script.contains("!node.closest('header, nav')"))
+        assertTrue(script.contains("shareControls.length === 0"))
+        assertTrue(script.contains("menuControls[0].click()"))
+        assertTrue(script.contains("menuControlPresent: menuControls.length > 0"))
+        assertTrue(script.contains("menuClickCount: state.menuClicks || 0"))
+        assertTrue(script.contains("authoritativeSharedPublicTripUrl"))
+    }
+
 }

@@ -75,6 +75,7 @@
       clicks: 0,
       payloadText: '',
       copyClicks: 0,
+      menuClicks: 0,
       clipboardInterceptInstalled: false
     };
     window[stateKey] = state;
@@ -239,6 +240,58 @@
     '[role="dialog"], [aria-modal="true"], [data-testid*="share" i], [class*="share" i]'
   )).filter(visible);
 
+  const menuMarkerMatches = (node) => {
+    const marker = markerFor(node);
+    const context = normalize(
+      ((node.parentElement && node.parentElement.innerText) || '') + ' ' +
+      ((node.parentElement && node.parentElement.getAttribute &&
+        node.parentElement.getAttribute('data-testid')) || '')
+    );
+    if (
+      marker.includes('perfil') ||
+      marker.includes('profile') ||
+      marker.includes('conta') ||
+      marker.includes('account') ||
+      marker.includes('passageiro') ||
+      marker.includes('passenger') ||
+      context.includes('passageiro') ||
+      context.includes('passenger')
+    ) return false;
+    const popup = normalize(
+      (node.getAttribute && node.getAttribute('aria-haspopup')) || ''
+    );
+    const semanticMenu =
+      marker.includes('mais opcoes') ||
+      marker.includes('mais acoes') ||
+      marker.includes('outras opcoes') ||
+      marker.includes('more options') ||
+      marker.includes('more actions') ||
+      marker.includes('trip actions') ||
+      marker.includes('ride actions') ||
+      marker.includes('overflow menu');
+    return semanticMenu || (
+      popup === 'menu' &&
+      (
+        marker.includes('mais') ||
+        marker.includes('more') ||
+        marker.includes('acoes') ||
+        marker.includes('actions') ||
+        marker.includes('opcoes') ||
+        marker.includes('options')
+      )
+    );
+  };
+
+  const menuControls = Array.from(document.querySelectorAll(
+    'button, [role="button"], [aria-haspopup="menu"], [data-testid], [aria-label], [title]'
+  )).filter((node) =>
+    visible(node) &&
+    enabledShareControl(node) &&
+    menuMarkerMatches(node) &&
+    !node.closest('header, nav')
+  );
+
+
   const copyControls = Array.from(document.querySelectorAll(
     'button, a, [role="button"], [data-testid], [aria-label], [title]'
   )).filter((node) => {
@@ -292,6 +345,24 @@
   const clipboardInterceptReady = installClipboardIntercept();
   const canCaptureWithoutOpeningSystemShare =
     shareInterceptReady || clipboardInterceptReady;
+
+  // 0.1.583: some BlaBlaCar trip pages materialize the share action only
+  // after opening the trip-level overflow/actions menu. Open only a visible,
+  // enabled, semantically identified trip actions control, then let the native
+  // retry pass rescan the newly materialized DOM before public-search fallback.
+  if (
+    !state.publicTripHref &&
+    canCaptureWithoutOpeningSystemShare &&
+    shareControls.length === 0 &&
+    menuControls.length > 0 &&
+    state.menuClicks < 2
+  ) {
+    state.menuClicks += 1;
+    try {
+      menuControls[0].click();
+    } catch (_) {}
+  }
+
   if (
     !state.publicTripHref &&
     canCaptureWithoutOpeningSystemShare &&
@@ -323,6 +394,9 @@
   return JSON.stringify({
     tripId: tripId,
     shareControlPresent: shareControls.length > 0,
+    menuControlPresent: menuControls.length > 0,
+    menuInvoked: (state.menuClicks || 0) > 0,
+    menuClickCount: state.menuClicks || 0,
     shareInterceptInstalled: !!state.interceptInstalled || !!state.clipboardInterceptInstalled,
     shareInvoked: !!state.shareInvoked,
     clickCount: state.clicks || 0,
