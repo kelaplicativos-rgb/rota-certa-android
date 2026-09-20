@@ -101,6 +101,37 @@ class AgendaCanonicalIntegrity0406Test {
     }
 
     @Test
+    fun olderCollectorTombstoneIsRecoverableWhileTripIsStillOperational() {
+        val canonical = trip().copy(
+            status = TripStatus.CANCELLED,
+            deleted = true,
+            deletedAtMillis = trip().departureAtMillis,
+        )
+        assertTrue(
+            canonicalAgendaRecoverableCollectorAbsenceTombstone0590(
+                trip = canonical,
+                nowMillis = canonical.departureAtMillis + 30L * 60L * 1000L,
+            ),
+        )
+    }
+
+    @Test
+    fun expiredCollectorTombstoneIsNotRecoveredAfterCanonicalWindow() {
+        val canonical = trip().copy(
+            status = TripStatus.CANCELLED,
+            deleted = true,
+            deletedAtMillis = trip().departureAtMillis,
+        )
+        assertFalse(
+            canonicalAgendaRecoverableCollectorAbsenceTombstone0590(
+                trip = canonical,
+                nowMillis = canonical.departureAtMillis +
+                    OPERATIONAL_TRIP_UNKNOWN_ARRIVAL_RETENTION_MILLIS_0577 + 1L,
+            ),
+        )
+    }
+
+    @Test
     fun timelineCapacityIsProjectedFromCanonicalInsteadOfRecalculated() {
         val canonical = trip().copy(capacity = 7, rotaCertaSeatAllocation = 4)
         val entry = TripTimelineEntry(
