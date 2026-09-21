@@ -44,6 +44,7 @@
     : null;
   const networkStops=[];
   const rawWaypoints=networkSource && Array.isArray(networkSource.waypoints) ? networkSource.waypoints : [];
+  const networkComplete=!!(networkSource && networkSource.waypointsComplete===true && rawWaypoints.length>=2);
   rawWaypoints.slice(0,48).forEach((raw)=>{
     const waypoint=raw&&typeof raw==='object'?raw:{};
     const text=clean(waypoint.label||waypoint.address||'');
@@ -81,6 +82,7 @@
     tripId:tripId,
     domStops:domStops,
     networkStops:networkStops,
+    networkComplete:networkComplete,
     authoritative:authoritative
   });
 })();
