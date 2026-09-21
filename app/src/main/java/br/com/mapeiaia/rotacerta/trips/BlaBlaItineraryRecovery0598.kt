@@ -19,6 +19,52 @@ internal object BlaBlaItineraryRecovery0598 {
         .replace(Regex("[^a-z0-9]+"), " ")
         .trim()
 
+    internal fun boundaryEquivalent0599(left: String, right: String): Boolean {
+        val a = key(left)
+        val b = key(right)
+        if (a.isBlank() || b.isBlank()) return false
+        if (a == b) return true
+
+        fun containsPhrase(longer: String, shorter: String): Boolean {
+            val longTokens = longer.split(' ').filter(String::isNotBlank)
+            val shortTokens = shorter.split(' ').filter(String::isNotBlank)
+            if (shortTokens.size < 2 || shortTokens.size > longTokens.size) return false
+            return longTokens.windowed(shortTokens.size).any { it == shortTokens }
+        }
+        return containsPhrase(a, b) || containsPhrase(b, a)
+    }
+
+    /**
+     * Exact-trip network waypoints are already ordered and are returned only when
+     * the network contract says the list is complete. Their physical endpoint
+     * labels may be a station/address while the canonical card boundary is a city.
+     * Replace only those two endpoint labels with the strongly-bound card boundary;
+     * preserve every observed intermediate waypoint in network order.
+     */
+    internal fun alignExactTripWaypoints0599(
+        origin: String,
+        destination: String,
+        rawStops: List<String>,
+    ): List<String> {
+        val originLabel = display(origin)
+        val destinationLabel = display(destination)
+        if (key(originLabel).isBlank() || key(destinationLabel).isBlank() || key(originLabel) == key(destinationLabel)) {
+            return emptyList()
+        }
+        val observed = rawStops
+            .map(::display)
+            .filter(String::isNotBlank)
+            .fold(mutableListOf<String>()) { ordered, label ->
+                if (ordered.lastOrNull()?.let(::key) != key(label)) ordered += label
+                ordered
+            }
+        if (observed.size < 2) return emptyList()
+
+        val inner = observed.drop(1).dropLast(1)
+            .filterNot { boundaryEquivalent0599(it, originLabel) || boundaryEquivalent0599(it, destinationLabel) }
+        return bounded(originLabel, destinationLabel, inner)
+    }
+
     internal fun bounded(
         origin: String,
         destination: String,
@@ -155,6 +201,7 @@ internal object BlaBlaItineraryRecovery0598 {
         dedicatedDomStops: List<String>,
         dedicatedDomAuthoritative: Boolean,
         dedicatedNetworkStops: List<String>,
+        dedicatedNetworkComplete: Boolean = false,
         passengerStops: List<String>,
     ): BlaBlaItineraryMerge0598 {
         var stops = bounded(origin, destination, currentStops)
@@ -174,10 +221,19 @@ internal object BlaBlaItineraryRecovery0598 {
             }
         }
 
-        val networkMerged = compatibleRicher(origin, destination, stops, dedicatedNetworkStops)
+        val networkCandidate = if (dedicatedNetworkComplete) {
+            alignExactTripWaypoints0599(origin, destination, dedicatedNetworkStops)
+        } else {
+            dedicatedNetworkStops
+        }
+        val networkMerged = compatibleRicher(origin, destination, stops, networkCandidate)
         if (networkMerged.size > stops.size) {
             stops = networkMerged
-            source = "trip_itinerary_network_compatible"
+            source = if (dedicatedNetworkComplete) {
+                "trip_itinerary_network_exact_complete"
+            } else {
+                "trip_itinerary_network_compatible"
+            }
         }
 
         val passengerMerged = compatibleRicher(origin, destination, stops, passengerStops)
