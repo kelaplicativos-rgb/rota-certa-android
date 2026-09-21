@@ -29,6 +29,19 @@
   const dateText = clean(structuredDates.concat(visibleDates).join(' | ')).slice(0, 1600);
   const linesOf = (node) => ((node && node.innerText) || '').split(/\n+/).map(clean).filter(Boolean);
   const absolute = (href) => { try { return new URL(href || '', location.href).href; } catch (_) { return href || ''; } };
+  const tripIdentity = (() => {
+    try {
+      const currentUrl = new URL(location.href);
+      const fromQuery = clean(currentUrl.searchParams.get('id'));
+      if (fromQuery) return fromQuery;
+      const editMatch = currentUrl.pathname.match(/\/ride-plan\/trip-edit\/([^/?#]+)/i);
+      if (editMatch && editMatch[1]) return clean(editMatch[1]);
+      const offerMatch = currentUrl.pathname.match(/\/rides\/offer\/(?!edit(?:\/|$)|passenger(?:\/|$))([^/?#]+)/i);
+      return clean(offerMatch && offerMatch[1]);
+    } catch (_) {
+      return '';
+    }
+  })();
   const rows = [];
   const seenPassengers = new Set();
   const passengerTargets = [];
@@ -88,10 +101,24 @@
     const href = absolute(a.getAttribute('href') || a.href || '');
     return /\/rides\/offer\/edit\/[^/?#]+\/?(?:$|[?#])/i.test(href) && !/\/options\/?(?:$|[?#])/i.test(href);
   });
-  const rosterContainers = Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
-    const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
-    return marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+  const strongPassengerLinks = Array.from(document.querySelectorAll(
+    'a[href*="/rides/offer/passenger/"], a[href*="/rides/offer/booking/"], a[href*="/passenger/"], a[href*="/booking/"]'
+  )).filter((node) => {
+    const href = absolute(node.getAttribute('href') || node.href || '');
+    if (!/\/passenger\/|\/booking\//i.test(href)) return false;
+    try {
+      const url = new URL(href);
+      return !tripIdentity || clean(url.searchParams.get('id')) === tripIdentity;
+    } catch (_) {
+      return false;
+    }
   });
+  const rosterContainers = Array.from(new Set(
+    Array.from(document.querySelectorAll('[data-testid], [aria-label]')).filter((node) => {
+      const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '')).toLowerCase();
+      return marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
+    }).concat(strongPassengerLinks)
+  ));
   const rosterExpandControls = Array.from(document.querySelectorAll('button, a, [role="button"], [data-testid], [aria-label], [aria-controls]')).filter((node) => {
     const marker = ((node.getAttribute('data-testid') || '') + ' ' + (node.getAttribute('aria-label') || '') + ' ' + (node.getAttribute('aria-controls') || '')).toLowerCase();
     const passengerMarker = marker.includes('passenger') || marker.includes('booking') || marker.includes('reservation');
@@ -129,7 +156,12 @@
     const text = clean(node.innerText || node.textContent);
     return isVisible(node) && text.length > 0 && text.length <= 160 && emptyRosterText.test(text);
   });
-  const passengerRosterComplete = explicitEmptyRoster || (passengers.length > 0 && rosterContainers.length > 0 && !hasMore);
+  const passengerRosterComplete = explicitEmptyRoster || (
+    passengers.length > 0 &&
+    strongPassengerLinks.length > 0 &&
+    strongPassengerLinks.length >= passengers.length &&
+    !hasMore
+  );
   const rosterTerminalEvidence = !!edit || rosterContainers.length > 0 || document.readyState === 'complete';
   const placeKey = (value) => clean(value)
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -142,14 +174,61 @@
   const itineraryNodes = Array.from(document.querySelectorAll(
     '[data-testid*="itinerary-departure-station"], [data-testid*="itinerary-stop"], [data-testid*="station"], [data-testid*="itinerary-arrival-station"]'
   ));
-  const itineraryStops = [];
+  const semanticItineraryStops = [];
   itineraryNodes.forEach((node) => {
     const value = clean(node.innerText);
-    if (value && itineraryStops[itineraryStops.length - 1] !== value) itineraryStops.push(value);
+    if (value && semanticItineraryStops[semanticItineraryStops.length - 1] !== value) semanticItineraryStops.push(value);
   });
-  const observedOrigin = first(['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']);
-  const observedDestination = first(['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']);
+
+  // 0.1.606: the current BlaBlaCar offer DOM no longer exposes itinerary data-testid
+  // attributes consistently. The exact administrative offer still exposes one strong,
+  // trip-bound /rides/offer/map?id=<tripId> anchor per timed stop. Use the lowest common
+  // ancestor of those anchors and its direct rows as the authoritative route fallback.
+  const mapAnchors = Array.from(document.querySelectorAll('a[href*="/rides/offer/map"]')).filter((node) => {
+    try {
+      const url = new URL(node.getAttribute('href') || node.href || '', location.href);
+      return /\/rides\/offer\/map\/?$/i.test(url.pathname) &&
+        (!tripIdentity || clean(url.searchParams.get('id')) === tripIdentity);
+    } catch (_) {
+      return false;
+    }
+  });
+  let routeRoot = null;
+  if (mapAnchors.length > 0) {
+    routeRoot = mapAnchors[0].parentElement;
+    while (routeRoot && !mapAnchors.every((node) => routeRoot.contains(node))) {
+      routeRoot = routeRoot.parentElement;
+    }
+  }
+  const stopLabelFromRow = (row) => {
+    if (!row) return '';
+    const leaves = Array.from(row.querySelectorAll('span, p, div'))
+      .filter((node) => node.children.length === 0)
+      .map((node) => clean(node.innerText || node.textContent))
+      .filter(Boolean);
+    const candidate = leaves.find((value) =>
+      !/^([01]?\d|2[0-3]):[0-5]\d$/.test(value) &&
+      !/^(?:r\$|brl|\d+[,.]\d{2})$/i.test(value) &&
+      value.length <= 120
+    );
+    return clean(candidate || '');
+  };
+  const fallbackItineraryStops = routeRoot
+    ? Array.from(routeRoot.children)
+        .map(stopLabelFromRow)
+        .filter(Boolean)
+        .filter((value, index, values) => index === 0 || value !== values[index - 1])
+    : [];
+  const itineraryStops = semanticItineraryStops.length >= 2
+    ? semanticItineraryStops
+    : fallbackItineraryStops;
+  const observedOrigin = first(['[data-testid="e2e-itinerary-departure-station"]', '[data-testid*="departure-station"]']) ||
+    itineraryStops[0] || '';
+  const observedDestination = first(['[data-testid="e2e-itinerary-arrival-station"]', '[data-testid*="arrival-station"]']) ||
+    itineraryStops[itineraryStops.length - 1] || '';
+  const fallbackRouteBound = !!routeRoot && mapAnchors.length > 0 && itineraryStops.length >= 2;
   const itineraryAuthoritative = itineraryStops.length >= 2 &&
+    (itineraryNodes.length >= 2 || fallbackRouteBound) &&
     samePlace(itineraryStops[0], observedOrigin) &&
     samePlace(itineraryStops[itineraryStops.length - 1], observedDestination);
   const pageText = clean(document.body && document.body.innerText);
