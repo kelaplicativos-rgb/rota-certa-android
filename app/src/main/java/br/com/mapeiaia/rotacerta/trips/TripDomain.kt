@@ -121,6 +121,8 @@ data class Trip(
      * The collector is only an input; Timeline/Agenda projections must not read its volatile cache directly.
      */
     val externalSnapshot: BlaBlaCollectorTrip? = null,
+    /** 0.1.607: external BlaBla state is renderable only after direct HTML authority is proven. */
+    val externalSnapshotAuthority0607: String = "",
     /** Semantic fingerprint of [externalSnapshot], excluding volatile browser/UI attributes. */
     val externalSnapshotFingerprint: String = "",
     /** False means the current observation is partial: positive evidence may merge, but absence cannot erase confirmed state. */
