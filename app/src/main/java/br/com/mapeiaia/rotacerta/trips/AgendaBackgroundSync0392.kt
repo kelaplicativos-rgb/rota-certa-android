@@ -2006,7 +2006,10 @@ internal object AgendaBackgroundSync0392 {
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
-            val source = reconciledCollectorNavigationIdentity0578(rawSource, existing)
+            val existingHtmlAuthority0607 = existing?.takeIf {
+                it.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+            }
+            val source = reconciledCollectorNavigationIdentity0578(rawSource, existingHtmlAuthority0607)
             if (source == null) {
                 blockedTrips++
                 UnifiedDebugEventStore.recordAlways(
@@ -2105,7 +2108,7 @@ internal object AgendaBackgroundSync0392 {
                 }
                 ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL -> {
                     val blablaQuota = source.published_seats?.takeIf { it in 0..999 }
-                        ?: existing?.publishedSeats?.takeIf { it in 0..999 }
+                        ?: existingHtmlAuthority0607?.publishedSeats?.takeIf { it in 0..999 }
                         ?: 0
                     val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
                         source = source,
@@ -2118,7 +2121,7 @@ internal object AgendaBackgroundSync0392 {
                         null
                     } else {
                         val observed = preserveCanonicalRouteTopologyOnPartialRefresh0597(
-                            existing = existing,
+                            existing = existingHtmlAuthority0607,
                             observed = synthesized.trip,
                             source = source,
                         )
@@ -2131,7 +2134,7 @@ internal object AgendaBackgroundSync0392 {
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
                                 blablaPublicUrl = canonicalBlaBlaPublicUrl0409(
-                                    existing?.blablaPublicUrl,
+                                    existingHtmlAuthority0607?.blablaPublicUrl,
                                     observed.blablaPublicUrl,
                                     blablaTripId,
                                     source.public_trip_href_binding,
