@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.605",
+      "build": 5896,
+      "commit": null,
+      "branch": "agent/unified-html-capture-0.1.605",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Motor único do botão de captura: lê Suas viagens e, na mesma sessão autenticada isolada, captura diretamente o HTML de cada viagem atual/futura.",
+        "Captura direta e sequencial da oferta administrativa, link público publicado e opções de lugares, sem usar o coordenador automático nem o BrowserOrchestrator para aquisição.",
+        "Cada HTML individual de viagem passa a compor o ZIP privado de evidências e alimenta o mesmo estado dinâmico/canônico já consumido pela Agenda, Timeline e Central."
+      ],
+      "fixed": [
+        "O botão não dispara mais reverifyTripHeadless0407 para completar links públicos.",
+        "Dados de vagas permanecem fail-closed quando itinerário, roster, lugares publicados ou vínculo público não possuem evidência fresca suficiente."
+      ],
+      "improved": [
+        "Atualização incremental por viagem com checkpoint canônico imediato, reduzindo a cadeia de sincronizações concorrentes e mantendo isolamento multiperfil."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Evita que a captura forense dependa de uma segunda cadeia de coletor/orquestrador para completar a própria fonte capturada."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Suas viagens",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.604",
       "build": 5895,
       "commit": null,
