@@ -159,6 +159,17 @@ internal fun globalHtmlAtomicCommitEligible0609(
         stagedTripCount == tripStatuses.size &&
         authoritySource == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
 
+internal fun htmlCanonicalResponseStatusAccepted0611(
+    status: String,
+    completeForScope: Boolean,
+    unresolvedTargetCards: Int,
+    authoritySource: String,
+): Boolean =
+    status.lowercase() in setOf("validated", "complete") &&
+        completeForScope &&
+        unresolvedTargetCards == 0 &&
+        authoritySource == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+
 internal object BlaBlaUnifiedHtmlCapture0605 {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -803,9 +814,12 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         )
         if (
             !eligible ||
-            response.status != "complete" ||
-            !response.coverage.complete_for_scope ||
-            response.coverage.unresolved_target_cards != 0 ||
+            !htmlCanonicalResponseStatusAccepted0611(
+                status = response.status,
+                completeForScope = response.coverage.complete_for_scope,
+                unresolvedTargetCards = response.coverage.unresolved_target_cards,
+                authoritySource = response.authority_source_0607,
+            ) ||
             response.trips.size != expectedTripCount
         ) {
             UnifiedDebugEventStore.recordAlways(
@@ -818,9 +832,12 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
 
         val published = BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
         if (
-            published.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT ||
-            published.status != "complete" ||
-            !published.coverage.complete_for_scope ||
+            !htmlCanonicalResponseStatusAccepted0611(
+                status = published.status,
+                completeForScope = published.coverage.complete_for_scope,
+                unresolvedTargetCards = published.coverage.unresolved_target_cards,
+                authoritySource = published.authority_source_0607,
+            ) ||
             published.trips.size != expectedTripCount
         ) {
             UnifiedDebugEventStore.recordAlways(
