@@ -1,7 +1,9 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,5 +71,26 @@ class BlaBlaUnifiedHtmlCapture0605Test {
                 LocalTime.of(12, 0),
             ),
         )
+    }
+
+    @Test
+    fun deterministicSeatOptionsUrlKeepsStrongTripIdentity() {
+        val tripId = "01a0886e-44ee-7901-95e5-b69582171242"
+        val options = "https://www.blablacar.com.br/rides/offer/edit/$tripId/options"
+        assertEquals(tripId, BlaBlaCollectorUrlModule.optionsTripId(options))
+    }
+
+    @Test
+    fun tripDetailScriptContainsCurrentDomEvidenceFallbacks() {
+        val candidates = listOf(
+            File("src/main/assets/blablacar/scripts/trip_detail.js"),
+            File("app/src/main/assets/blablacar/scripts/trip_detail.js"),
+        )
+        val script = candidates.firstOrNull(File::isFile)?.readText().orEmpty()
+        assertTrue(script.isNotBlank())
+        assertTrue(script.contains("strongPassengerLinks"))
+        assertTrue(script.contains("/rides/offer/map"))
+        assertTrue(script.contains("fallbackItineraryStops"))
+        assertTrue(script.contains("optionsHref"))
     }
 }
