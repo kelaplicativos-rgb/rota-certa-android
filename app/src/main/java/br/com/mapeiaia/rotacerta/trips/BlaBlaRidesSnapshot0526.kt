@@ -731,40 +731,58 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             return store.finish(manifest.captureId) ?: manifest
         }
 
-        accounts.forEachIndexed { index, account ->
-            onProgress("Perfil ${index + 1}/${accounts.size} • ${account.displayLabel}")
-            BlaBlaDirectAccountCapture0608.capture(
-                context = app,
-                store = store,
-                account = account,
-                captureId = manifest.captureId,
-                onProgress = onProgress,
-            )
-            manifest = store.read(manifest.captureId) ?: manifest
-        }
-
-        val finalized = store.finish(manifest.captureId) ?: manifest
-        val committed = runCatching {
-            BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0609(
-                context = app,
-                accounts = accounts,
-                manifest = finalized,
-            )
-        }.getOrElse { error ->
-            UnifiedDebugEventStore.recordAlways(
-                "BLABLACAR_GLOBAL_HTML_COMMIT_FAILED_0609",
-                app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(finalized.captureId)} error=${error::class.java.simpleName.take(80)} canonicalDeltaEnqueued=false preservePreviousCanonical=true",
-            )
-            false
-        }
-        onProgress(
-            if (committed) {
-                "HTML validado • atualização canônica única agendada"
-            } else {
-                "HTML preservado • estado canônico anterior mantido"
-            },
+        val transaction = BlaBlaHtmlCaptureTransaction0610.begin(app, manifest.captureId)
+        UnifiedDebugEventStore.recordAlways(
+            "BLABLACAR_GLOBAL_HTML_TRANSACTION_STARTED_0610",
+            app.packageName,
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} generation=${transaction.generation} profiles=${accounts.size} privateStaging=true sessionStoreVisible=false",
         )
-        return finalized
+        val stagedByAccount = linkedMapOf<String, BlaBlaUnifiedProfileCaptureResult0605>()
+        return try {
+            accounts.forEachIndexed { index, account ->
+                onProgress("Perfil ${index + 1}/${accounts.size} • ${account.displayLabel}")
+                val result = BlaBlaDirectAccountCapture0608.capture(
+                    context = app,
+                    store = store,
+                    account = account,
+                    captureId = manifest.captureId,
+                    onProgress = onProgress,
+                )
+                result.privateStage0610?.let { stagedByAccount[account.id] = it }
+                manifest = store.read(manifest.captureId) ?: manifest
+            }
+
+            val finalized = store.finish(manifest.captureId) ?: manifest
+            val committed = runCatching {
+                BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0610(
+                    context = app,
+                    accounts = accounts,
+                    manifest = finalized,
+                    stagedByAccount = stagedByAccount,
+                )
+            }.getOrElse { error ->
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_GLOBAL_HTML_COMMIT_FAILED_0610",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(finalized.captureId)} generation=${transaction.generation} error=${error::class.java.simpleName.take(80)} preservePreviousCanonical=true",
+                )
+                false
+            }
+            onProgress(
+                if (committed) {
+                    "HTML validado • estado canônico atualizado"
+                } else {
+                    "HTML preservado • estado canônico anterior mantido"
+                },
+            )
+            finalized
+        } finally {
+            BlaBlaHtmlCaptureTransaction0610.end(app, manifest.captureId)
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_TRANSACTION_FINISHED_0610",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} generation=${transaction.generation} activeAfter=false",
+            )
+        }
     }
 }
