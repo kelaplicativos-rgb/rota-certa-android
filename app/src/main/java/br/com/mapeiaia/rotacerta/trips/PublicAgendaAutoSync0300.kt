@@ -2324,7 +2324,7 @@ internal object PublicAgendaAutoSync0300 {
                         add(tokens.dropLast(1).joinToString(" "))
                     }
                 }
-                normalizePlace(part).takeIf(String::isNotBlank)?.let(::add)
+                normalizePlace(part).takeIf(String::isNotBlank)?.let { alias -> add(alias) }
             }
         }.filterTo(linkedSetOf()) { alias ->
             alias.length >= 4 && alias !in setOf("brasil", "estado", "rodovia")
