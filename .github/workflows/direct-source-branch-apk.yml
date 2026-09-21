@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.607 HTML authority firewall exact SHA
-# trigger: html-authority-firewall-booking-gate
+name: Rota Certa 0.1.608 direct HTML account capture exact SHA
+# trigger: direct-html-account-capture
 
 on:
   push:
     branches:
-      - agent/html-authority-firewall-0.1.607
+      - agent/direct-html-account-capture-0.1.608
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-authority-firewall-0607-${{ github.ref }}
+  group: direct-html-account-0608-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: html_authority_firewall_0607_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: direct_html_account_0608_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5898'
-      EXPECTED_VERSION_NAME: '0.1.607'
-      BASE_SHA: '7463f5d9ac84c4e60ab95e82eeb91c558f6c44ca'
+      EXPECTED_VERSION_CODE: '5899'
+      EXPECTED_VERSION_NAME: '0.1.608'
+      BASE_SHA: '49ddd4d61fd411dd3674b73b0bbe0ac56af0f291'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_898' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.607"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_899' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.608"' app/build.gradle.kts
           grep -Fq 'BlaBlaUnifiedHtmlCapture0605.captureProfile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
@@ -80,6 +80,12 @@ jobs:
           grep -Fq 'htmlAuthorityVisible0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'existingHtmlAuthority0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'htmlBackedTripIds0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'BlaBlaDirectAccountCapture0608.capture' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'BlaBlaDynamicAccountSessionController0401' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'oldController=false oldIdentityProbe=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          ! grep -Fq 'BlaBlaBrowserOrchestrator' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'mhtmlSupported = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           git diff --check "$BASE_SHA" HEAD
 
       - name: Configure Firebase Android app for build only
@@ -157,7 +163,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0607
+          OUT=/tmp/0608
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -185,6 +191,10 @@ jobs:
           legacy_trip_render_without_html=BLOCKED
           legacy_field_inheritance_into_html=BLOCKED
           remote_blablacar_occupancy_merge=BLOCKED
+          direct_rides_page_capture=PASS
+          legacy_snapshot_controller=ABSENT
+          legacy_identity_probe=ABSENT
+          global_mhtml_requirement=DISABLED
           old_snapshot_headless_reverify=ABSENT
           automatic_collector_acquisition=ABSENT
           browser_orchestrator_acquisition=ABSENT
@@ -197,7 +207,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.607-5898-${{ github.sha }}
+          name: rota-certa-0.1.608-5899-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0607
+          path: /tmp/0608
