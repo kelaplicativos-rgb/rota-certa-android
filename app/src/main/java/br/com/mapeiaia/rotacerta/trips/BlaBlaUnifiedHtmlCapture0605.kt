@@ -647,7 +647,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
     private fun decodeJavascriptPayload0605(raw: String?): String? {
         val value = raw?.trim()?.takeIf { it.isNotBlank() && it != "null" && it != "undefined" } ?: return null
         return runCatching {
-            if (value.startsWith(""")) {
+            if (value.firstOrNull() == '"') {
                 json.decodeFromString<JsonPrimitive>(value).content
             } else {
                 value
