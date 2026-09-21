@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.603",
+      "build": 5894,
+      "commit": null,
+      "branch": "agent/verified-segment-truth-gate-0.1.603",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Gate global fail-closed para qualquer informação visível de vagas por trecho: a UI só pode mostrar segmentos quando rota, capacidade e ocupação possuem evidência canônica suficiente.",
+        "Em viagens BlaBlaCar, a exibição exige itinerário canônico autoritativo, snapshot externo completo, itinerário externo autoritativo, roster completo e todos os embarques/desembarques resolvidos contra a rota.",
+        "Timeline/Todas as viagens e Central do Dia escondem completamente o bloco Vagas por trecho quando a verdade por segmento não pode ser comprovada."
+      ],
+      "fixed": [
+        "Corrigido o caso grave reproduzido em vídeo em que Santo André → São Tomé das Letras era mostrado como um único trecho 3/4, 1 vaga, embora a viagem real tivesse passageiros entrando e saindo em pontos intermediários.",
+        "A Agenda deixa de publicar disponibilidade por segmento quando a topologia ou o roster externo não são confiáveis, evitando propagar uma aproximação como fato.",
+        "O helper canônico da Timeline deixa de materializar segmentos quando o Trip não passa pelo gate de verdade."
+      ],
+      "improved": [
+        "Política explícita: ausência de evidência suficiente resulta em ausência de informação, nunca em LOTADO, X vagas ou ocupação aproximada.",
+        "Teste de regressão reproduz o padrão real do vídeo: Julio viaja Santo André → São Tomé das Letras e Ingrid (2) Camanducaia → Minas Gerais; a rota reduzida a apenas origem/destino é rejeitada para exibição."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.602: a Timeline passou a mostrar vagas por trecho, mas ainda confiava em uma topologia canônica incompleta e podia transformar ocupação agregada em falso dado por trecho."
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Timeline",
+        "Central do Dia",
+        "Agenda",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.602",
       "build": 5893,
       "commit": null,
