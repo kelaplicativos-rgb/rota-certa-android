@@ -307,6 +307,18 @@ class BlaBlaDynamicSessionStore(context: Context) {
     ) {
         withAccountLock(account.id) {
             val previous = readUnlocked(account)
+            if (
+                previous != null &&
+                previous.acquisitionAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
+                acquisitionAuthority0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+            ) {
+                UnifiedDebugEventStore.recordAlways(
+                    "LEGACY_SESSION_WRITE_BLOCKED_0607",
+                    appContext.packageName,
+                    "accountKey=${seatSyncDiagnosticKey(account.id)} existingAuthority=HTML_DIRECT_0607 incomingAuthority=$acquisitionAuthority0607 action=PRESERVE_HTML_SNAPSHOT",
+                )
+                return@withAccountLock
+            }
             val exactTargetId = targetedTripId?.trim()?.takeIf(String::isNotEmpty)
             val dateScopeKeys = dateScope
                 ?.map(LocalDate::toString)
@@ -386,6 +398,14 @@ class BlaBlaDynamicSessionStore(context: Context) {
         trips: List<BlaBlaCollectorTrip>,
     ): BlaBlaDynamicSessionSnapshot? = withAccountLock(account.id) {
         val latest = readUnlocked(account) ?: return@withAccountLock null
+        if (latest.acquisitionAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT) {
+            UnifiedDebugEventStore.recordAlways(
+                "LEGACY_HARVEST_BLOCKED_0607",
+                appContext.packageName,
+                "accountKey=${seatSyncDiagnosticKey(account.id)} existingAuthority=HTML_DIRECT_0607 action=PRESERVE_HTML_SNAPSHOT",
+            )
+            return@withAccountLock latest
+        }
         val merged = BlaBlaCollectorSessionModule.mergeHarvestTrips(latest.trips, trips)
         val replacement = latest.copy(
             updatedAtMillis = System.currentTimeMillis(),
