@@ -210,7 +210,12 @@ internal object CentralDayReadModelBuilder0552 {
     ): CentralTrip0552 {
         val stops = trip.stops.sortedBy(TripStop::order)
         val summary = operationalSeatSummary(trip, bookings, nowMillis)
-        val segmentLoads = if (summary.operationalLimitConfigured && summary.operationalInventorySeats > 0) {
+        val segmentTruth0603 = segmentAvailabilityTruth0603(trip)
+        val segmentLoads = if (
+            segmentTruth0603.verified &&
+            summary.operationalLimitConfigured &&
+            summary.operationalInventorySeats > 0
+        ) {
             SeatAvailabilityEngine.segmentLoads(
                 trip.copy(capacity = summary.operationalInventorySeats),
                 bookings,
@@ -798,16 +803,11 @@ internal fun CentralDoDiaScreen0552(
                     maxLines = 2,
                 )
 
-                Text(
-                    "Vagas por trecho",
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                if (item.segmentLoads.isEmpty()) {
+                if (item.segmentLoads.isNotEmpty()) {
                     Text(
-                        "Disponibilidade por trecho aguardando estado canônico.",
-                        style = MaterialTheme.typography.bodySmall,
+                        "Vagas por trecho",
+                        style = MaterialTheme.typography.titleSmall,
                     )
-                } else {
                     item.segmentLoads.forEach { load0595 ->
                         val capacity0595 = item.operationalCapacity
                         val availability0595 = when (load0595.availableSeats.coerceAtLeast(0)) {
