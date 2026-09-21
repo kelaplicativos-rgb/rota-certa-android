@@ -1,9 +1,9 @@
-name: Rota Certa 0.1.543 public reservation exact SHA
+name: Rota Certa 0.1.605 unified HTML capture exact SHA
 
 on:
   push:
     branches:
-      - agent/public-reserve-request-trip-query-0.1.543
+      - agent/unified-html-capture-0.1.605
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: public-reserve-request-trip-query-0543-${{ github.ref }}
+  group: unified-html-capture-0605-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,13 +20,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: public_reserve_request_trip_query_0543_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: unified_html_capture_0605_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5835'
-      EXPECTED_VERSION_NAME: '0.1.543'
+      EXPECTED_VERSION_CODE: '5896'
+      EXPECTED_VERSION_NAME: '0.1.605'
+      BASE_SHA: '6df1324ee9499f959491d9d8d04d485017b87261'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -34,7 +35,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove exact source and protected FAROL
+      - name: Prove exact source and unified acquisition contract
         shell: bash
         run: |
           set -euo pipefail
@@ -43,28 +44,21 @@ jobs:
           echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
           printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
           printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test -s "$FAROL"
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
-          git diff --quiet HEAD^ HEAD -- "$FAROL"
-          grep -Fq "versionCode = $EXPECTED_VERSION_CODE" app/build.gradle.kts
-          grep -Fq "versionName = \"$EXPECTED_VERSION_NAME\"" app/build.gradle.kts
-          grep -Fq 'Fazer pedido de reserva' trip-platform/public/app.js
-          grep -Fq 'searchParams.get("id")' trip-platform/public/app.js
-          grep -Fq '/trip/' trip-platform/public/app.js
-          grep -Fq '/app.js?v=0.1.543-' trip-platform/public/index.html
-          git diff --check HEAD^ HEAD
+          git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Validate public Agenda reservation contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --check trip-platform/public/app.js
-          node --test trip-platform/functions/test/agenda-public-read-only-0475.test.js | tee /tmp/node-tests.log
+          grep -Fq 'val releaseVersionCode = 5_896' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.605"' app/build.gradle.kts
+          grep -Fq 'BlaBlaUnifiedHtmlCapture0605.captureProfile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'BlaBlaBrowserOrchestrator' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'published_offer_href' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          git diff --check "$BASE_SHA" HEAD
 
       - name: Configure Firebase Android app for build only
         shell: bash
@@ -108,11 +102,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Assemble exact-head APK
+      - name: Run unified capture unit tests
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest --tests '*BlaBlaUnifiedHtmlCapture0605Test' --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
+
+      - name: Assemble exact-head APK
+        shell: bash
+        run: |
+          set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           APK='app/build/outputs/apk/debug/app-debug.apk'
@@ -130,42 +130,40 @@ jobs:
           grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
-      - name: Verify FAROL after build and package evidence
+      - name: Verify FAROL and package evidence
         shell: bash
         run: |
           set -euo pipefail
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0543
+          OUT=/tmp/0605
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
           cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/farol-before.sha256 /tmp/farol-after.sha256 "$OUT/"
-          cp /tmp/node-tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
+          cp /tmp/tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/zip-integrity.txt /tmp/dex-strings.txt "$OUT/"
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
           source_head=$GITHUB_SHA
           source_branch=$GITHUB_REF_NAME
-          public_reservation_query_trip_url=PASS
-          public_reservation_path_trip_url=PASS
-          parallel_reservation_system=PROHIBITED
-          whatsapp_public_reservation=PROHIBITED
-          rides_offer_fallback=PROHIBITED
+          unified_html_capture=PASS
+          old_snapshot_headless_reverify=ABSENT
+          automatic_collector_acquisition=ABSENT
+          browser_orchestrator_acquisition=ABSENT
+          per_trip_html_evidence=PASS
+          published_seat_fail_closed=PASS
           farol_untouched=PASS
-          merge=false
-          release=false
-          latest=false
           physical_approval=PENDING_SAMSUNG_SM_S911B_ANDROID_16
           EOF
           cat "$OUT/final-status.txt"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.543-5835-${{ github.sha }}
+          name: rota-certa-0.1.605-5896-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0543
+          path: /tmp/0605
