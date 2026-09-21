@@ -826,26 +826,36 @@ internal fun CentralDoDiaScreen0552(
                         val blocked0595 = load0595.blockedSeats.coerceAtLeast(0)
                         val overbooking0595 = load0595.overbookingSeats.coerceAtLeast(0)
 
+                        // 0.1.601 — leitura operacional do motorista.
+                        // A Central do Dia mostra ocupação/vagas, mas nunca oferece CTA de reserva.
+                        // Ações de conversão ("Reserve Já"/indisponibilidade clicável) pertencem à
+                        // Agenda pública / Viagem Certa e não devem vazar para esta superfície.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                "${load0595.from.name} → ${load0595.to.name}",
+                            Column(
                                 modifier = Modifier.weight(1f),
-                                style = MaterialTheme.typography.bodySmall,
-                                maxLines = 1,
-                            )
-                            if (dots0595.isNotBlank()) {
-                                Text(dots0595, style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                            }
-                            Text("👥 $occupancy0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
-                            if (blocked0595 > 0) {
-                                Text("🚫$blocked0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                verticalArrangement = Arrangement.spacedBy(1.dp),
+                            ) {
+                                Text(
+                                    "${load0595.from.name} → ${load0595.to.name}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                )
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (dots0595.isNotBlank()) {
+                                        Text(dots0595, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                    Text("👥 $occupancy0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    if (blocked0595 > 0) {
+                                        Text("🚫$blocked0595", style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                }
                             }
                             Text(
                                 if (overbooking0595 > 0) "$availability0595 +$overbooking0595" else availability0595,
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.titleSmall,
                                 maxLines = 1,
                             )
                         }
