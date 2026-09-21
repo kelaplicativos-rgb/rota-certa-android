@@ -18,13 +18,14 @@ class CentralDriverSegmentGlance0601Test {
     @Test
     fun segmentAvailabilityIsAReadOnlyDriverGlanceWithoutPassengerReservationCtas() {
         val source = centralSource()
-        val start = source.indexOf("Text(\n                    \"Vagas por trecho\"")
+        val start = source.indexOf("if (item.segmentLoads.isNotEmpty())")
         val end = source.indexOf(
             "Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp))",
             start,
         )
         assertTrue(start >= 0 && end > start, "Central segment section not found")
         val section = source.substring(start, end)
+        assertTrue(section.contains("\"Vagas por trecho\""))
 
         assertTrue(section.contains("item.segmentLoads.forEach"))
         assertTrue(section.contains("\${load0595.from.name} → \${load0595.to.name}"))
