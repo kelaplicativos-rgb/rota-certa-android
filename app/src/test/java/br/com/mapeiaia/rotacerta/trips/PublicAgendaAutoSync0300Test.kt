@@ -590,6 +590,47 @@ class PublicAgendaAutoSync0300Test {
         assertEquals(10_500L, PublicAgendaAutoSync0300.parsePriceCents("105"))
         assertEquals(0L, PublicAgendaAutoSync0300.parsePriceCents(null))
     }
+    @Test
+    fun cityOnlyPassengerLabelsResolveAgainstUniqueHtmlStopAddresses0612() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-html-0612",
+            trip_id = "trip-html-0612",
+            date = "2030-09-25",
+            departure_time = "11:30",
+            arrival_time = "13:30",
+            actual_departure = "Terminal Rodoviario Tiete, Sao Paulo - SP",
+            actual_arrival = "Rodoviaria de Santo Andre, Santo Andre - SP",
+            itinerary_stops = listOf(
+                "Terminal Rodoviario Tiete, Sao Paulo - SP",
+                "Rodoviaria de Santo Andre, Santo Andre - SP",
+            ),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            booked_seats = 1,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro",
+                    seats = 1,
+                    boarding = "Sao Paulo",
+                    dropoff = "Santo Andre",
+                ),
+            ),
+        )
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(projected)
+        assertTrue(PublicAgendaAutoSync0300.externalPassengerSegmentsResolved(source, projected.trip))
+        assertTrue(projected.sourceComplete)
+        val claim = projected.capacityClaims.single()
+        assertEquals(projected.trip.stops.first().id, claim.boardingStopId)
+        assertEquals(projected.trip.stops.last().id, claim.dropoffStopId)
+    }
+
 }
 
 
