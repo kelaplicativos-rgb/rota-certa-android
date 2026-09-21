@@ -3222,7 +3222,7 @@ internal object AgendaBackgroundSync0392 {
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_CACHE_MATERIALIZED_0404",
                     appContext.packageName,
-                    "changed=${collectorCanonical.changedTrips} skipped=${collectorCanonical.skippedTrips} queued=${collectorCanonical.publicationQueued} source=last_known_snapshot beforeHeadlessCollection=true",
+                    "changed=${collectorCanonical.changedTrips} skipped=${collectorCanonical.skippedTrips} queued=${collectorCanonical.publicationQueued} source=html_authoritative_snapshot legacySnapshotBlocked=true",
                 )
             }
         }
@@ -3230,38 +3230,12 @@ internal object AgendaBackgroundSync0392 {
         // Canonical/public reconciliation must never wait for BlaBlaCar navigation.
         // FULL_RECONCILE projects the already-authoritative Timeline snapshot immediately;
         // "Atualizar agora" and periodic work remain the explicit collector refresh paths.
-        val collectorRequested = agendaBackgroundSyncRequestsCollector0430(reason)
-        if (collectorRequested) {
-            AgendaBackgroundSyncConfig0392.recordRunHeartbeat0406(appContext, "COLLECTING")
-            val configuredAccounts = BlaBlaDynamicAccountRegistry(appContext).list()
-            val dynamicSessionStore = BlaBlaDynamicSessionStore(appContext)
-            val circuitOpenAccounts = configuredAccounts.filter(dynamicSessionStore::isSourceCircuitOpen0426)
-            val accountIds = configuredAccounts.map { it.id }
-            if (circuitOpenAccounts.isNotEmpty()) {
-                UnifiedDebugEventStore.record(
-                    "BLABLACAR_BACKGROUND_CIRCUIT_FILTER_0426",
-                    appContext.packageName,
-                    "configured=" + configuredAccounts.size +
-                        " circuitOpen=" + circuitOpenAccounts.size +
-                        " eligibleForNavigation=" + (configuredAccounts.size - circuitOpenAccounts.size).coerceAtLeast(0) +
-                        " logicalTargets=" + accountIds.size +
-                        " gate=runPendingHeadless externalNavigationForOpenCircuit=false previousSnapshotPreserved=true",
-                )
-            }
-            collectorState = AgendaBackgroundSyncConfig0392.requestAutomaticCollector0400(
-                context = appContext,
-                accountIds = accountIds,
-            )
-            collectorState = if (collectorState.pending) {
-                BlaBlaAutomaticCollectionCoordinator0400.runPendingHeadless(appContext, "background_${reason.take(60)}")
-            } else {
-                collectorState
-            }
-            UnifiedDebugEventStore.record(
-                "BLABLACAR_AUTOMATIC_COLLECTION_REQUEST_0401", appContext.packageName,
-                "tenantKey=${seatSyncDiagnosticKey(tenantId)} generation=${collectorState.generation} status=${collectorState.status} pending=${collectorState.pending} accounts=${collectorState.targetAccountIds.size} executionHost=worker_headless_webview activityLaunch=false browserOpened=false source=AgendaBackgroundSync0392",
-            )
-        }
+        val collectorRequested = false
+        UnifiedDebugEventStore.record(
+            "LEGACY_AUTOMATIC_COLLECTOR_DISABLED_0607",
+            appContext.packageName,
+            "reason=${reason.take(80)} collectorRequested=false authority=HTML_DIRECT_0607",
+        )
 
         // 0472 runs after authenticated collection but before fresh materialization.
         // The existing canonical record receives the strong identity before a parallel
