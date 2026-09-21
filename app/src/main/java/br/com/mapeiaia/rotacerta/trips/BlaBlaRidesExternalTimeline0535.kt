@@ -210,11 +210,11 @@ private fun parseCardDate0535(raw: String, captureDate: LocalDate): Triple<Strin
         .replace(Regex("[^a-z0-9]+"), " ")
         .trim()
     when {
-        Regex("""\\bhoje\\b""").containsMatchIn(relative) ->
+        Regex("""\bhoje\b""").containsMatchIn(relative) ->
             return Triple(captureDate.toString(), false, "RELATIVE_TODAY")
-        Regex("""\\bontem\\b""").containsMatchIn(relative) ->
+        Regex("""\bontem\b""").containsMatchIn(relative) ->
             return Triple(captureDate.minusDays(1).toString(), false, "RELATIVE_YESTERDAY")
-        Regex("""\\bamanha\\b""").containsMatchIn(relative) ->
+        Regex("""\bamanha\b""").containsMatchIn(relative) ->
             return Triple(captureDate.plusDays(1).toString(), false, "RELATIVE_TOMORROW")
     }
     val match = DATE_0535.find(text.lowercase()) ?: return Triple("", false, "UNPARSED")
