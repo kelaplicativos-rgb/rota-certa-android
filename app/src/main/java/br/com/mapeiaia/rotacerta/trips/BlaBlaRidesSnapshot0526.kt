@@ -743,6 +743,28 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             manifest = store.read(manifest.captureId) ?: manifest
         }
 
-        return store.finish(manifest.captureId) ?: manifest
+        val finalized = store.finish(manifest.captureId) ?: manifest
+        val committed = runCatching {
+            BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0609(
+                context = app,
+                accounts = accounts,
+                manifest = finalized,
+            )
+        }.getOrElse { error ->
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_COMMIT_FAILED_0609",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(finalized.captureId)} error=${error::class.java.simpleName.take(80)} canonicalDeltaEnqueued=false preservePreviousCanonical=true",
+            )
+            false
+        }
+        onProgress(
+            if (committed) {
+                "HTML validado • atualização canônica única agendada"
+            } else {
+                "HTML preservado • estado canônico anterior mantido"
+            },
+        )
+        return finalized
     }
 }
