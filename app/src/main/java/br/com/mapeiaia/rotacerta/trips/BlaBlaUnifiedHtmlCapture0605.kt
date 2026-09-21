@@ -352,6 +352,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         existingSource: BlaBlaCollectorTrip?,
     ): BlaBlaTargetedHtmlRefreshResult0607 {
         val app = context.applicationContext
+        BlaBlaHtmlCaptureTransaction0610.active(app)?.let { transaction ->
+            UnifiedDebugEventStore.recordAlways(
+                "TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(transaction.captureId)} generation=${transaction.generation} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} action=FAIL_CLOSED",
+            )
+            return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_GLOBAL_TRANSACTION_ACTIVE_0610")
+        }
         val account = BlaBlaDynamicAccountRegistry(app).get(target.accountId)
             ?.takeIf {
                 it.profileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true
