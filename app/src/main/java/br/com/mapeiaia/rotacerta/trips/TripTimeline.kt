@@ -401,7 +401,7 @@ internal fun localAgendaTimelineProjection0515(
     localProfileLabel: String = "Agenda",
     nowMillis: Long = System.currentTimeMillis(),
 ): CanonicalTimelineProjection0494 {
-    val activeTrips = trips.filterNot(Trip::deleted)
+    val activeTrips = trips.filterNot(Trip::deleted).filter(Trip::htmlAuthorityVisible0607)
     val activeTripIds = activeTrips.map(Trip::id).toSet()
     val activeBookings = bookings.filter { it.tripId in activeTripIds }
     return CanonicalTimelineProjection0494(
