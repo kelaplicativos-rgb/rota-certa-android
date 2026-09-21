@@ -1,4 +1,5 @@
 name: Rota Certa 0.1.605 unified HTML capture exact SHA
+# trigger: payload-decoder-fix
 
 on:
   push:
