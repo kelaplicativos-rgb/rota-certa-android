@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.610 private HTML transaction exact SHA
-# trigger: html-private-transaction-0610
+# trigger: html-private-transaction-0610-r2
 
 on:
   push:
