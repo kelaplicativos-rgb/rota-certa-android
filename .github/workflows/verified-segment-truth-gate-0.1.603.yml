@@ -87,6 +87,7 @@ jobs:
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDomainPipeline0582Test.kt
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/CentralDriverSegmentGlance0601Test.kt
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalTimelineLiveSegments0602Test.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/TimelineLocalPrimary0525Test.kt
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/SegmentAvailabilityTruthGate0603Test.kt
           EOF
           sort -o /tmp/allowed.txt /tmp/allowed.txt
