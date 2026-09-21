@@ -473,20 +473,14 @@ private fun OperationalTripBrowserCard0563(
                 )
             }
 
-            // 0.1.602 — leitura viva de vagas por trecho diretamente no card da Timeline.
-            // O estado vem da projeção canônica já calculada pela Agenda; esta tela não
-            // cria um segundo motor de ocupação e não oferece ação de reserva ao motorista.
-            Text(
-                text = "Vagas por trecho",
-                style = MaterialTheme.typography.titleSmall,
-            )
-            if (row.segmentLoads0602.isEmpty()) {
+            // 0.1.603 — informação por trecho só existe na UI quando a topologia,
+            // capacidade e ocupação passaram pelo gate canônico de verdade.
+            // Sem prova suficiente, o bloco inteiro some: não exibimos aproximações.
+            if (row.segmentLoads0602.isNotEmpty()) {
                 Text(
-                    text = "Aguardando atualização canônica das vagas.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = "Vagas por trecho",
+                    style = MaterialTheme.typography.titleSmall,
                 )
-            } else {
                 row.segmentLoads0602.forEach { load0602 ->
                     val capacity0602 = entry.capacity
                     val available0602 = load0602.availableSeats.coerceAtLeast(0)
