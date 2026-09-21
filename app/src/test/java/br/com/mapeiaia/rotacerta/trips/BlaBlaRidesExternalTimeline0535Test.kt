@@ -211,4 +211,26 @@ class BlaBlaRidesExternalTimeline0535Test {
         assertTrue(ride.evidence.dateYearExplicit)
         assertEquals("EXPLICIT_YEAR", ride.evidence.dateResolution)
     }
+    @Test
+    fun relativeRideDatesResolveFromCaptureDate0612() {
+        val idToday = "trip_today_0001"
+        val idYesterday = "trip_yesterday_0002"
+        val idTomorrow = "trip_tomorrow_0003"
+        val html = card(0, idToday, "Hoje") +
+            card(1, idYesterday, "Ontem") +
+            card(2, idTomorrow, "Amanha")
+        val rides = project(
+            trips = listOf(idToday, idYesterday, idTomorrow),
+            html = html,
+            mhtml = "",
+        ).timeline.associateBy { it.tripId }
+
+        assertEquals("2026-09-10", rides.getValue(idToday).date)
+        assertEquals("RELATIVE_TODAY", rides.getValue(idToday).evidence.dateResolution)
+        assertEquals("2026-09-09", rides.getValue(idYesterday).date)
+        assertEquals("RELATIVE_YESTERDAY", rides.getValue(idYesterday).evidence.dateResolution)
+        assertEquals("2026-09-11", rides.getValue(idTomorrow).date)
+        assertEquals("RELATIVE_TOMORROW", rides.getValue(idTomorrow).evidence.dateResolution)
+    }
+
 }
