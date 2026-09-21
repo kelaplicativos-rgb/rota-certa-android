@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.600",
+      "build": 5891,
+      "commit": null,
+      "branch": "agent/health-outbox-performance-0.1.600",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A outbox canônica passa a compactar histórico terminal redundante em cada gravação, preservando integralmente todo trabalho PENDING, PROCESSING, FAILED_RETRYABLE e FAILED_FINAL e mantendo somente a evidência terminal mais recente por viagem.",
+        "O flight recorder unificado da Central de Saúde passa a aplicar retenção amostrada somente a eventos rotineiros de alta frequência já preservados no Farol, sem amostrar erros, timeouts, mismatches, jank, operações lentas ou invariantes de identidade quebradas.",
+        "A Central de Saúde ganha diagnóstico específico para lentidão em BOOKING_OUTBOX_ENQUEUE e BOOKING_RECONCILE, separando custo de persistência da outbox de fan-out remoto."
+      ],
+      "fixed": [
+        "Corrigido o crescimento linear da serialização síncrona da outbox: eventos DELIVERED/SUPERSEDED antigos de uma mesma viagem deixavam centenas de snapshots completos participarem de cada SharedPreferences.commit().",
+        "Corrigida a saturação prematura do buffer de saúde por telemetria saudável repetitiva, que no pacote 0.1.598 ocupou 6.000 posições e descartou mais de 12 mil eventos em aproximadamente duas horas.",
+        "Reduzida a contenção do buffer de diagnóstico durante bursts de Agenda/booking sem alterar a autoridade canônica, inventário, regras de vagas, identidade de viagem ou fluxo de publicação."
+      ],
+      "improved": [
+        "A política de compactação é fail-safe: eventos operacionais ainda acionáveis nunca são removidos pelo limite de histórico terminal.",
+        "PUBLIC_EVIDENCE status=OK, disposições EXTERNAL_CANONICAL UNCHANGED, identidades saudáveis, materializações privadas rotineiras e marcadores de navegador/UI são amostrados por chave; qualquer sinal de erro permanece integral no buffer central.",
+        "Testes de regressão verificam preservação de todos os eventos ativos, retenção do terminal mais recente por viagem e prioridade absoluta das evidências de falha."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.598: BOOKING_OUTBOX_ENQUEUE observado com duração aproximada de 27 segundos durante reconciliação de reservas.",
+        "0.1.598: buffer sanitizado atingiu 6.000 eventos e descartou mais de 12 mil entradas, reduzindo a cobertura viva necessária para validação antes/depois."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Outbox canônica",
+        "Reservas",
+        "Central de Saúde",
+        "Telemetria sanitizada",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.599",
       "build": 5890,
       "commit": null,

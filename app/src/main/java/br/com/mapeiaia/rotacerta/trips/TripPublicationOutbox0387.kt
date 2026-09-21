@@ -133,6 +133,40 @@ internal fun staleRejectedExternalIdentityMustSupersede0520(
         !snapshotIdentityAccepted &&
         !accountIdentityConfirmed
 
+internal fun compactTripPublicationOutbox0600(
+    events: List<TripPublicationOutboxEvent0387>,
+    targetMaxEvents: Int = 512,
+): List<TripPublicationOutboxEvent0387> {
+    if (events.isEmpty()) return emptyList()
+    val terminalHistory = setOf(
+        TripPublicationStatus0387.DELIVERED,
+        TripPublicationStatus0387.SUPERSEDED,
+    )
+    val durable = events.filter { it.status !in terminalHistory }
+    val latestTerminalByTrip = events.asSequence()
+        .filter { it.status in terminalHistory }
+        .groupBy(TripPublicationOutboxEvent0387::canonicalTripId)
+        .values
+        .mapNotNull { perTrip ->
+            perTrip.maxWithOrNull(
+                compareBy<TripPublicationOutboxEvent0387> { it.revision }
+                    .thenBy { it.updatedAtMillis },
+            )
+        }
+
+    // Correctness wins over the soft size target. Every actionable event and the latest
+    // terminal proof for each canonical trip are retained. The previous implementation
+    // kept hundreds of redundant full snapshots until the hard cap was reached.
+    val compacted = (durable + latestTerminalByTrip)
+        .distinctBy(TripPublicationOutboxEvent0387::id)
+        .sortedWith(
+            compareBy<TripPublicationOutboxEvent0387> { it.createdAtMillis }
+                .thenBy { it.revision },
+        )
+    if (compacted.size <= targetMaxEvents) return compacted
+    return compacted
+}
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -463,17 +497,8 @@ internal class TripPublicationOutbox0387(context: Context) {
         }
     }
 
-    private fun compact(events: List<TripPublicationOutboxEvent0387>): List<TripPublicationOutboxEvent0387> {
-        if (events.size <= MAX_EVENTS) return events
-        val durable = events.filter {
-            it.status !in setOf(TripPublicationStatus0387.DELIVERED, TripPublicationStatus0387.SUPERSEDED)
-        }
-        val room = (MAX_EVENTS - durable.size).coerceAtLeast(0)
-        val history = events.asReversed()
-            .filter { it.status in setOf(TripPublicationStatus0387.DELIVERED, TripPublicationStatus0387.SUPERSEDED) }
-            .take(room).asReversed()
-        return (durable + history).sortedBy(TripPublicationOutboxEvent0387::createdAtMillis).takeLast(MAX_EVENTS)
-    }
+    private fun compact(events: List<TripPublicationOutboxEvent0387>): List<TripPublicationOutboxEvent0387> =
+        compactTripPublicationOutbox0600(events, MAX_EVENTS)
 
     private fun readEvents(): List<TripPublicationOutboxEvent0387> = runCatching {
         json.decodeFromString<List<TripPublicationOutboxEvent0387>>(prefs.getString(eventsKey, "[]") ?: "[]")

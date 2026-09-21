@@ -314,6 +314,20 @@ object OperationalHealthEngine {
                 80,
                 "Versionar snapshots e invalidações com revisão monotônica e impedir regressão para revisão anterior.",
             )
+        key.contains("BOOKING_OUTBOX_ENQUEUE") &&
+            (key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK")) ->
+            Diagnosis(
+                "A persistência da outbox canônica está consumindo tempo excessivo no caminho de reconciliação, tipicamente por reserialização de snapshots históricos redundantes.",
+                97,
+                "Compactar histórico terminal da outbox por viagem, preservar integralmente somente trabalho acionável e medir novamente BOOKING_OUTBOX_ENQUEUE antes de alterar semântica canônica.",
+            )
+        key.contains("BOOKING_RECONCILE") &&
+            (key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK")) ->
+            Diagnosis(
+                "A reconciliação de reservas está fan-out sobre muitos alvos e herda o custo das fases de persistência/publicação pós-importação.",
+                93,
+                "Separar custo de fetch/import/outbox por fase, eliminar persistência histórica redundante primeiro e só então reduzir escopo remoto se a latência de BOOKING_REMOTE_FETCH continuar dominante.",
+            )
         key.contains("SLOW_OPERATION") || key.contains("LONG_BLOCK") || key.contains("JANK_FRAME") ->
             Diagnosis(
                 "Uma operação ou frame ultrapassou o orçamento de responsividade e bloqueou a experiência perceptível da tela.",

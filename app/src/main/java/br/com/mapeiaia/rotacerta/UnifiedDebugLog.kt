@@ -36,6 +36,10 @@ object UnifiedDebugEventStore {
     const val MAX_EVENTS = 6_000
     private const val MAX_DETAILS = 1_200
     private const val MAX_OVERHEAD_SAMPLES = 2_048
+    private const val ROUTINE_THROTTLE_WINDOW_MS_0600 = 2_000L
+    private const val ROUTINE_THROTTLE_MAX_KEYS_0600 = 256
+    private val retentionLock0600 = Any()
+    private val lastRoutineRetainedAt0600 = linkedMapOf<String, Long>()
 
     data class SnapshotEvent(
         val atMillis: Long,
@@ -83,6 +87,7 @@ object UnifiedDebugEventStore {
             val safeDetails = sanitizeForRecord(details)
             recordFlight(stage, packageName, safeDetails, nowMillis)
             if (!runCatching { DiagnosticRuntimeGate.isEnabled(nowMillis) }.getOrDefault(false)) return@runCatching
+            if (!shouldRetainInMemory0600(stage, safeDetails, diagnosticContext, nowMillis)) return@runCatching
             recordInMemory(
                 stage = stage,
                 packageName = packageName,
@@ -113,6 +118,7 @@ object UnifiedDebugEventStore {
         runCatching {
             val safeDetails = sanitizeForRecord(details)
             recordFlight(stage, packageName, safeDetails, nowMillis)
+            if (!shouldRetainInMemory0600(stage, safeDetails, diagnosticContext, nowMillis)) return@runCatching
             recordInMemory(
                 stage = stage,
                 packageName = packageName,
@@ -124,13 +130,18 @@ object UnifiedDebugEventStore {
         }
     }
 
-    fun clear() = synchronized(lock) {
-        events.clear()
-        overheadSamples.clear()
-        droppedEvents = 0L
-        recordCalls = 0L
-        recordOverheadTotalNs = 0L
-        recordOverheadMaxNs = 0L
+    fun clear() {
+        synchronized(lock) {
+            events.clear()
+            overheadSamples.clear()
+            droppedEvents = 0L
+            recordCalls = 0L
+            recordOverheadTotalNs = 0L
+            recordOverheadMaxNs = 0L
+        }
+        synchronized(retentionLock0600) {
+            lastRoutineRetainedAt0600.clear()
+        }
     }
 
     fun size(): Int = synchronized(lock) { events.size }
@@ -231,6 +242,93 @@ object UnifiedDebugEventStore {
             if (overheadSamples.size >= MAX_OVERHEAD_SAMPLES) overheadSamples.removeFirst()
             overheadSamples.addLast(cost)
         }
+    }
+
+
+    private fun shouldRetainInMemory0600(
+        stage: String,
+        details: String,
+        diagnosticContext: DiagnosticEventContext0507?,
+        nowMillis: Long,
+    ): Boolean {
+        if (
+            diagnosticContext?.severity == DiagnosticSeverity0507.ERROR ||
+            diagnosticContext?.errorCode?.isNotBlank() == true ||
+            isPriorityEvidence0600(stage, details)
+        ) return true
+
+        val key = routineThrottleKey0600(stage, details) ?: return true
+        return synchronized(retentionLock0600) {
+            val previous = lastRoutineRetainedAt0600[key]
+            if (
+                previous != null &&
+                nowMillis >= previous &&
+                nowMillis - previous < ROUTINE_THROTTLE_WINDOW_MS_0600
+            ) {
+                false
+            } else {
+                lastRoutineRetainedAt0600[key] = nowMillis
+                if (lastRoutineRetainedAt0600.size > ROUTINE_THROTTLE_MAX_KEYS_0600) {
+                    lastRoutineRetainedAt0600.minByOrNull { it.value }?.key?.let(lastRoutineRetainedAt0600::remove)
+                }
+                true
+            }
+        }
+    }
+
+    internal fun isPriorityEvidence0600(stage: String, details: String): Boolean {
+        val upperStage = stage.uppercase(Locale.ROOT)
+        val upperDetails = details.uppercase(Locale.ROOT)
+        if (
+            listOf(
+                "ERROR", "FAILED", "FAILURE", "MISSING", "MISMATCH", "TIMEOUT",
+                "UNAVAILABLE", "CRASH", "REJECTED", "SLOW_OPERATION", "LONG_BLOCK", "JANK_FRAME",
+            ).any(upperStage::contains)
+        ) return true
+        if (
+            listOf(
+                "STATUS=FAILED", "STATUS=ERROR", "STATUS=FATAL",
+                "RESULT=FAILED", "RESULT=FAILURE", "RESULT=RETRY", "RESULT=REJECTED",
+                "EXCEPTIONCLASS=", "ERRORCODE=",
+            ).any(upperDetails::contains)
+        ) return true
+        return upperStage == "TRIP_IDENTITY" &&
+            upperDetails.contains("EXTERNALTRIPIDPRESENT=TRUE") &&
+            upperDetails.contains("SPECIFICHREFPRESENT=FALSE")
+    }
+
+    internal fun routineThrottleKey0600(stage: String, details: String): String? {
+        if (isPriorityEvidence0600(stage, details)) return null
+        val upperStage = stage.uppercase(Locale.ROOT)
+        return when {
+            upperStage == "PUBLIC_EVIDENCE_0421" &&
+                details.contains("status=OK", ignoreCase = true) ->
+                "$upperStage|stage=" + detailValue0600(details, "stage").ifBlank { "unknown" }
+
+            upperStage == "EXTERNAL_CANONICAL_DISPOSITION_0451" &&
+                detailValue0600(details, "result").uppercase(Locale.ROOT) in setOf("UNCHANGED", "SUCCESS") ->
+                "$upperStage|result=" + detailValue0600(details, "result").uppercase(Locale.ROOT)
+
+            upperStage == "TRIP_IDENTITY" -> upperStage
+            upperStage == "AGENDA_PRIVATE_PASSENGERS_MATERIALIZED_0515" -> upperStage
+            upperStage == "AGENDA_INTERACTION" -> upperStage
+            upperStage == "AGENDA_SCREEN" ->
+                "$upperStage|screen=" + detailValue0600(details, "screen").ifBlank { "unknown" }
+
+            upperStage == "BROWSER_REQUEST_STARTED" || upperStage == "BROWSER_REQUEST_COMPLETED" ->
+                "$upperStage|request=" + detailValue0600(details, "request").ifBlank { "unknown" }
+
+            else -> null
+        }
+    }
+
+    private fun detailValue0600(details: String, key: String): String {
+        val marker = "$key="
+        val start = details.indexOf(marker, ignoreCase = true)
+        if (start < 0) return ""
+        return details.substring(start + marker.length)
+            .takeWhile { !it.isWhitespace() && it != ';' && it != '|' }
+            .take(80)
     }
 
     private fun sanitize(value: String): String =
