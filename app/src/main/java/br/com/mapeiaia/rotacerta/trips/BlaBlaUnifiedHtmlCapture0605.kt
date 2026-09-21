@@ -23,7 +23,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.parseToJsonElement
 import kotlin.coroutines.resume
 
 /**
@@ -648,8 +647,11 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
     private fun decodeJavascriptPayload0605(raw: String?): String? {
         val value = raw?.trim()?.takeIf { it.isNotBlank() && it != "null" && it != "undefined" } ?: return null
         return runCatching {
-            val parsed = json.parseToJsonElement(value)
-            if (parsed is JsonPrimitive && parsed.isString) parsed.content else value
+            if (value.startsWith(""")) {
+                json.decodeFromString<JsonPrimitive>(value).content
+            } else {
+                value
+            }
         }.getOrElse { value.takeIf { it.startsWith("{") } }
     }
 
