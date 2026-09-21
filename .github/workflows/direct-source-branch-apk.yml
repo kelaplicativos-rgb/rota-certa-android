@@ -174,4 +174,4 @@ jobs:
           name: rota-certa-0.1.606-5897-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0605
+          path: /tmp/0606
