@@ -147,16 +147,13 @@ internal fun compactTripPublicationOutbox0600(
 
     // 0.1.609: a newer canonical revision makes every older transport snapshot for the
     // same canonical trip obsolete before JSON serialization. Keeping hundreds of full
-    // pending snapshots in SharedPreferences caused OOM while an HTML capture emitted
-    // many intermediate revisions. Retain only the newest durable event per trip; when
-    // the trip has no durable work, retain only its newest terminal proof.
+    // snapshots in SharedPreferences caused OOM while an HTML capture emitted many
+    // intermediate revisions. Revision ordering is authoritative regardless of status:
+    // a newer DELIVERED proof must also supersede an older failed/pending snapshot.
     val onePerTrip = events
         .groupBy(TripPublicationOutboxEvent0387::canonicalTripId)
         .values
-        .mapNotNull { perTrip ->
-            perTrip.filter { it.status !in terminalHistory }.maxWithOrNull(order)
-                ?: perTrip.filter { it.status in terminalHistory }.maxWithOrNull(order)
-        }
+        .mapNotNull { perTrip -> perTrip.maxWithOrNull(order) }
         .distinctBy(TripPublicationOutboxEvent0387::id)
         .sortedWith(
             compareBy<TripPublicationOutboxEvent0387> { it.createdAtMillis }
