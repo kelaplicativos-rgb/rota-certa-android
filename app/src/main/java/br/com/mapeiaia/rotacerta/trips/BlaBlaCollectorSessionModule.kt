@@ -19,6 +19,12 @@ enum class BlaBlaSourceAccessStatus0426 {
     TEMPORARILY_RESTRICTED,
 }
 
+internal object BlaBlaAcquisitionAuthority0607 {
+    const val HTML_DIRECT = "HTML_DIRECT_0607"
+    const val LEGACY_NON_HTML = "LEGACY_NON_HTML"
+    fun isHtml(value: String?): Boolean = value?.trim() == HTML_DIRECT
+}
+
 @Serializable
 data class BlaBlaDynamicSessionSnapshot(
     val accountId: String,
@@ -36,6 +42,8 @@ data class BlaBlaDynamicSessionSnapshot(
     val sourceAccessHttpStatus0426: Int = 0,
     val lastValidSyncAtMillis0426: Long = 0L,
     val sourceRestrictionCount0426: Int = 0,
+    /** Only HTML_DIRECT_0607 is allowed to feed Agenda/Timeline canonical state. */
+    val acquisitionAuthority0607: String = "",
 )
 
 internal data class BlaBlaSourceAccessProbe0426(
@@ -295,6 +303,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         dateScope: Collection<LocalDate>? = null,
         targetedTripId: String? = null,
         selectiveScriptSync0449: Boolean = false,
+        acquisitionAuthority0607: String = BlaBlaAcquisitionAuthority0607.LEGACY_NON_HTML,
     ) {
         withAccountLock(account.id) {
             val previous = readUnlocked(account)
@@ -316,21 +325,23 @@ class BlaBlaDynamicSessionStore(context: Context) {
             // It may replace that exact strong identity, but missing sibling cards are preserved.
             val authoritativeComplete =
                 identityVerified && skippedTrips == 0 && exactTargetId == null && !selectiveScriptSync0449
+            val sameAuthorityPrevious = previous
+                ?.takeIf { it.acquisitionAuthority0607 == acquisitionAuthority0607 }
             val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
-                previous = previous?.trips.orEmpty(),
+                previous = sameAuthorityPrevious?.trips.orEmpty(),
                 current = scopedTrips,
                 authoritativeComplete = authoritativeComplete,
                 authoritativeDateScope = dateScopeKeys,
             )
             val preservedVerifiedIdentity =
                 !authoritativeComplete &&
-                    previous?.identityVerified == true &&
-                    previous.profileUuid == account.profileUuid
+                    sameAuthorityPrevious?.identityVerified == true &&
+                    sameAuthorityPrevious.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
             val effectiveSkippedTrips = when {
-                exactTargetId != null -> previous?.skippedTrips ?: maxOf(skippedTrips, 1)
+                exactTargetId != null -> sameAuthorityPrevious?.skippedTrips ?: maxOf(skippedTrips, 1)
                 dateScopeKeys == null -> skippedTrips
-                else -> maxOf(skippedTrips, previous?.skippedTrips ?: 0)
+                else -> maxOf(skippedTrips, sameAuthorityPrevious?.skippedTrips ?: 0)
             }
             writeUnlocked(
                 account,
@@ -346,18 +357,19 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     sourceAccessStatus0426 = if (authoritativeComplete) {
                         BlaBlaSourceAccessStatus0426.AVAILABLE
                     } else {
-                        previous?.sourceAccessStatus0426 ?: BlaBlaSourceAccessStatus0426.AVAILABLE
+                        sameAuthorityPrevious?.sourceAccessStatus0426 ?: BlaBlaSourceAccessStatus0426.AVAILABLE
                     },
-                    sourceAccessSinceMillis0426 = if (authoritativeComplete) 0L else previous?.sourceAccessSinceMillis0426 ?: 0L,
-                    sourceAccessDetector0426 = if (authoritativeComplete) "" else previous?.sourceAccessDetector0426.orEmpty(),
-                    sourceAccessIncidentReference0426 = if (authoritativeComplete) "" else previous?.sourceAccessIncidentReference0426.orEmpty(),
-                    sourceAccessHttpStatus0426 = if (authoritativeComplete) 0 else previous?.sourceAccessHttpStatus0426 ?: 0,
+                    sourceAccessSinceMillis0426 = if (authoritativeComplete) 0L else sameAuthorityPrevious?.sourceAccessSinceMillis0426 ?: 0L,
+                    sourceAccessDetector0426 = if (authoritativeComplete) "" else sameAuthorityPrevious?.sourceAccessDetector0426.orEmpty(),
+                    sourceAccessIncidentReference0426 = if (authoritativeComplete) "" else sameAuthorityPrevious?.sourceAccessIncidentReference0426.orEmpty(),
+                    sourceAccessHttpStatus0426 = if (authoritativeComplete) 0 else sameAuthorityPrevious?.sourceAccessHttpStatus0426 ?: 0,
                     lastValidSyncAtMillis0426 = if (authoritativeComplete) {
                         System.currentTimeMillis()
                     } else {
-                        previous?.lastValidSyncAtMillis0426 ?: 0L
+                        sameAuthorityPrevious?.lastValidSyncAtMillis0426 ?: 0L
                     },
-                    sourceRestrictionCount0426 = previous?.sourceRestrictionCount0426 ?: 0,
+                    sourceRestrictionCount0426 = sameAuthorityPrevious?.sourceRestrictionCount0426 ?: 0,
+                    acquisitionAuthority0607 = acquisitionAuthority0607,
                 ),
             )
             UnifiedDebugEventStore.record(
@@ -419,7 +431,13 @@ class BlaBlaDynamicSessionStore(context: Context) {
     fun combinedResponse(accounts: List<BlaBlaDynamicAccount>): BlaBlaCollectorMonthResponse {
         val snapshots = accounts.mapNotNull { account -> read(account)?.let { account to it } }
         val verified = snapshots.filter { (account, snapshot) ->
-            snapshot.identityVerified && !account.profileUuid.isNullOrBlank() && snapshot.profileUuid == account.profileUuid
+            snapshot.identityVerified &&
+                !account.profileUuid.isNullOrBlank() &&
+                snapshot.profileUuid == account.profileUuid &&
+                BlaBlaAcquisitionAuthority0607.isHtml(snapshot.acquisitionAuthority0607)
+        }
+        val legacyBlocked0607 = snapshots.count { (_, snapshot) ->
+            !BlaBlaAcquisitionAuthority0607.isHtml(snapshot.acquisitionAuthority0607)
         }
         val beforeDistinct = verified.flatMap { (_, snapshot) -> snapshot.trips }
         val resolution = BlaBlaTripIdentity.resolveDistinct(beforeDistinct)
@@ -442,7 +460,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
             .sortedWith(compareBy<BlaBlaCollectorTrip>({ it.date }, { it.departure_time.orEmpty() }))
         val identityConflictCount = resolution.conflicts.size
         val hasIdentityConflict = identityConflictCount > 0
-        val skippedCount = snapshots.sumOf { (_, snapshot) -> snapshot.skippedTrips }
+        val skippedCount = verified.sumOf { (_, snapshot) -> snapshot.skippedTrips }
         val rosterIncompleteCount = trips.count { !it.passenger_roster_complete }
         val dataCoveragePartial = rosterIncompleteCount > 0 || skippedCount > 0
         val identityStatus = when {
@@ -462,7 +480,8 @@ class BlaBlaDynamicSessionStore(context: Context) {
                 skippedCount = skippedCount,
             ),
             month = null,
-            strategy = "authenticated_on_device_batch_first_dynamic_multi_profile",
+            strategy = "html_direct_authority_0607",
+            authority_source_0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
             profiles = verified.map { (account, _) ->
                 BlaBlaCollectorProfile(
                     uuid = account.profileUuid.orEmpty(),
@@ -496,7 +515,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
         UnifiedDebugEventStore.record(
             "COMBINED_RESPONSE",
             appContext.packageName,
-            "accounts=${accounts.size} verifiedAccounts=${verified.size} beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=$identityConflictCount rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=$rosterIncompleteCount skipped=$skippedCount identityStatus=$identityStatus dataCoverage=$dataCoverage status=${response.status}",
+            "accounts=${accounts.size} verifiedAccounts=${verified.size} legacyBlocked0607=$legacyBlocked0607 beforeDistinct=${beforeDistinct.size} tripCount=${trips.size} deduped=${resolution.dedupedCount} identityConflicts=$identityConflictCount rosterComplete=${trips.count { it.passenger_roster_complete }} rosterIncomplete=$rosterIncompleteCount skipped=$skippedCount identityStatus=$identityStatus dataCoverage=$dataCoverage status=${response.status}",
         )
         return response
     }
