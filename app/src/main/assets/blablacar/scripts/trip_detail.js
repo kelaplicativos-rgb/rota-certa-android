@@ -101,6 +101,10 @@
     const href = absolute(a.getAttribute('href') || a.href || '');
     return /\/rides\/offer\/edit\/[^/?#]+\/?(?:$|[?#])/i.test(href) && !/\/options\/?(?:$|[?#])/i.test(href);
   });
+  const options = links.find((a) => {
+    const href = absolute(a.getAttribute('href') || a.href || '');
+    return /\/rides\/offer\/edit\/[^/?#]+\/options\/?(?:$|[?#])/i.test(href);
+  });
   const strongPassengerLinks = Array.from(document.querySelectorAll(
     'a[href*="/rides/offer/passenger/"], a[href*="/rides/offer/booking/"], a[href*="/passenger/"], a[href*="/booking/"]'
   )).filter((node) => {
@@ -323,6 +327,7 @@ const html = clone.outerHTML || '';
     viewportHeight: viewportHeight,
     atBottom: atBottom,
     editHref: edit ? absolute(edit.getAttribute('href') || edit.href || '') : '',
+    optionsHref: options ? absolute(options.getAttribute('href') || options.href || '') : '',
     publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
     itineraryAuthoritative: itineraryAuthoritative,
