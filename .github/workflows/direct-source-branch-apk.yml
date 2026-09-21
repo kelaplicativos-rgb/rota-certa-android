@@ -1,10 +1,10 @@
 name: Rota Certa 0.1.608 direct HTML account capture exact SHA
-# trigger: direct-html-account-capture-ci-fix
+# trigger: html-atomic-commit-0609
 
 on:
   push:
     branches:
-      - agent/direct-html-account-capture-0.1.608
+      - agent/html-atomic-commit-0.1.609
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: direct-html-account-0608-${{ github.ref }}
+  group: html-atomic-commit-0609-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: direct_html_account_0608_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: html_atomic_commit_0609_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5899'
-      EXPECTED_VERSION_NAME: '0.1.608'
-      BASE_SHA: '49ddd4d61fd411dd3674b73b0bbe0ac56af0f291'
+      EXPECTED_VERSION_CODE: '5900'
+      EXPECTED_VERSION_NAME: '0.1.609'
+      BASE_SHA: '41334999d794acdd708a6088a3d511c34463eefb'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_899' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.608"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_900' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.609"' app/build.gradle.kts
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -85,6 +85,13 @@ jobs:
           ! grep -Fq 'BlaBlaBrowserOrchestrator' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'mhtmlSupported = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'globalHtmlAtomicCommitEligible0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'globalCommitPending=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'persistProgress0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          test "$(grep -Fc 'AgendaBackgroundSync0392.enqueueCollectorDelta0431(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt)" -eq 1
+          grep -Fq 'perTrip.maxWithOrNull(order)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
+          grep -Fq 'burstOfRevisionsForSameTripCollapsesBeforeSerialization0609' app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalOutboxCompaction0600Test.kt
           git diff --check "$BASE_SHA" HEAD
 
       - name: Configure Firebase Android app for build only
@@ -132,7 +139,10 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --tests '*BlaBlaUnifiedHtmlCapture0605Test' --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
+          ./gradlew :app:testDebugUnitTest \
+            --tests '*BlaBlaUnifiedHtmlCapture0605Test' \
+            --tests '*OperationalOutboxCompaction0600Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
 
       - name: Assemble exact-head APK
         shell: bash
@@ -162,7 +172,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0608
+          OUT=/tmp/0609
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -176,6 +186,9 @@ jobs:
           source_head=$GITHUB_SHA
           source_branch=$GITHUB_REF_NAME
           unified_html_capture=PASS
+          global_html_atomic_commit=PASS
+          per_trip_canonical_enqueue=ABSENT
+          outbox_revision_coalescing=PASS
           current_dom_itinerary_fallback=PASS
           current_dom_roster_fallback=PASS
           spa_hydration_wait=PASS
@@ -206,7 +219,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.608-5899-${{ github.sha }}
+          name: rota-certa-0.1.609-5900-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0608
+          path: /tmp/0609
