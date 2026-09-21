@@ -770,7 +770,7 @@ fun TripTimelineScreen(
                 "strongTargets=${targets0540.size} acceptedTargets=$acceptedTargets0540 " +
                 "skippedIdentity=${tripTargetsByCard0432.size - resolvedTargets0540.size} " +
                 "deduplicated=${resolvedTargets0540.size - targets0540.size} " +
-                "collectorToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR",
+                "htmlToAgenda=true directTimelineCollectorRead=false trigger=TOP_FIXED_RADAR",
         )
         if (acceptedTargets0540 == 0) {
             globalRefreshBusyCallback0540.value(false)
@@ -792,7 +792,7 @@ fun TripTimelineScreen(
                 UnifiedDebugEventStore.record(
                     "TIMELINE_GLOBAL_RADAR_BATCH_COMPLETE_0540",
                     context.packageName,
-                    "strongTargets=${distinctTimelineGlobalPullTargets0538(tripTargetsByCard0432.values).size} pendingTargets=0 collectorToAgenda=true directTimelineCollectorRead=false",
+                    "strongTargets=${distinctTimelineGlobalPullTargets0538(tripTargetsByCard0432.values).size} pendingTargets=0 htmlToAgenda=true directTimelineCollectorRead=false",
                 )
                 invalidateCanonicalTimeline0495("USER_GLOBAL_RADAR_REFRESH_0540_COMPLETE")
             }
@@ -1950,7 +1950,7 @@ private fun TimelineEntryCard(
             }
         }
     }
-    val queueTargetCollectorRefresh0517: () -> Unit = {
+    val queueTargetHtmlRefresh0607: () -> Unit = {
         val target = tripTarget0407
         if (target == null) {
             onChanged("Atualização BlaBlaCar indisponível: este card não tem identidade forte suficiente.")
@@ -1958,7 +1958,7 @@ private fun TimelineEntryCard(
             onChanged("Esta viagem já está sendo atualizada em segundo plano.")
         } else {
             UnifiedDebugEventStore.record(
-                "TIMELINE_RADAR_LOCAL_IDENTITY_USED",
+                "TIMELINE_HTML_REFRESH_LOCAL_IDENTITY_0607",
                 context.packageName,
                 "source=LOCAL_PRIMARY_CANONICAL strongIdentity=true remoteBackendRequired=false collectorRead=false collectorFallback=false privateValuesLogged=false",
             )
@@ -1975,7 +1975,7 @@ private fun TimelineEntryCard(
                     requestedAtMillis = command.requestedAtMillis,
                 )
             ) {
-                onChanged("📡 Agenda buscando somente esta viagem na BlaBlaCar em segundo plano.")
+                onChanged("📡 Capturando o HTML somente desta viagem na BlaBlaCar.")
             } else {
                 onChanged("Atualização bloqueada: a identidade forte desta viagem não pôde ser confirmada.")
             }
@@ -2056,7 +2056,10 @@ private fun TimelineEntryCard(
             .padding(vertical = 8.dp)
             .clickable(
                 onClickLabel = if (expanded) "Recolher trajeto" else "Abrir trajeto",
-                onClick = onToggleExpanded,
+                onClick = {
+                    if (!expanded) queueTargetHtmlRefresh0607()
+                    onToggleExpanded()
+                },
             ),
         shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = agendaBackground0549),
@@ -2073,7 +2076,7 @@ private fun TimelineEntryCard(
                 leadingActions0549 = {
                     TextButton(
                         enabled = tripTarget0407 != null && !reverifyPending0407,
-                        onClick = queueTargetCollectorRefresh0517,
+                        onClick = queueTargetHtmlRefresh0607,
                     ) {
                         Text(if (reverifyPending0407) "📡 …" else "📡")
                     }
