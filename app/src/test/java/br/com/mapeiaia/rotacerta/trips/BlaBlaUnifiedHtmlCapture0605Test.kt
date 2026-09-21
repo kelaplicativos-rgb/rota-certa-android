@@ -177,4 +177,71 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         )
     }
 
+    @Test
+    fun authoritativeHtmlCompletionClearsHistoricalSkippedDebt0610() {
+        assertEquals(
+            0,
+            effectiveSkippedTrips0610(
+                authoritativeComplete = true,
+                exactTarget = false,
+                dateScoped = true,
+                currentSkipped = 0,
+                previousSkipped = 9,
+            ),
+        )
+        assertEquals(
+            0,
+            effectiveSkippedTrips0610(
+                authoritativeComplete = true,
+                exactTarget = false,
+                dateScoped = true,
+                currentSkipped = 0,
+                previousSkipped = 8,
+            ),
+        )
+    }
+
+    @Test
+    fun partialDateScopedReadStillPreservesPreviousSkipped0610() {
+        assertEquals(
+            9,
+            effectiveSkippedTrips0610(
+                authoritativeComplete = false,
+                exactTarget = false,
+                dateScoped = true,
+                currentSkipped = 0,
+                previousSkipped = 9,
+            ),
+        )
+    }
+
+    @Test
+    fun globalCaptureProfileNeverWritesSharedSessionDuringPrivateStage0610() {
+        val candidates = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
+        )
+        val source = candidates.firstOrNull(File::isFile)?.readText().orEmpty()
+        val captureStart = source.indexOf("suspend fun captureProfile(")
+        val targetedStart = source.indexOf("suspend fun captureSingleTrip0607(")
+        assertTrue(captureStart >= 0)
+        assertTrue(targetedStart > captureStart)
+        val globalPath = source.substring(captureStart, targetedStart)
+        assertFalse(globalPath.contains("saveSync("))
+        assertFalse(globalPath.contains("stageProfile0609"))
+        assertTrue(globalPath.contains("stagedTrips0610"))
+    }
+
+    @Test
+    fun backgroundCanonicalWritesAreDisabledOutsideExplicitHtmlPaths0610() {
+        val candidates = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt"),
+        )
+        val source = candidates.firstOrNull(File::isFile)?.readText().orEmpty()
+        assertTrue(source.contains("val reconcileCollectorSnapshot = false"))
+        assertTrue(source.contains("LEGACY_COLLECTOR_DELTA_DISABLED_0610"))
+        assertTrue(source.contains("HTML_CANONICAL_RECONCILE_BLOCKED_0610"))
+    }
+
 }
