@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.607 HTML authority firewall exact SHA
-# trigger: html-authority-firewall
+# trigger: html-authority-firewall-render-gate
 
 on:
   push:
@@ -75,6 +75,9 @@ jobs:
           grep -Fq 'if (!expanded) queueTargetHtmlRefresh0607()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimelineUi.kt
           grep -Fq 'requestAgendaTripHtmlRefresh0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           grep -Fq 'remoteIsBlaBla' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'externalSnapshotAuthority0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripDomain.kt
+          grep -Fq 'htmlAuthorityVisible0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          grep -Fq 'htmlAuthorityVisible0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
           git diff --check "$BASE_SHA" HEAD
 
       - name: Configure Firebase Android app for build only
@@ -177,6 +180,7 @@ jobs:
           background_automatic_collector=DISABLED
           targeted_card_refresh=HTML_ONLY
           remote_blablacar_trip_merge=BLOCKED
+          legacy_trip_render_without_html=BLOCKED
           old_snapshot_headless_reverify=ABSENT
           automatic_collector_acquisition=ABSENT
           browser_orchestrator_acquisition=ABSENT
