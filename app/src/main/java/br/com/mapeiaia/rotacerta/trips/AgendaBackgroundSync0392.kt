@@ -130,8 +130,7 @@ internal fun agendaBackgroundSyncIntervalMinutes0392(requestedMinutes: Long? = n
 
 internal fun agendaBackgroundSyncShowsUiStatus0392(): Boolean = false
 
-internal fun agendaBackgroundSyncRequestsCollector0430(reason: String): Boolean =
-    reason == "periodic" || reason.startsWith("admin_update_now:")
+internal fun agendaBackgroundSyncRequestsCollector0430(@Suppress("UNUSED_PARAMETER") reason: String): Boolean = false
 
 internal fun agendaBackgroundSyncRefreshesCoverageCheckpoint0403(reason: String): Boolean =
     reason == "periodic" ||
@@ -736,7 +735,7 @@ internal fun syncRunIsStalled0406(
 }
 
 internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMonthResponse?): Boolean {
-    if (response == null) return false
+    if (response == null || response.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT) return false
     val status = response.status.trim().lowercase()
     return response.coverage.complete_for_scope &&
         response.coverage.global_profile_month_complete &&
@@ -745,20 +744,19 @@ internal fun externalCollectorAllowsTombstones0406(response: BlaBlaCollectorMont
 
 internal fun completeCollectorProfileUuids0408(
     context: Context,
-    state: AgendaAutomaticCollectorState0400,
+    @Suppress("UNUSED_PARAMETER") state: AgendaAutomaticCollectorState0400,
 ): Set<String> {
-    if (state.completedAccountIds.isEmpty()) return emptySet()
-    val accounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list().associateBy { it.id }
+    val accounts = BlaBlaDynamicAccountRegistry(context.applicationContext).list()
     val sessions = BlaBlaDynamicSessionStore(context.applicationContext)
-    return state.completedAccountIds.mapNotNull { accountId ->
-        val account = accounts[accountId] ?: return@mapNotNull null
+    return accounts.mapNotNull { account ->
         val profileUuid = account.profileUuid?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
         val snapshot = sessions.read(account) ?: return@mapNotNull null
         if (
             snapshot.identityVerified &&
             snapshot.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
             snapshot.skippedTrips == 0 &&
-            snapshot.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.AVAILABLE
+            snapshot.sourceAccessStatus0426 == BlaBlaSourceAccessStatus0426.AVAILABLE &&
+            snapshot.acquisitionAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
         ) profileUuid.lowercase() else null
     }.toSet()
 }
@@ -1947,6 +1945,14 @@ internal object AgendaBackgroundSync0392 {
         completeProfileUuids: Set<String> = emptySet(),
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
+        if (response.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT) {
+            UnifiedDebugEventStore.recordAlways(
+                "NON_HTML_CANONICAL_INGEST_BLOCKED_0607",
+                context.packageName,
+                "incomingTrips=${response.trips.size} authority=${response.authority_source_0607.ifBlank { "UNMARKED_LEGACY" }} action=DROP_BEFORE_TRIPSTORE",
+            )
+            return ExternalCollectorCanonicalBatch0403(blockedTrips = response.trips.size)
+        }
         val coordinator = TripMutationCoordinator0387(context, store)
         var changedTrips = 0
         var skippedTrips = 0
