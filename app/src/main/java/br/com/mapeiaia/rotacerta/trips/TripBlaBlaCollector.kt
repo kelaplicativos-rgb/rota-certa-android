@@ -513,8 +513,23 @@ class BlaBlaCollectorStateStore(context: Context) {
         response: BlaBlaCollectorMonthResponse,
         preserveOnPartial: Boolean = true,
     ): BlaBlaCollectorMonthResponse {
+        if (
+            response.status != "cleared" &&
+            response.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+        ) {
+            UnifiedDebugEventStore.recordAlways(
+                "LEGACY_COLLECTOR_PERSIST_BLOCKED_0607",
+                appContext.packageName,
+                "incomingTrips=${response.trips.size} authority=${response.authority_source_0607.ifBlank { "UNMARKED_LEGACY" }} persisted=false canonicalFeed=false",
+            )
+            return response
+        }
+        val previousForMerge = lastResponse()?.takeIf {
+            response.status == "cleared" ||
+                it.authority_source_0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+        }
         val effective = BlaBlaCollectorTimelineModule.mergePublishedResponse(
-            previous = lastResponse(),
+            previous = previousForMerge,
             incoming = response,
             preserveOnPartial = preserveOnPartial,
         )
