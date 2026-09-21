@@ -176,6 +176,11 @@ internal fun compactTripPublicationOutbox0600(
     )
 }
 
+internal data class TripPublicationOutboxRollbackSnapshot0612(
+    val eventsJson: String?,
+    val revisionsJson: String?,
+)
+
 internal class TripPublicationOutbox0387(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -185,6 +190,22 @@ internal class TripPublicationOutbox0387(context: Context) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     val tenantId: String get() = tenantScope.tenantId
+
+    internal fun snapshotHtmlRollback0612(): TripPublicationOutboxRollbackSnapshot0612 = synchronized(LOCK) {
+        TripPublicationOutboxRollbackSnapshot0612(
+            eventsJson = prefs.getString(eventsKey, null),
+            revisionsJson = prefs.getString(revisionsKey, null),
+        )
+    }
+
+    internal fun restoreHtmlRollback0612(snapshot: TripPublicationOutboxRollbackSnapshot0612): Boolean =
+        synchronized(LOCK) {
+            val editor = prefs.edit()
+            if (snapshot.eventsJson == null) editor.remove(eventsKey) else editor.putString(eventsKey, snapshot.eventsJson)
+            if (snapshot.revisionsJson == null) editor.remove(revisionsKey) else editor.putString(revisionsKey, snapshot.revisionsJson)
+            editor.commit()
+        }
+
 
     fun ensureRevisionAtLeast(canonicalTripId: String, revision: Long) {
         if (canonicalTripId.isBlank() || revision <= 0L) return
