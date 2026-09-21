@@ -288,4 +288,46 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         )
     }
 
+
+    @Test
+    fun currentRideRemainsCapturableThroughArrivalPlusOneHour0612() {
+        val today = LocalDate.of(2026, 9, 21)
+        val current = ride("2026-09-21", departure = "19:00", arrival = "23:20")
+        assertTrue(shouldCaptureRide0605(current, today, LocalTime.of(23, 59)))
+        assertFalse(shouldCaptureRide0605(current, today, LocalTime.of(0, 30)))
+        val earlier = ride("2026-09-21", departure = "10:00", arrival = "14:00")
+        assertTrue(shouldCaptureRide0605(earlier, today, LocalTime.of(14, 59)))
+        assertFalse(shouldCaptureRide0605(earlier, today, LocalTime.of(15, 1)))
+    }
+
+    @Test
+    fun overnightRideUsesNextDayArrivalGrace0612() {
+        assertTrue(
+            shouldCaptureRide0605(
+                ride("2026-09-21", departure = "23:30", arrival = "01:00"),
+                LocalDate.of(2026, 9, 21),
+                LocalTime.of(23, 59),
+            ),
+        )
+    }
+
+    @Test
+    fun canonicalHtmlCommitHasTombstoneRevivalAndRollback0612() {
+        val agenda = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt"),
+        ).firstOrNull(File::isFile)?.readText().orEmpty()
+        val capture = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
+        ).firstOrNull(File::isFile)?.readText().orEmpty()
+
+        assertTrue(agenda.contains("existing?.deleted == true && incomingComplete"))
+        assertTrue(capture.contains("snapshotHtmlRollback0612()"))
+        assertTrue(capture.contains("restoreHtmlRollback0612"))
+        assertTrue(capture.contains("BLABLACAR_GLOBAL_HTML_ROLLBACK_0612"))
+        assertTrue(capture.contains("BLABLACAR_GLOBAL_HTML_CANONICAL_IDENTITY_FAILED_0612"))
+        assertTrue(capture.contains("passengerSegmentsResolved"))
+    }
+
 }
