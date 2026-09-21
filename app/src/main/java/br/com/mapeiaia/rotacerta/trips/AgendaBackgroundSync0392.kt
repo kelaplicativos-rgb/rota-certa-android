@@ -1266,7 +1266,7 @@ internal object AgendaBackgroundSync0392 {
             UnifiedDebugEventStore.record(
                 "NO_OP",
                 appContext.packageName,
-                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending requestedAction=TARGET_COLLECTOR_REFRESH_0517",
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending requestedAction=TARGET_HTML_REFRESH_0607",
             )
             return true
         }
@@ -1298,7 +1298,7 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "COMMAND_REQUESTED",
             appContext.packageName,
-            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true uniqueTargetWork=true requestedAction=TARGET_COLLECTOR_REFRESH_0517",
+            "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP status=QUEUED workId=${request.id} centralWorker=true uniqueTargetWork=true requestedAction=TARGET_HTML_REFRESH_0607",
         )
         return true
     }
@@ -1558,31 +1558,44 @@ internal object AgendaBackgroundSync0392 {
                 capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
                 status = BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
                 errorCode = "CANONICAL_TRIP_NOT_FOUND_OR_AMBIGUOUS",
-                verification = "targeted_collector_requires_unique_canonical_trip",
+                verification = "targeted_html_requires_unique_canonical_trip",
                 startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
 
-        val collectorResult = BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+        val htmlResult = BlaBlaUnifiedHtmlCapture0605.captureSingleTrip0607(
             context = appContext,
             target = target,
-            commandId = work.commandId,
-            origin = "TIMELINE_CARD_TARGET_REFRESH_0517",
+            existingSource = canonicalBefore.externalSnapshot,
         )
-        if (collectorResult.status != BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
-            return collectorResult
+        if (htmlResult.trip == null) {
+            return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.UNVERIFIED,
+                errorCode = htmlResult.errorCode.ifBlank { "TARGETED_HTML_CAPTURE_FAILED" },
+                verification = "targeted_html_capture_failed",
+                startedAtMillis = startedAt,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
         }
 
         val exactResponse = targetedCollectorResponse0407(
             response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
             target = target,
-        )
-        val exactSource = exactResponse?.trips.orEmpty().singleOrNull()
-        if (exactSource == null) {
-            return collectorResult.copy(
+        )?.takeIf {
+            it.authority_source_0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+        }
+        if (exactResponse?.trips?.singleOrNull() == null) {
+            return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
                 status = BlaBlaCommandStatus0407.UNVERIFIED,
-                errorCode = "TARGETED_COLLECTOR_READBACK_MISSING",
-                verification = "targeted_collector_exact_trip_missing_after_headless_read",
+                errorCode = "TARGETED_HTML_READBACK_MISSING",
+                verification = "targeted_html_exact_trip_missing_after_capture",
+                startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
         }
@@ -1594,7 +1607,7 @@ internal object AgendaBackgroundSync0392 {
             response = exactResponse,
             rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
             seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-            collectionRunId = "timeline-card-target-refresh-0517",
+            collectionRunId = "targeted-html-0607",
             collectionGeneration = 0L,
             completeProfileUuids = emptySet(),
         )
@@ -1604,14 +1617,16 @@ internal object AgendaBackgroundSync0392 {
                 trip.blablaProfileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true &&
                 trip.blablaTripId?.trim() == target.tripId
         }.singleOrNull()
-        if (refreshed == null) {
-            return collectorResult.copy(
+            ?: return BlaBlaCommandResult0407(
+                commandId = work.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
                 status = BlaBlaCommandStatus0407.UNVERIFIED,
-                errorCode = "CANONICAL_TARGET_MISSING_AFTER_RECONCILE",
-                verification = "targeted_collector_canonical_reconcile_missing",
+                errorCode = "CANONICAL_TARGET_MISSING_AFTER_HTML_RECONCILE",
+                verification = "targeted_html_canonical_reconcile_missing",
+                startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
-        }
 
         val targetPublicationIds = batch.publicationCanonicalTripIds0431
             .ifEmpty { setOf(refreshed.tripKey.ifBlank { refreshed.id }) }
@@ -1620,21 +1635,25 @@ internal object AgendaBackgroundSync0392 {
         )
         BookingRealtimeEvents0356.notifyChanged()
         TripWidgetProvider.updateAll(appContext)
-        UnifiedDebugEventStore.record(
-            "TIMELINE_CARD_TARGET_COLLECTOR_REFRESH_0517",
+        UnifiedDebugEventStore.recordAlways(
+            "TIMELINE_CARD_TARGET_HTML_REFRESH_0607",
             appContext.packageName,
-            "canonicalTripId=" + seatSyncDiagnosticKey(refreshed.tripKey.ifBlank { refreshed.id }) +
+            "canonicalTripId=${seatSyncDiagnosticKey(refreshed.tripKey.ifBlank { refreshed.id })}" +
                 " profileUuidPresent=true tripIdPresent=true changed=${batch.changedTrips}" +
                 " skipped=${batch.skippedTrips} blocked=${batch.blockedTrips}" +
                 " publicationQueued=${batch.publicationQueued} outboxDelivered=$delivered" +
-                " exactTargetOnly=true collectorDirectTimelineRead=false fullAccountCollection=false",
+                " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false",
         )
-        return collectorResult.copy(
+        return BlaBlaCommandResult0407(
+            commandId = work.commandId,
+            target = target,
+            capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
             before = "CANONICAL_REVISION_${canonicalBefore.canonicalRevision}",
             after = "CANONICAL_REVISION_${refreshed.canonicalRevision}",
-            verification = "targeted_collector_exact_trip_canonicalized",
+            verification = "targeted_html_exact_trip_canonicalized",
             status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
             errorCode = "",
+            startedAtMillis = startedAt,
             finishedAtMillis = System.currentTimeMillis(),
         )
     }
