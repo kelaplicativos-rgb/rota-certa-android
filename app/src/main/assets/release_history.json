@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.607",
+      "build": 5898,
+      "commit": null,
+      "branch": "agent/html-authority-firewall-0.1.607",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Firewall de proveniência: somente sessões e respostas marcadas HTML_DIRECT_0607 podem alimentar o estado canônico BlaBlaCar.",
+        "Abertura de card na Agenda e Timeline dispara captura HTML direcionada somente daquela viagem com profileUuid + tripId.",
+        "Refresh direcionado 0517 foi mantido apenas como API de compatibilidade; sua implementação agora chama BlaBlaUnifiedHtmlCapture0605.captureSingleTrip0607.",
+        "Merge secundário do backend preserva integralmente os campos BlaBlaCar locais e filtra ocupação/passagens BlaBlaCar remotas."
+      ],
+      "fixed": [
+        "Sincronização periódica e admin_update_now não podem mais disparar BlaBlaAutomaticCollectionCoordinator0400.",
+        "Snapshots e respostas do coletor legado não podem sobrescrever sessões HTML nem chegar ao TripStore.",
+        "Backend remoto não pode recuperar ou substituir viagem BlaBlaCar ausente da evidência HTML local."
+      ],
+      "improved": [
+        "Dados próprios do Rota Certa, como reservas internas, podem continuar sincronizando sem adquirir autoridade sobre rota, passageiros, vagas, horários ou links BlaBlaCar.",
+        "Fail-closed imediato para estado legado: uma instalação atualizada exige nova evidência HTML antes de usar dados BlaBlaCar não marcados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Elimina reentrada indireta de last_known_snapshot e do coletor headless na Agenda/Timeline após uma captura HTML correta."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Agenda",
+        "Timeline",
+        "TripStore",
+        "Background Sync",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.606",
       "build": 5897,
       "commit": null,
