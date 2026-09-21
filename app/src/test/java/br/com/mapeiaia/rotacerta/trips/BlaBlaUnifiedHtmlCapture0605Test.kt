@@ -93,4 +93,36 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         assertTrue(script.contains("fallbackItineraryStops"))
         assertTrue(script.contains("optionsHref"))
     }
+
+    @Test
+    fun backgroundNeverRequestsLegacyCollector0607() {
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("periodic"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("admin_update_now:manual"))
+        assertFalse(agendaBackgroundSyncRequestsCollector0430("recovery"))
+    }
+
+    @Test
+    fun legacyResponseCannotAuthorizeCanonicalTombstones0607() {
+        val legacy = BlaBlaCollectorMonthResponse(
+            status = "complete",
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = true,
+                global_profile_month_complete = true,
+            ),
+        )
+        assertFalse(externalCollectorAllowsTombstones0406(legacy))
+    }
+
+    @Test
+    fun htmlResponseCanAuthorizeCompleteScope0607() {
+        val html = BlaBlaCollectorMonthResponse(
+            status = "complete",
+            authority_source_0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            coverage = BlaBlaCollectorCoverage(
+                complete_for_scope = true,
+                global_profile_month_complete = true,
+            ),
+        )
+        assertTrue(externalCollectorAllowsTombstones0406(html))
+    }
 }
