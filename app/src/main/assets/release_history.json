@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.610",
+      "build": 5901,
+      "commit": null,
+      "branch": "agent/html-private-transaction-0.1.610",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A captura global HTML passa a manter cada perfil em staging privado, sem escrever no sessionStore compartilhado durante a varredura.",
+        "Uma transação global bloqueia refresh direcionado e qualquer reconciliação canônica externa concorrente até o commit N/N.",
+        "Após 2/2 perfis e todas as viagens COMPLETE, os snapshots dos perfis substituem o sessionStore em uma única fase lógica e a reconciliação canônica é executada diretamente dentro da mesma transação.",
+        "Background genérico, periodic e blablacar_collection_result deixam de ter permissão para materializar estado BlaBlaCar."
+      ],
+      "fixed": [
+        "Elimina o vazamento de snapshots parciais do HTML para WorkManager antes do commit global.",
+        "Captura autoritativa completa agora zera skippedTrips histórico; currentSkipped=0 não herda 9/8 de execuções anteriores.",
+        "Impede canonical_revision_race causado por workers antigos concorrendo com a captura global.",
+        "Remove o enqueueCollectorDelta do commit global; o commit faz uma única reconciliação direta e valida N/N identidades canônicas."
+      ],
+      "improved": [
+        "O COMBINED_RESPONSE final exige status complete, complete_for_scope=true e unresolved_target_cards=0.",
+        "Logs passam a provar início/fim da transação, substituição atômica dos perfis, bloqueios concorrentes e validação htmlTrips=N/canonicalized=N."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Snapshot 19/19 terminava como partial por skipped=17 e workers já reconciliavam viagens antes de BLABLACAR_GLOBAL_HTML_COMMIT."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Session Store",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "TripStore",
+        "Background Sync",
+        "Outbox",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.609",
       "build": 5900,
       "commit": null,
