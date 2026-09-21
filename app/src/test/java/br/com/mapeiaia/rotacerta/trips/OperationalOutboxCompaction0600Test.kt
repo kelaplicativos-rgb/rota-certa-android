@@ -28,36 +28,39 @@ class OperationalOutboxCompaction0600Test {
     )
 
     @Test
-    fun keepsEveryActionableEventAndOnlyLatestTerminalProofPerTrip() {
+    fun keepsOnlyNewestDurableRevisionPerTrip0609() {
         val pending = event("trip-a", 5, TripPublicationStatus0387.PENDING)
         val retry = event("trip-b", 7, TripPublicationStatus0387.FAILED_RETRYABLE)
         val finalFailure = event("trip-c", 9, TripPublicationStatus0387.FAILED_FINAL)
         val input = listOf(
             event("trip-a", 1, TripPublicationStatus0387.DELIVERED),
-            event("trip-a", 2, TripPublicationStatus0387.SUPERSEDED),
+            event("trip-a", 2, TripPublicationStatus0387.PENDING),
             event("trip-a", 3, TripPublicationStatus0387.DELIVERED),
             pending,
             event("trip-b", 4, TripPublicationStatus0387.DELIVERED),
-            event("trip-b", 6, TripPublicationStatus0387.SUPERSEDED),
+            event("trip-b", 6, TripPublicationStatus0387.PENDING),
             retry,
             finalFailure,
         )
 
         val output = compactTripPublicationOutbox0600(input)
 
+        assertEquals(3, output.size)
         assertTrue(pending in output)
         assertTrue(retry in output)
         assertTrue(finalFailure in output)
-        val terminalA = output.filter {
-            it.canonicalTripId == "trip-a" &&
-                it.status in setOf(TripPublicationStatus0387.DELIVERED, TripPublicationStatus0387.SUPERSEDED)
+        assertEquals(listOf(5L), output.filter { it.canonicalTripId == "trip-a" }.map { it.revision })
+        assertEquals(listOf(7L), output.filter { it.canonicalTripId == "trip-b" }.map { it.revision })
+    }
+
+    @Test
+    fun burstOfRevisionsForSameTripCollapsesBeforeSerialization0609() {
+        val burst = (1L..600L).map { revision ->
+            event("trip-burst", revision, TripPublicationStatus0387.PENDING)
         }
-        val terminalB = output.filter {
-            it.canonicalTripId == "trip-b" &&
-                it.status in setOf(TripPublicationStatus0387.DELIVERED, TripPublicationStatus0387.SUPERSEDED)
-        }
-        assertEquals(listOf(3L), terminalA.map { it.revision })
-        assertEquals(listOf(6L), terminalB.map { it.revision })
+        val output = compactTripPublicationOutbox0600(burst, targetMaxEvents = 32)
+        assertEquals(1, output.size)
+        assertEquals(600L, output.single().revision)
     }
 
     @Test
