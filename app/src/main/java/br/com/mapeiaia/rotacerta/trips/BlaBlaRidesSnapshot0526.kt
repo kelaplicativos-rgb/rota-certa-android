@@ -724,7 +724,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         UnifiedDebugEventStore.recordAlways(
             "RIDES_SNAPSHOT_STARTED",
             app.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profiles=${accounts.size} sequential=true privateEvidence=true",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profiles=${accounts.size} directHtml0608=true oldController=false oldIdentityProbe=false privateEvidence=true",
         )
         if (accounts.isEmpty()) {
             onProgress("Nenhum perfil BlaBlaCar conectado.")
@@ -732,132 +732,17 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         }
 
         accounts.forEachIndexed { index, account ->
-            val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
-            onProgress("Capturando perfil ${index + 1}/${accounts.size} • Validando identidade")
-            if (expected == null) {
-                store.updateProfile(manifest.captureId, account.id) {
-                    it.copy(
-                        startedAt = Instant.now().toString(),
-                        completedAt = Instant.now().toString(),
-                        status = BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
-                        errorCode = "EXPECTED_PROFILE_UUID_MISSING",
-                    )
-                }
-                UnifiedDebugEventStore.recordAlways(
-                    "RIDES_SNAPSHOT_PROFILE_FAILED",
-                    app.packageName,
-                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profile=${index + 1}/${accounts.size} reason=EXPECTED_PROFILE_UUID_MISSING",
-                )
-                return@forEachIndexed
-            }
-
-            var terminal = false
-            var profileAttempt0604 = 0
-            while (profileAttempt0604 < PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604) {
-                profileAttempt0604++
-                val finished = withTimeoutOrNull(PROFILE_TIMEOUT_MS) {
-                    runProfile(
-                        context = app,
-                        account = account,
-                        captureId = manifest.captureId,
-                        position = index + 1,
-                        total = accounts.size,
-                        onProgress = onProgress,
-                    )
-                }
-                manifest = store.read(manifest.captureId) ?: manifest
-                val attemptedProfile0604 = manifest.profiles
-                    .singleOrNull { it.accountKey == store.accountKey(account.id) }
-                val singleFlightBusy0604 =
-                    attemptedProfile0604?.status == BlaBlaRidesSnapshotStatus0526.FAILED_SESSION &&
-                        attemptedProfile0604.errorCode == "SINGLE_FLIGHT_BUSY"
-                if (!singleFlightBusy0604) {
-                    terminal = finished == true
-                    break
-                }
-                UnifiedDebugEventStore.recordAlways(
-                    "RIDES_SNAPSHOT_SINGLE_FLIGHT_WAIT_0604",
-                    app.packageName,
-                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profile=${index + 1}/${accounts.size} attempt=$profileAttempt0604 action=wait_and_retry_same_account",
-                )
-                if (profileAttempt0604 < PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604) {
-                    onProgress(
-                        "Perfil ${index + 1}/${accounts.size} • aguardando operação anterior terminar • tentativa ${profileAttempt0604 + 1}/$PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604",
-                    )
-                    delay(PROFILE_SINGLE_FLIGHT_RETRY_MS_0604)
-                }
-            }
-            if (!terminal) {
-                store.updateProfile(manifest.captureId, account.id) { previous ->
-                    if (previous.status in TERMINAL_STATUSES) previous else previous.copy(
-                        completedAt = Instant.now().toString(),
-                        status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
-                        errorCode = "PROFILE_TIMEOUT",
-                    )
-                }
-            }
+            onProgress("Perfil ${index + 1}/${accounts.size} • ${account.displayLabel}")
+            BlaBlaDirectAccountCapture0608.capture(
+                context = app,
+                store = store,
+                account = account,
+                captureId = manifest.captureId,
+                onProgress = onProgress,
+            )
             manifest = store.read(manifest.captureId) ?: manifest
-            val completedProfile0582 = manifest.profiles
-                .singleOrNull { it.accountKey == store.accountKey(account.id) }
-            if (completedProfile0582?.status == BlaBlaRidesSnapshotStatus0526.COMPLETE) {
-                onProgress("Capturando HTMLs das viagens futuras • ${account.displayLabel}")
-                BlaBlaUnifiedHtmlCapture0605.captureProfile(
-                    context = app,
-                    store = store,
-                    account = account,
-                    captureId = manifest.captureId,
-                    profile = completedProfile0582,
-                    onProgress = onProgress,
-                )
-                manifest = store.read(manifest.captureId) ?: manifest
-            }
         }
 
         return store.finish(manifest.captureId) ?: manifest
     }
-
-    private suspend fun runProfile(
-        context: Context,
-        account: BlaBlaDynamicAccount,
-        captureId: String,
-        position: Int,
-        total: Int,
-        onProgress: (String) -> Unit,
-    ): Boolean = withContext(Dispatchers.Main.immediate) {
-        suspendCancellableCoroutine { continuation ->
-            var controller: BlaBlaDynamicAccountSessionController0401? = null
-            val payload = BlaBlaDynamicSessionIntents.ridesSnapshotPayload(
-                account = account,
-                captureId = captureId,
-                position = position,
-                total = total,
-            )
-            controller = BlaBlaDynamicAccountSessionController0401(
-                baseContext = context,
-                launchIntent = payload,
-                visualHost = null,
-                snapshotProgress0526 = onProgress,
-                finishHost = { _, _ ->
-                    controller?.destroy("rides_snapshot_profile_terminal_0526")
-                    if (continuation.isActive) continuation.resume(true)
-                },
-            )
-            continuation.invokeOnCancellation {
-                controller?.destroy("rides_snapshot_profile_cancelled_0526")
-            }
-            controller?.start()
-        }
-    }
-
-    private const val PROFILE_TIMEOUT_MS = 120_000L
-    private const val PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604 = 6
-    private const val PROFILE_SINGLE_FLIGHT_RETRY_MS_0604 = 2_000L
-    private val TERMINAL_STATUSES = setOf(
-        BlaBlaRidesSnapshotStatus0526.COMPLETE,
-        BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
-        BlaBlaRidesSnapshotStatus0526.FAILED_IDENTITY,
-        BlaBlaRidesSnapshotStatus0526.FAILED_SESSION,
-        BlaBlaRidesSnapshotStatus0526.FAILED_NAVIGATION,
-        BlaBlaRidesSnapshotStatus0526.FAILED_CAPTURE,
-    )
 }
