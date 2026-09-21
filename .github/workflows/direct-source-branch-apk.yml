@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.610 private HTML transaction exact SHA
-# trigger: html-private-transaction-0610-r2
+name: Rota Certa 0.1.611 HTML status contract exact SHA
+# trigger: html-status-contract-0611
 
 on:
   push:
     branches:
-      - agent/html-private-transaction-0.1.610
+      - agent/html-status-contract-0.1.611
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-private-transaction-0610-${{ github.ref }}
+  group: html-status-contract-0611-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: html_private_transaction_0610_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: html_status_contract_0611_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5901'
-      EXPECTED_VERSION_NAME: '0.1.610'
-      BASE_SHA: '6c3816efff404eb9d1ff3e88e4cba0aca8072a4c'
+      EXPECTED_VERSION_CODE: '5902'
+      EXPECTED_VERSION_NAME: '0.1.611'
+      BASE_SHA: 'cf0ea43dcfbca90ca3f998c41d2c8fda6652b38b'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_901' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.610"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_902' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.611"' app/build.gradle.kts
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -86,6 +86,10 @@ jobs:
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'mhtmlSupported = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'globalHtmlAtomicCommitEligible0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'htmlCanonicalResponseStatusAccepted0611' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'status.lowercase() in setOf("validated", "complete")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          ! grep -Fq 'response.status != "complete"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'validatedStatusWithCompleteHtmlCoverageIsCommitEligible0611' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605Test.kt
           grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'globalCommitPending=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'BLABLACAR_GLOBAL_HTML_TRANSACTION_STARTED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
@@ -180,7 +184,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0610
+          OUT=/tmp/0611
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -195,6 +199,7 @@ jobs:
           source_branch=$GITHUB_REF_NAME
           unified_html_capture=PASS
           global_html_atomic_commit=PASS
+          html_validated_complete_contract=PASS
           private_html_staging=PASS
           shared_session_write_during_global_capture=ABSENT
           skipped_history_reset_on_authoritative_complete=PASS
@@ -233,7 +238,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.610-5901-${{ github.sha }}
+          name: rota-certa-0.1.611-5902-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0610
+          path: /tmp/0611
