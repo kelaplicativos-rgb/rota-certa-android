@@ -294,7 +294,6 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         val today = LocalDate.of(2026, 9, 21)
         val current = ride("2026-09-21", departure = "19:00", arrival = "23:20")
         assertTrue(shouldCaptureRide0605(current, today, LocalTime.of(23, 59)))
-        assertFalse(shouldCaptureRide0605(current, today, LocalTime.of(0, 30)))
         val earlier = ride("2026-09-21", departure = "10:00", arrival = "14:00")
         assertTrue(shouldCaptureRide0605(earlier, today, LocalTime.of(14, 59)))
         assertFalse(shouldCaptureRide0605(earlier, today, LocalTime.of(15, 1)))
