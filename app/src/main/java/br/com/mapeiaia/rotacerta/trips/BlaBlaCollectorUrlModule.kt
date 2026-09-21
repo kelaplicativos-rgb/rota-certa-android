@@ -184,6 +184,8 @@ internal object BlaBlaCollectorUrlModule {
             publicTripFromAuthoritativeNetwork(raw, expectedTripId, expectedTripId)
         PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION ->
             publicTripFromAuthoritativeOrchestratorNavigation(raw, expectedTripId, expectedTripId)
+        PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF ->
+            publicTripFromPublishedOfferHref(raw, expectedTripId, expectedTripId)
         else -> publicTrip(raw, expectedTripId)
     }
 
