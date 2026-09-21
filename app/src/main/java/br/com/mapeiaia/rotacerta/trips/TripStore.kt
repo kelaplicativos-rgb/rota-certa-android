@@ -137,23 +137,21 @@ class TripStore(context: Context) {
 
         val nextTrips = currentTrips.map { current ->
             val incoming = incomingById[current.id] ?: return@map current
+            val htmlBackedBlaBla = resolvedTripRecordOrigin(current) == TripRecordOrigin.EXTERNAL_BACKING ||
+                !current.blablaTripId.isNullOrBlank() ||
+                !current.blablaProfileUuid.isNullOrBlank()
             when {
                 current.deleted -> current
+                htmlBackedBlaBla -> current
                 current.canonicalRevision > incoming.canonicalRevision -> current
                 else -> incoming.copy(
                     id = current.id,
                     createdAtMillis = current.createdAtMillis,
-                    // Local collector evidence is canonicalized before Timeline and
-                    // is not supplied by the remote Timeline response. Never erase it.
-                    externalSnapshot = incoming.externalSnapshot ?: current.externalSnapshot,
-                    externalSnapshotFingerprint = incoming.externalSnapshotFingerprint
-                        .ifBlank { current.externalSnapshotFingerprint },
-                    externalSnapshotComplete = incoming.externalSnapshotComplete || current.externalSnapshotComplete,
-                    lastCollectionRunId = incoming.lastCollectionRunId.ifBlank { current.lastCollectionRunId },
-                    lastCollectionGeneration = maxOf(
-                        incoming.lastCollectionGeneration,
-                        current.lastCollectionGeneration,
-                    ),
+                    externalSnapshot = current.externalSnapshot,
+                    externalSnapshotFingerprint = current.externalSnapshotFingerprint,
+                    externalSnapshotComplete = current.externalSnapshotComplete,
+                    lastCollectionRunId = current.lastCollectionRunId,
+                    lastCollectionGeneration = current.lastCollectionGeneration,
                     lastObservedAtMillis = maxOf(incoming.lastObservedAtMillis, current.lastObservedAtMillis),
                     deleted = current.deleted,
                     deletedAtMillis = current.deletedAtMillis,
@@ -164,6 +162,11 @@ class TripStore(context: Context) {
         projection.trips
             .filter { incoming -> currentTrips.none { it.id == incoming.id } }
             .filterNot(Trip::deleted)
+            .filterNot { incoming ->
+                resolvedTripRecordOrigin(incoming) == TripRecordOrigin.EXTERNAL_BACKING ||
+                    !incoming.blablaTripId.isNullOrBlank() ||
+                    !incoming.blablaProfileUuid.isNullOrBlank()
+            }
             .forEach(nextTrips::add)
 
         val currentBookingById = currentBookings.associateBy(Booking::id)
@@ -207,7 +210,7 @@ class TripStore(context: Context) {
             appContext.packageName,
             "trips=" + representedTripIds.size +
                 " bookings=" + normalizedIncomingBookings.size +
-                " source=SECONDARY_CANONICAL_SYNC collectorRead=false collectorFallback=false privateValuesLogged=false",
+                " source=SECONDARY_CANONICAL_SYNC htmlBlaBlaAuthorityPreserved=true collectorRead=false collectorFallback=false privateValuesLogged=false",
         )
         BookingRealtimeEvents0356.notifyChanged()
         true
