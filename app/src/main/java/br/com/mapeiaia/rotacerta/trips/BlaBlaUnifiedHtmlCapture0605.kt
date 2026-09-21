@@ -48,6 +48,7 @@ internal data class BlaBlaRidesTripCapture0605(
     val normalized: Boolean = false,
     val passengerRosterComplete: Boolean = false,
     val itineraryAuthoritative: Boolean = false,
+    val passengerSegmentsResolved: Boolean = false,
     val publishedSeats: Int? = null,
     val publicTripUrl: String = "",
     val publicTripUrlSource: String = "",
@@ -128,10 +129,17 @@ internal fun shouldCaptureRide0605(
     val date = runCatching { LocalDate.parse(ride.date) }.getOrNull() ?: return false
     if (date.isAfter(today)) return true
     if (date.isBefore(today)) return false
-    val cutoff = sequenceOf(ride.arrivalTime, ride.departureTime)
-        .mapNotNull { raw -> runCatching { LocalTime.parse(raw) }.getOrNull() }
-        .firstOrNull()
-    return cutoff == null || !cutoff.isBefore(now)
+    val departure = runCatching { LocalTime.parse(ride.departureTime) }.getOrNull()
+    val arrival = runCatching { LocalTime.parse(ride.arrivalTime) }.getOrNull()
+    val cutoff = arrival ?: departure ?: return true
+    val cutoffDate = if (arrival != null && departure != null && arrival.isBefore(departure)) {
+        today.plusDays(1)
+    } else {
+        today
+    }
+    // 0.1.612: keep the current ride through arrival + 1 hour so acquisition,
+    // Agenda and Timeline share the same operational visibility semantics.
+    return !cutoffDate.atTime(cutoff).plusHours(1).isBefore(today.atTime(now))
 }
 
 internal data class BlaBlaTargetedHtmlRefreshResult0607(
@@ -304,19 +312,18 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             sessionStore.releaseExternalFlight0426(lease)
         }
 
-        val finalIncomplete = captures.count { it.status != "COMPLETE" }
+        var indexError0612 = ""
         val existingIndex = store.read(captureId)
             ?.profiles
             ?.singleOrNull { it.accountKey == store.accountKey(account.id) }
             ?.let { current -> store.readRidesIndexJson0582(captureId, current) }
         if (existingIndex != null) {
             val byTrip = captures.associateBy(BlaBlaRidesTripCapture0605::tripId)
+            val parsedByTrip = parsed.rides.associateBy(ParsedExternalRide0535::tripId)
             val links = existingIndex.tripIds.map { tripId ->
                 val previous = existingIndex.tripLinks.singleOrNull { it.tripId == tripId }
                 val capture = byTrip[tripId]
-                if (capture == null) {
-                    previous ?: BlaBlaRidesTripLink0582(tripId = tripId)
-                } else {
+                if (capture != null) {
                     BlaBlaRidesTripLink0582(
                         tripId = tripId,
                         administrativeUrl = capture.administrativeUrl,
@@ -326,11 +333,51 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         publicTripStatus = if (capture.publicTripUrl.isNotBlank()) "COMPLETE" else "PENDING_UNKNOWN",
                         shareEligibility = previous?.shareEligibility ?: "ELIGIBLE",
                     )
+                } else {
+                    val ride = parsedByTrip[tripId]
+                    val administrativeUrl = BlaBlaCollectorUrlModule.absolute(ride?.administrativeUrl)
+                    val terminalStatus = ride?.status.orEmpty()
+                        .lowercase()
+                        .replace("ã", "a")
+                        .replace("á", "a")
+                        .replace("ç", "c")
+                    val explicitlyTerminal = listOf(
+                        "cancelad", "concluid", "finalizad", "realizad", "arquivad",
+                    ).any(terminalStatus::contains)
+                    val provenNotCurrentOrFuture =
+                        ride != null &&
+                            (!shouldCaptureRide0605(ride, today, now) || explicitlyTerminal) &&
+                            BlaBlaCollectorUrlModule.isSpecificTrip(administrativeUrl) &&
+                            BlaBlaCollectorUrlModule.tripId(administrativeUrl) == tripId
+                    when {
+                        provenNotCurrentOrFuture -> BlaBlaRidesTripLink0582(
+                            tripId = tripId,
+                            administrativeUrl = administrativeUrl,
+                            publicTripStatus = "NOT_REQUIRED_EXPIRED",
+                            shareEligibility = "EXPIRED",
+                        )
+                        previous != null -> previous
+                        else -> {
+                            indexError0612 = "UNIFIED_RIDES_INDEX_UNRESOLVED_TRIP_LINK"
+                            BlaBlaRidesTripLink0582(tripId = tripId)
+                        }
+                    }
                 }
             }
-            store.rewriteRidesIndexTripLinks0582(captureId, account.id, expectedProfileUuid, links)
+            val rewritten = if (indexError0612.isBlank()) {
+                store.rewriteRidesIndexTripLinks0582(captureId, account.id, expectedProfileUuid, links)
+            } else {
+                null
+            }
+            if (rewritten == null) {
+                indexError0612 = indexError0612.ifBlank { "UNIFIED_RIDES_INDEX_LINK_REWRITE_FAILED" }
+            }
+        } else {
+            indexError0612 = "UNIFIED_RIDES_INDEX_MISSING"
         }
 
+        val captureIncomplete = captures.count { it.status != "COMPLETE" }
+        val finalIncomplete = captureIncomplete + if (indexError0612.isNotBlank()) 1 else 0
         store.updateProfile(captureId, account.id) { previous ->
             if (finalIncomplete == 0) {
                 previous.copy(tripCaptures0605 = captures.toList(), errorCode = "")
@@ -338,7 +385,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 previous.copy(
                     tripCaptures0605 = captures.toList(),
                     status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
-                    errorCode = "UNIFIED_FUTURE_TRIPS_INCOMPLETE_$finalIncomplete",
+                    errorCode = indexError0612.ifBlank { "UNIFIED_FUTURE_TRIPS_INCOMPLETE_$captureIncomplete" },
                 )
             }
         }
@@ -601,16 +648,29 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             published_seats = publishedSeats,
         )
 
+        val passengerSegmentsResolved = trip?.let { source ->
+            val observedCapacity = source.published_seats ?: return@let false
+            PublicAgendaAutoSync0300.toPublicTrip(
+                source = source,
+                capacity = observedCapacity,
+                nowMillis = Long.MIN_VALUE,
+                rotaCertaSeatAllocation = 0,
+            )?.let { projection ->
+                PublicAgendaAutoSync0300.externalPassengerSegmentsResolved(source, projection.trip)
+            } == true
+        } == true
         val operationalComplete =
             trip != null &&
                 trip.passenger_roster_complete &&
                 trip.itinerary_authoritative &&
+                passengerSegmentsResolved &&
                 trip.published_seats != null &&
                 !trip.public_trip_href.isNullOrBlank()
         val missing = buildList {
             if (trip == null) add("NORMALIZATION")
             if (trip?.passenger_roster_complete != true) add("ROSTER")
             if (trip?.itinerary_authoritative != true) add("ITINERARY")
+            if (!passengerSegmentsResolved) add("PASSENGER_SEGMENTS")
             if (trip?.published_seats == null) add("SEATS")
             if (trip?.public_trip_href.isNullOrBlank()) add("PUBLIC_LINK")
         }
@@ -632,6 +692,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 normalized = trip != null,
                 passengerRosterComplete = trip?.passenger_roster_complete == true,
                 itineraryAuthoritative = trip?.itinerary_authoritative == true,
+                passengerSegmentsResolved = passengerSegmentsResolved,
                 publishedSeats = trip?.published_seats,
                 publicTripUrl = trip?.public_trip_href.orEmpty(),
                 publicTripUrlSource = trip?.public_trip_href_source.orEmpty(),
