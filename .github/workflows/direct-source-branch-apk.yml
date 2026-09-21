@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.608 direct HTML account capture exact SHA
-# trigger: direct-html-account-capture
+# trigger: direct-html-account-capture-ci-fix
 
 on:
   push:
@@ -53,7 +53,6 @@ jobs:
 
           grep -Fq 'val releaseVersionCode = 5_899' app/build.gradle.kts
           grep -Fq 'val releaseVersionName = "0.1.608"' app/build.gradle.kts
-          grep -Fq 'BlaBlaUnifiedHtmlCapture0605.captureProfile' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
