@@ -169,10 +169,24 @@ class TripStore(context: Context) {
             }
             .forEach(nextTrips::add)
 
+        val htmlBackedTripIds0607 = currentTrips
+            .filter { trip ->
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING ||
+                    !trip.blablaTripId.isNullOrBlank() ||
+                    !trip.blablaProfileUuid.isNullOrBlank()
+            }
+            .map(Trip::id)
+            .toSet()
         val currentBookingById = currentBookings.associateBy(Booking::id)
-        val prepared = projection.bookings.map { booking ->
-            prepareBookingForPersistence(booking, currentBookingById[booking.id])
-        }
+        val prepared = projection.bookings
+            .filterNot { booking ->
+                booking.tripId in htmlBackedTripIds0607 &&
+                    (booking.source == BookingSource.BLABLACAR ||
+                        booking.capacityClaimType == CapacityClaimType.EXTERNAL_OCCUPANCY)
+            }
+            .map { booking ->
+                prepareBookingForPersistence(booking, currentBookingById[booking.id])
+            }
         val passengerIds = passengerIdentityStore.ensureLocalBookingProfilesBatch(prepared)
         val normalizedIncomingBookings = prepared.map { booking ->
             booking.copy(
