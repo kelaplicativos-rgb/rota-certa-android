@@ -130,6 +130,13 @@ internal fun shouldCaptureRide0605(
     return cutoff == null || !cutoff.isBefore(now)
 }
 
+internal data class BlaBlaTargetedHtmlRefreshResult0607(
+    val trip: BlaBlaCollectorTrip? = null,
+    val errorCode: String = "",
+    val operationalComplete: Boolean = false,
+    val evidencePath: String = "",
+)
+
 internal object BlaBlaUnifiedHtmlCapture0605 {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -324,6 +331,129 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             completeTrips = captures.count { it.status == "COMPLETE" },
             incompleteTrips = finalIncomplete,
         )
+    }
+
+    suspend fun captureSingleTrip0607(
+        context: Context,
+        target: BlaBlaTripTarget0407,
+        existingSource: BlaBlaCollectorTrip?,
+    ): BlaBlaTargetedHtmlRefreshResult0607 {
+        val app = context.applicationContext
+        val account = BlaBlaDynamicAccountRegistry(app).get(target.accountId)
+            ?.takeIf {
+                it.profileUuid?.trim()?.equals(target.profileUuid.trim(), ignoreCase = true) == true
+            }
+            ?: return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_ACCOUNT_IDENTITY_MISMATCH")
+        val definition = account.verifiedDefinition()
+            ?: return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_ACCOUNT_UNVERIFIED")
+        val administrativeUrl = BlaBlaCollectorUrlModule.absolute(target.tripHref)
+        if (BlaBlaCollectorUrlModule.tripId(administrativeUrl) != target.tripId) {
+            return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_TRIP_IDENTITY_MISMATCH")
+        }
+
+        val scripts = withContext(Dispatchers.IO) {
+            UnifiedDirectScripts0605(
+                detail = readAsset0605(app, "blablacar/scripts/trip_detail.js"),
+                share = readAsset0605(app, "blablacar/scripts/trip_public_share.js"),
+                edit = readAsset0605(app, "blablacar/scripts/trip_edit.js"),
+                seats = readAsset0605(app, "blablacar/scripts/seat_options.js"),
+            )
+        }
+        if (listOf(scripts.detail, scripts.share, scripts.edit, scripts.seats).any(String::isBlank)) {
+            return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_SCRIPT_MISSING")
+        }
+
+        val sessionStore = BlaBlaDynamicSessionStore(app)
+        val captureId = "targeted_" + Instant.now().toString().replace(":", "-") + "_" +
+            seatSyncDiagnosticKey(target.tripId).replace(Regex("[^A-Za-z0-9._-]"), "").take(20)
+        val lease = acquireUnifiedFlight0605(sessionStore, account, captureId)
+            ?: return BlaBlaTargetedHtmlRefreshResult0607(errorCode = "HTML_TARGET_SINGLE_FLIGHT_BUSY")
+        val source = existingSource
+        val ride = ParsedExternalRide0535(
+            tripId = target.tripId,
+            listPosition = 0,
+            date = source?.date.orEmpty().ifBlank { LocalDate.now().toString() },
+            dateText = source?.date.orEmpty(),
+            dateYearExplicit = true,
+            dateResolution = "TARGETED_HTML_EXISTING_CANONICAL",
+            departureTime = source?.departure_time.orEmpty(),
+            arrivalTime = source?.arrival_time.orEmpty(),
+            origin = source?.actual_departure.orEmpty().ifBlank { source?.search_from.orEmpty() },
+            destination = source?.actual_arrival.orEmpty().ifBlank { source?.search_to.orEmpty() },
+            status = "",
+            administrativeUrl = administrativeUrl,
+        )
+
+        return try {
+            val captured = withContext(Dispatchers.Main.immediate) {
+                val themed = ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault)
+                val webView = WebView(themed)
+                try {
+                    WebViewCompat.setProfile(webView, account.webProfileName)
+                    WebViewCompat.getProfile(webView).cookieManager.apply {
+                        setAcceptCookie(true)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            setAcceptThirdPartyCookies(webView, true)
+                        }
+                    }
+                    webView.settings.javaScriptEnabled = true
+                    webView.settings.domStorageEnabled = true
+                    webView.settings.allowFileAccess = false
+                    webView.settings.allowContentAccess = false
+                    webView.settings.loadsImagesAutomatically = false
+                    webView.settings.blockNetworkImage = true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    }
+                    captureTrip0605(
+                        webView = webView,
+                        store = BlaBlaRidesSnapshotStore0526(app),
+                        captureId = captureId,
+                        definition = definition,
+                        ride = ride,
+                        scripts = scripts,
+                    )
+                } finally {
+                    runCatching { webView.stopLoading() }
+                    runCatching { webView.webViewClient = WebViewClient() }
+                    runCatching { webView.loadUrl("about:blank") }
+                    runCatching { webView.clearHistory() }
+                    runCatching { webView.removeAllViews() }
+                    runCatching { webView.destroy() }
+                }
+            }
+            val trip = captured.trip
+                ?: return BlaBlaTargetedHtmlRefreshResult0607(
+                    errorCode = captured.evidence.errorCode.ifBlank { "HTML_TARGET_NORMALIZATION_FAILED" },
+                    evidencePath = captured.evidence.htmlFile,
+                )
+
+            sessionStore.saveSync(
+                account = account,
+                lastUrl = captured.evidence.finalUrl.ifBlank { administrativeUrl },
+                trips = listOf(trip),
+                skippedTrips = if (captured.operationalComplete) 0 else 1,
+                identityVerified = true,
+                dateScope = listOfNotNull(runCatching { LocalDate.parse(trip.date) }.getOrNull()),
+                targetedTripId = target.tripId,
+                selectiveScriptSync0449 = false,
+                acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            )
+            val response = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
+            BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = true)
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_TARGETED_HTML_REFRESH_0607",
+                app.packageName,
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=${captured.operationalComplete} evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false",
+            )
+            BlaBlaTargetedHtmlRefreshResult0607(
+                trip = trip,
+                operationalComplete = captured.operationalComplete,
+                evidencePath = captured.evidence.htmlFile,
+            )
+        } finally {
+            sessionStore.releaseExternalFlight0426(lease)
+        }
     }
 
     private suspend fun captureTrip0605(
@@ -593,6 +723,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             dateScope = dateScope,
             targetedTripId = null,
             selectiveScriptSync0449 = false,
+            acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
         )
         val accounts = BlaBlaDynamicAccountRegistry(context).list()
         val response = sessionStore.combinedResponse(accounts)
