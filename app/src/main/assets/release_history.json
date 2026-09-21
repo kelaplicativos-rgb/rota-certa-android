@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.606",
+      "build": 5897,
+      "commit": null,
+      "branch": "agent/unified-html-evidence-fix-0.1.606",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Fallback autoritativo de itinerário para o DOM atual da BlaBlaCar usando âncoras /rides/offer/map vinculadas ao tripId e as linhas diretas da rota.",
+        "Reconhecimento de roster completo a partir dos links reais /passenger/ e /booking/ da própria oferta administrativa.",
+        "Espera ativa de hidratação da página SPA antes de congelar o HTML individual da viagem.",
+        "Captura de lugares publicados pela rota autenticada de opções, usando link direto quando presente e rota determinística validada pelo mesmo tripId quando necessário."
+      ],
+      "fixed": [
+        "Capturas 0.1.605 marcavam todos os itinerários como ausentes apesar de a rota estar visível no HTML.",
+        "Passageiros já presentes no HTML não eram aceitos como evidência terminal de roster.",
+        "Algumas ofertas eram capturadas cedo demais, contendo somente a casca da BlaBlaCar."
+      ],
+      "improved": [
+        "A captura continua sem BlaBlaAutomaticCollectionCoordinator0400 e sem BlaBlaBrowserOrchestrator no caminho de aquisição.",
+        "O gate de vagas continua fail-closed: valores só são publicados quando rota, roster, lugares e vínculo da viagem estão comprovados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "UNIFIED_FUTURE_TRIPS_INCOMPLETE causado por falso negativo de ITINERARY/ROSTER/SEATS no HTML efetivamente capturado."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Suas viagens",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.605",
       "build": 5896,
       "commit": null,
