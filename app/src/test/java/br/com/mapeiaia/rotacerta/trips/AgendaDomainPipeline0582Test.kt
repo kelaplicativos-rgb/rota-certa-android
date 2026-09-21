@@ -23,6 +23,20 @@ class AgendaDomainPipeline0582Test {
         blablaProfileUuid = "profile-0582",
         blablaTripId = "administrativeTrip0582",
         blablaPublicUrl = publicUrl,
+        itineraryAuthoritative = true,
+        capacityReliable = true,
+        externalSnapshotComplete = true,
+        externalSnapshot = BlaBlaCollectorTrip(
+            profile_uuid = "profile-0582",
+            date = "2033-05-18",
+            actual_departure = "Origem",
+            actual_arrival = "Destino",
+            trip_id = "administrativeTrip0582",
+            itinerary_stops = listOf("Origem", "Destino"),
+            itinerary_authoritative = true,
+            published_seats = capacity,
+            passenger_roster_complete = true,
+        ),
         stops = listOf(
             TripStop(
                 id = "origin",
