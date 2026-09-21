@@ -76,6 +76,8 @@ internal data class BlaBlaRidesSnapshotProfile0526(
     val mhtmlBytes: Long = 0L,
     val htmlSha256: String = "",
     val mhtmlSha256: String = "",
+    /** Per-current/future-trip HTML evidence captured by the unified 0.1.605 path. */
+    val tripCaptures0605: List<BlaBlaRidesTripCapture0605> = emptyList(),
     val status: String = "PENDING",
     val errorCode: String = "",
 )
@@ -213,6 +215,26 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
         return evidence(captureId, file)
     }
 
+    fun writeTripHtml0605(
+        captureId: String,
+        profileUuid: String,
+        tripId: String,
+        html: String,
+    ): BlaBlaRidesSnapshotFile0526 {
+        require(html.isNotBlank()) { "Trip HTML evidence is empty" }
+        val id = tripId.trim().takeIf(String::isNotEmpty) ?: error("Strong trip id required")
+        val dir = File(profileDir(captureId, profileUuid), "trips").apply { mkdirs() }
+        val key = sha256(id.toByteArray(Charsets.UTF_8)).take(24)
+        val file = File(dir, "$key.html")
+        val temp = File(dir, "$key.html.tmp")
+        temp.writeText(html, Charsets.UTF_8)
+        if (!temp.renameTo(file)) {
+            file.writeBytes(temp.readBytes())
+            temp.delete()
+        }
+        return evidence(captureId, file)
+    }
+
     fun mhtmlTarget(captureId: String, profileUuid: String): File {
         val dir = profileDir(captureId, profileUuid).apply { mkdirs() }
         return File(dir, "suas-viagens.mhtml")
@@ -244,6 +266,10 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
                 profile.ridesIndexFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.htmlFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.mhtmlFile.takeIf(String::isNotBlank)?.let(::add)
+                profile.tripCaptures0605
+                    .map(BlaBlaRidesTripCapture0605::htmlFile)
+                    .filter(String::isNotBlank)
+                    .forEach(::add)
             }
         }.distinct()
         relativePaths.mapNotNull { relative ->
@@ -774,7 +800,8 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             val completedProfile0582 = manifest.profiles
                 .singleOrNull { it.accountKey == store.accountKey(account.id) }
             if (completedProfile0582?.status == BlaBlaRidesSnapshotStatus0526.COMPLETE) {
-                captureMissingPublicTripLinks0582(
+                onProgress("Capturando HTMLs das viagens futuras • ${account.displayLabel}")
+                BlaBlaUnifiedHtmlCapture0605.captureProfile(
                     context = app,
                     store = store,
                     account = account,
@@ -822,134 +849,9 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         }
     }
 
-    private suspend fun captureMissingPublicTripLinks0582(
-        context: Context,
-        store: BlaBlaRidesSnapshotStore0526,
-        account: BlaBlaDynamicAccount,
-        captureId: String,
-        profile: BlaBlaRidesSnapshotProfile0526,
-        onProgress: (String) -> Unit,
-    ) {
-        val expectedProfileUuid = BlaBlaRidesSnapshotStore0526.strongUuid(profile.authenticatedProfileUuid)
-            ?: return
-        val index = store.readRidesIndexJson0582(captureId, profile) ?: return
-        if (index.tripIds.isEmpty()) return
-
-        val htmlFile = store.resolveArtifact0528(captureId, profile.htmlFile) ?: return
-        val parsed = runCatching {
-            parseExternalRideCards0535(
-                raw = htmlFile.readText(Charsets.UTF_8),
-                captureDate = LocalDate.now(),
-                source = "HTML",
-            )
-        }.getOrNull() ?: return
-        val administrativeUrls = buildMap {
-            index.tripLinks
-                .filter { it.tripId in index.tripIds && it.administrativeUrl.isNotBlank() }
-                .forEach { put(it.tripId, it.administrativeUrl) }
-            parsed.rides
-                .filter { it.tripId in index.tripIds && it.administrativeUrl.isNotBlank() }
-                .forEach { put(it.tripId, it.administrativeUrl) }
-        }
-
-        fun currentLinks(): List<BlaBlaRidesTripLink0582> {
-            val collectorTrips = BlaBlaCollectorStateStore(context)
-                .lastResponseRecoveringDynamicSessions()
-                ?.trips
-                .orEmpty()
-            val rawLinks = buildRidesTripLinks0582(
-                profileUuid = expectedProfileUuid,
-                tripIds = index.tripIds,
-                administrativeUrlsByTripId = administrativeUrls,
-                collectorTrips = collectorTrips,
-            )
-            return applyRidesShareEligibility0583(
-                links = rawLinks,
-                rides = parsed.rides,
-            )
-        }
-
-        var links = currentLinks()
-        val initiallyMissing = links.filter {
-            it.publicTripStatus != "COMPLETE" &&
-                it.administrativeUrl.isNotBlank()
-        }
-        if (initiallyMissing.isNotEmpty()) {
-            val tenantId = RotaCertaTenantRegistry(context).activeTenant().tenantId
-            initiallyMissing.forEachIndexed { position, initialLink ->
-                var attempt = 0
-                while (attempt < PUBLIC_LINK_CAPTURE_ATTEMPTS_0583) {
-                    val liveLink = currentLinks().singleOrNull { it.tripId == initialLink.tripId }
-                        ?: break
-                    if (liveLink.publicTripStatus == "COMPLETE") break
-                    attempt++
-                    onProgress(
-                        "Capturando link público ${position + 1}/${initiallyMissing.size} • tentativa $attempt/$PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 • ${account.displayLabel}",
-                    )
-                    val target = BlaBlaTripTarget0407(
-                        tenantId = tenantId,
-                        accountId = account.id,
-                        profileUuid = expectedProfileUuid,
-                        tripId = liveLink.tripId,
-                        tripHref = liveLink.administrativeUrl,
-                    )
-                    val result = runCatching {
-                        BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
-                            context = context,
-                            target = target,
-                            commandId = "rides-public-link-${captureId.take(30)}-${liveLink.tripId.take(70)}-$attempt",
-                            origin = "rides_snapshot_public_link_0583",
-                            timeoutMillis = PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582,
-                            enabledScripts = PUBLIC_LINK_ONLY_SCRIPTS_0583,
-                        )
-                    }.getOrNull()
-                    val afterAttempt = currentLinks().singleOrNull { it.tripId == liveLink.tripId }
-                    UnifiedDebugEventStore.recordAlways(
-                        "BLABLACAR_RIDES_PUBLIC_LINK_REVERIFY_0583",
-                        context.packageName,
-                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} tripKey=${seatSyncDiagnosticKey(liveLink.tripId)} attempt=$attempt result=${result?.status ?: "FAILED"} linkComplete=${afterAttempt?.publicTripStatus == "COMPLETE"} eligibility=${afterAttempt?.shareEligibility ?: "UNKNOWN"} browserVisible=false synthesized=false",
-                    )
-                    if (afterAttempt?.publicTripStatus == "COMPLETE") break
-                }
-            }
-            links = currentLinks()
-        }
-
-        val rewritten = store.rewriteRidesIndexTripLinks0582(
-            captureId = captureId,
-            accountId = account.id,
-            profileUuid = expectedProfileUuid,
-            links = links,
-        )
-        val activeComplete = activeRidesPublicLinksComplete0583(links)
-        val activeCount = links.size
-        val activeLinked = links.count { it.publicTripStatus == "COMPLETE" }
-        val expiredCount = links.count { it.shareEligibility == "EXPIRED" }
-        if (!activeComplete) {
-            store.updateProfile(captureId, account.id) { previous ->
-                previous.copy(
-                    status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
-                    errorCode = "PUBLIC_TRIP_LINKS_INCOMPLETE",
-                )
-            }
-        }
-        UnifiedDebugEventStore.recordAlways(
-            "BLABLACAR_RIDES_PUBLIC_LINKS_CAPTURED_0583",
-            context.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} trips=${links.size} active=$activeCount activeLinked=$activeLinked expired=$expiredCount operationalComplete=$activeComplete indexRewritten=${rewritten != null} synthesized=false",
-        )
-    }
-
     private const val PROFILE_TIMEOUT_MS = 120_000L
     private const val PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604 = 6
     private const val PROFILE_SINGLE_FLIGHT_RETRY_MS_0604 = 2_000L
-    private const val PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582 = 45_000L
-    private const val PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 = 2
-    private val PUBLIC_LINK_ONLY_SCRIPTS_0583 = listOf(
-        BlaBlaBrowserRequest.TRIP_OPEN.name,
-        BlaBlaBrowserRequest.TRIP_DETAIL.name,
-        BlaBlaBrowserRequest.TRIP_PUBLIC_SHARE.name,
-    )
     private val TERMINAL_STATUSES = setOf(
         BlaBlaRidesSnapshotStatus0526.COMPLETE,
         BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
