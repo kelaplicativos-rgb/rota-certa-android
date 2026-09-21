@@ -119,8 +119,9 @@ internal object AgendaSeatPolicy0582 {
         trip: Trip,
         bookings: List<Booking>,
         nowMillis: Long,
-    ): List<AgendaSegmentAvailabilityState0582> =
-        SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis).map { load ->
+    ): List<AgendaSegmentAvailabilityState0582> {
+        if (!segmentAvailabilityTruth0603(trip).verified) return emptyList()
+        return SeatAvailabilityEngine.segmentLoads(trip, bookings, nowMillis).map { load ->
             AgendaSegmentAvailabilityState0582(
                 fromStopId = load.from.id,
                 toStopId = load.to.id,
@@ -131,6 +132,7 @@ internal object AgendaSeatPolicy0582 {
                 overbookingSeats = load.overbookingSeats,
             )
         }
+    }
 }
 
 internal object AgendaDomainPipeline0582 {
