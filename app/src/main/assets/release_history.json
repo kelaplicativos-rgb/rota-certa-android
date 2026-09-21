@@ -2,6 +2,39 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.608",
+      "build": 5899,
+      "commit": null,
+      "branch": "agent/direct-html-account-capture-0.1.608",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O botão global passa a abrir diretamente /rides na sessão WebView isolada de cada conta, sem SESSION_IDENTITY, RIDE_LIST/TRIP_DETAIL de bootstrap ou BlaBlaDynamicAccountSessionController0401.",
+        "Identidade da captura global é vinculada à conta já configurada e ao perfil WebView isolado; a sessão ainda precisa alcançar exatamente /rides e cada viagem continua validada pelo tripId forte.",
+        "A página Suas viagens usa somente HTML sanitizado, sem MHTML obrigatório, com estabilização rápida por DOM e conjunto de tripIds.",
+        "Após o HTML do perfil estabilizar, a mesma pipeline HTML-authoritative existente captura e canonicaliza somente viagens atuais/futuras."
+      ],
+      "fixed": [
+        "Elimina o timeout de até 120 segundos por perfil causado pela tentativa de redescobrir o profileUuid no DOM antes de baixar o HTML.",
+        "Uma sessão sem login ou desviada de /rides falha imediatamente sem reativar coletor ou orquestrador antigo."
+      ],
+      "improved": [
+        "Captura global continua multi-perfil, sequencial e fail-closed, mas remove a etapa de identidade que não acrescentava dados operacionais ao HTML."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "PROFILE_IDENTITY_NOT_STRONG e PROFILE_TIMEOUT deixam de impedir o início da captura HTML quando a conta já possui profileUuid vinculado."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.607",
       "build": 5898,
       "commit": null,
