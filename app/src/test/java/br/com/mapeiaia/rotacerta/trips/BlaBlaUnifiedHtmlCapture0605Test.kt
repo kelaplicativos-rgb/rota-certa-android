@@ -125,4 +125,56 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         )
         assertTrue(externalCollectorAllowsTombstones0406(html))
     }
+    @Test
+    fun globalAtomicCommitRequiresEveryProfileAndTripComplete0609() {
+        assertTrue(
+            globalHtmlAtomicCommitEligible0609(
+                manifestResult = "COMPLETE",
+                profileStatuses = listOf("COMPLETE", "COMPLETE"),
+                tripStatuses = List(19) { "COMPLETE" },
+                expectedAccountCount = 2,
+                observedAccountCount = 2,
+                stagedTripCount = 19,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertFalse(
+            globalHtmlAtomicCommitEligible0609(
+                manifestResult = "COMPLETE",
+                profileStatuses = listOf("COMPLETE", "INCOMPLETE"),
+                tripStatuses = List(18) { "COMPLETE" } + "INCOMPLETE",
+                expectedAccountCount = 2,
+                observedAccountCount = 2,
+                stagedTripCount = 19,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+    }
+
+    @Test
+    fun globalAtomicCommitRejectsPartialOrLegacyState0609() {
+        assertFalse(
+            globalHtmlAtomicCommitEligible0609(
+                manifestResult = "COMPLETE",
+                profileStatuses = listOf("COMPLETE", "COMPLETE"),
+                tripStatuses = List(19) { "COMPLETE" },
+                expectedAccountCount = 2,
+                observedAccountCount = 2,
+                stagedTripCount = 13,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertFalse(
+            globalHtmlAtomicCommitEligible0609(
+                manifestResult = "COMPLETE",
+                profileStatuses = listOf("COMPLETE", "COMPLETE"),
+                tripStatuses = List(19) { "COMPLETE" },
+                expectedAccountCount = 2,
+                observedAccountCount = 2,
+                stagedTripCount = 19,
+                authoritySource = "",
+            ),
+        )
+    }
+
 }
