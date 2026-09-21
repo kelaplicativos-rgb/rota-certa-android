@@ -17,6 +17,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -724,17 +725,43 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 return@forEachIndexed
             }
 
-            val terminal = withTimeoutOrNull(PROFILE_TIMEOUT_MS) {
-                runProfile(
-                    context = app,
-                    account = account,
-                    captureId = manifest.captureId,
-                    position = index + 1,
-                    total = accounts.size,
-                    onProgress = onProgress,
+            var terminal = false
+            var profileAttempt0604 = 0
+            while (profileAttempt0604 < PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604) {
+                profileAttempt0604++
+                val finished = withTimeoutOrNull(PROFILE_TIMEOUT_MS) {
+                    runProfile(
+                        context = app,
+                        account = account,
+                        captureId = manifest.captureId,
+                        position = index + 1,
+                        total = accounts.size,
+                        onProgress = onProgress,
+                    )
+                }
+                manifest = store.read(manifest.captureId) ?: manifest
+                val attemptedProfile0604 = manifest.profiles
+                    .singleOrNull { it.accountKey == store.accountKey(account.id) }
+                val singleFlightBusy0604 =
+                    attemptedProfile0604?.status == BlaBlaRidesSnapshotStatus0526.FAILED_SESSION &&
+                        attemptedProfile0604.errorCode == "SINGLE_FLIGHT_BUSY"
+                if (!singleFlightBusy0604) {
+                    terminal = finished == true
+                    break
+                }
+                UnifiedDebugEventStore.recordAlways(
+                    "RIDES_SNAPSHOT_SINGLE_FLIGHT_WAIT_0604",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profile=${index + 1}/${accounts.size} attempt=$profileAttempt0604 action=wait_and_retry_same_account",
                 )
+                if (profileAttempt0604 < PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604) {
+                    onProgress(
+                        "Perfil ${index + 1}/${accounts.size} • aguardando operação anterior terminar • tentativa ${profileAttempt0604 + 1}/$PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604",
+                    )
+                    delay(PROFILE_SINGLE_FLIGHT_RETRY_MS_0604)
+                }
             }
-            if (terminal != true) {
+            if (!terminal) {
                 store.updateProfile(manifest.captureId, account.id) { previous ->
                     if (previous.status in TERMINAL_STATUSES) previous else previous.copy(
                         completedAt = Instant.now().toString(),
@@ -844,8 +871,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
 
         var links = currentLinks()
         val initiallyMissing = links.filter {
-            it.shareEligibility != "EXPIRED" &&
-                it.publicTripStatus != "COMPLETE" &&
+            it.publicTripStatus != "COMPLETE" &&
                 it.administrativeUrl.isNotBlank()
         }
         if (initiallyMissing.isNotEmpty()) {
@@ -855,7 +881,7 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
                 while (attempt < PUBLIC_LINK_CAPTURE_ATTEMPTS_0583) {
                     val liveLink = currentLinks().singleOrNull { it.tripId == initialLink.tripId }
                         ?: break
-                    if (liveLink.publicTripStatus == "COMPLETE" || liveLink.shareEligibility == "EXPIRED") break
+                    if (liveLink.publicTripStatus == "COMPLETE") break
                     attempt++
                     onProgress(
                         "Capturando link público ${position + 1}/${initiallyMissing.size} • tentativa $attempt/$PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 • ${account.displayLabel}",
@@ -896,10 +922,8 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             links = links,
         )
         val activeComplete = activeRidesPublicLinksComplete0583(links)
-        val activeCount = links.count { it.shareEligibility != "EXPIRED" }
-        val activeLinked = links.count {
-            it.shareEligibility != "EXPIRED" && it.publicTripStatus == "COMPLETE"
-        }
+        val activeCount = links.size
+        val activeLinked = links.count { it.publicTripStatus == "COMPLETE" }
         val expiredCount = links.count { it.shareEligibility == "EXPIRED" }
         if (!activeComplete) {
             store.updateProfile(captureId, account.id) { previous ->
@@ -917,6 +941,8 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
     }
 
     private const val PROFILE_TIMEOUT_MS = 120_000L
+    private const val PROFILE_SINGLE_FLIGHT_ATTEMPTS_0604 = 6
+    private const val PROFILE_SINGLE_FLIGHT_RETRY_MS_0604 = 2_000L
     private const val PUBLIC_LINK_CAPTURE_TIMEOUT_MS_0582 = 45_000L
     private const val PUBLIC_LINK_CAPTURE_ATTEMPTS_0583 = 2
     private val PUBLIC_LINK_ONLY_SCRIPTS_0583 = listOf(
