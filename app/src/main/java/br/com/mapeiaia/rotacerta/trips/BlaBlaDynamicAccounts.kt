@@ -344,6 +344,7 @@ private data class DynamicTripItinerary0598(
     val tripId: String = "",
     val domStops: List<String> = emptyList(),
     val networkStops: List<String> = emptyList(),
+    val networkComplete: Boolean = false,
     val authoritative: Boolean = false,
 )
 
@@ -1175,6 +1176,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     scheduleTripDetailCapture(view)
                 }
             }
+            Phase.ITINERARY -> Unit
             Phase.PUBLIC_SHARE -> if (BlaBlaCollectorUrlModule.isAllowed(url)) {
                 val expectedSync = syncGeneration
                 val expectedNavigation = navigationGeneration
@@ -3305,22 +3307,28 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     "account=${account.displayLabel} tripId=$candidateTripId networkSourcePresent=${result.networkSource != null} reason=$fallbackReason exactTrip=true fallback=DOM piiLogged=false",
                 )
             }
+            val boundaryHydratedResult0599 = result.copy(
+                detail = result.detail.copy(
+                    origin = result.detail.origin.ifBlank { candidate.origin.trim() },
+                    destination = result.detail.destination.ifBlank { candidate.destination.trim() },
+                ),
+            )
             val sourceBackedResult = (networkResolution?.let { resolution ->
                 // The trip-bound network response remains non-authoritative for publication shape,
                 // but exact-trip ordered waypoints are useful monotonic route evidence. 0.1.597
                 // accepts them only when they are order-compatible with the structural DOM route.
                 val mergedPassengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(
-                    result.detail.passengers + resolution.passengers,
+                    boundaryHydratedResult0599.detail.passengers + resolution.passengers,
                 )
                 val operationalItinerary0597 =
                     BlaBlaCollectorNetworkSourceModule.reconcileOperationalItinerary0597(
-                        origin = result.detail.origin,
-                        destination = result.detail.destination,
-                        domItinerary = result.itineraryStops,
+                        origin = boundaryHydratedResult0599.detail.origin,
+                        destination = boundaryHydratedResult0599.detail.destination,
+                        domItinerary = boundaryHydratedResult0599.itineraryStops,
                         networkItinerary = resolution.itineraryStops,
                     )
-                result.copy(
-                    detail = result.detail.copy(passengers = mergedPassengers),
+                boundaryHydratedResult0599.copy(
+                    detail = boundaryHydratedResult0599.detail.copy(passengers = mergedPassengers),
                     passengerHrefs = (
                         result.passengerHrefs +
                             resolution.passengers.mapNotNull { passenger -> passenger.booking_href }
@@ -3329,7 +3337,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     // Network waypoints enrich topology but never claim complete published itinerary.
                     itineraryAuthoritative = result.itineraryAuthoritative,
                 )
-            } ?: result).let { source ->
+            } ?: boundaryHydratedResult0599).let { source ->
                 source.copy(
                     detail = source.detail.copy(
                         passengers = BlaBlaCollectorPassengerModule.coalesceDuplicateEvidence(source.detail.passengers),
@@ -3693,13 +3701,34 @@ internal class BlaBlaDynamicAccountSessionController0401(
         }
     }
 
+    private fun itineraryCaptureIsCurrent0599(
+        expectedSync: Long,
+        expectedNavigation: Long,
+        expectedCandidate: Int,
+    ): Boolean {
+        if (
+            phase != Phase.ITINERARY ||
+            expectedSync != syncGeneration ||
+            expectedNavigation != navigationGeneration ||
+            expectedCandidate != candidateIndex ||
+            !pendingTripIsCurrent(expectedSync, expectedCandidate)
+        ) {
+            return false
+        }
+        val expectedTripId = candidates.getOrNull(expectedCandidate)
+            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
+            .orEmpty()
+        val currentTripId = BlaBlaTripIdentity.externalTripIdFromHref(webView.url.orEmpty()).orEmpty()
+        return expectedTripId.isNotBlank() && expectedTripId == currentTripId
+    }
+
     private fun captureDedicatedTripItinerary0598(
         expectedSync: Long,
         expectedNavigation: Long,
         expectedCandidate: Int,
     ) {
         if (!pendingTripIsCurrent(expectedSync, expectedCandidate)) {
-            recordStale("trip_itinerary_pending_mismatch_0598", expectedSync, expectedCandidate)
+            recordStale("trip_itinerary_pending_mismatch_0599", expectedSync, expectedCandidate)
             return
         }
         if (!scriptSelection0449.requested(BlaBlaBrowserRequest.TRIP_ITINERARY)) {
@@ -3712,25 +3741,47 @@ internal class BlaBlaDynamicAccountSessionController0401(
             return
         }
         if (!detailCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate)) {
-            recordStale("trip_itinerary_before_evaluate_0598", expectedSync, expectedCandidate)
+            recordStale("trip_itinerary_before_phase_switch_0599", expectedSync, expectedCandidate)
             return
         }
         if (itineraryCaptureInFlight0598) return
 
-        val candidateTripId = candidates.getOrNull(expectedCandidate)
-            ?.let { BlaBlaTripIdentity.externalTripIdFromHref(it.href) }
-            .orEmpty()
-        val pending = pendingTripDetail ?: run {
-            recordStale("trip_itinerary_pending_missing_0598", expectedSync, expectedCandidate)
+        val candidate = candidates.getOrNull(expectedCandidate) ?: run {
+            recordStale("trip_itinerary_candidate_missing_0599", expectedSync, expectedCandidate)
             return
         }
+        val candidateTripId = BlaBlaTripIdentity.externalTripIdFromHref(candidate.href).orEmpty()
+        val pending = pendingTripDetail ?: run {
+            recordStale("trip_itinerary_pending_missing_0599", expectedSync, expectedCandidate)
+            return
+        }
+        val effectiveOrigin0599 = pending.detail.origin.ifBlank { candidate.origin.trim() }
+        val effectiveDestination0599 = pending.detail.destination.ifBlank { candidate.destination.trim() }
+        if (effectiveOrigin0599.isBlank() || effectiveDestination0599.isBlank()) {
+            UnifiedDebugEventStore.recordAlways(
+                "TRIP_ITINERARY_BOUNDARY_MISSING_0599",
+                packageName,
+                "account=${account.displayLabel} tripId=$candidateTripId detailOriginPresent=${pending.detail.origin.isNotBlank()} detailDestinationPresent=${pending.detail.destination.isNotBlank()} candidateOriginPresent=${candidate.origin.isNotBlank()} candidateDestinationPresent=${candidate.destination.isNotBlank()} action=preserve_previous failClosed=true",
+            )
+            continueAfterTripItinerary0598(expectedSync, expectedCandidate)
+            return
+        }
+
         itineraryCaptureInFlight0598 = true
+        enterBrowserPhase(
+            Phase.ITINERARY,
+            BlaBlaBrowserRequest.TRIP_ITINERARY,
+            "capture_dedicated_itinerary_0599",
+        )
+        UnifiedDebugEventStore.record(
+            "TRIP_ITINERARY_PHASE_ENTERED_0599",
+            packageName,
+            "account=${account.displayLabel} tripId=$candidateTripId sync=$expectedSync nav=$expectedNavigation candidate=${expectedCandidate + 1} detailOriginPresent=${pending.detail.origin.isNotBlank()} candidateOriginFallback=${pending.detail.origin.isBlank()} detailDestinationPresent=${pending.detail.destination.isNotBlank()} candidateDestinationFallback=${pending.detail.destination.isBlank()}",
+        )
         evaluateRequest<DynamicTripItinerary0598>(BlaBlaBrowserRequest.TRIP_ITINERARY) { evidence ->
             itineraryCaptureInFlight0598 = false
-            if (!detailCaptureIsCurrent(expectedSync, expectedNavigation, expectedCandidate) ||
-                !pendingTripIsCurrent(expectedSync, expectedCandidate)
-            ) {
-                recordStale("trip_itinerary_after_evaluate_0598", expectedSync, expectedCandidate)
+            if (!itineraryCaptureIsCurrent0599(expectedSync, expectedNavigation, expectedCandidate)) {
+                recordStale("trip_itinerary_after_evaluate_0599", expectedSync, expectedCandidate)
                 return@evaluateRequest
             }
 
@@ -3742,29 +3793,34 @@ internal class BlaBlaDynamicAccountSessionController0401(
                     capturedUrlTripId == candidateTripId
             }
             val passengerRecovered = BlaBlaItineraryRecovery0598.recoverFromPassengerSegments(
-                origin = pending.detail.origin,
-                destination = pending.detail.destination,
+                origin = effectiveOrigin0599,
+                destination = effectiveDestination0599,
                 passengers = pendingTripPassengers,
             )
             val merged = BlaBlaItineraryRecovery0598.merge(
-                origin = pending.detail.origin,
-                destination = pending.detail.destination,
+                origin = effectiveOrigin0599,
+                destination = effectiveDestination0599,
                 currentStops = pending.itineraryStops,
                 currentAuthoritative = pending.itineraryAuthoritative,
                 dedicatedDomStops = exactEvidence?.domStops.orEmpty(),
                 dedicatedDomAuthoritative = exactEvidence?.authoritative == true,
                 dedicatedNetworkStops = exactEvidence?.networkStops.orEmpty(),
+                dedicatedNetworkComplete = exactEvidence?.networkComplete == true,
                 passengerStops = passengerRecovered,
             )
             pendingTripDetail = pending.copy(
+                detail = pending.detail.copy(
+                    origin = effectiveOrigin0599,
+                    destination = effectiveDestination0599,
+                ),
                 itineraryStops = merged.stops,
                 itineraryAuthoritative = merged.authoritative,
             )
 
             UnifiedDebugEventStore.recordAlways(
-                "TRIP_ITINERARY_CAPTURED_0598",
+                "TRIP_ITINERARY_CAPTURED_0599",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId exactEvidence=${exactEvidence != null} detailStops=${pending.itineraryStops.size} domStops=${exactEvidence?.domStops?.size ?: 0} networkStops=${exactEvidence?.networkStops?.size ?: 0} passengerRecoveredStops=${passengerRecovered.size} effectiveStops=${merged.stops.size} authoritative=${merged.authoritative} source=${merged.source} failClosed=true",
+                "account=${account.displayLabel} tripId=$candidateTripId exactEvidence=${exactEvidence != null} detailStops=${pending.itineraryStops.size} domStops=${exactEvidence?.domStops?.size ?: 0} networkStops=${exactEvidence?.networkStops?.size ?: 0} networkComplete=${exactEvidence?.networkComplete == true} passengerRecoveredStops=${passengerRecovered.size} effectiveStops=${merged.stops.size} authoritative=${merged.authoritative} source=${merged.source} candidateBoundaryFallback=${pending.detail.origin.isBlank() || pending.detail.destination.isBlank()} serializedPhase=true failClosed=true",
             )
             continueAfterTripItinerary0598(expectedSync, expectedCandidate)
         }
@@ -5414,6 +5470,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         append(" completedCards=").append(completedCardTraversalKeys.size)
         append(" quarantinedCards=").append(quarantinedCardTraversalKeys.size)
         append(" detailInFlight=").append(detailCaptureInFlight)
+        append(" itineraryInFlight=").append(itineraryCaptureInFlight0598)
         append(" publicShareInFlight=").append(publicTripShareCaptureInFlight)
         append(" publicSearchInFlight=").append(publicTripSearchCaptureInFlight)
         append(" passengerInFlight=").append(passengerCaptureInFlight || passengerCardCaptureInFlight)
@@ -5433,7 +5490,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
         return normalized.contains("continuar com e-mail") || normalized.contains("como você deseja se conectar") || normalized.contains("como voce deseja se conectar")
     }
 
-    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, PUBLIC_SHARE, PUBLIC_SEARCH_LINK, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
+    private enum class Phase { IDLE, IDENTITY, PROFILE_PUBLIC, PROFILE_REVIEWS, RIDES, DETAIL, ITINERARY, PUBLIC_SHARE, PUBLIC_SEARCH_LINK, PASSENGER_CARD, PASSENGER_CONTACT, EDIT, OPTIONS }
 
     companion object {
         private const val HOME_URL = "https://www.blablacar.com.br/"
