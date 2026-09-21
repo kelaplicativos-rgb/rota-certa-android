@@ -211,8 +211,10 @@ internal object CentralDayReadModelBuilder0552 {
         val stops = trip.stops.sortedBy(TripStop::order)
         val summary = operationalSeatSummary(trip, bookings, nowMillis)
         val segmentTruth0603 = segmentAvailabilityTruth0603(trip)
-        val segmentLoads = if (
-            segmentTruth0603.verified &&
+        // Internal integrity diagnostics keep the complete canonical calculation.
+        // The truth gate controls only what may be asserted to the operator as
+        // verified "vagas por trecho".
+        val diagnosticSegmentLoads0603 = if (
             summary.operationalLimitConfigured &&
             summary.operationalInventorySeats > 0
         ) {
@@ -224,7 +226,8 @@ internal object CentralDayReadModelBuilder0552 {
         } else {
             emptyList()
         }
-        val worstOverbooking = segmentLoads
+        val segmentLoads = diagnosticSegmentLoads0603.takeIf { segmentTruth0603.verified }.orEmpty()
+        val worstOverbooking = diagnosticSegmentLoads0603
             .filter { it.overbookingSeats > 0 }
             .maxByOrNull(SegmentLoad::overbookingSeats)
         val expectedOperationalVisibility =
