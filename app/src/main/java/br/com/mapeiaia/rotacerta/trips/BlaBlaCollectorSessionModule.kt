@@ -83,6 +83,19 @@ internal data class BlaBlaHtmlSessionReplacement0610(
     val lastUrl: String,
 )
 
+internal fun effectiveSkippedTrips0610(
+    authoritativeComplete: Boolean,
+    exactTarget: Boolean,
+    dateScoped: Boolean,
+    currentSkipped: Int,
+    previousSkipped: Int?,
+): Int = when {
+    authoritativeComplete -> currentSkipped
+    exactTarget -> previousSkipped ?: maxOf(currentSkipped, 1)
+    !dateScoped -> currentSkipped
+    else -> maxOf(currentSkipped, previousSkipped ?: 0)
+}
+
 @Serializable
 data class BlaBlaDynamicSessionSnapshot(
     val accountId: String,
@@ -408,12 +421,13 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     sameAuthorityPrevious?.identityVerified == true &&
                     sameAuthorityPrevious.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
-            val effectiveSkippedTrips = when {
-                authoritativeComplete -> skippedTrips
-                exactTargetId != null -> sameAuthorityPrevious?.skippedTrips ?: maxOf(skippedTrips, 1)
-                dateScopeKeys == null -> skippedTrips
-                else -> maxOf(skippedTrips, sameAuthorityPrevious?.skippedTrips ?: 0)
-            }
+            val effectiveSkippedTrips = effectiveSkippedTrips0610(
+                authoritativeComplete = authoritativeComplete,
+                exactTarget = exactTargetId != null,
+                dateScoped = dateScopeKeys != null,
+                currentSkipped = skippedTrips,
+                previousSkipped = sameAuthorityPrevious?.skippedTrips,
+            )
             writeUnlocked(
                 account,
                 BlaBlaDynamicSessionSnapshot(
