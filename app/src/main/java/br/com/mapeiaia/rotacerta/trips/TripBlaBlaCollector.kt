@@ -332,6 +332,8 @@ data class BlaBlaCollectorMonthResponse(
     val status: String,
     val month: String? = null,
     val strategy: String? = null,
+    /** Canonical ingestion accepts only HTML_DIRECT_0607. Legacy/remote collector responses default to blank. */
+    val authority_source_0607: String = "",
     val profiles: List<BlaBlaCollectorProfile> = emptyList(),
     val routes: List<BlaBlaCollectorRouteRequest> = emptyList(),
     val trips: List<BlaBlaCollectorTrip> = emptyList(),
@@ -442,28 +444,34 @@ class BlaBlaCollectorStateStore(context: Context) {
     }.getOrNull()
 
     fun lastResponseRecoveringDynamicSessions(): BlaBlaCollectorMonthResponse? {
-        val persisted = lastResponse()
-        if (persisted?.status == "cleared") return persisted
-        if (persisted?.trips?.isNotEmpty() == true) {
-            // 0.1.588: the durable combined snapshot is already the product of all-account
-            // reconciliation. Rebuilding every session synchronously from UI callers caused
-            // TIMELINE_STARTUP jank without changing the visible result.
-            return persisted
+        val rawPersisted = lastResponse()
+        if (rawPersisted?.status == "cleared") return rawPersisted
+        val persisted = rawPersisted?.takeIf {
+            it.authority_source_0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
         }
+        if (rawPersisted != null && persisted == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "LEGACY_COLLECTOR_RESPONSE_BLOCKED_0607",
+                appContext.packageName,
+                "persistedTrips=${rawPersisted.trips.size} authority=${rawPersisted.authority_source_0607.ifBlank { "UNMARKED_LEGACY" }} canonicalFeed=false",
+            )
+        }
+        if (persisted?.trips?.isNotEmpty() == true) return persisted
+
         val accounts = BlaBlaDynamicAccountRegistry(appContext).list()
         if (accounts.isEmpty()) return persisted
 
-        // Dynamic per-account snapshots are the canonical source for the Timeline.
-        // Rebuild from every connected account so a one-account/profile refresh can
-        // never hide the cards already confirmed for the other connected accounts.
         val dynamic = BlaBlaDynamicSessionStore(appContext).combinedResponse(accounts)
         if (dynamic.trips.isEmpty()) return persisted
+        require(dynamic.authority_source_0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT) {
+            "NON_HTML_DYNAMIC_RESPONSE_BLOCKED_0607"
+        }
 
         prefs.edit().putString(tenantScope.key(KEY_RESPONSE), json.encodeToString(dynamic)).apply()
         UnifiedDebugEventStore.record(
-            "TIMELINE_REBUILT_FROM_ALL_CONNECTED_ACCOUNTS",
+            "TIMELINE_REBUILT_FROM_HTML_ACCOUNTS_0607",
             appContext.packageName,
-            "persistedTrips=${persisted?.trips?.size ?: 0} combinedTrips=${dynamic.trips.size} accounts=${accounts.size} explicitClear=false",
+            "persistedHtmlTrips=${persisted?.trips?.size ?: 0} combinedHtmlTrips=${dynamic.trips.size} accounts=${accounts.size} htmlAuthority=true",
         )
         return dynamic
     }
