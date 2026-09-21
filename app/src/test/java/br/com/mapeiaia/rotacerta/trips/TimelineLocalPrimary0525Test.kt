@@ -183,7 +183,31 @@ class TimelineLocalPrimary0525Test {
 
     @Test
     fun scenarioG_localCanonicalAgendaMaterializesAvailabilityAndTimelineConsumesSameSegments() {
-        val local = projection(trip(capacity = 4), listOf(booking(seats = 3)))
+        val verifiedTrip = trip(capacity = 4).copy(
+            itineraryAuthoritative = true,
+            externalSnapshotComplete = true,
+            externalSnapshot = BlaBlaCollectorTrip(
+                profile_uuid = "profile-a",
+                date = "2030-09-25",
+                actual_departure = "Origem",
+                actual_arrival = "Destino",
+                trip_id = "trip-b",
+                itinerary_stops = listOf("Origem", "Destino"),
+                itinerary_authoritative = true,
+                passengers = listOf(
+                    BlaBlaCollectorPassenger(
+                        name = "Passageiro",
+                        seats = 3,
+                        boarding = "Origem",
+                        dropoff = "Destino",
+                    ),
+                ),
+                booked_seats = 3,
+                published_seats = 4,
+                passenger_roster_complete = true,
+            ),
+        )
+        val local = projection(verifiedTrip, listOf(booking(seats = 3)))
         val entry = local.entries.single()
         assertTrue(entry.canonicalBackendAuthoritative0494)
         assertEquals(listOf(3), entry.canonicalSegmentLoads0494)
