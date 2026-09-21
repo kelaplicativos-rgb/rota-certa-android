@@ -2074,12 +2074,20 @@ internal object AgendaBackgroundSync0392 {
                 }
             val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, perTripAllocation)
             val incomingComplete = source.published_seats != null && source.passenger_roster_complete
-            val decision = externalCollectorDeltaDecision0403(
-                existingFingerprint = existing?.externalSnapshotFingerprint.orEmpty(),
-                incomingFingerprint = incomingFingerprint,
-                existingComplete = existing?.externalSnapshotComplete == true,
-                incomingComplete = incomingComplete,
-            )
+            // 0.1.612: an HTML-authoritative trip that reappears after a tombstone must
+            // be reconstructed even when its semantic fingerprint is unchanged. Treating a
+            // deleted record as SKIP_UNCHANGED left deleted=true behind and caused the global
+            // HTML commit to process N trips but validate only N-1 active canonical identities.
+            val decision = if (existing?.deleted == true && incomingComplete) {
+                ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL
+            } else {
+                externalCollectorDeltaDecision0403(
+                    existingFingerprint = existing?.externalSnapshotFingerprint.orEmpty(),
+                    incomingFingerprint = incomingFingerprint,
+                    existingComplete = existing?.externalSnapshotComplete == true,
+                    incomingComplete = incomingComplete,
+                )
+            }
             val binding = store.publicExternalBindingForStrongIdentity(profileUuid, blablaTripId)
 
             val canonicalTrip = when (decision) {
