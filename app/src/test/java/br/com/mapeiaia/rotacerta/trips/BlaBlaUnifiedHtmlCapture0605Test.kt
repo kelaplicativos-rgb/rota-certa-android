@@ -244,4 +244,48 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         assertTrue(source.contains("HTML_CANONICAL_RECONCILE_BLOCKED_0610"))
     }
 
+    @Test
+    fun validatedStatusWithCompleteHtmlCoverageIsCommitEligible0611() {
+        assertTrue(
+            htmlCanonicalResponseStatusAccepted0611(
+                status = "validated",
+                completeForScope = true,
+                unresolvedTargetCards = 0,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertTrue(
+            htmlCanonicalResponseStatusAccepted0611(
+                status = "complete",
+                completeForScope = true,
+                unresolvedTargetCards = 0,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertFalse(
+            htmlCanonicalResponseStatusAccepted0611(
+                status = "validated",
+                completeForScope = false,
+                unresolvedTargetCards = 0,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertFalse(
+            htmlCanonicalResponseStatusAccepted0611(
+                status = "validated",
+                completeForScope = true,
+                unresolvedTargetCards = 1,
+                authoritySource = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+            ),
+        )
+        assertFalse(
+            htmlCanonicalResponseStatusAccepted0611(
+                status = "validated",
+                completeForScope = true,
+                unresolvedTargetCards = 0,
+                authoritySource = "",
+            ),
+        )
+    }
+
 }
