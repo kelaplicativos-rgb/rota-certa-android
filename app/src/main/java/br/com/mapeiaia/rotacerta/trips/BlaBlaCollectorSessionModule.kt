@@ -25,6 +25,64 @@ internal object BlaBlaAcquisitionAuthority0607 {
     fun isHtml(value: String?): Boolean = value?.trim() == HTML_DIRECT
 }
 
+internal data class BlaBlaHtmlCaptureTransactionState0610(
+    val captureId: String,
+    val generation: Long,
+    val startedAtMillis: Long,
+)
+
+internal object BlaBlaHtmlCaptureTransaction0610 {
+    private const val PREFS = "rota_certa_html_capture_transaction_0610"
+    private const val KEY_CAPTURE_ID = "capture_id"
+    private const val KEY_GENERATION = "generation"
+    private const val KEY_STARTED_AT = "started_at"
+    private const val STALE_AFTER_MILLIS = 15L * 60L * 1000L
+
+    fun begin(context: Context, captureId: String): BlaBlaHtmlCaptureTransactionState0610 {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val generation = maxOf(now, prefs.getLong(KEY_GENERATION, 0L) + 1L)
+        require(
+            prefs.edit()
+                .putString(KEY_CAPTURE_ID, captureId)
+                .putLong(KEY_GENERATION, generation)
+                .putLong(KEY_STARTED_AT, now)
+                .commit(),
+        ) { "Falha ao abrir transação HTML." }
+        return BlaBlaHtmlCaptureTransactionState0610(captureId, generation, now)
+    }
+
+    fun active(context: Context): BlaBlaHtmlCaptureTransactionState0610? {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val captureId = prefs.getString(KEY_CAPTURE_ID, "").orEmpty().trim()
+        val generation = prefs.getLong(KEY_GENERATION, 0L)
+        val startedAt = prefs.getLong(KEY_STARTED_AT, 0L)
+        if (captureId.isBlank() || generation <= 0L || startedAt <= 0L) return null
+        if (System.currentTimeMillis() - startedAt > STALE_AFTER_MILLIS) {
+            prefs.edit().remove(KEY_CAPTURE_ID).remove(KEY_STARTED_AT).commit()
+            return null
+        }
+        return BlaBlaHtmlCaptureTransactionState0610(captureId, generation, startedAt)
+    }
+
+    fun end(context: Context, captureId: String) {
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getString(KEY_CAPTURE_ID, "").orEmpty() != captureId) return
+        require(
+            prefs.edit().remove(KEY_CAPTURE_ID).remove(KEY_STARTED_AT).commit(),
+        ) { "Falha ao encerrar transação HTML." }
+    }
+}
+
+internal data class BlaBlaHtmlSessionReplacement0610(
+    val account: BlaBlaDynamicAccount,
+    val trips: List<BlaBlaCollectorTrip>,
+    val lastUrl: String,
+)
+
 @Serializable
 data class BlaBlaDynamicSessionSnapshot(
     val accountId: String,
@@ -351,6 +409,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
                     sameAuthorityPrevious.profileUuid == account.profileUuid
             val effectiveIdentityVerified = identityVerified || preservedVerifiedIdentity
             val effectiveSkippedTrips = when {
+                authoritativeComplete -> skippedTrips
                 exactTargetId != null -> sameAuthorityPrevious?.skippedTrips ?: maxOf(skippedTrips, 1)
                 dateScopeKeys == null -> skippedTrips
                 else -> maxOf(skippedTrips, sameAuthorityPrevious?.skippedTrips ?: 0)
@@ -418,6 +477,43 @@ class BlaBlaDynamicSessionStore(context: Context) {
             "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${replacement.trips.size} rosterComplete=${replacement.trips.count { it.passenger_roster_complete }} rosterIncomplete=${replacement.trips.count { !it.passenger_roster_complete }} skipped=${replacement.skippedTrips} identityVerified=${replacement.identityVerified} deterministicHarvest=true enrichedLatest=${merged.enrichedTrips} ignoredStale=${merged.ignoredStaleTrips} authority=session_store",
         )
         replacement
+    }
+
+    internal fun replaceHtmlSnapshotsAtomically0610(
+        replacements: List<BlaBlaHtmlSessionReplacement0610>,
+    ): BlaBlaCollectorMonthResponse = synchronized(htmlCommitLock0610) {
+        val now = System.currentTimeMillis()
+        replacements.forEach { replacement ->
+            val account = replacement.account
+            withAccountLock(account.id) {
+                val previous = readUnlocked(account)
+                val snapshot = BlaBlaDynamicSessionSnapshot(
+                    accountId = account.id,
+                    profileUuid = account.profileUuid,
+                    profileLabel = account.displayLabel,
+                    identityVerified = true,
+                    lastUrl = replacement.lastUrl.take(1000),
+                    updatedAtMillis = now,
+                    trips = replacement.trips,
+                    skippedTrips = 0,
+                    sourceAccessStatus0426 = BlaBlaSourceAccessStatus0426.AVAILABLE,
+                    sourceAccessSinceMillis0426 = 0L,
+                    sourceAccessDetector0426 = "",
+                    sourceAccessIncidentReference0426 = "",
+                    sourceAccessHttpStatus0426 = 0,
+                    lastValidSyncAtMillis0426 = now,
+                    sourceRestrictionCount0426 = previous?.sourceRestrictionCount0426 ?: 0,
+                    acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+                )
+                writeUnlocked(account, snapshot)
+                UnifiedDebugEventStore.recordAlways(
+                    "HTML_SESSION_ATOMIC_REPLACED_0610",
+                    appContext.packageName,
+                    "accountKey=${seatSyncDiagnosticKey(account.id)} trips=${replacement.trips.size} skipped=0 authoritativeComplete=true authority=HTML_DIRECT_0607",
+                )
+            }
+        }
+        combinedResponse(replacements.map(BlaBlaHtmlSessionReplacement0610::account))
     }
 
     fun clearTripsPreservingSessions(accounts: List<BlaBlaDynamicAccount>): Pair<Int, Int> {
@@ -588,5 +684,6 @@ class BlaBlaDynamicSessionStore(context: Context) {
         private const val MAX_HTML_CHARS = 350_000
         private val accountLocks = ConcurrentHashMap<String, Any>()
         private val externalFlightOwners0426 = ConcurrentHashMap<String, String>()
+        private val htmlCommitLock0610 = Any()
     }
 }
