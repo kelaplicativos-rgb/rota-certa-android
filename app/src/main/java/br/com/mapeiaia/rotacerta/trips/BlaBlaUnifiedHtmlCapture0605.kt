@@ -911,44 +911,85 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
 
         val settings = SettingsRepository(app).settings.first()
         val tripStore = TripStore(app)
-        val batch = AgendaBackgroundSync0392.reconcileCollectedExternalTrips0403(
-            context = app,
-            store = tripStore,
-            response = published,
-            rotaCertaSeatAllocation = settings.rotaCertaSeatAllocation,
-            seatAllocationVersion = settings.rotaCertaSeatAllocationVersion,
-            collectionRunId = "html-private-transaction-0610:" + manifest.captureId.take(48),
-            collectionGeneration = transaction.generation,
-            completeProfileUuids = accounts.mapNotNull { it.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank) }.toSet(),
-            htmlTransactionCaptureId0610 = manifest.captureId,
-        )
+        val outbox = TripPublicationOutbox0387(app)
+        val tripRollback0612 = tripStore.snapshotHtmlRollback0612()
+        val outboxRollback0612 = outbox.snapshotHtmlRollback0612()
+        val batch = try {
+            AgendaBackgroundSync0392.reconcileCollectedExternalTrips0403(
+                context = app,
+                store = tripStore,
+                response = published,
+                rotaCertaSeatAllocation = settings.rotaCertaSeatAllocation,
+                seatAllocationVersion = settings.rotaCertaSeatAllocationVersion,
+                collectionRunId = "html-private-transaction-0610:" + manifest.captureId.take(48),
+                collectionGeneration = transaction.generation,
+                completeProfileUuids = accounts.mapNotNull {
+                    it.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                }.toSet(),
+                htmlTransactionCaptureId0610 = manifest.captureId,
+            )
+        } catch (error: Throwable) {
+            val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback0612)
+            val outboxRestored = outbox.restoreHtmlRollback0612(outboxRollback0612)
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_ROLLBACK_0612",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} stage=reconcile_exception tripStoreRestored=$tripRestored outboxRestored=$outboxRestored error=${error::class.java.simpleName.take(80)}",
+            )
+            throw error
+        }
 
         val canonicalTrips = tripStore.trips()
-        val canonicalized = published.trips.count { source ->
+        data class Readback0612(
+            val profileUuid: String,
+            val tripId: String,
+            val matches: List<Trip>,
+        )
+        val readback0612 = published.trips.map { source ->
             val profileUuid = source.profile_uuid.trim()
             val tripId = source.trip_id?.trim().orEmpty()
-            canonicalTrips.count { trip ->
-                !trip.deleted &&
-                    trip.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
-                    trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
-                    trip.blablaTripId?.trim() == tripId
-            } == 1
+            Readback0612(
+                profileUuid = profileUuid,
+                tripId = tripId,
+                matches = canonicalTrips.filter { trip ->
+                    !trip.deleted &&
+                        trip.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
+                        trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                        trip.blablaTripId?.trim() == tripId
+                },
+            )
         }
+        val canonicalized = readback0612.count { it.matches.size == 1 }
+        val unresolved0612 = readback0612.filter { it.matches.size != 1 }
         val canonicalComplete =
             canonicalized == expectedTripCount &&
+                unresolved0612.isEmpty() &&
                 batch.blockedTrips == 0 &&
                 batch.staleResultsRejected == 0 &&
                 batch.missingPreserved == 0
 
         if (!canonicalComplete) {
+            unresolved0612.take(24).forEach { unresolved ->
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_GLOBAL_HTML_CANONICAL_IDENTITY_FAILED_0612",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profileKey=${seatSyncDiagnosticKey(unresolved.profileUuid)} tripId=${unresolved.tripId.take(160)} activeMatches=${unresolved.matches.size} internalTripIds=${unresolved.matches.joinToString(",") { seatSyncDiagnosticKey(it.id) }.take(400)}",
+                )
+            }
+            val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback0612)
+            val outboxRestored = outbox.restoreHtmlRollback0612(outboxRollback0612)
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_GLOBAL_HTML_CANONICAL_VALIDATION_FAILED_0610",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} htmlTrips=$expectedTripCount canonicalized=$canonicalized blocked=${batch.blockedTrips} stale=${batch.staleResultsRejected} missingPreserved=${batch.missingPreserved} changed=${batch.changedTrips} skipped=${batch.skippedTrips}",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} htmlTrips=$expectedTripCount canonicalized=$canonicalized unresolved=${unresolved0612.size} blocked=${batch.blockedTrips} stale=${batch.staleResultsRejected} missingPreserved=${batch.missingPreserved} changed=${batch.changedTrips} skipped=${batch.skippedTrips} rollbackTripStore=$tripRestored rollbackOutbox=$outboxRestored",
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_ROLLBACK_0612",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} stage=canonical_readback tripStoreRestored=$tripRestored outboxRestored=$outboxRestored preservePreviousCanonical=${tripRestored && outboxRestored}",
             )
             return false
         }
-
         val delivered = TripMutationCoordinator0387(app, tripStore).drainPending(
             canonicalTripIds = batch.publicationCanonicalTripIds0431,
         )
