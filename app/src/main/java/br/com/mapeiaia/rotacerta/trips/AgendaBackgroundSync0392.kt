@@ -3213,8 +3213,8 @@ internal object AgendaBackgroundSync0392 {
                 response = collectorResponseForThisCycle0407(),
                 rotaCertaSeatAllocation = tenantSettings.rotaCertaSeatAllocation,
                 seatAllocationVersion = tenantSettings.rotaCertaSeatAllocationVersion,
-                collectionRunId = "collector:" + collectorState.completedGeneration,
-                collectionGeneration = collectorState.completedGeneration,
+                collectionRunId = "html-authority-periodic-0607",
+                collectionGeneration = 0L,
                 completeProfileUuids = completeCollectorProfileUuids0408(appContext, collectorState),
             )
             if (collectorCanonical.changedTrips > 0) {
@@ -3227,9 +3227,8 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        // Canonical/public reconciliation must never wait for BlaBlaCar navigation.
-        // FULL_RECONCILE projects the already-authoritative Timeline snapshot immediately;
-        // "Atualizar agora" and periodic work remain the explicit collector refresh paths.
+        // 0.1.607: background reconciliation is projection-only. BlaBlaCar acquisition
+        // happens exclusively through explicit HTML capture (global or exact-card).
         val collectorRequested = false
         UnifiedDebugEventStore.record(
             "LEGACY_AUTOMATIC_COLLECTOR_DISABLED_0607",
