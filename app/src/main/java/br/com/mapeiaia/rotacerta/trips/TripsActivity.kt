@@ -271,7 +271,7 @@ private fun TripApp(
     var trips by remember {
         val operation = AgendaTrace.operationStart(activity, "TIMELINE_LOCAL_TRIPS_LOAD", "TripApp", traceId)
         try {
-            val loaded = store.trips()
+            val loaded = store.trips().filter(Trip::htmlAuthorityVisible0607)
             AgendaTrace.operationEnd(activity, operation, processedCount = loaded.size)
             mutableStateOf(loaded)
         } catch (error: Throwable) {
@@ -414,7 +414,7 @@ private fun TripApp(
         )
     }
     val refresh = {
-        trips = store.trips()
+        trips = store.trips().filter(Trip::htmlAuthorityVisible0607)
         bookings = store.bookings()
         TripWidgetProvider.updateAll(activity)
     }
