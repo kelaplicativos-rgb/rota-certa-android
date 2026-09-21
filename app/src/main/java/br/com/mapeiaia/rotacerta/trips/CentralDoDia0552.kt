@@ -827,9 +827,9 @@ internal fun CentralDoDiaScreen0552(
                         val overbooking0595 = load0595.overbookingSeats.coerceAtLeast(0)
 
                         // 0.1.601 — leitura operacional do motorista.
-                        // A Central do Dia mostra ocupação/vagas, mas nunca oferece CTA de reserva.
-                        // Ações de conversão ("Reserve Já"/indisponibilidade clicável) pertencem à
-                        // Agenda pública / Viagem Certa e não devem vazar para esta superfície.
+                        // A Central do Dia mostra ocupação/vagas, mas nunca oferece ação de reserva.
+                        // Conversão do passageiro pertence à Agenda pública / Viagem Certa e não
+                        // deve vazar para esta superfície operacional.
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
