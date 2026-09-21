@@ -65,6 +65,7 @@ internal data class BlaBlaUnifiedProfileCaptureResult0605(
 private data class UnifiedTripDetailEnvelope0605(
     val detail: BlaBlaDomTripDetail = BlaBlaDomTripDetail(),
     val editHref: String = "",
+    val optionsHref: String = "",
     val publicTripHref: String = "",
     val itineraryStops: List<String> = emptyList(),
     val itineraryAuthoritative: Boolean = false,
@@ -392,12 +393,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             else -> ""
         }
 
-        val publishedSeats = capturePublishedSeats0605(
-            webView,
-            ride.tripId,
-            detail.editHref,
-            scripts.edit,
-            scripts.seats,
+        val publishedSeats = capturePublishedSeats0606(
+            webView = webView,
+            tripId = ride.tripId,
+            administrativeUrl = administrativeUrl,
+            editHref = detail.editHref,
+            optionsHref = detail.optionsHref,
+            editScript = scripts.edit,
+            seatsScript = scripts.seats,
         )
 
         val candidate = BlaBlaDomRideCandidate(
@@ -498,32 +501,60 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         return null
     }
 
-    private suspend fun capturePublishedSeats0605(
+    private suspend fun capturePublishedSeats0606(
         webView: WebView,
         tripId: String,
+        administrativeUrl: String,
         editHref: String,
+        optionsHref: String,
         editScript: String,
         seatsScript: String,
     ): Int? {
-        val editTarget = BlaBlaCollectorUrlModule.absolute(editHref)
+        val origin = BlaBlaCollectorUrlModule.origin(administrativeUrl) ?: return null
+        val canonicalEdit = BlaBlaCollectorUrlModule.absolute(editHref)
             .takeIf { BlaBlaCollectorUrlModule.editTripId(it) == tripId }
+            ?: "$origin/rides/offer/edit/$tripId"
+                .takeIf { BlaBlaCollectorUrlModule.editTripId(it) == tripId }
             ?: return null
-        val editPage = loadAndEvaluate0605(webView, editTarget, editScript, false) {
-            BlaBlaCollectorUrlModule.editTripId(it) == tripId
-        } ?: return null
-        val edit = decode0605<UnifiedEditEvidence0605>(editPage.payload) ?: return null
-        val optionsTarget = BlaBlaCollectorUrlModule.absolute(edit.optionsHref)
+
+        val directOptions = BlaBlaCollectorUrlModule.absolute(optionsHref)
             .takeIf { BlaBlaCollectorUrlModule.optionsTripId(it) == tripId }
-            ?: return null
+
+        val optionsFromEdit = if (directOptions == null) {
+            val editPage = loadAndEvaluate0605(webView, canonicalEdit, editScript, false) {
+                BlaBlaCollectorUrlModule.editTripId(it) == tripId
+            }
+            val edit = decode0605<UnifiedEditEvidence0605>(editPage?.payload)
+            BlaBlaCollectorUrlModule.absolute(edit?.optionsHref)
+                .takeIf { BlaBlaCollectorUrlModule.optionsTripId(it) == tripId }
+        } else {
+            null
+        }
+
+        // The options route is a deterministic authenticated management route. Constructing
+        // this URL never invents operational data: the page must still load under the exact
+        // trip identity and seat_options.js must return a verified numeric value.
+        val constructedOptions = "$origin/rides/offer/edit/$tripId/options"
+            .takeIf { BlaBlaCollectorUrlModule.optionsTripId(it) == tripId }
+        val optionsTarget = directOptions ?: optionsFromEdit ?: constructedOptions ?: return null
+
         val optionsPage = loadAndEvaluate0605(webView, optionsTarget, seatsScript, false) {
             BlaBlaCollectorUrlModule.optionsTripId(it) == tripId
         } ?: return null
-        val seats = decode0605<UnifiedSeatEvidence0605>(optionsPage.payload) ?: return null
+
+        var seats = decode0605<UnifiedSeatEvidence0605>(optionsPage.payload)
+        var retry = 0
+        while ((seats?.seats ?: -1) < 0 && retry < SEAT_VALUE_RETRIES_0606) {
+            retry++
+            delay(SEAT_VALUE_RETRY_MS_0606)
+            seats = decode0605(evaluateCurrent0605(webView, seatsScript))
+        }
+        val publishedSeats = seats?.seats?.takeIf { it >= 0 }
         val state = BlaBlaCollectorSeatModule.state(
             tripId = tripId,
-            editHref = editPage.finalUrl,
-            optionsHref = optionsPage.finalUrl,
-            publishedSeats = seats.seats.takeIf { it >= 0 },
+            editHref = canonicalEdit,
+            optionsHref = webView.url.orEmpty().ifBlank { optionsPage.finalUrl },
+            publishedSeats = publishedSeats,
         )
         return state.publishedSeats.takeIf { BlaBlaCollectorSeatModule.complete(state) }
     }
@@ -699,12 +730,22 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             }
 
             fun prepare(view: WebView, pass: Int) {
-                if (!prepareTrip || pass >= PREPARE_PASSES_0605) {
+                if (!prepareTrip) {
                     evaluate(view)
                     return
                 }
                 view.evaluateJavascript(PREPARE_TRIP_DOM_0605) {
-                    handler.postDelayed({ prepare(view, pass + 1) }, PREPARE_RETRY_MS_0605)
+                    handler.postDelayed({
+                        if (completed) return@postDelayed
+                        view.evaluateJavascript(TRIP_READY_0606) { rawReady ->
+                            val ready = rawReady?.trim()?.equals("true", ignoreCase = true) == true
+                            if (ready || pass + 1 >= PREPARE_PASSES_0605) {
+                                evaluate(view)
+                            } else {
+                                prepare(view, pass + 1)
+                            }
+                        }
+                    }, PREPARE_RETRY_MS_0605)
                 }
             }
 
@@ -732,15 +773,31 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
     }
 
-    private const val PAGE_TIMEOUT_MS_0605 = 20_000L
+    private const val PAGE_TIMEOUT_MS_0605 = 30_000L
     private const val EVALUATE_TIMEOUT_MS_0605 = 6_000L
     private const val PAGE_SETTLE_MS_0605 = 850L
-    private const val PREPARE_RETRY_MS_0605 = 450L
-    private const val PREPARE_PASSES_0605 = 2
+    private const val PREPARE_RETRY_MS_0605 = 500L
+    private const val PREPARE_PASSES_0605 = 16
+    private const val SEAT_VALUE_RETRIES_0606 = 4
+    private const val SEAT_VALUE_RETRY_MS_0606 = 450L
     private const val PUBLIC_SHARE_ATTEMPTS_0605 = 3
     private const val PUBLIC_SHARE_RETRY_MS_0605 = 350L
     private const val UNIFIED_FLIGHT_ATTEMPTS_0605 = 20
     private const val UNIFIED_FLIGHT_RETRY_MS_0605 = 250L
+
+    private val TRIP_READY_0606 = """
+        (function() {
+          const text = String((document.body && document.body.innerText) || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          const summary = text.includes('resumo da viagem') ||
+            text.includes('trip summary') ||
+            text.includes('résumé du trajet') ||
+            text.includes('resumen del viaje');
+          const boundControl = !!document.querySelector(
+            'a[href*="/rides/offer/edit/"], a[href*="/rides/offer/map"], a[href*="/rides/offer/passenger/"], a[href*="/trip?"]'
+          );
+          return summary && boundControl;
+        })();
+    """.trimIndent()
 
     private val PREPARE_TRIP_DOM_0605 = """
         (function() {
