@@ -145,6 +145,7 @@ internal fun canonicalTimelineSegmentLoads0494(
     trip: Trip?,
 ): List<SegmentLoad> {
     if (!entry.canonicalBackendAuthoritative0494 || trip == null) return emptyList()
+    if (!segmentAvailabilityTruth0603(trip).verified) return emptyList()
     val stops = trip.stops.sortedBy(TripStop::order)
     if (stops.size < 2 || entry.canonicalSegmentLoads0494.size != stops.lastIndex) return emptyList()
     if (entry.canonicalSegmentAvailableSeats0494.size != stops.lastIndex) return emptyList()
