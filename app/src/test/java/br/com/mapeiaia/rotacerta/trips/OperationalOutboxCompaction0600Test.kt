@@ -63,6 +63,20 @@ class OperationalOutboxCompaction0600Test {
         assertEquals(600L, output.single().revision)
     }
 
+
+    @Test
+    fun newerTerminalRevisionWinsOlderFailure0609() {
+        val output = compactTripPublicationOutbox0600(
+            listOf(
+                event("trip-terminal", 7, TripPublicationStatus0387.FAILED_FINAL),
+                event("trip-terminal", 8, TripPublicationStatus0387.DELIVERED),
+            ),
+        )
+        assertEquals(1, output.size)
+        assertEquals(8L, output.single().revision)
+        assertEquals(TripPublicationStatus0387.DELIVERED, output.single().status)
+    }
+
     @Test
     fun softTargetNeverDropsActionableWork() {
         val active = (1L..520L).map { revision ->
