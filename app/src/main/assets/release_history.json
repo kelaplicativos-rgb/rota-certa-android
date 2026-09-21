@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.599",
+      "build": 5890,
+      "commit": null,
+      "branch": "agent/itinerary-boundary-serialization-0.1.599",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "TRIP_ITINERARY passa a possuir fase exclusiva no orquestrador do navegador, impedindo callbacks atrasados de TRIP_DETAIL de invalidarem a captura do itinerário.",
+        "Origem e destino ausentes no DOM de detalhe são hidratados pela candidata exata já vinculada ao mesmo tripId antes da reconciliação de waypoints e antes da recuperação dedicada.",
+        "Waypoints de rede marcados como completos para a viagem exata mantêm todos os intermediários observados e alinham somente os dois limites ao card canônico.",
+        "Mapeamento de embarque/desembarque aceita correspondência textual única entre ponto detalhado e parada canônica, sem cair automaticamente no trecho inteiro."
+      ],
+      "fixed": [
+        "Corrigida a causa comprovada no pacote de saúde 0.1.598: a rede trazia 6 waypoints para Barbosa e 3 para Ezequiel, mas effectiveItineraryStops permanecia 0 porque detail.origin/detail.destination estavam vazios embora a candidata reidratada tivesse ambos os limites.",
+        "Corrigida a corrida comprovada no refresh direcionado: TRIP_ITINERARY era iniciado ainda em Phase.DETAIL e um novo TRIP_DETAIL substituía o token do orquestrador, gerando BROWSER_STALE_CALLBACK_IGNORED.",
+        "A reconciliação network-first deixa de rejeitar uma rota completa apenas porque o endpoint de rede usa nome físico de estação/endereço diferente do nome de cidade do card."
+      ],
+      "improved": [
+        "O evento TRIP_ITINERARY_CAPTURED_0599 registra networkComplete, candidateBoundaryFallback, effectiveStops e serializedPhase para validação no Samsung.",
+        "A recuperação continua fail-closed para evidência incompleta ou ambígua; somente waypoints completos vinculados ao tripId exato recebem realinhamento de limites.",
+        "O SeatAvailabilityEngine permanece a única autoridade para ocupação/vagas; esta versão corrige exclusivamente a topologia que o alimenta."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.598: TRIP_ITINERARY podia executar e ainda assim produzir effectiveStops=0 por limites vazios.",
+        "0.1.598: refresh direcionado podia invalidar TRIP_ITINERARY por concorrência com callbacks de DETAIL."
+      ],
+      "modulesAffected": [
+        "Coletor BlaBlaCar",
+        "Browser orchestrator",
+        "TRIP_ITINERARY",
+        "Itinerário canônico",
+        "Agenda canônica",
+        "Central do Dia",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.598",
       "build": 5889,
       "commit": null,
