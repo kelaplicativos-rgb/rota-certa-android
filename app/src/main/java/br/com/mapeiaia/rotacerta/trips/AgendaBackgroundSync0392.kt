@@ -2072,6 +2072,12 @@ internal object AgendaBackgroundSync0392 {
                     existing?.let { current ->
                         store.saveTrip(
                             current.copy(
+                                externalSnapshot = if (incomingComplete) source else current.externalSnapshot,
+                                externalSnapshotAuthority0607 = if (incomingComplete) {
+                                    BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+                                } else {
+                                    current.externalSnapshotAuthority0607
+                                },
                                 lastCollectionRunId = collectionRunId.take(160),
                                 lastCollectionGeneration = maxOf(current.lastCollectionGeneration, collectionGeneration),
                                 lastObservedAtMillis = maxOf(current.lastObservedAtMillis, nowMillis),
@@ -2140,6 +2146,7 @@ internal object AgendaBackgroundSync0392 {
                                 publicationEventId = existing?.publicationEventId.orEmpty(),
                                 notes = existing?.notes.orEmpty(),
                                 externalSnapshot = source,
+                                externalSnapshotAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
                                 externalSnapshotFingerprint = incomingFingerprint,
                                 externalSnapshotComplete = incomingComplete,
                                 lastCollectionRunId = collectionRunId.take(160),
