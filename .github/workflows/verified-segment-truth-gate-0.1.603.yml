@@ -84,6 +84,8 @@ jobs:
           app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
           app/src/main/java/br/com/mapeiaia/rotacerta/trips/SegmentAvailabilityTruthGate0603.kt
           app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripTimeline.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaDomainPipeline0582Test.kt
+          app/src/test/java/br/com/mapeiaia/rotacerta/trips/CentralDriverSegmentGlance0601Test.kt
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalTimelineLiveSegments0602Test.kt
           app/src/test/java/br/com/mapeiaia/rotacerta/trips/SegmentAvailabilityTruthGate0603Test.kt
           EOF
