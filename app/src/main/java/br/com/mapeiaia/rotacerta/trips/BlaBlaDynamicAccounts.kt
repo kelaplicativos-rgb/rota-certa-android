@@ -3858,7 +3858,7 @@ internal class BlaBlaDynamicAccountSessionController0401(
             UnifiedDebugEventStore.record(
                 "PUBLIC_TRIP_LINK_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId source=$source binding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref)} publishedOfferAuthority=true",
+                "account=${account.displayLabel} tripId=$candidateTripId source=$source binding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref!!)} publishedOfferAuthority=true",
             )
             loadNextPassengerContact(expectedSync, expectedCandidate)
             return
