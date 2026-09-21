@@ -99,7 +99,7 @@ class OperationalTimelineLiveSegments0602Test {
             "src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt",
         ).readText()
 
-        val start = source.indexOf("// 0.1.602 — leitura viva de vagas por trecho diretamente no card da Timeline.")
+        val start = source.indexOf("// 0.1.603 — informação por trecho só existe na UI")
         val end = source.indexOf("if (!targetConfirmed)", start)
         assertTrue(start >= 0 && end > start)
         val section = source.substring(start, end)
@@ -107,6 +107,7 @@ class OperationalTimelineLiveSegments0602Test {
         assertTrue(source.contains("projectedTimeline0602"))
         assertTrue(source.contains("operationalTimelineSegmentLoads0602("))
         assertTrue(source.contains("canonicalTimelineSegmentLoads0494(entry, trip)"))
+        assertTrue(section.contains("if (row.segmentLoads0602.isNotEmpty())"))
         assertTrue(section.contains("Vagas por trecho"))
         assertTrue(section.contains("row.segmentLoads0602.forEach"))
         assertTrue(section.contains("load0602.availableSeats"))
@@ -114,7 +115,7 @@ class OperationalTimelineLiveSegments0602Test {
         assertTrue(section.contains("load0602.blockedSeats"))
         assertTrue(section.contains("load0602.overbookingSeats"))
         assertTrue(section.contains("\"LOTADO\""))
-        assertTrue(section.contains("Aguardando atualização canônica das vagas."))
+        assertTrue(!section.contains("Aguardando atualização canônica das vagas."))
         assertTrue(!section.contains("Reserve Já"))
         assertTrue(!section.contains("Indisponível"))
         assertTrue(!source.contains("SeatAvailabilityEngine.segmentLoads"))
