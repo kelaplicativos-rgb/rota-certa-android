@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.609",
+      "build": 5900,
+      "commit": null,
+      "branch": "agent/html-atomic-commit-0.1.609",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Captura HTML multi-perfil passa a operar em duas fases: estágio privado por perfil e commit canônico global único somente após validação completa.",
+        "Nenhuma viagem individual dispara saveResponse ou enqueueCollectorDelta enquanto a varredura ainda está em andamento.",
+        "O commit global exige todos os perfis e todas as viagens em COMPLETE, autoridade HTML_DIRECT_0607, contagem exata e identidades fortes sem duplicidade."
+      ],
+      "fixed": [
+        "Elimina a cascata 1→2→3→... de snapshots canônicos parciais durante a captura de viagens futuras.",
+        "Bloqueia publicação parcial quando um perfil ou viagem falha, preservando o último estado canônico íntegro.",
+        "Coalesce revisões antigas da mesma viagem antes de serializar a outbox, removendo a causa observada de OutOfMemoryError em SharedPreferences."
+      ],
+      "improved": [
+        "Agenda, Timeline e Central recebem uma única invalidação canônica após o snapshot HTML global ser confirmado.",
+        "Logs distinguem viagem capturada, perfil estagiado, commit global aceito e commit global bloqueado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Captura 19/19 seguida de propagação parcial 5→10→12→13 e falha de memória na outbox."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "TripStore",
+        "Outbox",
+        "Background Sync",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.608",
       "build": 5899,
       "commit": null,
