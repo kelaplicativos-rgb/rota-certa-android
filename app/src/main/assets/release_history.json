@@ -2,6 +2,49 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.612",
+      "build": 5903,
+      "commit": null,
+      "branch": "agent/html-canonical-atomicity-0.1.612",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Commit HTML canônico passa a manter snapshot de rollback do TripStore e da outbox até a validação N/N concluir.",
+        "Readback do commit global registra individualmente qualquer profileUuid + tripId sem exatamente um canônico HTML_DIRECT ativo.",
+        "Captura HTML passa a exigir que os segmentos dos passageiros sejam resolvidos antes de declarar uma viagem operacionalmente COMPLETE."
+      ],
+      "fixed": [
+        "Viagem tombstonada que reaparece no HTML com o mesmo fingerprint volta a ser reativada em vez de permanecer deleted=true e causar 19→18.",
+        "Falha na validação N/N restaura TripStore, reservas e vínculos externos, além da outbox, impedindo estado canônico parcialmente aplicado.",
+        "Inventário Suas viagens não pode mais ser considerado válido com tripLinks vazio; viagens expiradas recebem NOT_REQUIRED_EXPIRED somente com URL administrativa comprovada.",
+        "Hoje, Ontem e Amanhã passam a ser resolvidos explicitamente pelo parser de datas do HTML.",
+        "Viagem do dia permanece elegível para captura até a chegada mais uma hora.",
+        "Correspondência de embarque e desembarque aceita apenas aliases únicos derivados da própria evidência de endereço do HTML, sem inventar trecho."
+      ],
+      "improved": [
+        "Agenda, Timeline e Central continuam fail-closed para vagas por trecho: ausência de prova de segmentos bloqueia COMPLETE em vez de exibir disponibilidade falsa.",
+        "Logs de rollback e identidade canônica tornam a divergência N/N diagnosticável por viagem."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Captura 19/19 podia terminar com apenas 18 viagens canônicas ativas após reuso de registro tombstonado.",
+        "Falha de validação global podia deixar alterações parciais no TripStore e na outbox.",
+        "rides-index de perfil com inventário não vazio podia permanecer sem tripLinks e ainda atravessar a validação forense."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "TripStore",
+        "Outbox",
+        "Vagas por trecho",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.611",
       "build": 5902,
       "commit": null,
