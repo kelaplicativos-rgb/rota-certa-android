@@ -142,29 +142,41 @@ internal fun compactTripPublicationOutbox0600(
         TripPublicationStatus0387.DELIVERED,
         TripPublicationStatus0387.SUPERSEDED,
     )
-    val durable = events.filter { it.status !in terminalHistory }
-    val latestTerminalByTrip = events.asSequence()
-        .filter { it.status in terminalHistory }
+    val order = compareBy<TripPublicationOutboxEvent0387> { it.revision }
+        .thenBy { it.updatedAtMillis }
+
+    // 0.1.609: a newer canonical revision makes every older transport snapshot for the
+    // same canonical trip obsolete before JSON serialization. Keeping hundreds of full
+    // pending snapshots in SharedPreferences caused OOM while an HTML capture emitted
+    // many intermediate revisions. Retain only the newest durable event per trip; when
+    // the trip has no durable work, retain only its newest terminal proof.
+    val onePerTrip = events
         .groupBy(TripPublicationOutboxEvent0387::canonicalTripId)
         .values
         .mapNotNull { perTrip ->
-            perTrip.maxWithOrNull(
-                compareBy<TripPublicationOutboxEvent0387> { it.revision }
-                    .thenBy { it.updatedAtMillis },
-            )
+            perTrip.filter { it.status !in terminalHistory }.maxWithOrNull(order)
+                ?: perTrip.filter { it.status in terminalHistory }.maxWithOrNull(order)
         }
-
-    // Correctness wins over the soft size target. Every actionable event and the latest
-    // terminal proof for each canonical trip are retained. The previous implementation
-    // kept hundreds of redundant full snapshots until the hard cap was reached.
-    val compacted = (durable + latestTerminalByTrip)
         .distinctBy(TripPublicationOutboxEvent0387::id)
         .sortedWith(
             compareBy<TripPublicationOutboxEvent0387> { it.createdAtMillis }
                 .thenBy { it.revision },
         )
-    if (compacted.size <= targetMaxEvents) return compacted
-    return compacted
+
+    if (onePerTrip.size <= targetMaxEvents) return onePerTrip
+
+    // Never discard the newest durable work for a trip. Terminal proofs are diagnostic
+    // history and may be trimmed first when the soft storage budget is exceeded.
+    val durable = onePerTrip.filter { it.status !in terminalHistory }
+    if (durable.size >= targetMaxEvents) return durable
+    val terminalBudget = (targetMaxEvents - durable.size).coerceAtLeast(0)
+    val newestTerminal = onePerTrip
+        .filter { it.status in terminalHistory }
+        .takeLast(terminalBudget)
+    return (durable + newestTerminal).sortedWith(
+        compareBy<TripPublicationOutboxEvent0387> { it.createdAtMillis }
+            .thenBy { it.revision },
+    )
 }
 
 internal class TripPublicationOutbox0387(context: Context) {
