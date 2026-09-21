@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.611",
+      "build": 5902,
+      "commit": null,
+      "branch": "agent/html-status-contract-0.1.611",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O commit canônico HTML passa a reconhecer o status validado produzido pelo COMBINED_RESPONSE quando a cobertura N/N está integral."
+      ],
+      "fixed": [
+        "Corrige a incompatibilidade de contrato da 0.1.610: o produtor emitia status=validated para 2/2 contas verificadas, enquanto o gate final exigia literalmente status=complete.",
+        "O snapshot HTML completo deixa de ser bloqueado após 19/19 viagens quando complete_for_scope=true e unresolved_target_cards=0."
+      ],
+      "improved": [
+        "O gate continua fail-closed: exige autoridade HTML_DIRECT_0607, cobertura completa, zero cartões não resolvidos e contagem exata de viagens antes da reconciliação canônica."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Captura integral permanecia em staging privado apesar de todos os perfis e viagens estarem completos porque status=validated era rejeitado pelo commit."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "TripStore",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.610",
       "build": 5901,
       "commit": null,
