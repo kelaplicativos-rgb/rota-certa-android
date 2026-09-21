@@ -162,67 +162,21 @@ internal object BlaBlaCollectorNetworkSourceModule {    private const val MAX_BO
         domItinerary: List<String>,
         networkItinerary: List<String>,
     ): List<String> {
-        fun key(raw: String): String = java.text.Normalizer
-            .normalize(raw.substringBefore(',').trim(), java.text.Normalizer.Form.NFD)
-            .replace(Regex("\\p{M}+"), "")
-            .lowercase()
-            .replace(Regex("[^a-z0-9]+"), " ")
-            .trim()
+        val dom = BlaBlaItineraryRecovery0598.bounded(origin, destination, domItinerary)
+        val network = BlaBlaItineraryRecovery0598.alignExactTripWaypoints0599(
+            origin = origin,
+            destination = destination,
+            rawStops = networkItinerary,
+        )
+        if (network.size < 2) return dom
+        if (dom.size < 2) return network
 
-        fun bounded(rawStops: List<String>): List<String> {
-            val ordered = mutableListOf<String>()
-            fun add(raw: String) {
-                val value = raw.trim().take(240).takeIf(String::isNotBlank) ?: return
-                if (ordered.lastOrNull()?.let { key(it) == key(value) } == true) return
-                ordered += value
-            }
-            add(origin)
-            rawStops.forEach(::add)
-            add(destination)
-            return ordered
-        }
-
-        fun structurallyBounded(stops: List<String>): Boolean {
-            if (stops.size < 2) return false
-            val originKey = key(origin)
-            val destinationKey = key(destination)
-            if (originKey.isBlank() || destinationKey.isBlank() || originKey == destinationKey) return false
-            val keys = stops.map(::key)
-            if (keys.firstOrNull() != originKey || keys.lastOrNull() != destinationKey) return false
-            if (keys.drop(1).dropLast(1).any { it == originKey || it == destinationKey }) return false
-            return true
-        }
-
-        fun isOrderedSubsequence(needle: List<String>, haystack: List<String>): Boolean {
-            if (needle.isEmpty()) return true
-            val haystackKeys = haystack.map(::key)
-            var cursor = 0
-            for (raw in needle) {
-                val wanted = key(raw)
-                var found = false
-                while (cursor < haystackKeys.size) {
-                    if (haystackKeys[cursor] == wanted) {
-                        found = true
-                        cursor++
-                        break
-                    }
-                    cursor++
-                }
-                if (!found) return false
-            }
-            return true
-        }
-
-        val dom = bounded(domItinerary)
-        val network = bounded(networkItinerary)
-        if (!structurallyBounded(dom)) return emptyList()
-        if (!structurallyBounded(network) || network.size <= 2) return dom
-
-        return when {
-            isOrderedSubsequence(dom, network) -> network
-            isOrderedSubsequence(network, dom) -> dom
-            else -> dom
-        }
+        return BlaBlaItineraryRecovery0598.compatibleRicher(
+            origin = origin,
+            destination = destination,
+            current = dom,
+            candidate = network,
+        )
     }
 
     fun parseCanonicalMinorUnits(rawAmount: String?, rawCurrencyCode: String?): Long? {
