@@ -473,4 +473,28 @@ class BlaBlaRidesForensicEvidence0528Test {
         crossFormatPayloadValid = true,
         securityArtifactsValid = true,
     )
+    @Test
+    fun nonEmptyInventoryRequiresExplicitValidatedTripLinks0612() {
+        assertFalse(validateRidesTripLinks0582(listOf(tripA), emptyList()))
+        assertTrue(
+            validateRidesTripLinks0582(
+                tripIds = listOf(tripA),
+                links = listOf(
+                    BlaBlaRidesTripLink0582(
+                        tripId = tripA,
+                        administrativeUrl = "https://www.blablacar.com.br/rides/offer?id=$tripA",
+                        publicTripStatus = "NOT_REQUIRED_EXPIRED",
+                        shareEligibility = "EXPIRED",
+                    ),
+                ),
+            ),
+        )
+        val source = listOf(
+            File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt"),
+            File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt"),
+        ).firstOrNull(File::isFile)?.readText().orEmpty()
+        assertFalse(source.contains("indexPayload.tripLinks.isEmpty() ||"))
+        assertTrue(source.contains("indexPayload.tripIds.isEmpty() && indexPayload.tripLinks.isEmpty()"))
+    }
+
 }
