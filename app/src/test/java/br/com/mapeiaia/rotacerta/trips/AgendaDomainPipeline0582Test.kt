@@ -62,9 +62,13 @@ class AgendaDomainPipeline0582Test {
             now,
         )
 
-        assertTrue(original.publicLink.available)
-        assertTrue(changed.publicLink.available)
-        assertFalse(original.fingerprints.publicLink == changed.fingerprints.publicLink)
+        assertFalse(original.publicLink.available)
+        assertFalse(changed.publicLink.available)
+        assertEquals(
+            "AGENDA_PUBLIC_LINK_WITHHELD_UNTIL_PUBLISHED_OFFER_PROOF_0604",
+            original.publicLink.reasonCode,
+        )
+        assertEquals(original.fingerprints.publicLink, changed.fingerprints.publicLink)
         assertEquals(
             emptySet(),
             AgendaRegressionGuard0582.unexpectedChanges(
@@ -121,8 +125,12 @@ class AgendaDomainPipeline0582Test {
 
         assertTrue(linked.visibility.visible)
         assertTrue(missing.visibility.visible)
-        assertTrue(linked.publicLink.available)
+        assertFalse(linked.publicLink.available)
         assertFalse(missing.publicLink.available)
+        assertEquals(
+            "AGENDA_PUBLIC_LINK_WITHHELD_UNTIL_PUBLISHED_OFFER_PROOF_0604",
+            linked.publicLink.reasonCode,
+        )
         assertEquals(linked.fingerprints.visibility, missing.fingerprints.visibility)
     }
 
