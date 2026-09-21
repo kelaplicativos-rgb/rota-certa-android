@@ -10,6 +10,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
+import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDate
