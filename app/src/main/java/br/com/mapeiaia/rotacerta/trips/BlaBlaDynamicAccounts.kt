@@ -399,6 +399,9 @@ private data class DynamicPublicTripShareEvidence(
     val shareInterceptInstalled: Boolean = false,
     val shareInvoked: Boolean = false,
     val clickCount: Int = 0,
+    val publishedOfferLinkPresent: Boolean = false,
+    val publishedOfferHref: String = "",
+    val publishedOfferMarker: String = "",
     val publicTripHref: String = "",
 )
 
@@ -3845,22 +3848,27 @@ internal class BlaBlaDynamicAccountSessionController0401(
         }
 
         val resolvedHref = detail.publicTripHref.trim().takeIf(String::isNotEmpty)
-        if (resolvedHref != null) {
-            val source = detail.publicTripHrefSource.ifBlank { "unknown" }
-            val event = when (source) {
-                "network_structured", "network_structured_response_id", "network_structured_request_id" ->
-                    "PUBLIC_TRIP_LINK_CAPTURED"
-                "passive_dom" -> "PUBLIC_TRIP_LINK_DOM_FALLBACK"
-                "persisted_canonical" -> "PUBLIC_TRIP_LINK_PRESERVED"
-                else -> "PUBLIC_TRIP_LINK_CAPTURED"
-            }
+        val source = detail.publicTripHrefSource.ifBlank { "unknown" }
+        val publishedOfferAuthoritative0604 =
+            resolvedHref != null &&
+                source == "published_offer_href" &&
+                detail.publicTripHrefBinding ==
+                    BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF
+        if (publishedOfferAuthoritative0604) {
             UnifiedDebugEventStore.record(
-                event,
+                "PUBLIC_TRIP_LINK_CAPTURED",
                 packageName,
-                "account=${account.displayLabel} tripId=$candidateTripId source=$source binding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref)} networkFirst=${source.startsWith("network_")}",
+                "account=${account.displayLabel} tripId=$candidateTripId source=$source binding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref!!)} publishedOfferAuthority=true",
             )
             loadNextPassengerContact(expectedSync, expectedCandidate)
             return
+        }
+        if (resolvedHref != null) {
+            UnifiedDebugEventStore.record(
+                "PUBLIC_TRIP_LINK_REVERIFY_REQUIRED_0604",
+                packageName,
+                "account=${account.displayLabel} tripId=$candidateTripId previousSource=$source previousBinding=${detail.publicTripHrefBinding} fingerprint=${publicTripHrefFingerprint0423(resolvedHref)} action=inspect_exact_offer_published_href failClosed=true",
+            )
         }
 
         enterBrowserPhase(
@@ -3913,29 +3921,54 @@ internal class BlaBlaDynamicAccountSessionController0401(
                 return@evaluateRequest
             }
 
-            val captured = BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
-                raw = evidence?.publicTripHref,
-                expectedAdministrativeTripId = tripId,
-                boundAdministrativeTripId = tripId,
-            )
+            val publishedOfferCaptured0604 =
+                if (evidence?.publishedOfferLinkPresent == true) {
+                    BlaBlaCollectorUrlModule.publicTripFromPublishedOfferHref(
+                        raw = evidence.publishedOfferHref,
+                        expectedAdministrativeTripId = tripId,
+                        boundAdministrativeTripId = tripId,
+                    )
+                } else {
+                    null
+                }
+            val shareCaptured = if (publishedOfferCaptured0604 == null) {
+                BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+                    raw = evidence?.publicTripHref,
+                    expectedAdministrativeTripId = tripId,
+                    boundAdministrativeTripId = tripId,
+                )
+            } else {
+                null
+            }
+            val captured = publishedOfferCaptured0604 ?: shareCaptured
             if (captured != null) {
+                val source0604 = if (publishedOfferCaptured0604 != null) {
+                    "published_offer_href"
+                } else {
+                    "share_action"
+                }
+                val binding0604 = if (publishedOfferCaptured0604 != null) {
+                    BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF
+                } else {
+                    BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION
+                }
                 pendingTripDetail = pendingTripDetail?.copy(
                     publicTripHref = captured,
-                    publicTripHrefSource = "share_action",
-                    publicTripHrefBinding = BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+                    publicTripHrefSource = source0604,
+                    publicTripHrefBinding = binding0604,
                 )
                 val sharedPublicTripId = BlaBlaCollectorUrlModule.publicTripPublicId(captured).orEmpty()
                 UnifiedDebugEventStore.record(
                     "PUBLIC_TRIP_LINK_CAPTURED",
                     packageName,
-                    "account=${account.displayLabel} tripId=$tripId source=share_action binding=" +
-                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION +
-                        " exactAdministrativeTrip=true publicIdRelation=" +
+                    "account=${account.displayLabel} tripId=$tripId source=$source0604 binding=$binding0604" +
+                        " exactAdministrativeOffer=true publicIdRelation=" +
                         (if (sharedPublicTripId == tripId) "same" else "different") +
+                        " publishedOfferLinkPresent=${evidence?.publishedOfferLinkPresent == true}" +
+                        " publishedOfferMarkerPresent=${!evidence?.publishedOfferMarker.isNullOrBlank()}" +
                         " shareControlPresent=${evidence?.shareControlPresent == true}" +
                         " menuControlPresent=${evidence?.menuControlPresent == true}" +
                         " menuInvoked=${evidence?.menuInvoked == true}" +
-                        " menuClickCount=${evidence?.menuClickCount ?: 0}" +
                         " shareInterceptInstalled=${evidence?.shareInterceptInstalled == true}" +
                         " shareInvoked=${evidence?.shareInvoked == true}" +
                         " clickCount=${evidence?.clickCount ?: 0}",

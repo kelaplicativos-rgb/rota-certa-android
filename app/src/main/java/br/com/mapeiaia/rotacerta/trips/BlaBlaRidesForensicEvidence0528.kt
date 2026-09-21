@@ -250,6 +250,22 @@ internal fun buildRideDateRange0528(dates: Collection<LocalDate>): BlaBlaRidesRi
     )
 }
 
+internal fun trustedPublishedOfferPublicTrip0604(
+    tripId: String,
+    rawUrl: String?,
+    source: String?,
+    binding: String?,
+): String? {
+    val expected = tripId.trim().takeIf(STABLE_RIDE_ID_0528::matches) ?: return null
+    if (source?.trim() != "published_offer_href") return null
+    if (binding?.trim() != BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF) return null
+    return BlaBlaCollectorUrlModule.publicTripFromPublishedOfferHref(
+        raw = rawUrl,
+        expectedAdministrativeTripId = expected,
+        boundAdministrativeTripId = expected,
+    )
+}
+
 internal fun buildRidesTripLinks0582(
     profileUuid: String,
     tripIds: List<String>,
@@ -271,25 +287,20 @@ internal fun buildRidesTripLinks0582(
                 trip.trip_id?.trim() == tripId
         }
         val publicTripUrl = collector?.let { trip ->
-            BlaBlaCollectorUrlModule.publicTripForCollectorState(
-                trip.public_trip_href,
-                tripId,
-                trip.public_trip_href_binding,
+            trustedPublishedOfferPublicTrip0604(
+                tripId = tripId,
+                rawUrl = trip.public_trip_href,
+                source = trip.public_trip_href_source,
+                binding = trip.public_trip_href_binding,
             )
         }.orEmpty()
-        val strictSameId = publicTripUrl.takeIf(String::isNotBlank)?.let { href ->
-            BlaBlaCollectorUrlModule.publicTrip(href, tripId) != null
-        } == true
         BlaBlaRidesTripLink0582(
             tripId = tripId,
             administrativeUrl = administrativeUrl,
             publicTripUrl = publicTripUrl,
-            publicTripUrlSource = if (publicTripUrl.isBlank()) "" else
-                collector?.public_trip_href_source?.ifBlank { "collector_state" }.orEmpty(),
+            publicTripUrlSource = if (publicTripUrl.isBlank()) "" else "published_offer_href",
             publicTripUrlBinding = if (publicTripUrl.isBlank()) "" else
-                collector?.public_trip_href_binding?.ifBlank {
-                    if (strictSameId) BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_SAME_ID else ""
-                }.orEmpty(),
+                BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF,
             publicTripStatus = if (publicTripUrl.isBlank()) "PENDING_UNKNOWN" else "COMPLETE",
         )
     }
@@ -319,21 +330,21 @@ internal fun applyRidesShareEligibility0583(
     val byTripId = rides.associateBy { it.tripId }
     return links.map { link ->
         val eligibility = ridesShareEligibility0583(byTripId[link.tripId], now)
-        when {
-            eligibility == "EXPIRED" && link.publicTripUrl.isBlank() -> link.copy(
-                publicTripStatus = "NOT_REQUIRED_EXPIRED",
-                shareEligibility = eligibility,
-            )
-            else -> link.copy(shareEligibility = eligibility)
-        }
+        link.copy(shareEligibility = eligibility)
     }
 }
 
 internal fun activeRidesPublicLinksComplete0583(
     links: List<BlaBlaRidesTripLink0582>,
-): Boolean = links
-    .filter { it.shareEligibility != "EXPIRED" }
-    .all { it.publicTripStatus == "COMPLETE" }
+): Boolean = links.all { link ->
+    link.publicTripStatus == "COMPLETE" &&
+        trustedPublishedOfferPublicTrip0604(
+            tripId = link.tripId,
+            rawUrl = link.publicTripUrl,
+            source = link.publicTripUrlSource,
+            binding = link.publicTripUrlBinding,
+        ) == link.publicTripUrl
+}
 
 internal fun validateRidesTripLinks0582(
     tripIds: List<String>,
@@ -349,17 +360,16 @@ internal fun validateRidesTripLinks0582(
         if (!adminValid) return@all false
         when (link.publicTripStatus) {
             "COMPLETE" -> {
-                if (link.publicTripUrlSource.isBlank() || link.publicTripUrlBinding.isBlank()) return@all false
-                val verified = BlaBlaCollectorUrlModule.publicTripForCollectorState(
-                    link.publicTripUrl,
-                    link.tripId,
-                    link.publicTripUrlBinding,
+                val verified = trustedPublishedOfferPublicTrip0604(
+                    tripId = link.tripId,
+                    rawUrl = link.publicTripUrl,
+                    source = link.publicTripUrlSource,
+                    binding = link.publicTripUrlBinding,
                 )
                 verified != null && verified == link.publicTripUrl
             }
             "PENDING_UNKNOWN" ->
-                link.shareEligibility != "EXPIRED" &&
-                    link.publicTripUrl.isBlank() &&
+                link.publicTripUrl.isBlank() &&
                     link.publicTripUrlSource.isBlank() &&
                     link.publicTripUrlBinding.isBlank()
             "NOT_REQUIRED_EXPIRED" ->

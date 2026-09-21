@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.604",
+      "build": 5895,
+      "commit": null,
+      "branch": "agent/blablacar-published-link-authority-0.1.604",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Captura por card do href literal de Ver sua carona publicada na oferta administrativa correspondente."
+      ],
+      "fixed": [
+        "Links apenas inferidos, persistidos ou vindos da rede não promovem rides-index para COMPLETE sem prova da própria oferta.",
+        "A captura multiperfil aguarda e repete a mesma conta ao encontrar SINGLE_FLIGHT_BUSY."
+      ],
+      "improved": [
+        "A Agenda pública oculta o link até que a prova de associação da oferta faça parte do contrato público."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Evita expor ao passageiro uma URL estruturalmente válida mas vinculada incorretamente."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Suas viagens",
+        "Agenda",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.603",
       "build": 5894,
       "commit": null,

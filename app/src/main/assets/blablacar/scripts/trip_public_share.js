@@ -64,6 +64,29 @@
     return matches.map((item) => item.replace(/[)\],.;!?]+$/, ''));
   };
 
+  const publishedOfferMarkerFor = (node) => normalize(
+    ((node && (node.innerText || node.textContent)) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('aria-label')) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('title')) || '') + ' ' +
+    ((node && node.getAttribute && node.getAttribute('data-testid')) || '')
+  );
+
+  const isPublishedOfferLink = (node) => {
+    const marker = publishedOfferMarkerFor(node);
+    if (!marker) return false;
+    return marker.includes('ver sua carona publicada') ||
+      marker.includes('ver a sua carona publicada') ||
+      marker.includes('view your published ride') ||
+      marker.includes('see your published ride') ||
+      marker.includes('view published ride') ||
+      marker.includes('published ride') ||
+      marker.includes('voir votre covoiturage publie') ||
+      marker.includes('voir le covoiturage publie') ||
+      marker.includes('ver tu viaje publicado') ||
+      marker.includes('ver viaje publicado') ||
+      marker.includes('vedi il tuo viaggio pubblicato');
+  };
+
   const stateKey = '__rotaCertaTripPublicShareCapture';
   let state = window[stateKey];
   if (!state || state.tripId !== tripId) {
@@ -80,6 +103,25 @@
     };
     window[stateKey] = state;
   }
+
+  // 0.1.604: strongest authority is the literal href exposed by the exact
+  // administrative offer page as "Ver sua carona publicada". The public token
+  // is not derived from the administrative UUID and may legitimately differ.
+  let publishedOfferHref = '';
+  let publishedOfferMarker = '';
+  const publishedOfferNodes = Array.from(document.querySelectorAll(
+    'a[href], [role="link"][href], [data-href]'
+  )).filter(isPublishedOfferLink);
+  publishedOfferNodes.some((node) => {
+    const raw = (node.href || (node.getAttribute && node.getAttribute('href')) ||
+      (node.getAttribute && node.getAttribute('data-href')) || '');
+    const resolved = authoritativeSharedPublicTripUrl(raw);
+    if (!resolved) return false;
+    publishedOfferHref = resolved;
+    publishedOfferMarker = publishedOfferMarkerFor(node).slice(0, 240);
+    state.publicTripHref = resolved;
+    return true;
+  });
 
   const acceptCandidate = (raw, authoritativeSharePayload) => {
     const resolved = authoritativeSharePayload
@@ -400,6 +442,9 @@
     shareInterceptInstalled: !!state.interceptInstalled || !!state.clipboardInterceptInstalled,
     shareInvoked: !!state.shareInvoked,
     clickCount: state.clicks || 0,
+    publishedOfferLinkPresent: !!publishedOfferHref,
+    publishedOfferHref: publishedOfferHref || '',
+    publishedOfferMarker: publishedOfferMarker || '',
     publicTripHref: state.publicTripHref || ''
   });
 })();

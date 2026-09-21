@@ -158,6 +158,19 @@ internal object BlaBlaCollectorUrlModule {
     ): String? = publicTripFromAuthoritativeBinding(raw, expectedAdministrativeTripId, boundAdministrativeTripId)
 
     /**
+     * Strong public-link authority captured literally from the exact administrative offer page.
+     *
+     * The public /trip id is intentionally allowed to differ from the administrative /rides/offer
+     * UUID. Authority comes from the acquisition context: the href of the documented
+     * "Ver sua carona publicada" control while the browser is bound to the same offer UUID.
+     */
+    fun publicTripFromPublishedOfferHref(
+        raw: String?,
+        expectedAdministrativeTripId: String?,
+        boundAdministrativeTripId: String?,
+    ): String? = publicTripFromAuthoritativeBinding(raw, expectedAdministrativeTripId, boundAdministrativeTripId)
+
+    /**
      * Revalidates a permalink already carried by collector state. Authoritatively bound sources
      * remain tied to the same canonical administrative trip id; every other source keeps the
      * historical strict same-id contract.
@@ -171,6 +184,8 @@ internal object BlaBlaCollectorUrlModule {
             publicTripFromAuthoritativeNetwork(raw, expectedTripId, expectedTripId)
         PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION ->
             publicTripFromAuthoritativeOrchestratorNavigation(raw, expectedTripId, expectedTripId)
+        PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF ->
+            publicTripFromPublishedOfferHref(raw, expectedTripId, expectedTripId)
         else -> publicTrip(raw, expectedTripId)
     }
 
@@ -206,6 +221,7 @@ internal object BlaBlaCollectorUrlModule {
     const val PUBLIC_TRIP_BINDING_SAME_ID = "same_trip_id"
     const val PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE = "network_authoritative"
     const val PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION = "orchestrator_navigation_authoritative"
+    const val PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF = "published_offer_href_authoritative"
 
     /** URLs the authenticated management browser may open on explicit user action. */
     fun isManageTarget(raw: String?): Boolean =

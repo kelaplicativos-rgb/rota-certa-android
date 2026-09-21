@@ -94,23 +94,14 @@ internal object AgendaPublicLinkPolicy0582 {
                 reasonCode = "AGENDA_PUBLIC_LINK_STRONG_IDENTITY_MISSING",
             )
         }
-        val resolved = canonicalBoundBlaBlaPublicUrl0423(
-            trip.blablaPublicUrl,
-            administrativeTripId,
-        )?.trim().orEmpty()
-        return if (resolved.isNotBlank()) {
-            AgendaPublicLinkState0582(
-                url = resolved,
-                available = true,
-                reasonCode = "AGENDA_PUBLIC_LINK_VALID",
-            )
-        } else {
-            AgendaPublicLinkState0582(
-                url = null,
-                available = false,
-                reasonCode = "AGENDA_PUBLIC_LINK_MISSING",
-            )
-        }
+        // 0.1.604 containment: Trip currently carries only the URL, not the acquisition
+        // proof that ties it to the exact /rides/offer page. Until that proof is part of
+        // the public projection contract, fail closed and expose no passenger-facing link.
+        return AgendaPublicLinkState0582(
+            url = null,
+            available = false,
+            reasonCode = "AGENDA_PUBLIC_LINK_WITHHELD_UNTIL_PUBLISHED_OFFER_PROOF_0604",
+        )
     }
 }
 

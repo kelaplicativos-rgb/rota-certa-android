@@ -29,9 +29,9 @@ class BlaBlaRidesPublicLinkCapture0582Test {
                     trip_id = administrativeTripId,
                     trip_href = administrativeUrl,
                     public_trip_href = publicUrl,
-                    public_trip_href_source = "share_action",
+                    public_trip_href_source = "published_offer_href",
                     public_trip_href_binding =
-                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF,
                 ),
             ),
         )
@@ -39,13 +39,65 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         val link = links.single()
         assertEquals(administrativeUrl, link.administrativeUrl)
         assertEquals(publicUrl, link.publicTripUrl)
-        assertEquals("share_action", link.publicTripUrlSource)
+        assertEquals("published_offer_href", link.publicTripUrlSource)
         assertEquals(
-            BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_ORCHESTRATOR_NAVIGATION,
+            BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF,
             link.publicTripUrlBinding,
         )
         assertEquals("COMPLETE", link.publicTripStatus)
         assertTrue(validateRidesTripLinks0582(listOf(administrativeTripId), links))
+    }
+
+    @Test
+    fun legacyNetworkAuthoritativeLinkCannotMasqueradeAsPublishedOfferHref() {
+        val provenOfferUuid = "01a08855-7959-7593-929d-ddd4f9f416b7"
+        val wrongLegacyUrl =
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=AaCIVXlZdZOSnd3U-fQWt0AEz_L5OX4PQATwBBw8jCE"
+        val correctPublishedUrl =
+            "https://www.blablacar.com.br/trip?source=CARPOOLING&id=AaCIVXlZdZOSnd3U-fQWt0AEz_LyBEesQATwBBw8jCE"
+        val offerUrl =
+            "https://www.blablacar.com.br/rides/offer?id=$provenOfferUuid&source=CARPOOLING"
+
+        val rejectedLegacy = buildRidesTripLinks0582(
+            profileUuid = profileUuid,
+            tripIds = listOf(provenOfferUuid),
+            administrativeUrlsByTripId = mapOf(provenOfferUuid to offerUrl),
+            collectorTrips = listOf(
+                BlaBlaCollectorTrip(
+                    profile_uuid = profileUuid,
+                    date = "2026-09-24",
+                    trip_id = provenOfferUuid,
+                    trip_href = offerUrl,
+                    public_trip_href = wrongLegacyUrl,
+                    public_trip_href_source = "persisted_canonical",
+                    public_trip_href_binding =
+                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_NETWORK_AUTHORITATIVE,
+                ),
+            ),
+        ).single()
+        assertTrue(rejectedLegacy.publicTripUrl.isBlank())
+        assertEquals("PENDING_UNKNOWN", rejectedLegacy.publicTripStatus)
+
+        val acceptedPublished = buildRidesTripLinks0582(
+            profileUuid = profileUuid,
+            tripIds = listOf(provenOfferUuid),
+            administrativeUrlsByTripId = mapOf(provenOfferUuid to offerUrl),
+            collectorTrips = listOf(
+                BlaBlaCollectorTrip(
+                    profile_uuid = profileUuid,
+                    date = "2026-09-24",
+                    trip_id = provenOfferUuid,
+                    trip_href = offerUrl,
+                    public_trip_href = correctPublishedUrl,
+                    public_trip_href_source = "published_offer_href",
+                    public_trip_href_binding =
+                        BlaBlaCollectorUrlModule.PUBLIC_TRIP_BINDING_PUBLISHED_OFFER_HREF,
+                ),
+            ),
+        ).single()
+        assertEquals(correctPublishedUrl, acceptedPublished.publicTripUrl)
+        assertEquals("COMPLETE", acceptedPublished.publicTripStatus)
+        assertTrue(activeRidesPublicLinksComplete0583(listOf(acceptedPublished)))
     }
 
     @Test
@@ -75,7 +127,7 @@ class BlaBlaRidesPublicLinkCapture0582Test {
     fun authoritativePublicTokenMayDifferFromAdministrativeTripId() {
         assertEquals(
             publicUrl,
-            BlaBlaCollectorUrlModule.publicTripFromAuthoritativeOrchestratorNavigation(
+            BlaBlaCollectorUrlModule.publicTripFromPublishedOfferHref(
                 raw = publicUrl,
                 expectedAdministrativeTripId = administrativeTripId,
                 boundAdministrativeTripId = administrativeTripId,
@@ -113,8 +165,8 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         )
 
         assertEquals("EXPIRED", resolved.single().shareEligibility)
-        assertEquals("NOT_REQUIRED_EXPIRED", resolved.single().publicTripStatus)
-        assertTrue(activeRidesPublicLinksComplete0583(resolved))
+        assertEquals("PENDING_UNKNOWN", resolved.single().publicTripStatus)
+        assertFalse(activeRidesPublicLinksComplete0583(resolved))
         assertTrue(validateRidesTripLinks0582(listOf(administrativeTripId), resolved))
     }
 
@@ -162,6 +214,9 @@ class BlaBlaRidesPublicLinkCapture0582Test {
         assertTrue(script.contains("shareInterceptReady"))
         assertTrue(script.contains("clipboardInterceptReady"))
         assertTrue(script.contains("copiar link"))
+        assertTrue(script.contains("ver sua carona publicada"))
+        assertTrue(script.contains("publishedOfferHref"))
+        assertTrue(script.contains("publishedOfferLinkPresent"))
     }
     @Test
     fun shareScriptCanUseConnectedHiddenShareControlWithoutWeakeningPublicUrlProof() {
