@@ -153,9 +153,9 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                 ) {
                     Text(
                         if (ridesSnapshotRunning0526) {
-                            "📥 Capturando Suas viagens…"
+                            "📥 Atualizando BlaBlaCar • capturando HTMLs…"
                         } else {
-                            "📥 Capturar Suas viagens de todos os perfis"
+                            "📥 Atualizar BlaBlaCar • capturar HTMLs"
                         },
                     )
                 }
@@ -312,7 +312,7 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
 
     Text(
         "Abrir uma conta abre somente a sessão isolada para login/configuração. " +
-            "A captura de Suas viagens é somente leitura e salva HTML/MHTML em armazenamento privado. " +
+            "A atualização usa um único fluxo: Suas viagens → HTML de cada viagem atual/futura → estado canônico. " +
             "O ZIP preserva a evidência forense completa; os JSONs são projeções derivadas dos artifacts já capturados. " +
             "A linha do tempo externa não abre viagens, não busca passageiros e não inicia sincronização pública.",
         style = MaterialTheme.typography.bodySmall,
