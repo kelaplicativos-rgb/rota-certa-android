@@ -647,15 +647,35 @@ internal fun mergeCanonicalTimelineProjections0525(
         val remoteStrong = remote.timelineStrongIdentity0525()
         val local = localById[remote.id] ?: remoteStrong?.let(localByStrong::get)
         if (local == null) {
-            if (localPrimary.trips.isEmpty() && remote.id.isNotBlank() && remote.stops.size >= 2) {
+            val remoteIsBlaBla = remote.timelineStrongIdentity0525() != null ||
+                !remote.blablaTripId.isNullOrBlank() ||
+                !remote.blablaProfileUuid.isNullOrBlank()
+            if (
+                !remoteIsBlaBla &&
+                localPrimary.trips.isEmpty() &&
+                remote.id.isNotBlank() &&
+                remote.stops.size >= 2
+            ) {
                 mergedTrips[remote.id] = remote
                 remoteAcceptedByLocalId[remote.id] = remote
                 recoveryCount++
+            } else if (remoteIsBlaBla) {
+                incompleteIgnored++
             }
             return@forEach
         }
         if (timelineExternalIdentityConflict0525(local, remote)) {
             conflicts += local.id
+            return@forEach
+        }
+        val localHtmlExternal = local.timelineStrongIdentity0525() != null ||
+            !local.blablaTripId.isNullOrBlank() ||
+            !local.blablaProfileUuid.isNullOrBlank()
+        if (localHtmlExternal) {
+            // 0.1.607: remote canonical state may contribute Rota Certa-owned bookings,
+            // but it can never replace route, schedule, passengers, seats or links observed
+            // from the exact BlaBlaCar HTML.
+            remoteAcceptedByLocalId[local.id] = remote
             return@forEach
         }
         if (timelineExternalIdentityIncomplete0525(remote)) incompleteIgnored++
@@ -673,7 +693,17 @@ internal fun mergeCanonicalTimelineProjections0525(
         val localBookings = localBookingsByTrip[trip.id].orEmpty()
         val acceptedRemoteTrip = remoteAcceptedByLocalId[trip.id]
         val remoteTripId = acceptedRemoteTrip?.id
-        val remoteBookings = remoteTripId?.let { remoteBookingsByTrip[it].orEmpty() }.orEmpty()
+        val htmlExternalTrip = trip.timelineStrongIdentity0525() != null ||
+            !trip.blablaTripId.isNullOrBlank() ||
+            !trip.blablaProfileUuid.isNullOrBlank()
+        val remoteBookings = remoteTripId
+            ?.let { remoteBookingsByTrip[it].orEmpty() }
+            .orEmpty()
+            .filter { booking ->
+                !htmlExternalTrip ||
+                    (booking.source != BookingSource.BLABLACAR &&
+                        booking.capacityClaimType != CapacityClaimType.EXTERNAL_OCCUPANCY)
+            }
         if (acceptedRemoteTrip == null || conflicts.contains(trip.id)) {
             mergedBookings += localBookings
             return@forEach
@@ -706,7 +736,10 @@ internal fun mergeCanonicalTimelineProjections0525(
         .groupBy({ it.first }, { it.second }).mapNotNull { (key, values) -> values.singleOrNull()?.let { key to it } }.toMap()
     val entries = baseEntries.map { base ->
         val trip = mergedTrips[base.tripId] ?: return@map base
-        val remoteTrip = remoteAcceptedByLocalId[base.tripId]
+        val htmlExternalTrip = trip.timelineStrongIdentity0525() != null ||
+            !trip.blablaTripId.isNullOrBlank() ||
+            !trip.blablaProfileUuid.isNullOrBlank()
+        val remoteTrip = remoteAcceptedByLocalId[base.tripId].takeUnless { htmlExternalTrip }
         val remoteEntry = remoteTrip?.let { remoteEntriesById[it.id] ?: it.timelineStrongIdentity0525()?.let(remoteEntriesByStrong::get) }
         val localOriginal = localById[base.tripId]
         val remoteNewer = remoteTrip != null && remoteTrip.canonicalRevision > (localOriginal?.canonicalRevision ?: 0L)
