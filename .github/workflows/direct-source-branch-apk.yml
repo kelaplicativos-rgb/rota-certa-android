@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.608 direct HTML account capture exact SHA
-# trigger: html-atomic-commit-0609
+name: Rota Certa 0.1.610 private HTML transaction exact SHA
+# trigger: html-private-transaction-0610
 
 on:
   push:
     branches:
-      - agent/html-atomic-commit-0.1.609
+      - agent/html-private-transaction-0.1.610
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-atomic-commit-0609-${{ github.ref }}
+  group: html-private-transaction-0610-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: html_atomic_commit_0609_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: html_private_transaction_0610_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5900'
-      EXPECTED_VERSION_NAME: '0.1.609'
-      BASE_SHA: '41334999d794acdd708a6088a3d511c34463eefb'
+      EXPECTED_VERSION_CODE: '5901'
+      EXPECTED_VERSION_NAME: '0.1.610'
+      BASE_SHA: '6c3816efff404eb9d1ff3e88e4cba0aca8072a4c'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_900' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.609"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_901' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.610"' app/build.gradle.kts
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -86,10 +86,18 @@ jobs:
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'mhtmlSupported = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'globalHtmlAtomicCommitEligible0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'globalCommitPending=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_GLOBAL_HTML_TRANSACTION_STARTED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'replaceHtmlSnapshotsAtomically0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'effectiveSkippedTrips0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
+          grep -Fq 'TARGETED_HTML_BLOCKED_BY_GLOBAL_TRANSACTION_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'HTML_CANONICAL_RECONCILE_BLOCKED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'LEGACY_COLLECTOR_DELTA_DISABLED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'val reconcileCollectorSnapshot = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          ! grep -Fq 'stageProfile0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           ! grep -Fq 'persistProgress0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          test "$(grep -Fc 'AgendaBackgroundSync0392.enqueueCollectorDelta0431(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt)" -eq 1
+          test "$(grep -Fc 'AgendaBackgroundSync0392.enqueueCollectorDelta0431(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt)" -eq 0
           grep -Fq 'perTrip.maxWithOrNull(order)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripPublicationOutbox0387.kt
           grep -Fq 'burstOfRevisionsForSameTripCollapsesBeforeSerialization0609' app/src/test/java/br/com/mapeiaia/rotacerta/trips/OperationalOutboxCompaction0600Test.kt
           git diff --check "$BASE_SHA" HEAD
@@ -172,7 +180,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0609
+          OUT=/tmp/0610
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -187,6 +195,12 @@ jobs:
           source_branch=$GITHUB_REF_NAME
           unified_html_capture=PASS
           global_html_atomic_commit=PASS
+          private_html_staging=PASS
+          shared_session_write_during_global_capture=ABSENT
+          skipped_history_reset_on_authoritative_complete=PASS
+          background_blablacar_canonical_write=DISABLED
+          targeted_refresh_during_global_capture=BLOCKED
+          direct_n_of_n_canonical_reconcile=PASS
           per_trip_canonical_enqueue=ABSENT
           outbox_revision_coalescing=PASS
           current_dom_itinerary_fallback=PASS
@@ -219,7 +233,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.609-5900-${{ github.sha }}
+          name: rota-certa-0.1.610-5901-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0609
+          path: /tmp/0610
