@@ -692,7 +692,7 @@ internal fun BlaBlaRidesSnapshotStore0526.validateProfileForComplete0528(
         indexPayload.tripIds.size == profile.tripInventory.uniqueCount &&
         indexPayload.duplicateCount == profile.tripInventory.duplicateCount &&
         indexPayload.rideDateRange == profile.rideDateRange &&
-        (indexPayload.tripLinks.isEmpty() ||
+        ((indexPayload.tripIds.isEmpty() && indexPayload.tripLinks.isEmpty()) ||
             validateRidesTripLinks0582(indexPayload.tripIds, indexPayload.tripLinks))
 
     var actualCross: BlaBlaRidesCrossFormatConsistency0528? = null
