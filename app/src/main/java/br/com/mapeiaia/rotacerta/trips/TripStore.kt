@@ -17,6 +17,12 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+internal data class TripStoreHtmlRollbackSnapshot0612(
+    val tripsJson: String?,
+    val bookingsJson: String?,
+    val publicExternalBindingsJson: String?,
+)
+
 class TripStore(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -33,6 +39,28 @@ class TripStore(context: Context) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     internal fun bookingReconcileScopeKey(): String = tenantScope.tenantId
+
+    internal fun snapshotHtmlRollback0612(): TripStoreHtmlRollbackSnapshot0612 = synchronized(CANONICAL_LOCK) {
+        TripStoreHtmlRollbackSnapshot0612(
+            tripsJson = prefs.getString(tripsKey, null),
+            bookingsJson = prefs.getString(bookingsKey, null),
+            publicExternalBindingsJson = prefs.getString(publicExternalBindingsKey, null),
+        )
+    }
+
+    internal fun restoreHtmlRollback0612(snapshot: TripStoreHtmlRollbackSnapshot0612): Boolean =
+        synchronized(CANONICAL_LOCK) {
+            val editor = prefs.edit()
+            if (snapshot.tripsJson == null) editor.remove(tripsKey) else editor.putString(tripsKey, snapshot.tripsJson)
+            if (snapshot.bookingsJson == null) editor.remove(bookingsKey) else editor.putString(bookingsKey, snapshot.bookingsJson)
+            if (snapshot.publicExternalBindingsJson == null) {
+                editor.remove(publicExternalBindingsKey)
+            } else {
+                editor.putString(publicExternalBindingsKey, snapshot.publicExternalBindingsJson)
+            }
+            editor.commit()
+        }
+
 
     fun trips(): List<Trip> = decode<List<Trip>>(prefs.getString(tripsKey, null)).orEmpty()
         .sortedByDescending(Trip::departureAtMillis)
