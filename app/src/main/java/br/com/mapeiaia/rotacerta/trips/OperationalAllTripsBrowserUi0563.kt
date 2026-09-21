@@ -68,12 +68,16 @@ internal fun OperationalAllTripsBrowserScreen0563(
     val accounts = remember(trips, bookings) {
         BlaBlaDynamicAccountRegistry(context.applicationContext).list()
     }
-    val projectedEntries = remember(trips, bookings) {
+    val projectedTimeline0602 = remember(trips, bookings) {
         localAgendaTimelineProjection0515(
             trips = trips,
             bookings = bookings,
             localProfileLabel = "Agenda",
-        ).entries
+        )
+    }
+    val projectedEntries = projectedTimeline0602.entries
+    val projectedTripsById0602 = remember(projectedTimeline0602.trips) {
+        projectedTimeline0602.trips.associateBy(Trip::id)
     }
     val selection = remember(projectedEntries, accounts) {
         operationalConnectedSelection0564(
@@ -85,7 +89,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
     val decisionByEntry = remember(selection.decisions) {
         selection.decisions.associateBy(OperationalTripDecision0564::entry)
     }
-    val rows = remember(entries, accounts, decisionByEntry) {
+    val rows = remember(entries, accounts, decisionByEntry, projectedTripsById0602) {
         entries.map { entry ->
             val target = resolveBlaBlaTripTarget0407(
                 context = context,
@@ -104,7 +108,20 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 }
             val reason = decisionByEntry[entry]?.reason
                 ?: if (target == null) OperationalTripDecisionReason0564.TARGET_UNRESOLVED else null
-            OperationalTripBrowserRow0563(entry, account, target, reason)
+            val canonicalTrip0602 = entry.localTripId
+                ?.let(projectedTripsById0602::get)
+                ?: projectedTripsById0602[entry.tripId]
+            val liveSegmentLoads0602 = operationalTimelineSegmentLoads0602(
+                entry = entry,
+                trip = canonicalTrip0602,
+            )
+            OperationalTripBrowserRow0563(
+                entry = entry,
+                account = account,
+                target = target,
+                decisionReason = reason,
+                segmentLoads0602 = liveSegmentLoads0602,
+            )
         }
     }
 
@@ -332,7 +349,17 @@ internal data class OperationalTripBrowserRow0563(
     val account: BlaBlaDynamicAccount?,
     val target: BlaBlaTripTarget0407?,
     val decisionReason: OperationalTripDecisionReason0564? = null,
+    val segmentLoads0602: List<SegmentLoad> = emptyList(),
 )
+
+internal fun operationalTimelineSegmentLoads0602(
+    entry: TripTimelineEntry,
+    trip: Trip?,
+): List<SegmentLoad> {
+    if (!entry.canonicalBackendAuthoritative0494) return emptyList()
+    if (entry.canonicalCapacityReliable0494 != true || entry.capacity <= 0) return emptyList()
+    return canonicalTimelineSegmentLoads0494(entry, trip)
+}
 
 /** Compatibility entry point retained for existing unit tests/callers. */
 internal fun operationalConnectedEntries0563(
@@ -444,6 +471,87 @@ private fun OperationalTripBrowserCard0563(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // 0.1.602 — leitura viva de vagas por trecho diretamente no card da Timeline.
+            // O estado vem da projeção canônica já calculada pela Agenda; esta tela não
+            // cria um segundo motor de ocupação e não oferece ação de reserva ao motorista.
+            Text(
+                text = "Vagas por trecho",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            if (row.segmentLoads0602.isEmpty()) {
+                Text(
+                    text = "Aguardando atualização canônica das vagas.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                row.segmentLoads0602.forEach { load0602 ->
+                    val capacity0602 = entry.capacity
+                    val available0602 = load0602.availableSeats.coerceAtLeast(0)
+                    val availabilityLabel0602 = when (available0602) {
+                        0 -> "LOTADO"
+                        1 -> "1 vaga"
+                        else -> "${available0602} vagas"
+                    }
+                    val dots0602 = capacity0602.takeIf { it in 1..12 }?.let { capacity ->
+                        val occupiedDots = load0602.occupiedSeats.coerceIn(0, capacity)
+                        "●".repeat(occupiedDots) + "○".repeat((capacity - occupiedDots).coerceAtLeast(0))
+                    }.orEmpty()
+                    val occupancy0602 =
+                        "${load0602.passengerSeats.coerceAtLeast(0)}/${capacity0602}"
+                    val blocked0602 = load0602.blockedSeats.coerceAtLeast(0)
+                    val overbooking0602 = load0602.overbookingSeats.coerceAtLeast(0)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp),
+                        ) {
+                            Text(
+                                text = "${load0602.from.name} → ${load0602.to.name}",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (dots0602.isNotBlank()) {
+                                    Text(
+                                        text = dots0602,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                                Text(
+                                    text = "👥 ${occupancy0602}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                )
+                                if (blocked0602 > 0) {
+                                    Text(
+                                        text = "🚫${blocked0602}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = if (overbooking0602 > 0) {
+                                "${availabilityLabel0602} +${overbooking0602}"
+                            } else {
+                                availabilityLabel0602
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                        )
+                    }
+                }
             }
 
             if (!targetConfirmed) {
