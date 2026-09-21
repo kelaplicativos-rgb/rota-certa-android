@@ -1962,8 +1962,21 @@ internal object AgendaBackgroundSync0392 {
         collectionRunId: String = response?.collected_at.orEmpty(),
         collectionGeneration: Long = 0L,
         completeProfileUuids: Set<String> = emptySet(),
+        htmlTransactionCaptureId0610: String? = null,
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
+        val activeHtmlTransaction0610 = BlaBlaHtmlCaptureTransaction0610.active(context)
+        if (
+            activeHtmlTransaction0610 != null &&
+            activeHtmlTransaction0610.captureId != htmlTransactionCaptureId0610
+        ) {
+            UnifiedDebugEventStore.recordAlways(
+                "HTML_CANONICAL_RECONCILE_BLOCKED_0610",
+                context.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(activeHtmlTransaction0610.captureId)} generation=${activeHtmlTransaction0610.generation} incomingTrips=${response.trips.size} requestedCaptureId=${htmlTransactionCaptureId0610.orEmpty().take(48)} action=BLOCK_DURING_PRIVATE_CAPTURE",
+            )
+            return ExternalCollectorCanonicalBatch0403(blockedTrips = response.trips.size)
+        }
         if (response.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT) {
             UnifiedDebugEventStore.recordAlways(
                 "NON_HTML_CANONICAL_INGEST_BLOCKED_0607",
@@ -3103,13 +3116,12 @@ internal object AgendaBackgroundSync0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         if (reason == "blablacar_collection_result") {
-            val collectorMutex = collectorDeltaMutexes0431.computeIfAbsent(tenantId) { Mutex() }
-            return collectorMutex.withLock {
-                runCollectorCardDelta0431(
-                    appContext = appContext,
-                    tenantId = tenantId,
-                )
-            }
+            UnifiedDebugEventStore.recordAlways(
+                "LEGACY_COLLECTOR_DELTA_DISABLED_0610",
+                appContext.packageName,
+                "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=blablacar_collection_result action=NO_CANONICAL_WRITE htmlOnly=true",
+            )
+            return AgendaBackgroundSyncRun0392()
         }
         val targetRemoteTripId = bookingTargetRemoteTripId0431.trim()
         if (
@@ -3209,8 +3221,10 @@ internal object AgendaBackgroundSync0392 {
         )
 
         var collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(appContext)
-        val reconcileCollectorSnapshot =
-            mode == AgendaBackgroundSyncMode0392.COLLECTOR_RECONCILE
+        // 0.1.610: generic/background work is never allowed to materialize BlaBlaCar
+        // state. Global HTML capture and exact-card HTML refresh own the only canonical
+        // external-write paths, eliminating stale WorkManager races during private staging.
+        val reconcileCollectorSnapshot = false
         fun collectorResponseForThisCycle0407(): BlaBlaCollectorMonthResponse? =
             targetedCollectorResponse0407(
                 response = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions(),
