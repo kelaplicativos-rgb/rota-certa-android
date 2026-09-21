@@ -2307,7 +2307,23 @@ internal object PublicAgendaAutoSync0300 {
         val short = stops.filter { stop ->
             normalizePlace(stop.name) == shortKey || normalizePlace(stop.address) == shortKey
         }
-        return short.singleOrNull()
+        if (short.size == 1) return short.single()
+
+        fun containsPhrase(longer: String, shorter: String): Boolean {
+            val longTokens = longer.split(' ').filter(String::isNotBlank)
+            val shortTokens = shorter.split(' ').filter(String::isNotBlank)
+            if (shortTokens.size < 2 || shortTokens.size > longTokens.size) return false
+            return longTokens.windowed(shortTokens.size).any { it == shortTokens }
+        }
+
+        val fuzzy = stops.filter { stop ->
+            listOf(normalizePlace(stop.name), normalizePlace(stop.address))
+                .filter(String::isNotBlank)
+                .any { stopKey ->
+                    containsPhrase(stopKey, shortKey) || containsPhrase(shortKey, stopKey)
+                }
+        }.distinctBy(TripStop::id)
+        return fuzzy.singleOrNull()
     }
 
     internal fun externalPassengerSegmentsResolved(
