@@ -1011,7 +1011,13 @@ private fun TripApp(
                                 store = store,
                                 trip = trip,
                                 expanded = selectedId == trip.id,
-                                onToggle = { selectedId = if (selectedId == trip.id) null else trip.id },
+                                onToggle = {
+                                    val opening = selectedId != trip.id
+                                    if (opening && requestAgendaTripHtmlRefresh0607(activity, trip)) {
+                                        message = "Capturando o HTML somente desta viagem na BlaBlaCar."
+                                    }
+                                    selectedId = if (opening) trip.id else null
+                                },
                                 onChanged = { text -> refresh(); message = text },
                                 onRequestBlaBlaSync = {},
                             )
@@ -1287,6 +1293,46 @@ private fun TripEditor(
             description = "Escolha a data da viagem. Dias passados ficam indisponíveis.",
         )
     }
+}
+
+private fun requestAgendaTripHtmlRefresh0607(
+    activity: ComponentActivity,
+    trip: Trip,
+): Boolean {
+    val profileUuid = trip.blablaProfileUuid?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    val tripId = trip.blablaTripId?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    val tripHref = trip.blablaManageUrl?.trim()?.takeIf(String::isNotEmpty) ?: return false
+    if (BlaBlaCollectorUrlModule.tripId(tripHref) != tripId) return false
+    val account = BlaBlaDynamicAccountRegistry(activity).list().singleOrNull { candidate ->
+        candidate.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true
+    } ?: return false
+    val tenantId = br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry(activity).activeScope().tenantId
+    val target = BlaBlaTripTarget0407(
+        tenantId = tenantId,
+        accountId = account.id,
+        profileUuid = profileUuid.lowercase(),
+        tripId = tripId,
+        tripHref = tripHref,
+    )
+    val command = BlaBlaCommand0407.forTarget(
+        target = target,
+        operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+        origin = BlaBlaCommandOrigin0407.CARD,
+    )
+    val queued = AgendaBackgroundSync0392.enqueueTripCollectorRefresh0517(
+        context = activity,
+        target = target,
+        commandId = command.commandId,
+        requestedAtMillis = command.requestedAtMillis,
+    )
+    if (queued) {
+        UnifiedDebugEventStore.recordAlways(
+            "AGENDA_CARD_TARGET_HTML_REFRESH_REQUESTED_0607",
+            activity.packageName,
+            "canonicalTripId=${seatSyncDiagnosticKey(trip.tripKey.ifBlank { trip.id })} tripIdPresent=true profileUuidPresent=true authority=HTML_DIRECT_0607",
+        )
+    }
+    return queued
 }
 
 @Composable
