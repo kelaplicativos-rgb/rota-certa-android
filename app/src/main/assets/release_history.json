@@ -2,6 +2,35 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.601",
+      "build": 5892,
+      "commit": null,
+      "branch": "agent/central-driver-segment-glance-0.1.601",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A seção Vagas por trecho da Central do Dia passa a declarar e preservar um contrato exclusivamente operacional do motorista: leitura de ocupação, capacidade e vagas, sem qualquer ação de reserva do passageiro.",
+        "Cada trecho organiza rota à esquerda, bolinhas e ocupação logo abaixo e a disponibilidade/LOTADO à direita, favorecendo leitura imediata sem misturar conversão comercial com operação."
+      ],
+      "fixed": [
+        "Eliminado o risco de paridade visual ser interpretada como paridade de ações entre Central do Dia e Agenda pública: a Central continua reutilizando a mesma verdade canônica, mas não herda CTA de reserva.",
+        "Rotas longas por trecho deixam de disputar a mesma linha com todos os indicadores e agora podem ocupar duas linhas sem perder a disponibilidade visível."
+      ],
+      "improved": [
+        "SeatAvailabilityEngine.segmentLoads permanece a única autoridade de ocupação e vagas; nenhuma regra de inventário, capacidade, passageiro ou itinerário foi duplicada.",
+        "Teste de regressão bloqueia a introdução de Reserve Já, Indisponível clicável, Button/TextButton ou callbacks de reserva dentro da seção operacional de vagas da Central."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [],
+      "modulesAffected": [
+        "Central do Dia",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.600",
       "build": 5891,
       "commit": null,
