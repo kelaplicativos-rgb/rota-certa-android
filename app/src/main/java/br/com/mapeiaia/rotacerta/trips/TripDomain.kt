@@ -264,6 +264,15 @@ internal fun canonicalTripStateHash0406(
         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
 
+internal fun Trip.htmlAuthorityVisible0607(): Boolean {
+    val externalBlaBla =
+        resolvedTripRecordOrigin(this) == TripRecordOrigin.EXTERNAL_BACKING ||
+            !blablaProfileUuid.isNullOrBlank() ||
+            !blablaTripId.isNullOrBlank()
+    return !externalBlaBla ||
+        externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+}
+
 @Serializable
 data class Booking(
     val id: String = UUID.randomUUID().toString(),
