@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.612 HTML canonical atomicity exact SHA
-# trigger: html-canonical-atomicity-0612
+# trigger: html-canonical-atomicity-0612-r2
 
 on:
   push:
