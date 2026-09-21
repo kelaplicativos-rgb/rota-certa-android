@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.602",
+      "build": 5893,
+      "commit": null,
+      "branch": "agent/timeline-live-segment-glance-0.1.602",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Os cards de Todas as viagens/Timeline passam a exibir Vagas por trecho permanentemente, com origem → destino, bolinhas de ocupação, passageiros/capacidade, bloqueios, vagas restantes e LOTADO quando aplicável.",
+        "A leitura usa diretamente a projeção canônica já materializada pela Agenda e reage às alterações de trips/bookings recebidas pela tela, sem depender de abrir detalhes."
+      ],
+      "fixed": [
+        "Corrigida a ausência da informação mais importante para o motorista na superfície Todas as viagens: antes o card mostrava rota e resumo, mas escondia a disponibilidade por segmento.",
+        "Capacidade não confiável permanece fail-closed e não é convertida em falso LOTADO; nesse caso o card sinaliza que aguarda atualização canônica."
+      ],
+      "improved": [
+        "Nenhum segundo motor de vagas foi criado na Timeline operacional: a tela consome canonicalTimelineSegmentLoads0494 derivado do mesmo estado canônico usado pela Agenda/Central.",
+        "A Timeline do motorista continua sem Reserve Já ou ação comercial de passageiro; o bloco é exclusivamente de leitura operacional imediata."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.601: Central do Dia já tinha leitura operacional clara por trecho, mas a superfície Todas as viagens mostrada no vídeo ainda não exibia o mesmo dado nos cards."
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Timeline",
+        "Vagas por trecho",
+        "Ocupação canônica",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.601",
       "build": 5892,
       "commit": null,
