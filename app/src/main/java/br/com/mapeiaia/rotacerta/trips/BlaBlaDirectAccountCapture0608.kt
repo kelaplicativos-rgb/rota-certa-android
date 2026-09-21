@@ -51,6 +51,7 @@ internal data class BlaBlaDirectAccountCaptureResult0608(
     val completeTrips: Int = 0,
     val incompleteTrips: Int = 0,
     val errorCode: String = "",
+    val privateStage0610: BlaBlaUnifiedProfileCaptureResult0605? = null,
 )
 
 /**
@@ -327,6 +328,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             completeTrips = tripResult.completeTrips,
             incompleteTrips = tripResult.incompleteTrips,
             errorCode = profileAfter?.errorCode.orEmpty(),
+            privateStage0610 = tripResult,
         )
     }
 
