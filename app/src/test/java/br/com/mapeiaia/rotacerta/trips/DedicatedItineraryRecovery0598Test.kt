@@ -90,7 +90,7 @@ class DedicatedItineraryRecovery0598Test {
         assertTrue(capture >= 0)
         assertTrue(request > capture)
         assertTrue(continueCall > request)
-        assertTrue(source.contains("TRIP_ITINERARY_CAPTURED_0598"))
+        assertTrue(source.contains("TRIP_ITINERARY_CAPTURED_0599"))
         assertTrue(source.contains("recoverFromPassengerSegments("))
     }
 
