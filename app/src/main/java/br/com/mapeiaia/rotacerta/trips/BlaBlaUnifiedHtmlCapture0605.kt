@@ -16,6 +16,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -59,6 +60,8 @@ internal data class BlaBlaUnifiedProfileCaptureResult0605(
     val capturedTrips: Int,
     val completeTrips: Int,
     val incompleteTrips: Int,
+    val stagedTrips0610: List<BlaBlaCollectorTrip> = emptyList(),
+    val stagedLastUrl0610: String = "",
 )
 
 @Serializable
@@ -198,22 +201,19 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         val sessionStore = BlaBlaDynamicSessionStore(app)
         if (futureRides.isEmpty()) {
             store.updateProfile(captureId, account.id) { it.copy(tripCaptures0605 = emptyList()) }
-            stageProfile0609(
-                context = app,
-                sessionStore = sessionStore,
-                account = account,
-                trips = emptyList(),
-                dateScope = emptyList(),
-                pendingOrIncomplete = 0,
-                lastUrl = profile.finalUrl,
-                reason = "profile_empty",
-            )
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_UNIFIED_HTML_PROFILE_EMPTY_0605",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} futureTrips=0",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} futureTrips=0 privateStaging=true sessionStoreWrite=false",
             )
-            return BlaBlaUnifiedProfileCaptureResult0605(0, 0, 0, 0)
+            return BlaBlaUnifiedProfileCaptureResult0605(
+                futureTrips = 0,
+                capturedTrips = 0,
+                completeTrips = 0,
+                incompleteTrips = 0,
+                stagedTrips0610 = emptyList(),
+                stagedLastUrl0610 = profile.finalUrl,
+            )
         }
 
         val definition = account.verifiedDefinition()
@@ -331,17 +331,6 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             }
         }
 
-        stageProfile0609(
-            context = app,
-            sessionStore = sessionStore,
-            account = account,
-            trips = collected,
-            dateScope = futureRides.mapNotNull { runCatching { LocalDate.parse(it.date) }.getOrNull() },
-            pendingOrIncomplete = finalIncomplete,
-            lastUrl = captures.lastOrNull()?.finalUrl.orEmpty(),
-            reason = "profile_final",
-        )
-
         UnifiedDebugEventStore.recordAlways(
             "BLABLACAR_UNIFIED_HTML_PROFILE_COMPLETED_0605",
             app.packageName,
@@ -352,6 +341,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             capturedTrips = captures.size,
             completeTrips = captures.count { it.status == "COMPLETE" },
             incompleteTrips = finalIncomplete,
+            stagedTrips0610 = collected.toList(),
+            stagedLastUrl0610 = captures.lastOrNull()?.finalUrl.orEmpty(),
         )
     }
 
@@ -726,47 +717,72 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         return null
     }
 
-    private fun stageProfile0609(
-        context: Context,
-        sessionStore: BlaBlaDynamicSessionStore,
-        account: BlaBlaDynamicAccount,
-        trips: List<BlaBlaCollectorTrip>,
-        dateScope: List<LocalDate>,
-        pendingOrIncomplete: Int,
-        lastUrl: String,
-        reason: String,
-    ) {
-        sessionStore.saveSync(
-            account = account,
-            lastUrl = lastUrl,
-            trips = trips,
-            skippedTrips = pendingOrIncomplete,
-            identityVerified = true,
-            dateScope = dateScope,
-            targetedTripId = null,
-            selectiveScriptSync0449 = false,
-            acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
-        )
-        UnifiedDebugEventStore.recordAlways(
-            "BLABLACAR_UNIFIED_HTML_PROFILE_STAGED_0609",
-            context.packageName,
-            "accountKey=${seatSyncDiagnosticKey(account.id)} reason=${reason.take(80)} stagedTrips=${trips.size} pendingOrIncomplete=$pendingOrIncomplete acquisition=direct_webview canonicalDeltaEnqueued=false globalCommitPending=true",
-        )
-    }
-
-    internal fun commitCompletedCapture0609(
+    internal suspend fun commitCompletedCapture0610(
         context: Context,
         accounts: List<BlaBlaDynamicAccount>,
         manifest: BlaBlaRidesSnapshotManifest0526,
+        stagedByAccount: Map<String, BlaBlaUnifiedProfileCaptureResult0605>,
     ): Boolean {
         val app = context.applicationContext
+        val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
+        if (transaction == null || transaction.captureId != manifest.captureId) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0610",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} reason=transaction_not_active preservePreviousCanonical=true",
+            )
+            return false
+        }
+
         val profileStatuses = manifest.profiles.map(BlaBlaRidesSnapshotProfile0526::status)
         val tripStatuses = manifest.profiles.flatMap { profile ->
             profile.tripCaptures0605.map(BlaBlaRidesTripCapture0605::status)
         }
         val expectedTripCount = tripStatuses.size
+        val stagedResults = accounts.mapNotNull { account ->
+            stagedByAccount[account.id]?.let { account to it }
+        }
+        val stagedTrips = stagedResults.flatMap { it.second.stagedTrips0610 }
+        val stagedStrongIdentities = stagedTrips.mapNotNull { trip ->
+            val profileUuid = trip.profile_uuid.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+            val tripId = trip.trip_id?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+            profileUuid.lowercase() + "|" + tripId
+        }
+        val stagedComplete =
+            stagedResults.size == accounts.size &&
+                stagedResults.all { (_, result) ->
+                    result.incompleteTrips == 0 &&
+                        result.capturedTrips == result.completeTrips &&
+                        result.stagedTrips0610.size == result.completeTrips
+                } &&
+                stagedTrips.size == expectedTripCount &&
+                stagedStrongIdentities.size == expectedTripCount &&
+                stagedStrongIdentities.distinct().size == expectedTripCount
+
+        if (
+            manifest.result != "COMPLETE" ||
+            profileStatuses.size != accounts.size ||
+            profileStatuses.any { it != BlaBlaRidesSnapshotStatus0526.COMPLETE } ||
+            tripStatuses.any { it != "COMPLETE" } ||
+            !stagedComplete
+        ) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0610",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} result=${manifest.result} profiles=${manifest.profiles.size}/${accounts.size} expectedTrips=$expectedTripCount stagedTrips=${stagedTrips.size} strongIdentities=${stagedStrongIdentities.distinct().size} reason=private_stage_incomplete preservePreviousCanonical=true",
+            )
+            return false
+        }
+
         val sessionStore = BlaBlaDynamicSessionStore(app)
-        val response = sessionStore.combinedResponse(accounts)
+        val replacements = stagedResults.map { (account, result) ->
+            BlaBlaHtmlSessionReplacement0610(
+                account = account,
+                trips = result.stagedTrips0610,
+                lastUrl = result.stagedLastUrl0610,
+            )
+        }
+        val response = sessionStore.replaceHtmlSnapshotsAtomically0610(replacements)
         val eligible = globalHtmlAtomicCommitEligible0609(
             manifestResult = manifest.result,
             profileStatuses = profileStatuses,
@@ -776,44 +792,85 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             stagedTripCount = response.trips.size,
             authoritySource = response.authority_source_0607,
         )
-        val strongIdentities = response.trips.mapNotNull { trip ->
-            val profileUuid = trip.profile_uuid.trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
-            val tripId = trip.trip_id?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-            profileUuid.lowercase() + "|" + tripId
-        }
-        val identityComplete =
-            strongIdentities.size == expectedTripCount &&
-                strongIdentities.distinct().size == expectedTripCount
-        if (!eligible || !identityComplete) {
+        if (
+            !eligible ||
+            response.status != "complete" ||
+            !response.coverage.complete_for_scope ||
+            response.coverage.unresolved_target_cards != 0 ||
+            response.trips.size != expectedTripCount
+        ) {
             UnifiedDebugEventStore.recordAlways(
-                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0609",
+                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0610",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} result=${manifest.result} profiles=${manifest.profiles.size}/${accounts.size} expectedTrips=$expectedTripCount stagedTrips=${response.trips.size} strongIdentities=${strongIdentities.distinct().size} authority=${response.authority_source_0607.ifBlank { "EMPTY" }} canonicalDeltaEnqueued=false preservePreviousCanonical=true",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} stage=session_replace status=${response.status} completeForScope=${response.coverage.complete_for_scope} unresolved=${response.coverage.unresolved_target_cards} expectedTrips=$expectedTripCount responseTrips=${response.trips.size} preservePreviousCanonical=true",
             )
             return false
         }
 
-        val published = BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = true)
+        val published = BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
         if (
             published.authority_source_0607 != BlaBlaAcquisitionAuthority0607.HTML_DIRECT ||
+            published.status != "complete" ||
+            !published.coverage.complete_for_scope ||
             published.trips.size != expectedTripCount
         ) {
             UnifiedDebugEventStore.recordAlways(
-                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0609",
+                "BLABLACAR_GLOBAL_HTML_COMMIT_BLOCKED_0610",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} stage=state_store expectedTrips=$expectedTripCount publishedTrips=${published.trips.size} authority=${published.authority_source_0607.ifBlank { "EMPTY" }} canonicalDeltaEnqueued=false preservePreviousCanonical=true",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} stage=state_store expectedTrips=$expectedTripCount publishedTrips=${published.trips.size} status=${published.status} completeForScope=${published.coverage.complete_for_scope} preservePreviousCanonical=true",
             )
             return false
         }
 
-        AgendaBackgroundSync0392.enqueueCollectorDelta0431(
+        val settings = SettingsRepository(app).settings.first()
+        val tripStore = TripStore(app)
+        val batch = AgendaBackgroundSync0392.reconcileCollectedExternalTrips0403(
             context = app,
-            source = "unified_html_capture_0609:global_atomic_commit",
+            store = tripStore,
+            response = published,
+            rotaCertaSeatAllocation = settings.rotaCertaSeatAllocation,
+            seatAllocationVersion = settings.rotaCertaSeatAllocationVersion,
+            collectionRunId = "html-private-transaction-0610:" + manifest.captureId.take(48),
+            collectionGeneration = transaction.generation,
+            completeProfileUuids = accounts.mapNotNull { it.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank) }.toSet(),
+            htmlTransactionCaptureId0610 = manifest.captureId,
         )
+
+        val canonicalTrips = tripStore.trips()
+        val canonicalized = published.trips.count { source ->
+            val profileUuid = source.profile_uuid.trim()
+            val tripId = source.trip_id?.trim().orEmpty()
+            canonicalTrips.count { trip ->
+                !trip.deleted &&
+                    trip.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
+                    trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                    trip.blablaTripId?.trim() == tripId
+            } == 1
+        }
+        val canonicalComplete =
+            canonicalized == expectedTripCount &&
+                batch.blockedTrips == 0 &&
+                batch.staleResultsRejected == 0 &&
+                batch.missingPreserved == 0
+
+        if (!canonicalComplete) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_CANONICAL_VALIDATION_FAILED_0610",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} htmlTrips=$expectedTripCount canonicalized=$canonicalized blocked=${batch.blockedTrips} stale=${batch.staleResultsRejected} missingPreserved=${batch.missingPreserved} changed=${batch.changedTrips} skipped=${batch.skippedTrips}",
+            )
+            return false
+        }
+
+        val delivered = TripMutationCoordinator0387(app, tripStore).drainPending(
+            canonicalTripIds = batch.publicationCanonicalTripIds0431,
+        )
+        BookingRealtimeEvents0356.notifyChanged()
+        TripWidgetProvider.updateAll(app)
         UnifiedDebugEventStore.recordAlways(
-            "BLABLACAR_GLOBAL_HTML_COMMIT_0609",
+            "BLABLACAR_GLOBAL_HTML_COMMIT_0610",
             app.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profiles=${accounts.size} trips=$expectedTripCount authority=HTML_DIRECT_0607 stateStoreTrips=${published.trips.size} canonicalDeltaEnqueued=true commitCount=1",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} generation=${transaction.generation} profiles=${accounts.size} htmlTrips=$expectedTripCount canonicalized=$canonicalized changed=${batch.changedTrips} unchanged=${batch.skippedTrips} tombstoned=${batch.tombstonedTrips} blocked=${batch.blockedTrips} conflicts=0 outboxDelivered=$delivered status=complete completeForScope=true skipped=0 canonicalDeltaEnqueued=false directReconcile=true commitCount=1",
         )
         return true
     }
