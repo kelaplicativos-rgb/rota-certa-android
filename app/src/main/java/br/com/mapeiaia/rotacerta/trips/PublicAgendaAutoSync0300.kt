@@ -2309,6 +2309,34 @@ internal object PublicAgendaAutoSync0300 {
         }
         if (short.size == 1) return short.single()
 
+        // 0.1.612: HTML passenger labels often carry only the city while the itinerary
+        // carries a station/street plus ", City - UF". Derive conservative aliases from
+        // comma-separated observed components and accept them only when exactly one stop
+        // matches. No route-order guessing or fabricated fallback is allowed.
+        fun aliases(value: String): Set<String> = buildSet {
+            val parts = listOf(value) + value.split(',', ';', '|', '•')
+            parts.map(String::trim).filter(String::isNotBlank).forEach { part ->
+                val normalized = normalizeStopEvidence(part)
+                if (normalized.isNotBlank()) {
+                    add(normalized)
+                    val tokens = normalized.split(' ').filter(String::isNotBlank)
+                    if (tokens.size >= 2 && tokens.last().length == 2) {
+                        add(tokens.dropLast(1).joinToString(" "))
+                    }
+                }
+                normalizePlace(part).takeIf(String::isNotBlank)?.let(::add)
+            }
+        }.filterTo(linkedSetOf()) { alias ->
+            alias.length >= 4 && alias !in setOf("brasil", "estado", "rodovia")
+        }
+
+        val labelAliases = aliases(raw)
+        val aliasMatches = stops.filter { stop ->
+            val stopAliases = aliases(stop.name) + aliases(stop.address)
+            stopAliases.any(labelAliases::contains)
+        }.distinctBy(TripStop::id)
+        if (aliasMatches.size == 1) return aliasMatches.single()
+
         fun containsPhrase(longer: String, shorter: String): Boolean {
             val longTokens = longer.split(' ').filter(String::isNotBlank)
             val shortTokens = shorter.split(' ').filter(String::isNotBlank)
@@ -2317,10 +2345,10 @@ internal object PublicAgendaAutoSync0300 {
         }
 
         val fuzzy = stops.filter { stop ->
-            listOf(normalizePlace(stop.name), normalizePlace(stop.address))
+            listOf(normalizeStopEvidence(stop.name), normalizeStopEvidence(stop.address))
                 .filter(String::isNotBlank)
                 .any { stopKey ->
-                    containsPhrase(stopKey, shortKey) || containsPhrase(shortKey, stopKey)
+                    containsPhrase(stopKey, exactKey) || containsPhrase(exactKey, stopKey)
                 }
         }.distinctBy(TripStop::id)
         return fuzzy.singleOrNull()
