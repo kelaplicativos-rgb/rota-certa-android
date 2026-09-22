@@ -2,6 +2,48 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.622",
+      "build": 5913,
+      "commit": null,
+      "branch": "agent/html-authoritative-convergence-0.1.622",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Snapshot HTML COMPLETE passa a reconciliar novamente todos os cards pela identidade forte profileUuid + tripId.",
+        "Readback global valida fingerprint semântico e geração da captura, não apenas a presença da identidade.",
+        "A publicação pendente da Agenda é drenada novamente para todas as viagens presentes no snapshot COMPLETE.",
+        "Projeção completa exige vagas publicadas, roster completo, itinerário autoritativo e resolução dos trechos dos passageiros.",
+        "A Agenda mostra o nome do perfil BlaBlaCar pertencente ao próprio card, o ano explícito e atualiza a visualização a cada 2 segundos."
+      ],
+      "fixed": [
+        "Impede uma Agenda antiga de sobreviver a uma captura HTML COMPLETE correta.",
+        "Impede reaproveitamento de rota, link e segmentos antigos quando o HTML atual é completo.",
+        "Corrige vaga falsa no trecho São Paulo para Três Corações quando a ocupação observada totaliza 4 lugares.",
+        "Corrige perda de parada intermediária que deslocava a ocupação dos trechos seguintes.",
+        "Evita que cards de perfis diferentes usem o mesmo nome global na Agenda."
+      ],
+      "improved": [
+        "Falha de fidelidade passa a ser fail-closed e preserva o último canônico completo.",
+        "Telemetria registra semanticMismatch e publicParityPending.",
+        "Testes reproduzem os casos de ocupação por trecho encontrados no snapshot de validação."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.621: o finalizador podia validar apenas presença da identidade e deixar conteúdo ou publicação antiga na Agenda."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Timeline",
+        "Agenda Pública",
+        "Outbox",
+        "Backend canônico",
+        "Diagnósticos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.621",
       "build": 5912,
       "commit": null,
