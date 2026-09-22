@@ -15,7 +15,7 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.581\.4/);
+  assert.match(html, /public-agenda-shell-0569\\.js\\?v=0\\.1\\.622-html-convergence/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
@@ -154,3 +154,10 @@ test("0580 public segment renderer consumes server projection instead of passeng
   assert.match(html, /agendaSegments0580/);
   assert.match(html, /agendaSegmentDots0580/);
 });
+test("0622 public Agenda renders exact year, per-trip profile and near-live refresh", () => {
+  assert.match(app, /\$\{parts\.year\}/);
+  assert.match(app, /item\?\.blablaProfileName/);
+  assert.match(app, /\}, 2000\);/);
+  assert.match(api, /blablaProfileName/);
+});
+
