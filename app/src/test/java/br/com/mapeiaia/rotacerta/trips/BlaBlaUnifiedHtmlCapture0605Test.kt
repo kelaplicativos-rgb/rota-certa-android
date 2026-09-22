@@ -216,7 +216,7 @@ class BlaBlaUnifiedHtmlCapture0605Test {
     }
 
     @Test
-    fun globalCaptureProfileNeverWritesSharedSessionDuringPrivateStage0610() {
+    fun globalCapturePublishesEachValidatedCardImmediately0617() {
         val candidates = listOf(
             File("src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
             File("app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt"),
@@ -227,9 +227,15 @@ class BlaBlaUnifiedHtmlCapture0605Test {
         assertTrue(captureStart >= 0)
         assertTrue(targetedStart > captureStart)
         val globalPath = source.substring(captureStart, targetedStart)
-        assertFalse(globalPath.contains("saveSync("))
-        assertFalse(globalPath.contains("stageProfile0609"))
-        assertTrue(globalPath.contains("stagedTrips0610"))
+
+        assertTrue(globalPath.contains("publishLiveHtmlCard0617("))
+        assertTrue(globalPath.contains("BLABLACAR_LIVE_CARD_COMMITTED_0617"))
+        assertTrue(globalPath.contains("completeProfileUuids = emptySet()"))
+        assertTrue(globalPath.contains("tombstone=false"))
+        assertTrue(globalPath.contains("BookingRealtimeEvents0356.notifyChanged()"))
+        assertTrue(globalPath.contains("sessionStore.saveSync("))
+        assertTrue(globalPath.contains("preserveOnPartial = true"))
+        assertTrue(globalPath.contains("liveCardCommitMutex0617.withLock"))
     }
 
     @Test
