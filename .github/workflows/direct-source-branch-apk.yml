@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.621 HTML network recovery exact SHA
-# trigger: html-network-recovery-0621-r3
+name: Rota Certa 0.1.622 HTML authoritative convergence exact SHA
+# trigger: html-authoritative-convergence-0622-r1
 
 on:
   push:
     branches:
-      - agent/html-network-recovery-0.1.621
+      - agent/html-authoritative-convergence-0.1.622
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   pull_request:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-network-recovery-0621-${{ github.ref }}
+  group: html-authoritative-convergence-0622-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,8 +32,8 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5912'
-      EXPECTED_VERSION_NAME: '0.1.621'
+      EXPECTED_VERSION_CODE: '5913'
+      EXPECTED_VERSION_NAME: '0.1.622'
       BASE_SHA: '6a7368175fded28c6562e9efd13acea9c7bd1fe8'
       SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
@@ -60,8 +60,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_912' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.621"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_913' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.622"' app/build.gradle.kts
           grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
@@ -151,11 +151,18 @@ jobs:
           grep -Fq 'BookingRealtimeEvents0356.notifyChanged()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'visibleImmediately=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'evaluateAbsentTrips0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'skipPresentAlreadyCommittedGeneration0618 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'skipPresentAlreadyCommittedGeneration0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'semanticMismatch06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'completeCanonicalIds06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'pendingParity06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'incomingProjection06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'source.itinerary_authoritative' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'completeHtmlProjectionMarksSaoPauloToTresCoracoesFullWithOnePlusThreePassengers0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
+          grep -Fq 'completeHtmlProjectionPreservesSaoGoncaloAndAccumulatesReturnPassengers0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
           grep -Fq 'val committed = withContext(Dispatchers.IO)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
-          grep -Fq 'liveCardFastPathSkipsGlobalAbsenceWorkAndFinalizerRunsOffMain0618' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'liveCardStaysIncrementalButCompleteFinalizerForcesSemanticConvergence0622' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
           grep -Fq 'BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'TripMutationCoordinator0387(app, tripStore).drainPending(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'canonicalTripIds = targetPublicationIds0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -249,8 +256,19 @@ jobs:
             --tests '*BlaBlaDomNormalizationDiagnostic0274Test' \
             --tests '*OperationalTimelineDownload0616Test' \
             --tests '*BlaBlaLiveHtmlCommit0617Test' \
+            --tests '*PublicMirrorAttestation0411Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
 
+      - name: Validate public Agenda and canonical backend syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --check trip-platform/functions/index.js
+          node --test trip-platform/functions/test/public-agenda-shell-0569.test.js | tee /tmp/public-shell-tests.log
+          grep -Fq '0.1.622-html-convergence' trip-platform/public/index.html
+          grep -Fq 'item?.blablaProfileName' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '}, 2000);' trip-platform/public/public-agenda-shell-0569.js
       - name: Assemble exact-head APK
         shell: bash
         run: |
@@ -279,7 +297,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0621
+          OUT=/tmp/0622
           mkdir -p "$OUT"
           SHORT_SHA="${SOURCE_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -305,6 +323,13 @@ jobs:
           live_card_tombstone=DISABLED
           live_card_ui_invalidation=PASS
           live_card_canonical_readback=PASS
+          global_semantic_fingerprint_readback=PASS
+          complete_snapshot_full_reconcile=PASS
+          complete_snapshot_public_parity_retry=PASS
+          authoritative_itinerary_required=PASS
+          exact_profile_name_per_card=PASS
+          public_agenda_refresh_2s=PASS
+          explicit_year_label=PASS
           live_card_rollback=PASS
           multi_profile_isolated_concurrency=PASS
           single_profile_trip_navigation=SEQUENTIAL
@@ -313,7 +338,7 @@ jobs:
           global_finalizer_retained=PASS
           global_finalizer_off_main=PASS
           live_card_absence_scan=SKIPPED
-          finalizer_present_card_fastpath=PASS
+          finalizer_present_card_fastpath=DISABLED
           skipped_history_reset_on_authoritative_complete=PASS
           background_blablacar_canonical_write=DISABLED
           targeted_refresh_during_global_capture=BLOCKED
@@ -379,7 +404,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.621-5912-${{ env.SOURCE_SHA }}
+          name: rota-certa-0.1.622-5913-${{ env.SOURCE_SHA }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0621
+          path: /tmp/0622
