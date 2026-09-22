@@ -191,7 +191,7 @@ function dateLabel0569(ms, timezoneId) {
   if (!parts) return "";
   const weekdays = ["Dom.", "Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb."];
   const months = ["Jan.", "Fev.", "Mar.", "Abr.", "Mai.", "Jun.", "Jul.", "Ago.", "Set.", "Out.", "Nov.", "Dez."];
-  return `${weekdays[parts.weekday]} ${String(parts.day).padStart(2, "0")} ${months[parts.month]}`;
+  return `${weekdays[parts.weekday]} ${String(parts.day).padStart(2, "0")} ${months[parts.month]} ${parts.year}`;
 }
 
 function timeLabel0569(ms, timezoneId) {
@@ -663,7 +663,7 @@ async function loadAgenda0569(silent = false) {
 initPassengerAccess0589();
 window.setInterval(() => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
-}, 15000);
+}, 2000);
 window.addEventListener("online", () => loadAgenda0569(true));
 window.addEventListener("pageshow", () => {
   if (navigator.onLine !== false) {
