@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.619",
+      "build": 5910,
+      "commit": null,
+      "branch": "agent/timeline-download-verified-0.1.619",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Download da Timeline em Android 10+ só declara sucesso após readback do MediaStore.",
+        "Exportação direta passa a usar a raiz de Downloads para ficar visível imediatamente no Samsung Meus Arquivos.",
+        "Falha de publicação, visibilidade, estado pending ou tamanho aciona automaticamente o seletor de documentos do Android."
+      ],
+      "fixed": [
+        "Remove falso TIMELINE_DOWNLOAD_COMPLETED quando MediaStore.update(IS_PENDING=0) não confirma exatamente uma linha.",
+        "Impede que arquivo ainda pending/invisível seja tratado como download concluído.",
+        "Valida o tamanho efetivamente gravado contra os bytes UTF-8 do JSON antes de informar sucesso."
+      ],
+      "improved": [
+        "Telemetria diferencia download direto verificado, falha direta e fallback pelo seletor.",
+        "Mensagem de sucesso informa caminho verificável em Downloads.",
+        "Mantém geração da Timeline a partir da projeção canônica local sem reativar coletor legado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.618: TIMELINE_DOWNLOAD_COMPLETED_0616 podia ser registrado sem confirmar que o arquivo havia saído de IS_PENDING.",
+        "0.1.618: arquivo era salvo em pasta aninhada Downloads/Rota Certa e podia parecer ausente para o usuário."
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Timeline",
+        "Download",
+        "MediaStore",
+        "Diagnósticos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.618",
       "build": 5909,
       "commit": null,
