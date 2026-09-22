@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.618",
+      "build": 5909,
+      "commit": null,
+      "branch": "agent/html-incremental-fastpath-0.1.618",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Commit HTML individual deixa de varrer ausências de todos os cards canônicos; a captura parcial prova somente a presença do card recém-validado.",
+        "Finalizador global de HTML passa a executar fora da thread principal.",
+        "Finalizador global reconhece cards já confirmados na mesma geração e usa caminho presence-only em vez de repetir reconciliação/publicação completa."
+      ],
+      "fixed": [
+        "Remove o EXTERNAL_CANONICAL_MISSING_PRESERVED_0403 falso gerado por cada commit individual incompleto por definição.",
+        "Remove a causa do AGENDA_JANK_FREEZE de 21,6 s observado na 0.1.617 ao impedir reconciliação global pesada na UI.",
+        "Evita reprocessar os cards presentes que já foram materializados pelo BLABLACAR_LIVE_CARD_COMMITTED_0617 na mesma geração."
+      ],
+      "improved": [
+        "Mantém tombstones exclusivamente no fechamento global com escopo completo.",
+        "Preserva commit por card, rollback, identidade forte e autoridade HTML_DIRECT_0607.",
+        "Mantém navegação sequencial dentro de cada perfil para não aumentar rajadas contra a BlaBlaCar."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.617: cada commit ao vivo ainda calculava ausências contra todo o TripStore.",
+        "0.1.617: o finalizador voltava a reconciliar 55 cards já aplicados e podia congelar a interface por dezenas de segundos."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "TripStore",
+        "Diagnósticos",
+        "Performance",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.617",
       "build": 5908,
       "commit": null,
