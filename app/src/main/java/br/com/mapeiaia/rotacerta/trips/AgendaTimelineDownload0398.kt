@@ -1,5 +1,10 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -9,6 +14,8 @@ import androidx.compose.ui.platform.LocalContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -197,6 +204,41 @@ internal fun agendaTimelineDownloadFileName0398(nowMillis: Long = System.current
     return "rota-certa-timeline-$date.json"
 }
 
+internal fun agendaTimelineWriteToDownloads0616(
+    context: Context,
+    payload: String,
+    fileName: String,
+): String {
+    require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        "Download direto requer Android 10 ou superior."
+    }
+    val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/Rota Certa"
+    val values = ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+        put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
+        put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+        put(MediaStore.MediaColumns.IS_PENDING, 1)
+    }
+    val resolver = context.applicationContext.contentResolver
+    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        ?: error("Android não disponibilizou a pasta Downloads.")
+    try {
+        resolver.openOutputStream(uri, "w")
+            ?.bufferedWriter(Charsets.UTF_8)
+            ?.use { writer ->
+                writer.write(payload)
+                writer.flush()
+            }
+            ?: error("Não foi possível gravar a Timeline.")
+        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+            .also { resolver.update(uri, it, null, null) }
+        return "$relativePath/$fileName"
+    } catch (error: Throwable) {
+        resolver.delete(uri, null, null)
+        throw error
+    }
+}
+
 @Composable
 internal fun AgendaTimelineDownloadAction0399(
     entries: List<TripTimelineEntry>,
@@ -231,8 +273,34 @@ internal fun AgendaTimelineDownloadAction0399(
     }
 
     LaunchedEffect(triggerToken) {
-        if (triggerToken > 0) {
-            launcher.launch(agendaTimelineDownloadFileName0398())
+        if (triggerToken <= 0) return@LaunchedEffect
+        val fileName = agendaTimelineDownloadFileName0398()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    agendaTimelineWriteToDownloads0616(
+                        context = context,
+                        payload = payload,
+                        fileName = fileName,
+                    )
+                }
+            }.onSuccess { location ->
+                UnifiedDebugEventStore.recordAlways(
+                    "TIMELINE_DOWNLOAD_COMPLETED_0616",
+                    context.packageName,
+                    "directDownloads=true fileName=$fileName bytes=${payload.toByteArray(Charsets.UTF_8).size} piiLogged=false",
+                )
+                onChanged("Timeline baixada em $location.")
+            }.onFailure { error ->
+                UnifiedDebugEventStore.recordAlways(
+                    "TIMELINE_DOWNLOAD_FAILED_0616",
+                    context.packageName,
+                    "directDownloads=true error=${error.javaClass.simpleName} piiLogged=false",
+                )
+                onChanged("Falha ao baixar a Timeline: ${error.message ?: error.javaClass.simpleName}")
+            }
+        } else {
+            launcher.launch(fileName)
         }
     }
 }
