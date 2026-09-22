@@ -1128,6 +1128,36 @@ internal fun externalCollectorDeltaDecision0403(
     else -> ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL
 }
 
+internal fun htmlLegacyIdentityPromotionEligible0614(
+    legacy: Trip,
+    incomingProjection: Trip,
+    profileUuid: String,
+    blablaTripId: String,
+): Boolean {
+    val legacyProfile = legacy.blablaProfileUuid.orEmpty().trim()
+    val legacyTripId = legacy.blablaTripId.orEmpty().trim()
+    val identityCompatible =
+        (legacyProfile.isBlank() || legacyProfile.equals(profileUuid.trim(), ignoreCase = true)) &&
+            (legacyTripId.isBlank() || legacyTripId == blablaTripId.trim())
+    return identityCompatible &&
+        canonicalProjectionPhysicalIdentityCompatible0421(legacy, incomingProjection)
+}
+
+internal fun htmlLegacyBindingPromotionEligible0614(
+    binding: PublicExternalTripBinding,
+    incomingProjection: Trip,
+    profileUuid: String,
+    blablaTripId: String,
+): Boolean {
+    val bindingProfile = binding.profileUuid.trim()
+    val bindingTripId = binding.blablaTripId.trim()
+    val identityCompatible =
+        (bindingProfile.isBlank() || bindingProfile.equals(profileUuid.trim(), ignoreCase = true)) &&
+            (bindingTripId.isBlank() || bindingTripId == blablaTripId.trim())
+    return identityCompatible &&
+        canonicalProjectionPhysicalIdentityCompatible0421(binding.asTrip(), incomingProjection)
+}
+
 internal fun targetedCollectorResponse0407(
     response: BlaBlaCollectorMonthResponse?,
     target: BlaBlaTripTarget0407?,
@@ -2014,21 +2044,21 @@ internal object AgendaBackgroundSync0392 {
                 return@forEach
             }
 
-            val existing = store.trips().firstOrNull { trip ->
+            val strongExisting0614 = store.trips().firstOrNull { trip ->
                 resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING &&
                     trip.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
                     trip.blablaTripId?.trim() == blablaTripId
             }
-            val existingHtmlAuthority0607 = existing?.takeIf {
+            val prePromotionHtmlAuthority0607 = strongExisting0614?.takeIf {
                 it.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
             }
-            val source = reconciledCollectorNavigationIdentity0578(rawSource, existingHtmlAuthority0607)
+            val source = reconciledCollectorNavigationIdentity0578(rawSource, prePromotionHtmlAuthority0607)
             if (source == null) {
                 blockedTrips++
                 UnifiedDebugEventStore.recordAlways(
                     "SPECIFIC_TRIP_HREF_COVERAGE_MISSING_0578",
                     context.packageName,
-                    "profileKey=${seatSyncDiagnosticKey(profileUuid)} tripIdPresent=true existingSpecificHrefPresent=${!existing?.blablaManageUrl.isNullOrBlank()} action=block_canonical_promotion repair=collect_exact_rides_card",
+                    "profileKey=${seatSyncDiagnosticKey(profileUuid)} tripIdPresent=true existingSpecificHrefPresent=${!strongExisting0614?.blablaManageUrl.isNullOrBlank()} action=block_canonical_promotion repair=collect_exact_rides_card",
                 )
                 UnifiedDebugEventStore.record(
                     "EXTERNAL_CANONICAL_DISPOSITION_0451",
@@ -2043,7 +2073,150 @@ internal object AgendaBackgroundSync0392 {
                 return@forEach
             }
             observedStrongKeys += strongKey
-            val perTripAllocation = existing?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: 0
+
+            val deterministicTripId0614 = externalBackingTripIdFor(profileUuid, blablaTripId, source.trip_href)
+                ?: run {
+                    blockedTrips++
+                    return@forEach
+                }
+            val legacyDeterministic0614 = if (strongExisting0614 == null) {
+                store.trips().firstOrNull { trip -> trip.id == deterministicTripId0614 }
+            } else {
+                null
+            }
+            if (
+                legacyDeterministic0614 != null &&
+                collectionGeneration > 0L &&
+                legacyDeterministic0614.lastCollectionGeneration > collectionGeneration
+            ) {
+                staleResultsRejected++
+                UnifiedDebugEventStore.recordAlways(
+                    "HTML_LEGACY_IDENTITY_PROMOTION_BLOCKED_0614",
+                    context.packageName,
+                    "internalTripId=${seatSyncDiagnosticKey(legacyDeterministic0614.id)} tripId=$blablaTripId reason=older_collection_generation incomingGeneration=$collectionGeneration currentGeneration=${legacyDeterministic0614.lastCollectionGeneration}",
+                )
+                return@forEach
+            }
+
+            val legacyAllocation0614 =
+                (strongExisting0614 ?: legacyDeterministic0614)
+                    ?.rotaCertaSeatAllocation
+                    ?.takeIf { it in 0..999 }
+                    ?: 0
+            val incomingCompleteForPromotion0614 =
+                source.published_seats != null && source.passenger_roster_complete
+            val incomingPromotionProjection0614 = if (
+                legacyDeterministic0614 != null && incomingCompleteForPromotion0614
+            ) {
+                val quota = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                PublicAgendaAutoSync0300.toPublicTrip(
+                    source = source,
+                    capacity = (quota + legacyAllocation0614).coerceIn(0, 999),
+                    nowMillis = Long.MIN_VALUE,
+                    rotaCertaSeatAllocation = legacyAllocation0614,
+                )?.trip
+            } else {
+                null
+            }
+
+            val promotedLegacy0614 = if (legacyDeterministic0614 != null) {
+                if (
+                    incomingPromotionProjection0614 == null ||
+                    !htmlLegacyIdentityPromotionEligible0614(
+                        legacy = legacyDeterministic0614,
+                        incomingProjection = incomingPromotionProjection0614,
+                        profileUuid = profileUuid,
+                        blablaTripId = blablaTripId,
+                    )
+                ) {
+                    blockedTrips++
+                    UnifiedDebugEventStore.recordAlways(
+                        "HTML_LEGACY_IDENTITY_PROMOTION_BLOCKED_0614",
+                        context.packageName,
+                        "internalTripId=${seatSyncDiagnosticKey(legacyDeterministic0614.id)} tripId=$blablaTripId reason=identity_or_physical_projection_mismatch incomingComplete=$incomingCompleteForPromotion0614 preservePreviousCanonical=true",
+                    )
+                    return@forEach
+                }
+
+                val legacyBinding0614 = store.publicExternalBindings()
+                    .filter { binding -> binding.bookingTripId == legacyDeterministic0614.id }
+                    .maxByOrNull(PublicExternalTripBinding::updatedAtMillis)
+                if (
+                    legacyBinding0614 != null &&
+                    !htmlLegacyBindingPromotionEligible0614(
+                        binding = legacyBinding0614,
+                        incomingProjection = incomingPromotionProjection0614,
+                        profileUuid = profileUuid,
+                        blablaTripId = blablaTripId,
+                    )
+                ) {
+                    blockedTrips++
+                    UnifiedDebugEventStore.recordAlways(
+                        "HTML_LEGACY_IDENTITY_PROMOTION_BLOCKED_0614",
+                        context.packageName,
+                        "internalTripId=${seatSyncDiagnosticKey(legacyDeterministic0614.id)} tripId=$blablaTripId reason=public_binding_identity_or_physical_mismatch preservePreviousCanonical=true",
+                    )
+                    return@forEach
+                }
+
+                val promoted = try {
+                    store.promoteExternalIdentity0472(
+                        targetTripId = legacyDeterministic0614.id,
+                        profileUuid = profileUuid,
+                        blablaTripId = blablaTripId,
+                        blablaManageUrl = source.trip_href.orEmpty(),
+                        nowMillis = nowMillis,
+                    )
+                } catch (error: Throwable) {
+                    UnifiedDebugEventStore.recordAlways(
+                        "HTML_LEGACY_IDENTITY_PROMOTION_BLOCKED_0614",
+                        context.packageName,
+                        "internalTripId=${seatSyncDiagnosticKey(legacyDeterministic0614.id)} tripId=$blablaTripId reason=${error::class.java.simpleName.take(80)} preservePreviousCanonical=true",
+                    )
+                    null
+                }
+                if (promoted == null) {
+                    blockedTrips++
+                    return@forEach
+                }
+
+                if (legacyBinding0614 != null) {
+                    store.savePublicExternalBinding(
+                        legacyBinding0614.copy(
+                            bookingTripId = promoted.id,
+                            profileUuid = profileUuid,
+                            blablaTripId = blablaTripId,
+                            blablaTripHref = source.trip_href.orEmpty(),
+                            blablaPublicHref = canonicalBlaBlaPublicUrl0409(
+                                legacyBinding0614.blablaPublicHref,
+                                incomingPromotionProjection0614.blablaPublicUrl,
+                                blablaTripId,
+                                source.public_trip_href_binding,
+                            ).orEmpty(),
+                            title = incomingPromotionProjection0614.title,
+                            departureAtMillis = incomingPromotionProjection0614.departureAtMillis,
+                            capacity = incomingPromotionProjection0614.capacity,
+                            stops = incomingPromotionProjection0614.stops,
+                            canonicalRevision = promoted.canonicalRevision,
+                            stateHash = promoted.canonicalStateHash,
+                        ),
+                    )
+                }
+                UnifiedDebugEventStore.recordAlways(
+                    "HTML_LEGACY_IDENTITY_PROMOTED_0614",
+                    context.packageName,
+                    "internalTripId=${seatSyncDiagnosticKey(promoted.id)} profileKey=${seatSyncDiagnosticKey(profileUuid)} tripId=$blablaTripId previousRevision=${legacyDeterministic0614.canonicalRevision} promotedRevision=${promoted.canonicalRevision} bindingPromoted=${legacyBinding0614 != null} bookingsPreserved=${store.bookingsFor(promoted.id).size}",
+                )
+                promoted
+            } else {
+                null
+            }
+
+            val existing = strongExisting0614 ?: promotedLegacy0614
+            val existingHtmlAuthority0607 = existing?.takeIf {
+                it.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+            }
+            val perTripAllocation = existing?.rotaCertaSeatAllocation?.takeIf { it in 0..999 } ?: legacyAllocation0614
             if (existing != null && collectionGeneration > 0L && existing.lastCollectionGeneration > collectionGeneration) {
                 staleResultsRejected++
                 UnifiedDebugEventStore.record(
@@ -2066,12 +2239,7 @@ internal object AgendaBackgroundSync0392 {
                 )
                 return@forEach
             }
-            val canonicalTripId = existing?.id
-                ?: externalBackingTripIdFor(profileUuid, blablaTripId, source.trip_href)
-                ?: run {
-                    blockedTrips++
-                    return@forEach
-                }
+            val canonicalTripId = existing?.id ?: deterministicTripId0614
             val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, perTripAllocation)
             val incomingComplete = source.published_seats != null && source.passenger_roster_complete
             // 0.1.612: an HTML-authoritative trip that reappears after a tombstone must
