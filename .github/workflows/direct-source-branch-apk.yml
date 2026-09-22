@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.614 HTML legacy identity promotion exact SHA
-# trigger: html-legacy-identity-promotion-0614
+# trigger: html-legacy-identity-promotion-0614-r2
 
 on:
   push:
