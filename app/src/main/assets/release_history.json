@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.617",
+      "build": 5908,
+      "commit": null,
+      "branch": "agent/html-live-card-commit-0.1.617",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cada HTML individual totalmente validado é reconciliado no TripStore imediatamente, sem aguardar o fim da captura global.",
+        "Os dois perfis BlaBlaCar são capturados concorrentemente em perfis WebView isolados, mantendo navegação sequencial dentro de cada conta.",
+        "Falha de estabilização da página Suas viagens recebe uma segunda tentativa com WebView limpa e registra o motivo técnico exato.",
+        "O relatório BlaBlaCar passa a registrar clique explícito, resultado por card e commits ao vivo."
+      ],
+      "fixed": [
+        "Uma viagem incompleta ou um perfil instável deixa de bloquear a atualização dos demais cards HTML já validados.",
+        "Cards validados notificam a Timeline imediatamente por BookingRealtimeEvents0356.",
+        "Commit ao vivo nunca autoriza tombstone de cards irmãos; remoções continuam restritas à verificação final completa.",
+        "A leitura de configurações de vagas é feita uma vez por perfil em vez de uma vez por card."
+      ],
+      "improved": [
+        "Rollback por card protege TripStore e outbox se a leitura canônica do card recém-capturado falhar.",
+        "A captura parcial agora informa que cards validados foram aplicados e que somente pendências ficaram preservadas.",
+        "Telemetria informa roster, itinerário, segmentos, vagas, link público e errorCode para cada HTML individual."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.616: 28 cards válidos podiam permanecer invisíveis porque 2 cards incompletos e um segundo perfil instável bloqueavam o commit global.",
+        "0.1.616: RIDES_PAGE_NOT_STABLE descartava o motivo real do estabilizador.",
+        "0.1.616: o relatório BlaBlaCar não mostrava o fluxo real da captura HTML."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Todas as viagens",
+        "Timeline",
+        "Agenda",
+        "Diagnósticos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.616",
       "build": 5907,
       "commit": null,
