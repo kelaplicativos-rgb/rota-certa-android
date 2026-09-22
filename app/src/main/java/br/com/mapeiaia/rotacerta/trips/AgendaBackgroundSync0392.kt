@@ -1993,6 +1993,8 @@ internal object AgendaBackgroundSync0392 {
         collectionGeneration: Long = 0L,
         completeProfileUuids: Set<String> = emptySet(),
         htmlTransactionCaptureId0610: String? = null,
+        evaluateAbsentTrips0618: Boolean = true,
+        skipPresentAlreadyCommittedGeneration0618: Boolean = false,
     ): ExternalCollectorCanonicalBatch0403 {
         if (response == null) return ExternalCollectorCanonicalBatch0403()
         val activeHtmlTransaction0610 = BlaBlaHtmlCaptureTransaction0610.active(context)
@@ -2073,6 +2075,34 @@ internal object AgendaBackgroundSync0392 {
                 return@forEach
             }
             observedStrongKeys += strongKey
+
+            // 0.1.618: the live-card path already wrote this exact HTML generation.
+            // The global finalizer only needs to prove presence and evaluate authoritative
+            // absences; replaying the full canonical/publication mutation for every present
+            // card caused the 21.6 s UI freeze observed in 0.1.617.
+            if (skipPresentAlreadyCommittedGeneration0618 && strongExisting0614 != null) {
+                val allocation0618 = strongExisting0614.rotaCertaSeatAllocation.takeIf { it in 0..999 } ?: 0
+                val fingerprint0618 =
+                    PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, allocation0618)
+                val alreadyCommitted0618 =
+                    !strongExisting0614.deleted &&
+                        strongExisting0614.externalSnapshotAuthority0607 ==
+                            BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
+                        strongExisting0614.externalSnapshotComplete &&
+                        strongExisting0614.lastCollectionGeneration == collectionGeneration &&
+                        strongExisting0614.externalSnapshotFingerprint == fingerprint0618
+                if (alreadyCommitted0618) {
+                    skippedTrips++
+                    UnifiedDebugEventStore.record(
+                        "EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618",
+                        context.packageName,
+                        "internalTripId=${seatSyncDiagnosticKey(strongExisting0614.id)} " +
+                            "tripId=$blablaTripId generation=$collectionGeneration " +
+                            "fingerprint=${fingerprint0618.takeLast(12)} action=presence_only",
+                    )
+                    return@forEach
+                }
+            }
 
             val deterministicTripId0614 = externalBackingTripIdFor(profileUuid, blablaTripId, source.trip_href)
                 ?: run {
@@ -2459,10 +2489,12 @@ internal object AgendaBackgroundSync0392 {
             }
         }
 
-        val canonicalExternal = store.trips().filter {
-            resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
-                !it.blablaProfileUuid.isNullOrBlank() && !it.blablaTripId.isNullOrBlank()
-        }
+        var missingPreserved = 0
+        if (evaluateAbsentTrips0618) {
+            val canonicalExternal = store.trips().filter {
+                resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING &&
+                    !it.blablaProfileUuid.isNullOrBlank() && !it.blablaTripId.isNullOrBlank()
+            }
         val missingActive = canonicalExternal.filter { trip ->
             !trip.deleted && trip.status != TripStatus.CANCELLED &&
                 canonicalExternalTripIdentityKey(trip.blablaProfileUuid, trip.blablaTripId, trip.blablaManageUrl)
@@ -2541,18 +2573,28 @@ internal object AgendaBackgroundSync0392 {
                 }
             }
         }
-        val missingPreserved = (missingActive.size - scopedMissing.size).coerceAtLeast(0)
-        if (missingPreserved > 0) {
+            missingPreserved = (missingActive.size - scopedMissing.size).coerceAtLeast(0)
+            if (missingPreserved > 0) {
+                UnifiedDebugEventStore.record(
+                    "EXTERNAL_CANONICAL_MISSING_PRESERVED_0403",
+                    context.packageName,
+                    "missing=" + missingPreserved +
+                        " observed=" + observedStrongKeys.size +
+                        " canonical=" + canonicalExternal.size +
+                        " collectionStatus=" + response.status +
+                        " completeForScope=" + response.coverage.complete_for_scope +
+                        " globalProfileMonthComplete=" + response.coverage.global_profile_month_complete +
+                        " action=preserve_unproven_absence",
+                )
+            }
+        } else {
             UnifiedDebugEventStore.record(
-                "EXTERNAL_CANONICAL_MISSING_PRESERVED_0403",
+                "EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618",
                 context.packageName,
-                "missing=" + missingPreserved +
-                    " observed=" + observedStrongKeys.size +
-                    " canonical=" + canonicalExternal.size +
+                "observed=" + observedStrongKeys.size +
                     " collectionStatus=" + response.status +
                     " completeForScope=" + response.coverage.complete_for_scope +
-                    " globalProfileMonthComplete=" + response.coverage.global_profile_month_complete +
-                    " action=preserve_unproven_absence",
+                    " action=live_card_presence_only",
             )
         }
         if (tombstonedTrips > 0 || orphanProjectionTombstones > 0) {
