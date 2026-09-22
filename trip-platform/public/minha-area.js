@@ -13,9 +13,13 @@ function normalizeDriver0491(value) {
 }
 
 const driverUsername0491 = normalizeDriver0491(params0491.get("motorista") || "");
-const sessionKey0491 = "rotaCertaPassengerSession0491:" + driverUsername0491;
-const contextKey0491 = "rotaCertaPassengerContext0491:" + driverUsername0491;
-let sessionToken0491 = sessionStorage.getItem(sessionKey0491) || "";
+const sessionKey0625 = "viagemCertaPassengerSession0625";
+const legacySessionKey0491 = "rotaCertaPassengerSession0491:" + driverUsername0491;
+const contextKey0491 = "rotaCertaPassengerContext0491:" + (driverUsername0491 || "global");
+let sessionToken0491 = sessionStorage.getItem(sessionKey0625) || sessionStorage.getItem(legacySessionKey0491) || "";
+if (sessionToken0491) sessionStorage.setItem(sessionKey0625, sessionToken0491);
+let entryContact0625 = "";
+let entryPasswordCreated0625 = false;
 let refreshInFlight0491 = false;
 let pollHandle0491 = 0;
 let changeCursor0495 = 0;
@@ -383,6 +387,36 @@ function renderBookings0491(entries) {
   renderList(history, past, "Nenhuma viagem anterior.");
 }
 
+function renderTimeline0625(items) {
+  const root = $("timeline0625");
+  if (!root) return;
+  root.innerHTML = "";
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Nenhum histórico ainda.";
+    root.appendChild(empty);
+    return;
+  }
+  list.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "timelineItem0625";
+    const time = document.createElement("div");
+    time.className = "timelineTime0625";
+    time.textContent = formatDateTime0491(item?.occurredAtMillis);
+    const title = document.createElement("div");
+    title.className = "timelineTitle0625";
+    title.textContent = String(item?.title || "Atualização");
+    const message = document.createElement("div");
+    message.className = "timelineMessage0625";
+    message.textContent = String(item?.message || item?.tripTitle || "");
+    row.append(time, title);
+    if (message.textContent) row.appendChild(message);
+    root.appendChild(row);
+  });
+}
+
 function renderNotifications0491(items, unreadCount) {
   const root = $("notifications0491");
   root.innerHTML = "";
@@ -436,7 +470,8 @@ function enterPrivateMode0491() {
 
 function leavePrivateMode0491() {
   sessionToken0491 = "";
-  sessionStorage.removeItem(sessionKey0491);
+  sessionStorage.removeItem(sessionKey0625);
+  sessionStorage.removeItem(legacySessionKey0491);
   renderAuthState0492("unauthenticated");
   if (pollHandle0491) window.clearInterval(pollHandle0491);
   pollHandle0491 = 0;
@@ -476,17 +511,19 @@ async function watchPrivateCanonicalChanges0495() {
 async function refreshPrivateArea0491(silent = false) {
   if (!sessionToken0491 || refreshInFlight0491) return;
   refreshInFlight0491 = true;
-  const scoped = "?driverUsername=" + encodeURIComponent(driverUsername0491);
   try {
-    const [me, bookings, notifications] = await Promise.all([
-      request0491("/v1/passenger/me" + scoped),
-      request0491("/v1/passenger/me/bookings" + scoped),
-      request0491("/v1/passenger/me/notifications" + scoped),
+    const [me, bookings, notifications, timeline] = await Promise.all([
+      request0491("/v1/passenger/me"),
+      request0491("/v1/passenger/me/bookings"),
+      request0491("/v1/passenger/me/notifications"),
+      request0491("/v1/passenger/me/timeline"),
     ]);
     enterPrivateMode0491();
     show0491("passwordPanel0491", me?.mustChangePassword === true);
     renderBookings0491(Array.isArray(bookings?.bookings) ? bookings.bookings : []);
     renderNotifications0491(notifications?.notifications || [], notifications?.unreadCount || 0);
+    renderTimeline0625(timeline?.timeline || []);
+    if ($("hello0625")) $("hello0625").textContent = me?.displayName ? "Olá, " + me.displayName : "Sua área";
     changeCursor0495 = Math.max(changeCursor0495, Number(notifications?.changeCursor0495 || 0));
     watchPrivateCanonicalChanges0495();
     $("refreshMessage0491").textContent = "Atualizado às " + new Intl.DateTimeFormat("pt-BR", {
@@ -514,36 +551,79 @@ async function refreshPrivateArea0491(silent = false) {
   }
 }
 
-async function login0491() {
+function showEntryStep0625(step) {
+  show0491("entryContactStep0625", step === "contact");
+  show0491("entryPasswordStep0625", step === "password");
+  show0491("entryConfirmStep0625", step === "confirm");
+  message0491("loginMessage0491", "");
+  const focus = step === "contact" ? "contact0491" : (step === "password" ? "password0491" : "passwordConfirm0625");
+  window.setTimeout(() => $(focus)?.focus(), 30);
+}
+
+async function startPassengerEntry0625() {
   message0491("loginMessage0491", "");
   const contact = $("contact0491").value.trim();
-  const password = $("password0491").value;
-  if (!contact || password.length < 4) {
-    return message0491("loginMessage0491", password.length > 0 && password.length < 4
-      ? "A senha deve ter pelo menos 4 caracteres."
-      : "Informe seu telefone/WhatsApp e a senha.");
-  }
-
-  $("login0491").disabled = true;
+  if (!contact) return message0491("loginMessage0491", "Informe seu WhatsApp.");
+  $("entryContactContinue0625").disabled = true;
   try {
-    const result = await request0491("/v1/passenger/session", {
+    const status = await request0491("/v1/public/passenger-access/status", {
+      method: "POST",
+      body: { passengerContact: contact },
+    });
+    if (status?.knownPassenger !== true) {
+      return message0491("loginMessage0491", "Este WhatsApp ainda não aparece no cadastro de passageiros do Rota Certa.");
+    }
+    entryContact0625 = contact;
+    entryPasswordCreated0625 = status?.passwordCreated === true;
+    $("entryPasswordTitle0625").textContent = entryPasswordCreated0625 ? "Digite sua senha" : "Crie sua senha";
+    showEntryStep0625("password");
+  } catch (error) {
+    message0491("loginMessage0491", error.message || "Não foi possível localizar seu cadastro.");
+  } finally {
+    $("entryContactContinue0625").disabled = false;
+  }
+}
+
+function continuePassengerPassword0625() {
+  const password = $("password0491").value.trim();
+  if (!/^\d{4}$/.test(password)) return message0491("loginMessage0491", "Sua senha precisa ter exatamente 4 números.");
+  if (entryPasswordCreated0625) return finishPassengerEntry0625();
+  showEntryStep0625("confirm");
+}
+
+async function finishPassengerEntry0625() {
+  message0491("loginMessage0491", "");
+  const password = $("password0491").value.trim();
+  const confirmation = $("passwordConfirm0625").value.trim();
+  if (!/^\d{4}$/.test(password)) return message0491("loginMessage0491", "Sua senha precisa ter exatamente 4 números.");
+  if (!entryPasswordCreated0625) {
+    if (!/^\d{4}$/.test(confirmation)) return message0491("loginMessage0491", "Confirme sua senha de 4 números.");
+    if (password !== confirmation) return message0491("loginMessage0491", "As duas senhas precisam ser iguais.");
+  }
+  $("entryPasswordContinue0625").disabled = true;
+  $("entryConfirmContinue0625").disabled = true;
+  try {
+    const result = await request0491("/v1/public/passenger-password-session", {
       method: "POST",
       body: {
-        passengerContact: contact,
+        passengerContact: entryContact0625,
         password,
-        driverUsername: driverUsername0491,
+        passwordConfirmation: entryPasswordCreated0625 ? undefined : confirmation,
         sessionContextId: sessionContext0491(),
       },
     });
     sessionToken0491 = String(result?.sessionToken || "");
     if (!sessionToken0491) throw new Error("Sessão não recebida.");
-    sessionStorage.setItem(sessionKey0491, sessionToken0491);
+    sessionStorage.setItem(sessionKey0625, sessionToken0491);
+    sessionStorage.removeItem(legacySessionKey0491);
     $("password0491").value = "";
+    $("passwordConfirm0625").value = "";
     await refreshPrivateArea0491(false);
   } catch (error) {
     message0491("loginMessage0491", error.message || "Não foi possível entrar.");
   } finally {
-    $("login0491").disabled = false;
+    $("entryPasswordContinue0625").disabled = false;
+    $("entryConfirmContinue0625").disabled = false;
   }
 }
 
@@ -551,8 +631,8 @@ async function changePassword0491() {
   message0491("passwordMessage0491", "");
   const password = $("newPassword0491").value;
   const confirmation = $("newPasswordConfirm0491").value;
-  if (password.length < 4 || password !== confirmation) {
-    return message0491("passwordMessage0491", "Use pelo menos 4 caracteres e confirme a mesma senha.");
+  if (!/^\d{4}$/.test(password) || password !== confirmation) {
+    return message0491("passwordMessage0491", "Use exatamente 4 números e confirme a mesma senha.");
   }
 
   $("changePassword0491").disabled = true;
@@ -582,28 +662,29 @@ async function markRead0491() {
 }
 
 async function logout0491() {
-  const scoped = "?driverUsername=" + encodeURIComponent(driverUsername0491);
   try {
-    await request0491("/v1/passenger/logout" + scoped, {
+    await request0491("/v1/passenger/logout", {
       method: "POST",
-      body: { driverUsername: driverUsername0491 },
+      body: {},
     });
   } catch (_) {}
   leavePrivateMode0491();
 }
 
 function init0491() {
-  if (driverUsername0491.length < 3) {
-    $("contextError0491").textContent = "Abra Minhas viagens a partir do Viagem Certa.";
-    show0491("contextError0491", true);
-    show0491("loginPanel0491", false);
-    return;
-  }
-
-  $("backToAgenda0491").href = "/" + encodeURIComponent(driverUsername0491);
-  $("login0491").addEventListener("click", login0491);
+  $("backToAgenda0491").href = driverUsername0491 ? "/" + encodeURIComponent(driverUsername0491) : "/";
+  $("entryContactContinue0625").addEventListener("click", startPassengerEntry0625);
+  $("entryPasswordContinue0625").addEventListener("click", continuePassengerPassword0625);
+  $("entryConfirmContinue0625").addEventListener("click", finishPassengerEntry0625);
+  document.querySelectorAll(".entryBack0625").forEach((node) => node.addEventListener("click", () => showEntryStep0625("contact")));
+  $("contact0491").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") startPassengerEntry0625();
+  });
   $("password0491").addEventListener("keydown", (event) => {
-    if (event.key === "Enter") login0491();
+    if (event.key === "Enter") continuePassengerPassword0625();
+  });
+  $("passwordConfirm0625").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") finishPassengerEntry0625();
   });
   $("changePassword0491").addEventListener("click", changePassword0491);
   $("markRead0491").addEventListener("click", markRead0491);
@@ -624,6 +705,7 @@ function init0491() {
     refreshPrivateArea0491(false);
   } else {
     renderAuthState0492("unauthenticated");
+    showEntryStep0625("contact");
   }
 }
 
