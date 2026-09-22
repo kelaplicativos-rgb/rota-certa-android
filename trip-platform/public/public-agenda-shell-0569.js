@@ -36,12 +36,19 @@ let agendaViewToken0589 = sessionStorage.getItem(agendaViewStorageKey0589) || ""
 let passengerAccessInFlight0589 = false;
 
 const sharedTripToken0623 = String(params0569.get("viagem") || "").replace(/[^A-Za-z0-9_-]/g, "");
-const passengerSessionKey0623 = "rotaCertaPassengerSession0491:" + driverUsername0569;
+const passengerSessionKey0625 = "viagemCertaPassengerSession0625";
+const passengerLegacySessionKey0623 = "rotaCertaPassengerSession0491:" + driverUsername0569;
 const passengerContextKey0623 = "rotaCertaPassengerContext0491:" + driverUsername0569;
-let passengerSessionToken0623 = sessionStorage.getItem(passengerSessionKey0623) || "";
+let passengerSessionToken0623 = sessionStorage.getItem(passengerSessionKey0625) || sessionStorage.getItem(passengerLegacySessionKey0623) || "";
+if (passengerSessionToken0623) sessionStorage.setItem(passengerSessionKey0625, passengerSessionToken0623);
 let bookingSelection0623 = null;
 let bookingSeats0623 = 1;
 let bookingBusy0623 = false;
+let bookingStep0625 = "contact";
+let bookingKnownPassenger0625 = false;
+let bookingPasswordCreated0625 = false;
+let bookingPhone0625 = "";
+let bookingName0625 = "";
 
 function passengerSessionContext0623() {
   let value = sessionStorage.getItem(passengerContextKey0623) || "";
@@ -78,12 +85,52 @@ function setBookingStatus0623(message, kind = "") {
   node.classList.toggle("success0623", kind === "success");
 }
 
+const BOOKING_STEP_IDS_0625 = {
+  contact: "bookingContactStep0625",
+  name: "bookingNameStep0625",
+  password: "bookingPasswordStep0625",
+  confirm: "bookingPasswordConfirmStep0625",
+  seats: "bookingSeatsStep0625",
+  review: "bookingReviewStep0625",
+};
+
+function bookingVisibleFlow0625() {
+  if (passengerSessionToken0623) return ["seats", "review"];
+  if (bookingKnownPassenger0625 && bookingPasswordCreated0625) return ["contact", "password", "seats", "review"];
+  if (bookingKnownPassenger0625) return ["contact", "password", "confirm", "seats", "review"];
+  return ["contact", "name", "password", "confirm", "seats", "review"];
+}
+
+function showBookingStep0625(step) {
+  bookingStep0625 = step;
+  Object.entries(BOOKING_STEP_IDS_0625).forEach(([key, id]) => setVisible0569(id, key === step));
+  const flow = bookingVisibleFlow0625();
+  const position = Math.max(0, flow.indexOf(step));
+  const progress = $0569("bookingProgress0625");
+  if (progress) progress.textContent = (position + 1) + " de " + flow.length;
+  setBookingStatus0623("");
+  const focusByStep = {
+    contact: "bookingPhone0623",
+    name: "bookingName0623",
+    password: "bookingPassword0625",
+    confirm: "bookingPasswordConfirm0625",
+  };
+  const focusId = focusByStep[step];
+  if (focusId) window.setTimeout(() => $0569(focusId)?.focus(), 40);
+}
+
+function previousBookingStep0625() {
+  const flow = bookingVisibleFlow0625();
+  const index = flow.indexOf(bookingStep0625);
+  if (index > 0) showBookingStep0625(flow[index - 1]);
+}
+
 function syncBookingSeatCount0623() {
   const node = $0569("bookingSeatCount0623");
   if (node) node.textContent = bookingSeats0623 === 1 ? "1 lugar" : bookingSeats0623 + " lugares";
   const max = Math.max(1, Number(bookingSelection0623?.availableSeats || 1));
-  if ($0569("bookingSeatsMinus0623")) $0569("bookingSeatsMinus0623").disabled = bookingSeats0623 <= 1;
-  if ($0569("bookingSeatsPlus0623")) $0569("bookingSeatsPlus0623").disabled = bookingSeats0623 >= max;
+  if ($0569("bookingSeatsMinus0623")) $0569("bookingSeatsMinus0623").disabled = bookingBusy0623 || bookingSeats0623 <= 1;
+  if ($0569("bookingSeatsPlus0623")) $0569("bookingSeatsPlus0623").disabled = bookingBusy0623 || bookingSeats0623 >= max;
 }
 
 function bookingHelpHref0623() {
@@ -94,28 +141,45 @@ function bookingHelpHref0623() {
   return "https://wa.me/" + digits + "?text=" + encodeURIComponent(text);
 }
 
-function showBookingIdentityStep0623() {
-  setVisible0569("bookingIdentityStep0623", true);
+function resetBookingIdentity0625() {
+  bookingKnownPassenger0625 = false;
+  bookingPasswordCreated0625 = false;
+  bookingPhone0625 = "";
+  bookingName0625 = "";
+  if ($0569("bookingPassword0625")) $0569("bookingPassword0625").value = "";
+  if ($0569("bookingPasswordConfirm0625")) $0569("bookingPasswordConfirm0625").value = "";
 }
 
 function closeBooking0623() {
   if (bookingBusy0623) return;
   setVisible0569("bookingModal0623", false);
   document.body.style.overflow = "";
-  showBookingIdentityStep0623();
   setBookingStatus0623("");
-  if ($0569("bookingPin0624")) $0569("bookingPin0624").value = "";
-  if ($0569("bookingPinConfirm0624")) $0569("bookingPinConfirm0624").value = "";
+  resetBookingIdentity0625();
   bookingSelection0623 = null;
+}
+
+function prepareBookingWizard0625() {
+  bookingSeats0623 = 1;
+  syncBookingSeatCount0623();
+  if (passengerSessionToken0623) showBookingStep0625("seats");
+  else {
+    resetBookingIdentity0625();
+    showBookingStep0625("contact");
+  }
+}
+
+function bookingSummaryText0625() {
+  return bookingSelection0623.from + " → " + bookingSelection0623.to +
+    " • " + dateLabel0569(bookingSelection0623.departureAtMillis, bookingSelection0623.timezoneId) +
+    " • " + segmentAvailabilityLabel0580(bookingSelection0623.availableSeats);
 }
 
 function openBooking0623(item, segment, stops, segmentIndex) {
   const tripToken = String(item?.tripId || item?.publicToken || "").trim();
   const fromStop = stops?.[segmentIndex];
   const toStop = stops?.[segmentIndex + 1];
-  if (!tripToken || !fromStop?.id || !toStop?.id || Number(segment?.availableSeats || 0) < 1) {
-    return;
-  }
+  if (!tripToken || !fromStop?.id || !toStop?.id || Number(segment?.availableSeats || 0) < 1) return;
   bookingSelection0623 = {
     tripToken,
     from: String(segment.from || fromStop.name || "Origem").trim(),
@@ -126,25 +190,16 @@ function openBooking0623(item, segment, stops, segmentIndex) {
     departureAtMillis: Number(item?.departureAtMillis || 0),
     timezoneId: item?.timezoneId || "",
   };
-  bookingSeats0623 = 1;
-  const summary = $0569("bookingSummary0623");
-  if (summary) {
-    summary.textContent = bookingSelection0623.from + " → " + bookingSelection0623.to +
-      " • " + dateLabel0569(bookingSelection0623.departureAtMillis, bookingSelection0623.timezoneId) +
-      " • " + segmentAvailabilityLabel0580(bookingSelection0623.availableSeats);
-  }
-  syncBookingSeatCount0623();
-  showBookingIdentityStep0623();
-  setBookingStatus0623("");
+  if ($0569("bookingSummary0623")) $0569("bookingSummary0623").textContent = bookingSummaryText0625();
   const help = $0569("bookingHelp0623");
   const helpHref = bookingHelpHref0623();
   if (help) {
     help.classList.toggle("hidden", !helpHref);
     if (helpHref) help.href = helpHref;
   }
+  prepareBookingWizard0625();
   setVisible0569("bookingModal0623", true);
   document.body.style.overflow = "hidden";
-  window.setTimeout(() => $0569("bookingName0623")?.focus(), 50);
 }
 
 function openFullTripBooking0623(item) {
@@ -153,110 +208,139 @@ function openFullTripBooking0623(item) {
   if (stops.length < 2 || !rows.length || rows.length !== stops.length - 1) return;
   const available = rows.reduce((minimum, row) => Math.min(minimum, row.availableSeats), Number.POSITIVE_INFINITY);
   if (!Number.isFinite(available) || available < 1) return;
-  const full = { from: stops[0].name, to: stops[stops.length - 1].name, availableSeats: available };
   const tripToken = String(item?.tripId || item?.publicToken || "").trim();
   if (!tripToken || !stops[0]?.id || !stops[stops.length - 1]?.id) return;
   bookingSelection0623 = {
     tripToken,
-    from: String(full.from || "Origem"),
-    to: String(full.to || "Destino"),
+    from: String(stops[0].name || "Origem"),
+    to: String(stops[stops.length - 1].name || "Destino"),
     boardingStopId: String(stops[0].id),
     dropoffStopId: String(stops[stops.length - 1].id),
     availableSeats: available,
     departureAtMillis: Number(item?.departureAtMillis || 0),
     timezoneId: item?.timezoneId || "",
   };
-  bookingSeats0623 = 1;
-  const summary = $0569("bookingSummary0623");
-  if (summary) summary.textContent = bookingSelection0623.from + " → " + bookingSelection0623.to +
-    " • " + dateLabel0569(bookingSelection0623.departureAtMillis, bookingSelection0623.timezoneId) +
-    " • " + segmentAvailabilityLabel0580(available);
-  syncBookingSeatCount0623();
-  showBookingIdentityStep0623();
-  setBookingStatus0623("");
+  if ($0569("bookingSummary0623")) $0569("bookingSummary0623").textContent = bookingSummaryText0625();
   const help = $0569("bookingHelp0623");
   const helpHref = bookingHelpHref0623();
   if (help) {
     help.classList.toggle("hidden", !helpHref);
     if (helpHref) help.href = helpHref;
   }
+  prepareBookingWizard0625();
   setVisible0569("bookingModal0623", true);
   document.body.style.overflow = "hidden";
-  window.setTimeout(() => $0569("bookingName0623")?.focus(), 50);
 }
 
 function setBookingBusy0623(busy) {
   bookingBusy0623 = Boolean(busy);
-  ["bookingSubmit0624","bookingClose0623","bookingSeatsMinus0623","bookingSeatsPlus0623"].forEach((id) => {
+  ["bookingContactContinue0625","bookingNameContinue0625","bookingPasswordContinue0625",
+   "bookingPasswordConfirmContinue0625","bookingSeatsContinue0625","bookingConfirm0625",
+   "bookingClose0623","bookingSeatsMinus0623","bookingSeatsPlus0623"].forEach((id) => {
     const node = $0569(id);
     if (node) node.disabled = bookingBusy0623;
   });
+  document.querySelectorAll(".bookingBack0625").forEach((node) => { node.disabled = bookingBusy0623; });
   if (!bookingBusy0623) syncBookingSeatCount0623();
 }
 
-async function authenticateAndReserve0624() {
+async function continueBookingContact0625() {
   if (bookingBusy0623 || !bookingSelection0623) return;
-  const displayName = String($0569("bookingName0623")?.value || "").trim();
-  if (displayName.length < 2) {
-    setBookingStatus0623("Informe seu nome para continuar.", "error");
-    $0569("bookingName0623")?.focus();
-    return;
-  }
-
   let phone;
   try { phone = normalizePhoneE1640623($0569("bookingPhone0623")?.value || ""); }
   catch (error) {
     setBookingStatus0623(error.message, "error");
-    $0569("bookingPhone0623")?.focus();
     return;
   }
-
-  const pin = String($0569("bookingPin0624")?.value || "").trim();
-  const pinConfirmation = String($0569("bookingPinConfirm0624")?.value || "").trim();
-  if (!/^\d{4}$/.test(pin)) {
-    setBookingStatus0623("Crie um PIN com exatamente 4 números.", "error");
-    $0569("bookingPin0624")?.focus();
-    return;
-  }
-  if (pin !== pinConfirmation) {
-    setBookingStatus0623("Os dois PINs precisam ser iguais.", "error");
-    $0569("bookingPinConfirm0624")?.focus();
-    return;
-  }
-
   setBookingBusy0623(true);
-  setBookingStatus0623("Entrando com seu PIN e guardando a vaga…");
-
   try {
-    const sessionResponse = await fetch("/v1/public/passenger-pin-session", {
+    const response = await fetch("/v1/public/passenger-access/status", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       cache: "no-store",
-      body: JSON.stringify({
-        displayName,
-        passengerContact: phone,
-        pin,
-        publicSlug: publicSlug0569,
-        driverUsername: driverUsername0569,
-        agendaToken: agendaToken0569,
-        tripToken: bookingSelection0623.tripToken,
-        sessionContextId: passengerSessionContext0623(),
-      }),
+      body: JSON.stringify({ passengerContact: phone }),
     });
-    const sessionBody = await sessionResponse.json().catch(() => ({}));
-    if (!sessionResponse.ok) {
-      throw new Error(safeMessage0569(sessionBody?.message) || "Não foi possível entrar com este PIN.");
-    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível localizar seu cadastro.");
+    bookingPhone0625 = phone;
+    bookingKnownPassenger0625 = body?.knownPassenger === true;
+    bookingPasswordCreated0625 = body?.passwordCreated === true;
+    const label = $0569("bookingPasswordLabel0625");
+    if (label) label.firstChild.textContent = bookingPasswordCreated0625 ? "Digite sua senha " : "Crie sua senha ";
+    showBookingStep0625(bookingKnownPassenger0625 ? "password" : "name");
+  } catch (error) {
+    setBookingStatus0623(error?.message || "Não foi possível continuar.", "error");
+  } finally {
+    setBookingBusy0623(false);
+  }
+}
 
-    passengerSessionToken0623 = String(sessionBody.sessionToken || "");
-    if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) {
-      throw new Error("O acesso por PIN não gerou uma sessão válida.");
-    }
-    sessionStorage.setItem(passengerSessionKey0623, passengerSessionToken0623);
-    syncPassengerNav0623();
+function continueBookingName0625() {
+  const name = String($0569("bookingName0623")?.value || "").trim();
+  if (name.length < 2) return setBookingStatus0623("Informe seu nome para continuar.", "error");
+  bookingName0625 = name;
+  showBookingStep0625("password");
+}
 
+function continueBookingPassword0625() {
+  const password = String($0569("bookingPassword0625")?.value || "").trim();
+  if (!/^\d{4}$/.test(password)) return setBookingStatus0623("Sua senha precisa ter exatamente 4 números.", "error");
+  if (bookingPasswordCreated0625) return showBookingStep0625("seats");
+  showBookingStep0625("confirm");
+}
+
+function continueBookingPasswordConfirm0625() {
+  const password = String($0569("bookingPassword0625")?.value || "").trim();
+  const confirmation = String($0569("bookingPasswordConfirm0625")?.value || "").trim();
+  if (!/^\d{4}$/.test(confirmation)) return setBookingStatus0623("Confirme sua senha de 4 números.", "error");
+  if (password !== confirmation) return setBookingStatus0623("As duas senhas precisam ser iguais.", "error");
+  showBookingStep0625("seats");
+}
+
+function continueBookingSeats0625() {
+  const review = $0569("bookingReview0625");
+  if (review) review.textContent = bookingSummaryText0625() + " • " + (bookingSeats0623 === 1 ? "1 lugar" : bookingSeats0623 + " lugares");
+  showBookingStep0625("review");
+}
+
+async function ensurePassengerSession0625() {
+  if (passengerSessionToken0623) return passengerSessionToken0623;
+  const password = String($0569("bookingPassword0625")?.value || "").trim();
+  const confirmation = String($0569("bookingPasswordConfirm0625")?.value || "").trim();
+  const response = await fetch("/v1/public/passenger-password-session", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    cache: "no-store",
+    body: JSON.stringify({
+      passengerContact: bookingPhone0625,
+      displayName: bookingName0625,
+      password,
+      passwordConfirmation: bookingPasswordCreated0625 ? undefined : confirmation,
+      publicSlug: publicSlug0569,
+      driverUsername: driverUsername0569,
+      agendaToken: agendaToken0569,
+      tripToken: bookingSelection0623.tripToken,
+      sessionContextId: passengerSessionContext0623(),
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível entrar com sua senha.");
+  passengerSessionToken0623 = String(body?.sessionToken || "");
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) throw new Error("A sessão do passageiro não foi criada.");
+  sessionStorage.setItem(passengerSessionKey0625, passengerSessionToken0623);
+  sessionStorage.removeItem(passengerLegacySessionKey0623);
+  syncPassengerNav0623();
+  return passengerSessionToken0623;
+}
+
+async function confirmBooking0625() {
+  if (bookingBusy0623 || !bookingSelection0623) return;
+  setBookingBusy0623(true);
+  setBookingStatus0623("Guardando sua vaga…");
+  try {
+    await ensurePassengerSession0625();
     const idempotencyKey = bookingIdempotencyKey0623();
-    const bookingResponse = await fetch(
+    const response = await fetch(
       "/v1/public/trips/" + encodeURIComponent(bookingSelection0623.tripToken) + "/bookings",
       {
         method: "POST",
@@ -273,25 +357,26 @@ async function authenticateAndReserve0624() {
           seats: bookingSeats0623,
           creditToUseCents: 0,
           idempotencyKey,
-          passengerName: displayName,
+          passengerName: bookingName0625,
         }),
       },
     );
-    const bookingBody = await bookingResponse.json().catch(() => ({}));
-    if (!bookingResponse.ok) {
-      throw new Error(safeMessage0569(bookingBody?.message) || "Não foi possível solicitar a reserva.");
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401) {
+        passengerSessionToken0623 = "";
+        sessionStorage.removeItem(passengerSessionKey0625);
+      }
+      throw new Error(safeMessage0569(body?.message) || "Não foi possível solicitar a reserva.");
     }
-
-    setVisible0569("bookingIdentityStep0623", false);
-    if ($0569("bookingPin0624")) $0569("bookingPin0624").value = "";
-    if ($0569("bookingPinConfirm0624")) $0569("bookingPinConfirm0624").value = "";
+    Object.values(BOOKING_STEP_IDS_0625).forEach((id) => setVisible0569(id, false));
     setBookingStatus0623(
-      "✓ Pedido enviado. " +
-      (bookingSeats0623 === 1 ? "Sua vaga está" : "Suas vagas estão") +
-      " guardada" + (bookingSeats0623 === 1 ? "" : "s") +
-      " enquanto o motorista confirma. Você receberá a resposta no Viagem Certa.",
+      "✓ Pedido enviado. " + (bookingSeats0623 === 1 ? "Sua vaga está guardada" : "Suas vagas estão guardadas") +
+      " enquanto o motorista confirma.",
       "success",
     );
+    if ($0569("bookingPassword0625")) $0569("bookingPassword0625").value = "";
+    if ($0569("bookingPasswordConfirm0625")) $0569("bookingPasswordConfirm0625").value = "";
     await loadAgenda0569(true);
   } catch (error) {
     setBookingStatus0623(error?.message || "Não foi possível concluir a reserva.", "error");
@@ -341,10 +426,18 @@ function initSelfBooking0623() {
   syncPassengerNav0623();
   $0569("passengerAgendaLogout0589")?.addEventListener("click", () => {
     passengerSessionToken0623 = "";
-    sessionStorage.removeItem(passengerSessionKey0623);
+    sessionStorage.removeItem(passengerSessionKey0625);
+    sessionStorage.removeItem(passengerLegacySessionKey0623);
     syncPassengerNav0623();
   });
   $0569("bookingClose0623")?.addEventListener("click", closeBooking0623);
+  $0569("bookingContactContinue0625")?.addEventListener("click", continueBookingContact0625);
+  $0569("bookingNameContinue0625")?.addEventListener("click", continueBookingName0625);
+  $0569("bookingPasswordContinue0625")?.addEventListener("click", continueBookingPassword0625);
+  $0569("bookingPasswordConfirmContinue0625")?.addEventListener("click", continueBookingPasswordConfirm0625);
+  $0569("bookingSeatsContinue0625")?.addEventListener("click", continueBookingSeats0625);
+  $0569("bookingConfirm0625")?.addEventListener("click", confirmBooking0625);
+  document.querySelectorAll(".bookingBack0625").forEach((node) => node.addEventListener("click", previousBookingStep0625));
   $0569("bookingSeatsMinus0623")?.addEventListener("click", () => {
     if (bookingBusy0623) return;
     bookingSeats0623 = Math.max(1, bookingSeats0623 - 1);
@@ -356,10 +449,14 @@ function initSelfBooking0623() {
     bookingSeats0623 = Math.min(max, bookingSeats0623 + 1);
     syncBookingSeatCount0623();
   });
-  $0569("bookingSubmit0624")?.addEventListener("click", authenticateAndReserve0624);
-  $0569("bookingPinConfirm0624")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") authenticateAndReserve0624();
-  });
+  [
+    ["bookingPhone0623", continueBookingContact0625],
+    ["bookingName0623", continueBookingName0625],
+    ["bookingPassword0625", continueBookingPassword0625],
+    ["bookingPasswordConfirm0625", continueBookingPasswordConfirm0625],
+  ].forEach(([id, action]) => $0569(id)?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") action();
+  }));
   $0569("bookingModal0623")?.addEventListener("click", (event) => {
     if (event.target === $0569("bookingModal0623")) closeBooking0623();
   });
@@ -379,8 +476,8 @@ function setPassengerAccessMessage0589(message) {
 
 function configurePassengerAreaLink0589() {
   const link = $0569("passengerAreaLink0589");
-  if (!link || !driverUsername0569) return;
-  link.href = "/minha-area.html?motorista=" + encodeURIComponent(driverUsername0569);
+  if (!link) return;
+  link.href = driverUsername0569 ? "/minha-area.html?motorista=" + encodeURIComponent(driverUsername0569) : "/minha-area.html";
 }
 
 function showPassengerAccessGate0589(message = "") {

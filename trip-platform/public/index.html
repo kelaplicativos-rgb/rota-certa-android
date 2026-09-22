@@ -89,7 +89,7 @@
     .bookingStatus0623.success0623{background:#ecfaef;color:#0b6033}
     .bookingHelp0623{display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:12px;border-radius:14px;background:#f4f1f5;color:#4f3c8e;font-size:16px;font-weight:850;text-decoration:none}
     .bookingFine0623{margin:9px 0 0;color:#6e6871;font-size:13px;line-height:1.35}
-    .bookingPin0624{letter-spacing:.24em;text-align:center;font-size:26px;font-weight:900}
+    .bookingPassword0625{letter-spacing:.24em;text-align:center;font-size:26px;font-weight:900}
     .agendaViewRide0584{background:#fff;color:#075f9e;border:1px solid #8abde1}
     .passengerNav0589{display:flex;justify-content:center;gap:8px;margin-top:12px}
     .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:14px;font-weight:850;text-decoration:none;cursor:pointer}
@@ -117,30 +117,58 @@
     <section class="bookingSheet0623">
       <button id="bookingClose0623" class="bookingClose0623" type="button" aria-label="Fechar">×</button>
       <h2 id="bookingTitle0623" class="bookingTitle0623">Reservar meu lugar</h2>
-      <p class="bookingLead0623">Crie seu PIN de 4 dígitos. Sem SMS e sem código de confirmação.</p>
+      <p class="bookingLead0623">Uma pergunta por vez.</p>
       <div id="bookingSummary0623" class="bookingSummary0623"></div>
+      <p id="bookingProgress0625" class="bookingFine0623" aria-live="polite"></p>
 
-      <div id="bookingIdentityStep0623">
-        <label class="bookingLabel0623">Seu nome
-          <input id="bookingName0623" class="bookingInput0623" autocomplete="name" maxlength="120" placeholder="Como podemos chamar você?">
-        </label>
-        <label class="bookingLabel0623">Seu WhatsApp
+      <div id="bookingContactStep0625">
+        <label class="bookingLabel0623">Qual é o seu WhatsApp?
           <input id="bookingPhone0623" class="bookingInput0623" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
         </label>
-        <label class="bookingLabel0623">Seu PIN de acesso
-          <input id="bookingPin0624" class="bookingInput0623 bookingPin0624" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        <button id="bookingContactContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
+      </div>
+
+      <div id="bookingNameStep0625" class="hidden">
+        <label class="bookingLabel0623">Como você se chama?
+          <input id="bookingName0623" class="bookingInput0623" autocomplete="name" maxlength="120" placeholder="Seu nome">
         </label>
-        <label class="bookingLabel0623">Confirme seu PIN
-          <input id="bookingPinConfirm0624" class="bookingInput0623 bookingPin0624" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        <button id="bookingNameContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
+        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
+      </div>
+
+      <div id="bookingPasswordStep0625" class="hidden">
+        <label id="bookingPasswordLabel0625" class="bookingLabel0623">Crie sua senha
+          <input id="bookingPassword0625" class="bookingInput0623 bookingPassword0625" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
         </label>
+        <p class="bookingFine0623">Use exatamente 4 números.</p>
+        <button id="bookingPasswordContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
+        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
+      </div>
+
+      <div id="bookingPasswordConfirmStep0625" class="hidden">
+        <label class="bookingLabel0623">Confirme sua senha
+          <input id="bookingPasswordConfirm0625" class="bookingInput0623 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+        <button id="bookingPasswordConfirmContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
+        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
+      </div>
+
+      <div id="bookingSeatsStep0625" class="hidden">
         <label class="bookingLabel0623">Quantos lugares?</label>
         <div class="bookingSeats0623" role="group" aria-label="Quantidade de lugares">
           <button id="bookingSeatsMinus0623" class="bookingSeatButton0623" type="button" aria-label="Diminuir lugares">−</button>
           <div id="bookingSeatCount0623" class="bookingSeatCount0623" aria-live="polite">1 lugar</div>
           <button id="bookingSeatsPlus0623" class="bookingSeatButton0623" type="button" aria-label="Aumentar lugares">+</button>
         </div>
-        <button id="bookingSubmit0624" class="bookingPrimary0623" type="button">SOLICITAR RESERVA</button>
-        <p class="bookingFine0623">No primeiro acesso, este será o seu PIN. Nos próximos acessos, use o mesmo PIN. O Viagem Certa não envia código por SMS.</p>
+        <button id="bookingSeatsContinue0625" class="bookingPrimary0623" type="button">CONTINUAR</button>
+        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
+      </div>
+
+      <div id="bookingReviewStep0625" class="hidden">
+        <h3>Confira sua reserva</h3>
+        <div id="bookingReview0625" class="bookingSummary0623"></div>
+        <button id="bookingConfirm0625" class="bookingPrimary0623" type="button">SOLICITAR RESERVA</button>
+        <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
       </div>
 
       <p id="bookingStatus0623" class="bookingStatus0623 hidden" role="status" aria-live="polite"></p>
@@ -148,6 +176,6 @@
     </section>
   </div>
 
-  <script src="/public-agenda-shell-0569.js?v=0.1.624-pin-booking" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.625-password-steps" defer></script>  <script src="/public-agenda-shell-0569.js?v=0.1.624-pin-booking" defer></script>
 </body>
 </html>
