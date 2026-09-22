@@ -212,6 +212,33 @@ class BlaBlaRidesExternalTimeline0535Test {
         assertEquals("EXPLICIT_YEAR", ride.evidence.dateResolution)
     }
     @Test
+    fun fullMonthCardKeepsExplicitNextYear0616() {
+        val id = "trip_admin_2027"
+        val ride = project(
+            trips = listOf(id),
+            html = card(0, id, "Qui. 30 de Setembro de 2027"),
+            mhtml = "",
+        ).timeline.single()
+
+        assertEquals("2027-09-30", ride.date)
+        assertTrue(ride.evidence.dateYearExplicit)
+        assertEquals("EXPLICIT_YEAR", ride.evidence.dateResolution)
+    }
+
+    @Test
+    fun fullMonthWithoutDeAlsoKeepsExplicitNextYear0616() {
+        val id = "trip_admin_2027b"
+        val ride = project(
+            trips = listOf(id),
+            html = card(0, id, "30 setembro 2027"),
+            mhtml = "",
+        ).timeline.single()
+
+        assertEquals("2027-09-30", ride.date)
+        assertTrue(ride.evidence.dateYearExplicit)
+    }
+
+    @Test
     fun relativeRideDatesResolveFromCaptureDate0612() {
         val idToday = "trip_today_0001"
         val idYesterday = "trip_yesterday_0002"
