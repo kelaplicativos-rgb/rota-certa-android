@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.620 HTML public parity exact SHA
-# trigger: html-public-parity-0620-r1
+# trigger: html-public-parity-0620-r2
 
 on:
   push:
