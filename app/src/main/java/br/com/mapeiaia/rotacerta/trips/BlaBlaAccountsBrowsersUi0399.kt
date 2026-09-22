@@ -142,36 +142,55 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                         externalTimeline0535 = null
                         ridesSnapshotProgress0526 = "Preparando captura privada…"
                         scope.launch {
-                            val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
-                                ridesSnapshotProgress0526 = progress
-                            }
-                            lastRidesSnapshot0526 = manifest
-                            ridesSnapshotSummary0526 = buildString {
-                                append("Captura ").append(manifest.captureId)
-                                append(" • ").append(manifest.result)
-                                manifest.profiles.forEach { profile ->
-                                    append("\n")
-                                    append(profile.displayName.ifBlank { profile.expectedProfileUuid })
-                                    append(": ").append(profile.status)
-                                    append(" • ").append(profile.cardCountFinal).append(" viagens")
-                                    if (profile.errorCode.isNotBlank()) {
-                                        append(" • ").append(profile.errorCode)
+                            try {
+                                val manifest = BlaBlaRidesSnapshotCoordinator0526.captureAll(context) { progress ->
+                                    ridesSnapshotProgress0526 = progress
+                                }
+                                lastRidesSnapshot0526 = manifest
+                                ridesSnapshotSummary0526 = buildString {
+                                    append("Captura ").append(manifest.captureId)
+                                    append(" • ").append(manifest.result)
+                                    manifest.profiles.forEach { profile ->
+                                        append("\n")
+                                        append(profile.displayName.ifBlank { profile.expectedProfileUuid })
+                                        append(": ").append(profile.status)
+                                        append(" • ").append(profile.cardCountFinal).append(" viagens")
+                                        if (profile.errorCode.isNotBlank()) {
+                                            append(" • ").append(profile.errorCode)
+                                        }
                                     }
                                 }
+                                ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_HTML_CAPTURE_UI_FINISHED_0617",
+                                    context.packageName,
+                                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                                        "result=${manifest.result} profiles=${manifest.profiles.size}",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.BLABLACAR,
+                                        operation = "HTML_CAPTURE",
+                                        result = manifest.result,
+                                    ),
+                                )
+                            } catch (error: Throwable) {
+                                ridesSnapshotProgress0526 =
+                                    "Captura interrompida com segurança • " +
+                                        (error.message ?: error.javaClass.simpleName)
+                                UnifiedDebugEventStore.recordAlways(
+                                    "BLABLACAR_HTML_CAPTURE_UI_FAILED_0617",
+                                    context.packageName,
+                                    "error=${error.javaClass.simpleName.take(80)} failClosed=true buttonReleased=true",
+                                    diagnosticContext = DiagnosticEventContext0507(
+                                        parentModule = DiagnosticModule0507.BLABLACAR,
+                                        operation = "HTML_CAPTURE",
+                                        result = "FAILED",
+                                        severity = br.com.mapeiaia.rotacerta.DiagnosticSeverity0507.ERROR,
+                                        errorCode = error.javaClass.simpleName.take(80),
+                                    ),
+                                )
+                            } finally {
+                                ridesSnapshotRunning0526 = false
                             }
-                            ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
-                            UnifiedDebugEventStore.recordAlways(
-                                "BLABLACAR_HTML_CAPTURE_UI_FINISHED_0617",
-                                context.packageName,
-                                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
-                                    "result=${manifest.result} profiles=${manifest.profiles.size}",
-                                diagnosticContext = DiagnosticEventContext0507(
-                                    parentModule = DiagnosticModule0507.BLABLACAR,
-                                    operation = "HTML_CAPTURE",
-                                    result = manifest.result,
-                                ),
-                            )
-                            ridesSnapshotRunning0526 = false
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
