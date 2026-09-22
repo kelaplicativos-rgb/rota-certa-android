@@ -789,7 +789,7 @@ function appendSegmentAvailability0580(card, item, stops) {
 
     row.append(route, dots, occupancy, seats);
 
-    if (segment.availableSeats > 0 && item?.canReserve !== false) {
+    if (segment.availableSeats > 0) {
       const reserve = document.createElement("button");
       reserve.className = "agendaSegmentReserve0584";
       reserve.type = "button";
