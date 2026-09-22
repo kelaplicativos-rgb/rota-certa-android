@@ -205,15 +205,25 @@ internal fun agendaTimelineDownloadFileName0398(nowMillis: Long = System.current
     return "rota-certa-timeline-$date.json"
 }
 
+internal data class TimelineDownloadReceipt0619(
+    val displayName: String,
+    val location: String,
+    val storedBytes: Long,
+    val pending: Int,
+)
+
 internal fun agendaTimelineWriteToDownloads0616(
     context: Context,
     payload: String,
     fileName: String,
-): String {
+): TimelineDownloadReceipt0619 {
     require(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
         "Download direto requer Android 10 ou superior."
     }
-    val relativePath = "${Environment.DIRECTORY_DOWNLOADS}/Rota Certa"
+
+    // 0.1.619: keep the export in root Downloads so Samsung My Files exposes it directly.
+    val relativePath = Environment.DIRECTORY_DOWNLOADS
+    val payloadBytes = payload.toByteArray(Charsets.UTF_8)
     val values = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
         put(MediaStore.MediaColumns.MIME_TYPE, "application/json")
@@ -223,19 +233,61 @@ internal fun agendaTimelineWriteToDownloads0616(
     val resolver = context.applicationContext.contentResolver
     val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
         ?: error("Android não disponibilizou a pasta Downloads.")
+
     try {
-        resolver.openOutputStream(uri, "w")
-            ?.bufferedWriter(Charsets.UTF_8)
-            ?.use { writer ->
-                writer.write(payload)
-                writer.flush()
+        resolver.openOutputStream(uri, "w")?.use { output ->
+            output.write(payloadBytes)
+            output.flush()
+        } ?: error("Não foi possível gravar a Timeline.")
+
+        val publishedRows = ContentValues().apply {
+            put(MediaStore.MediaColumns.IS_PENDING, 0)
+        }.let { publishValues ->
+            resolver.update(uri, publishValues, null, null)
+        }
+        require(publishedRows == 1) {
+            "Android não confirmou a publicação do arquivo em Downloads."
+        }
+
+        val projection = arrayOf(
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE,
+            MediaStore.MediaColumns.RELATIVE_PATH,
+            MediaStore.MediaColumns.IS_PENDING,
+        )
+        val receipt = resolver.query(uri, projection, null, null, null)?.use { cursor ->
+            require(cursor.moveToFirst()) {
+                "Arquivo gravado não apareceu no MediaStore."
             }
-            ?: error("Não foi possível gravar a Timeline.")
-        ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
-            .also { resolver.update(uri, it, null, null) }
-        return "$relativePath/$fileName"
+            val displayName = cursor.getString(
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME),
+            ).orEmpty().ifBlank { fileName }
+            val storedBytes = cursor.getLong(
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE),
+            )
+            val storedPath = cursor.getString(
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH),
+            ).orEmpty().trimEnd('/').ifBlank { relativePath }
+            val pending = cursor.getInt(
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.IS_PENDING),
+            )
+            TimelineDownloadReceipt0619(
+                displayName = displayName,
+                location = "$storedPath/$displayName",
+                storedBytes = storedBytes,
+                pending = pending,
+            )
+        } ?: error("Android não confirmou o arquivo no MediaStore.")
+
+        require(receipt.pending == 0) {
+            "Arquivo permaneceu pendente e ainda não está visível em Downloads."
+        }
+        require(receipt.storedBytes == payloadBytes.size.toLong()) {
+            "Tamanho gravado divergente: esperado=${payloadBytes.size} obtido=${receipt.storedBytes}."
+        }
+        return receipt
     } catch (error: Throwable) {
-        resolver.delete(uri, null, null)
+        runCatching { resolver.delete(uri, null, null) }
         throw error
     }
 }
@@ -260,15 +312,35 @@ internal fun AgendaTimelineDownloadAction0399(
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        if (uri == null) {
+            UnifiedDebugEventStore.recordAlways(
+                "TIMELINE_DOWNLOAD_PICKER_CANCELLED_0619",
+                context.packageName,
+                "userCancelled=true piiLogged=false",
+            )
+            onChanged("Download da Timeline cancelado.")
+            return@rememberLauncherForActivityResult
+        }
         runCatching {
-            context.contentResolver.openOutputStream(uri, "wt")
-                ?.bufferedWriter(Charsets.UTF_8)
-                ?.use { it.write(payload) }
-                ?: error("Não foi possível abrir o arquivo de destino.")
-        }.onSuccess {
-            onChanged("Download da Timeline concluído.")
+            val bytes = payload.toByteArray(Charsets.UTF_8)
+            context.contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                output.write(bytes)
+                output.flush()
+            } ?: error("Não foi possível abrir o arquivo de destino.")
+            bytes.size
+        }.onSuccess { bytes ->
+            UnifiedDebugEventStore.recordAlways(
+                "TIMELINE_DOWNLOAD_PICKER_COMPLETED_0619",
+                context.packageName,
+                "bytes=$bytes userSelectedDestination=true piiLogged=false",
+            )
+            onChanged("Download da Timeline concluído no local escolhido.")
         }.onFailure { error ->
+            UnifiedDebugEventStore.recordAlways(
+                "TIMELINE_DOWNLOAD_PICKER_FAILED_0619",
+                context.packageName,
+                "error=${error.javaClass.simpleName} piiLogged=false",
+            )
             onChanged("Falha ao baixar a Timeline: ${error.message ?: error.javaClass.simpleName}")
         }
     }
@@ -285,20 +357,23 @@ internal fun AgendaTimelineDownloadAction0399(
                         fileName = fileName,
                     )
                 }
-            }.onSuccess { location ->
+            }.onSuccess { receipt ->
                 UnifiedDebugEventStore.recordAlways(
-                    "TIMELINE_DOWNLOAD_COMPLETED_0616",
+                    "TIMELINE_DOWNLOAD_COMPLETED_0619",
                     context.packageName,
-                    "directDownloads=true fileName=$fileName bytes=${payload.toByteArray(Charsets.UTF_8).size} piiLogged=false",
+                    "directDownloads=true mediaStoreVerified=true pending=${receipt.pending} " +
+                        "fileName=${receipt.displayName} bytes=${receipt.storedBytes} piiLogged=false",
                 )
-                onChanged("Timeline baixada em $location.")
+                onChanged("Timeline baixada e verificada em ${receipt.location}.")
             }.onFailure { error ->
                 UnifiedDebugEventStore.recordAlways(
-                    "TIMELINE_DOWNLOAD_FAILED_0616",
+                    "TIMELINE_DOWNLOAD_DIRECT_FAILED_0619",
                     context.packageName,
-                    "directDownloads=true error=${error.javaClass.simpleName} piiLogged=false",
+                    "directDownloads=true verified=false error=${error.javaClass.simpleName} " +
+                        "fallback=document_picker piiLogged=false",
                 )
-                onChanged("Falha ao baixar a Timeline: ${error.message ?: error.javaClass.simpleName}")
+                onChanged("Não foi possível confirmar o download direto. Escolha onde salvar a Timeline.")
+                launcher.launch(fileName)
             }
         } else {
             launcher.launch(fileName)
