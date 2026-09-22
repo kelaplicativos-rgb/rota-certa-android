@@ -122,7 +122,7 @@ jobs:
           curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/minha-area.html?v=$SOURCE_SHA" | tee /tmp/live-private.html
           grep -Fq 'entryContactStep0625' /tmp/live-private.html
           grep -Fq 'timeline0625' /tmp/live-private.html
-          grep -Fq 'Crie sua senha' /tmp/live-private.html
+          grep -Fq 'Confirme sua senha' /tmp/live-private.html
           curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/minha-area.js?v=$SOURCE_SHA" | tee /tmp/live-private.js
           grep -Fq '/v1/passenger/me/timeline' /tmp/live-private.js
           grep -Fq 'viagemCertaPassengerSession0625' /tmp/live-private.js
