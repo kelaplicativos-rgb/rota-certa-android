@@ -6030,7 +6030,8 @@ async function inviteDriverPassenger(req, res) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
   }
   const displayName = cleanText(req.body && req.body.displayName, 120);
-  const passengerId = cleanText(req.body && req.body.passengerId, 120);
+  const requestedPassengerId = cleanText(req.body && req.body.passengerId, 120);
+  const passengerId = requestedPassengerId || ("passenger_" + sha256Hex("phone:" + passengerContact).slice(0, 40));
   if (!displayName) return fail(res, 400, "passenger_name_required", "Informe o nome do passageiro.");
   let referredByContact = "";
   if (req.body && req.body.referredByContact) {
@@ -6049,17 +6050,25 @@ async function inviteDriverPassenger(req, res) {
         { httpStatus: 409, code: "passenger_whatsapp_conflict" },
       );
     }
+    const stablePassengerId = cleanText(previousData.passengerId, 120) || passengerId;
     tx.set(accessRef, {
       driverUsername: driver.username,
       passengerContact,
       displayName,
-      passengerId: passengerId || cleanText(previousData.passengerId, 120),
+      passengerId: stablePassengerId,
       status: "AUTHORIZED",
       referredByContact: referredByContact || cleanText(previousData.referredByContact, 40),
       referralRewardGrantedAtMillis: Number(previousData.referralRewardGrantedAtMillis || 0),
       createdAtMillis: Number(previousData.createdAtMillis || now),
       updatedAtMillis: now,
     }, { merge: true });
+    writeCanonicalPassenger0625(tx, {
+      passengerId: stablePassengerId,
+      passengerContact,
+      displayName,
+      source: "DRIVER_INVITE_0625",
+      createdAtMillis: Number(previousData.createdAtMillis || now),
+    }, now);
   });
   const accountSnap = await db.collection("passengerAccounts").doc(sha256Hex(passengerContact)).get();
   const updated = await accessRef.get();
@@ -6425,12 +6434,21 @@ async function updateDriverPassengerWhatsapp(req, res) {
   const oldLedgerRef = passengerCreditLedgerRef(driver.username, previousPassengerContact);
   const newLedgerRef = passengerCreditLedgerRef(driver.username, newPassengerContact);
 
-  const oldAccountSnap = await oldAccountRef.get();
-  const newAccountSnap = await newAccountRef.get();
+  const [oldAccountSnap, newAccountSnap, newGlobalContactSnap] = await Promise.all([
+    oldAccountRef.get(),
+    newAccountRef.get(),
+    passengerContactIndexRef0625(newPassengerContact).get(),
+  ]);
   if (newAccountSnap.exists) {
     const accountPassengerId = cleanText(newAccountSnap.data().passengerId, 120);
     if (accountPassengerId && accountPassengerId !== passengerId) {
       return fail(res, 409, "passenger_whatsapp_account_conflict", "Este WhatsApp já possui uma conta privada vinculada a outro passageiro.");
+    }
+  }
+  if (newGlobalContactSnap.exists) {
+    const globalPassengerId = cleanText(newGlobalContactSnap.data().passengerId, 120);
+    if (globalPassengerId && globalPassengerId !== passengerId) {
+      return fail(res, 409, "passenger_whatsapp_global_conflict", "Este WhatsApp já pertence a outro passageiro no banco único.");
     }
   }
 
@@ -6474,15 +6492,24 @@ async function updateDriverPassengerWhatsapp(req, res) {
   const sourceData = { ...currentAccess };
   delete sourceData.id;
   const writes = [];
-  writes.push((batch) => batch.set(destinationRef, {
-    ...sourceData,
-    driverUsername: driver.username,
-    passengerId,
-    passengerContact: newPassengerContact,
-    displayName: displayName || cleanText(sourceData.displayName, 120),
-    status: passengerAccessStatus(sourceData) || "AUTHORIZED",
-    updatedAtMillis: now,
-  }, { merge: true }));
+  writes.push((batch) => {
+    batch.set(destinationRef, {
+      ...sourceData,
+      driverUsername: driver.username,
+      passengerId,
+      passengerContact: newPassengerContact,
+      displayName: displayName || cleanText(sourceData.displayName, 120),
+      status: passengerAccessStatus(sourceData) || "AUTHORIZED",
+      updatedAtMillis: now,
+    }, { merge: true });
+    writeCanonicalPassenger0625(batch, {
+      passengerId,
+      passengerContact: newPassengerContact,
+      displayName: displayName || cleanText(sourceData.displayName, 120),
+      source: "WHATSAPP_UPDATE_0625",
+      createdAtMillis: Number(sourceData.createdAtMillis || now),
+    }, now);
+  });
 
   if (oldAccountSnap.exists) {
     writes.push((batch) => batch.set(newAccountRef, {
@@ -6552,6 +6579,7 @@ async function updateDriverPassengerWhatsapp(req, res) {
     updatedAtMillis: now,
   }, { merge: true }));
   if (oldAccountSnap.exists) cleanup.push((batch) => batch.delete(oldAccountRef));
+  cleanup.push((batch) => batch.delete(passengerContactIndexRef0625(previousPassengerContact)));
   if (oldLedgerSnap.exists) {
     oldLedgerEntries.docs.forEach((entry) => cleanup.push((batch) => batch.delete(entry.ref)));
     cleanup.push((batch) => batch.delete(oldLedgerRef));
