@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.615",
+      "build": 5906,
+      "commit": null,
+      "branch": "agent/html-card-authoritative-reset-0.1.615",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Atualização individual de card passa a aceitar como nova verdade somente uma captura HTML operacionalmente completa: identidade, itinerário, segmentos de passageiros, vagas publicadas e link público precisam estar resolvidos.",
+        "O card HTML atualizado é substituído integralmente pela nova observação da mesma identidade forte; cards irmãos do perfil permanecem intactos.",
+        "A publicação do snapshot combinado após atualização individual usa o estado HTML atual sem merge parcial com a resposta persistida anterior."
+      ],
+      "fixed": [
+        "Remove a herança monotônica de passageiros, ocupação e vagas antigas em atualização HTML direcionada, impedindo que dados removidos no HTML novo sobrevivam na Timeline.",
+        "Captura direcionada incompleta deixa de escrever na sessão HTML e deixa de alcançar o TripStore canônico; a última geração validada é preservada em vez de materializar informação parcial.",
+        "A Timeline continua protegida contra dados BlaBlaCar vindos do backend/legado e recebe a alteração somente depois da confirmação HTML válida."
+      ],
+      "improved": [
+        "Mantém o commit global N/N com staging privado, validação e rollback atômico já existente.",
+        "Telemetria diferencia rejeição de HTML direcionado incompleto de substituição estrita de card validado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.614: uma atualização direcionada podia passar por merge monotônico e conservar passageiros, ocupação ou vagas da observação HTML anterior."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Timeline",
+        "Agenda",
+        "TripStore",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.614",
       "build": 5905,
       "commit": null,
