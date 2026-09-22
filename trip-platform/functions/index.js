@@ -1169,8 +1169,10 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     ? rawPublishedSeats
     : null;
   const previousProfileUuid = cleanText(previous && previous.blablaProfileUuid, 160);
+  const previousProfileName = cleanText(previous && previous.blablaProfileName, 120);
   const previousTripId = cleanText(previous && previous.blablaTripId, 160);
   const blablaProfileUuid = cleanText(raw.blablaProfileUuid, 160) || previousProfileUuid;
+  const blablaProfileName = cleanText(raw.blablaProfileName, 120) || previousProfileName;
   const blablaTripId = cleanText(raw.blablaTripId, 160) || previousTripId;
   const samePersistentProfile0585 =
     !previousProfileUuid ||
@@ -1246,6 +1248,7 @@ function normalizeDriverTrip(raw, previous = null, allowBookedStopShapeMigration
     status,
     stops,
     blablaProfileUuid,
+    blablaProfileName,
     blablaTripId,
     blablaManageUrl,
     blablaPublicUrl,
@@ -1351,6 +1354,7 @@ function safePublicTripFromCanonical0434(token, data) {
     capacityReliable: capacityState0485.reliable,
     notes: data.notes || "",
     publicUrl: payload.publicUrl || null,
+    blablaProfileName: payload.blablaProfileName || "",
     blablaTripId: payload.blablaTripId || null,
     blablaPublicUrl: payload.blablaPublicUrl || null,
     driverUsername: data.driverUsername || "",
@@ -1483,6 +1487,7 @@ function safePublicTrip(token, data) {
     capacityReliable: capacityState0485.reliable,
     notes: data.notes || "",
     publicUrl: data.publicUrl || null,
+    blablaProfileName: cleanText(data.blablaProfileName, 120),
     blablaTripId: cleanText(data.blablaTripId, 160) || null,
     blablaPublicUrl: normalizeBlaBlaPublicUrl(data.blablaPublicUrl, cleanText(data.blablaTripId, 160)) || null,
     driverUsername: data.driverUsername || "",
@@ -1516,7 +1521,7 @@ function publicTripProjection0491(value) {
     "physicalAvailableSeatsMinimum", "physicalAvailableSeatsMaximum",
     "operationalOverbookingSeats", "operationalBreakdownReliable",
     "publicBookingEnabled", "itineraryAuthoritative", "publishedSeats",
-    "capacityReliable", "publicUrl", "blablaPublicUrl", "driverDisplayName",
+    "capacityReliable", "publicUrl", "blablaPublicUrl", "blablaProfileName", "driverDisplayName",
     "updatedAtMillis", "visibilityPolicyRevision0434",
     "publicProjectionRevision0434", "publicProjectionHash0434",
   ];
@@ -1591,6 +1596,7 @@ function canonicalPublicTripPayloadFromStored0434(raw) {
     canonicalTripId: cleanText(payload.canonicalTripId, 180),
     canonicalRevision: Math.max(0, Math.floor(Number(payload.canonicalRevision || 0))),
     blablaProfileUuid: cleanText(payload.blablaProfileUuid, 160).toLowerCase(),
+    blablaProfileName: cleanText(payload.blablaProfileName, 120),
     blablaTripId: cleanText(payload.blablaTripId, 160),
     title: cleanText(payload.title, 220),
     departureAtMillis,
@@ -1742,6 +1748,7 @@ function canonicalPublicTripPayload0411(token, data) {
     canonicalTripId: cleanText(data.canonicalTripId || data.localTripId, 180),
     canonicalRevision: Math.max(0, Number(data.canonicalRevision || 0)),
     blablaProfileUuid: profileUuid,
+    blablaProfileName: cleanText(data.blablaProfileName, 120),
     blablaTripId,
     title: cleanText(publicTrip.title, 220),
     departureAtMillis,
@@ -2413,6 +2420,7 @@ function canonicalServerStateHash0468(trip) {
     canonicalTripId: cleanText(trip.canonicalTripId || trip.localTripId, 180),
     canonicalRevision: Math.max(0, Number(trip.canonicalRevision || 0)),
     blablaProfileUuid: cleanText(trip.blablaProfileUuid, 160).toLowerCase(),
+    blablaProfileName: cleanText(trip.blablaProfileName, 120),
     blablaTripId: cleanText(trip.blablaTripId, 160),
     title: cleanText(trip.title, 220),
     departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
