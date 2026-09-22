@@ -535,7 +535,7 @@ function renderTripCard0569(item) {
   date.textContent = dateLabel0569(item?.departureAtMillis, item?.timezoneId);
   const driver = document.createElement("span");
   driver.className = "agendaDriver0569";
-  driver.textContent = publicDriverDisplayName0569 || driverUsername0569;
+  driver.textContent = String(item?.blablaProfileName || "").trim() || publicDriverDisplayName0569 || driverUsername0569;
   top.append(date, driver);
   card.appendChild(top);
   appendJourney0569(card, item, firstStop, lastStop);
