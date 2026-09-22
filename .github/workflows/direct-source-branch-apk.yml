@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.621 HTML network recovery exact SHA
-# trigger: html-network-recovery-0621-r2
+# trigger: html-network-recovery-0621-r3
 
 on:
   push:
