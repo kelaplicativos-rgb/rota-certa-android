@@ -52,6 +52,75 @@ class AgendaCanonicalCentralSync0403Test {
     }
 
     @Test
+    fun completeTargetedHtmlReplacesRosterAndSeatsWithoutMonotonicInheritance0615() {
+        val profile = "7371f028-9c55-4903-8444-308015823efd"
+        val tripId = "019f-targeted-html-0615"
+        val href = "https://www.blablacar.com.br/rides/offer?id=$tripId&source=CARPOOLING"
+        val base = BlaBlaCollectorTrip(
+            profile_uuid = profile,
+            date = "2030-09-22",
+            departure_time = "10:00",
+            arrival_time = "12:00",
+            actual_departure = "A",
+            actual_arrival = "B",
+            trip_href = href,
+            public_trip_href = "https://www.blablacar.com.br/trip/$tripId",
+            trip_id = tripId,
+            itinerary_stops = listOf("A", "B"),
+            itinerary_authoritative = true,
+            published_seats = 3,
+            passenger_roster_complete = true,
+        )
+        val previous = base.copy(
+            booked_seats = 2,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "Passageiro antigo", seats = 2, boarding = "A", dropoff = "B"),
+            ),
+        )
+        val incoming = base.copy(
+            booked_seats = 0,
+            passengers = emptyList(),
+            published_seats = 4,
+        )
+        val sibling = base.copy(
+            trip_id = "sibling-0615",
+            trip_href = "https://www.blablacar.com.br/rides/offer?id=sibling-0615&source=CARPOOLING",
+            public_trip_href = "https://www.blablacar.com.br/trip/sibling-0615",
+            date = "2030-09-23",
+        )
+
+        val replaced = BlaBlaCollectorTimelineModule.replaceAuthoritativeHtmlTarget0615(
+            previous = listOf(previous, sibling),
+            current = listOf(incoming),
+            targetTripId = tripId,
+        )
+
+        val target = replaced.trips.single { it.trip_id == tripId }
+        assertTrue(target.passengers.isEmpty())
+        assertEquals(0, target.booked_seats)
+        assertEquals(4, target.published_seats)
+        assertTrue(replaced.trips.any { it.trip_id == "sibling-0615" })
+        assertEquals(0, replaced.preservedIncompleteRosters)
+    }
+
+    @Test
+    fun targetedHtmlIncompleteCaptureIsBlockedBeforeSessionAndCanonicalWrite0615() {
+        val capture = source("BlaBlaUnifiedHtmlCapture0605.kt")
+        val targetStart = capture.indexOf("suspend fun captureSingleTrip0607")
+        val reject = capture.indexOf("TARGETED_HTML_INCOMPLETE_REJECTED_0615", startIndex = targetStart)
+        val sessionWrite = capture.indexOf("sessionStore.saveSync(", startIndex = targetStart)
+        assertTrue(targetStart >= 0)
+        assertTrue(reject > targetStart)
+        assertTrue(sessionWrite > reject)
+        assertTrue(capture.contains("saveResponse(response, preserveOnPartial = false)"))
+
+        val session = source("BlaBlaCollectorSessionModule.kt")
+        assertTrue(session.contains("TARGETED_HTML_SESSION_WRITE_BLOCKED_0615"))
+        assertTrue(session.contains("replaceAuthoritativeHtmlTarget0615"))
+        assertTrue(session.contains("targetedHtmlStrictReplace0615"))
+    }
+
+    @Test
     fun legacyDeterministicBackingCanBePromotedOnlyWithMatchingPhysicalAndStrongIdentity0614() {
         val profile = "175a7068-50d8-40c3-a27a-214b9c6e0461"
         val tripId = "019ed00e-7c37-7d89-ad6c-5da16abdbef3"
