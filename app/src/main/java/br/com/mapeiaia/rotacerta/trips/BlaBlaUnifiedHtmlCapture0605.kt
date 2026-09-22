@@ -10,6 +10,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewCompat
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.DiagnosticSeverity0507
 import br.com.mapeiaia.rotacerta.SettingsRepository
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
@@ -19,6 +22,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
@@ -180,6 +185,9 @@ internal fun htmlCanonicalResponseStatusAccepted0611(
 
 internal object BlaBlaUnifiedHtmlCapture0605 {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    // 0.1.617: capture may run both isolated profiles concurrently, but canonical
+    // publication remains serialized so TripStore/outbox read-modify-write stays deterministic.
+    private val liveCardCommitMutex0617 = Mutex()
 
     suspend fun captureProfile(
         context: Context,
