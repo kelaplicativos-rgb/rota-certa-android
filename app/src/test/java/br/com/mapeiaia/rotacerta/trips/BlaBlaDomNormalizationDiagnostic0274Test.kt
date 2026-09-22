@@ -36,6 +36,36 @@ class BlaBlaDomNormalizationDiagnostic0274Test {
     }
 
     @Test
+    fun verifiedAccountSessionIsNotRejectedByPassengerProfileLinks0616() {
+        val passengerProfile = "https://www.blablacar.com.br/user/show/175a7068-50d8-40c3-a27a-214b9c6e0461"
+        val result = BlaBlaDomNormalizer.diagnoseTrip(
+            account,
+            candidate(),
+            detail().copy(profileLinks = listOf(passengerProfile)),
+            today,
+            true,
+        )
+
+        assertNull(result.rejectionReason)
+        assertNotNull(result.trip)
+        assertEquals(account.uuid, result.trip?.profile_uuid)
+        assertEquals("verified_from_authenticated_profile_session", result.trip?.uuid_validation)
+    }
+
+    @Test
+    fun foreignProfileEvidenceStillFailsWithoutVerifiedSession0616() {
+        val passengerProfile = "https://www.blablacar.com.br/user/show/175a7068-50d8-40c3-a27a-214b9c6e0461"
+        val result = BlaBlaDomNormalizer.diagnoseTrip(
+            account,
+            candidate(),
+            detail().copy(profileLinks = listOf(passengerProfile)),
+            today,
+            false,
+        )
+        assertRejected("profile_uuid_conflict", result)
+    }
+
+    @Test
     fun reportsDateUnparseable() {
         val result = BlaBlaDomNormalizer.diagnoseTrip(
             account,
