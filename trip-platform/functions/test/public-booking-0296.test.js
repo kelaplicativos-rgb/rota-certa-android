@@ -34,20 +34,21 @@ test("backend validates Brazilian WhatsApp and public source", () => {
   assert.match(api, /sourceReference: `PUBLIC_LINK:/);
 });
 
-test("mobile portal reserves directly after phone verification with dynamic seat limits and idempotency", () => {
+test("mobile portal reserves directly after PIN authentication with dynamic seat limits and idempotency", () => {
   assert.match(web, /openBooking0623/);
-  assert.match(web, /signInWithPhoneNumber/);
-  assert.match(web, /phoneConfirmation0623\.confirm\(code\)/);
+  assert.match(web, /authenticateAndReserve0624/);
+  assert.doesNotMatch(web, /signInWithPhoneNumber|phoneConfirmation0623|RecaptchaVerifier/);
   assert.match(web, /bookingSeats0623 = Math\.min\(max, bookingSeats0623 \+ 1\)/);
   assert.match(web, /bookingIdempotencyKey0623/);
   assert.match(web, /"Idempotency-Key": idempotencyKey/);
-  assert.match(web, /\/v1\/public\/passenger-phone-session/);
+  assert.match(web, /\/v1\/public\/passenger-pin-session/);
   assert.match(web, /\/v1\/public\/trips\/.*\/bookings/);
   assert.match(html, /id="bookingPhone0623"/);
-  assert.match(html, /id="bookingOtp0623"/);
-  assert.match(html, />RECEBER CÓDIGO</);
-  assert.match(html, />CONFIRMAR E SOLICITAR RESERVA</);
-  assert.match(html, /Você não precisa criar senha/);
+  assert.match(html, /id="bookingPin0624"/);
+  assert.match(html, /id="bookingPinConfirm0624"/);
+  assert.match(html, />SOLICITAR RESERVA</);
+  assert.match(html, /PIN de 4 dígitos/);
+  assert.doesNotMatch(html, /bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
 test("driver validates the permanent public agenda token before sharing without self-healing", () => {

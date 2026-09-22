@@ -31,7 +31,7 @@ test("0624 booking UI uses user-created 4 digit PIN with no OTP dependencies", (
 test("0624 browser authenticates PIN before creating canonical booking", () => {
   const auth = between(shell, "async function authenticateAndReserve0624", "function bookingIdempotencyKey0623");
   assert.match(auth, /\/v1\/public\/passenger-pin-session/);
-  assert.match(auth, /\/^\\d\{4\}\$\//);
+  assert.match(auth, /Crie um PIN com exatamente 4 números/);
   assert.match(auth, /pin !== pinConfirmation/);
   assert.match(auth, /sessionStorage\.setItem\(passengerSessionKey0623/);
   assert.match(auth, /\/v1\/public\/trips\/.*\/bookings/);

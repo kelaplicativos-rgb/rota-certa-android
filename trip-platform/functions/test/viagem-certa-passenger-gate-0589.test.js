@@ -21,16 +21,17 @@ function between(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("0589 gate is explicitly superseded by 0623 public-read reserve-on-demand", () => {
+test("0589 gate is explicitly superseded by 0624 public-read PIN reserve-on-demand", () => {
   assert.match(html, /id="accessGate0589" class="accessGate0589 hidden"/);
   assert.doesNotMatch(html, /id="passengerWhatsapp0589"/);
   assert.match(html, /id="bookingPhone0623"/);
-  assert.match(html, /id="bookingOtp0623"/);
-  assert.match(html, />RECEBER CÓDIGO</);
-  assert.match(html, />CONFIRMAR E SOLICITAR RESERVA</);
+  assert.match(html, /id="bookingPin0624"/);
+  assert.match(html, /id="bookingPinConfirm0624"/);
+  assert.match(html, />SOLICITAR RESERVA</);
+  assert.doesNotMatch(html, /bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
-test("0623 public agenda, change stream and public trip no longer require a passenger view token", () => {
+test("0624 keeps the 0623 public-read contract while PIN protects reservation identity", () => {
   const agenda = between(api, "async function getPublicDriverAgenda", "async function waitPublicAgendaCanonicalChange0495");
   assert.doesNotMatch(agenda, /requirePassengerAgendaView/);
   assert.match(agenda, /identifiedAccessRequired0589: false/);
@@ -52,7 +53,7 @@ test("private passenger data stays protected even after the public agenda is reo
   assert.doesNotMatch(privateJs, /localStorage/);
 });
 
-test("0.1.623 package metadata is explicit", () => {
-  assert.match(gradle, /releaseVersionCode = 5_914/);
-  assert.match(gradle, /releaseVersionName = "0\.1\.623"/);
+test("0.1.624 package metadata is explicit", () => {
+  assert.match(gradle, /releaseVersionCode = 5_915/);
+  assert.match(gradle, /releaseVersionName = "0\.1\.624"/);
 });
