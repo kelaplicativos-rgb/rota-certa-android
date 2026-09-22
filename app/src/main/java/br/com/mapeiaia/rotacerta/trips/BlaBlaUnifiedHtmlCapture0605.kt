@@ -227,6 +227,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             .sortedWith(compareBy<ParsedExternalRide0535>({ it.date }, { it.departureTime }, { it.listPosition }))
 
         val sessionStore = BlaBlaDynamicSessionStore(app)
+        val liveSettings0617 = withContext(Dispatchers.IO) {
+            SettingsRepository(app).settings.first()
+        }
         if (futureRides.isEmpty()) {
             store.updateProfile(captureId, account.id) { it.copy(tripCaptures0605 = emptyList()) }
             UnifiedDebugEventStore.recordAlways(
@@ -310,6 +313,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                     trip = captured.trip,
                                     lastUrl = captured.evidence.finalUrl,
                                     captureId = captureId,
+                                    rotaCertaSeatAllocation = liveSettings0617.rotaCertaSeatAllocation,
+                                    seatAllocationVersion = liveSettings0617.rotaCertaSeatAllocationVersion,
                                 )
                         if (liveCommitted0617) {
                             onProgress(
@@ -469,6 +474,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         trip: BlaBlaCollectorTrip,
         lastUrl: String,
         captureId: String,
+        rotaCertaSeatAllocation: Int,
+        seatAllocationVersion: Long,
     ): Boolean {
         val app = context.applicationContext
         val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
@@ -487,9 +494,6 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             return false
         }
 
-        val settings = withContext(Dispatchers.IO) {
-            SettingsRepository(app).settings.first()
-        }
         return withContext(Dispatchers.IO) {
             liveCardCommitMutex0617.withLock {
                 val exactResponse = BlaBlaCollectorMonthResponse(
@@ -526,8 +530,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         context = app,
                         store = tripStore,
                         response = exactResponse,
-                        rotaCertaSeatAllocation = settings.rotaCertaSeatAllocation,
-                        seatAllocationVersion = settings.rotaCertaSeatAllocationVersion,
+                        rotaCertaSeatAllocation = rotaCertaSeatAllocation,
+                        seatAllocationVersion = rotaCertaSeatAllocationVersion,
                         collectionRunId = "html-live-card-0617:" + captureId.take(48),
                         collectionGeneration = transaction.generation,
                         completeProfileUuids = emptySet(),
