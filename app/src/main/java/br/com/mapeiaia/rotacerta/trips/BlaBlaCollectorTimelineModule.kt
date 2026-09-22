@@ -55,6 +55,41 @@ internal object BlaBlaCollectorTimelineModule {
         )
     }
 
+    /**
+     * 0.1.615 — an exact targeted HTML refresh is a replacement, not an enrichment.
+     * The refreshed strong identity is taken byte-for-semantic-field from the new HTML
+     * model while sibling cards remain untouched. This deliberately bypasses the legacy
+     * monotonic passenger merge so removed passengers/seats cannot survive a fresh card.
+     */
+    fun replaceAuthoritativeHtmlTarget0615(
+        previous: List<BlaBlaCollectorTrip>,
+        current: List<BlaBlaCollectorTrip>,
+        targetTripId: String,
+    ): BlaBlaSnapshotMergeResult {
+        val wanted = targetTripId.trim()
+        val incoming = current.singleOrNull { trip ->
+            trip.trip_id?.trim() == wanted &&
+                BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) == wanted &&
+                trip.passenger_roster_complete &&
+                trip.itinerary_authoritative &&
+                trip.published_seats != null &&
+                !trip.public_trip_href.isNullOrBlank()
+        } ?: return BlaBlaSnapshotMergeResult(
+            trips = previous,
+            preservedMissingTrips = 0,
+            preservedIncompleteRosters = 0,
+        )
+        val incomingKey = BlaBlaTripIdentity.evidence(incoming).key
+        val siblings = previous.filter { prior ->
+            BlaBlaTripIdentity.evidence(prior).key != incomingKey
+        }
+        return BlaBlaSnapshotMergeResult(
+            trips = BlaBlaTripIdentity.resolveDistinct(siblings + incoming).trips,
+            preservedMissingTrips = 0,
+            preservedIncompleteRosters = 0,
+        )
+    }
+
     fun mergePublishedResponse(
         previous: BlaBlaCollectorMonthResponse?,
         incoming: BlaBlaCollectorMonthResponse,
