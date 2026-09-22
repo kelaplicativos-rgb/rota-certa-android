@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.624",
+      "build": 5915,
+      "commit": null,
+      "branch": "agent/viagem-certa-pin-booking-0.1.624",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reserva pública passa a usar WhatsApp mais PIN pessoal de 4 dígitos, escolhido pelo próprio passageiro, sem depender de OTP, SMS ou reCAPTCHA.",
+        "No primeiro acesso, o backend cria a conta com salt aleatório e hash scrypt do PIN; nos acessos seguintes, o mesmo PIN abre uma sessão de passageiro de 30 dias.",
+        "Após autenticar pelo PIN, a solicitação continua entrando no livro canônico como REQUESTED, bloqueando a vaga por trecho transacionalmente e aguardando confirmação do motorista.",
+        "Contas novas por PIN são marcadas explicitamente como contato não verificado quando não existe prova anterior de telefone, sem fingir validação de propriedade do WhatsApp.",
+        "Proteção específica do PIN limita erros consecutivos por conta e aplica bloqueio temporário após cinco tentativas inválidas."
+      ],
+      "fixed": [
+        "Remove do caminho crítico a falha de entrega do Firebase Phone Auth que impedia o passageiro de avançar quando o SMS não chegava.",
+        "Remove a promessa incorreta de confirmação por WhatsApp: o WhatsApp permanece somente como contato e canal de ajuda.",
+        "Mantém bloqueios SUSPENDED/BLOCKED e impede reativação automática de identidade marcada como MOVED."
+      ],
+      "improved": [
+        "Tela de reserva pede somente nome, WhatsApp, PIN, confirmação do PIN e quantidade de lugares.",
+        "Endpoint legado de sessão por telefone responde como aposentado e não executa mais Firebase Phone Auth.",
+        "Testes e smoke de produção exigem ausência de signInWithPhoneNumber, Firebase Auth web, campo OTP e texto de SMS."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.623: reserva ficava bloqueada quando o Firebase Phone Auth não conseguia enviar o OTP por SMS."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Agenda Pública",
+        "Reservas",
+        "Passageiros",
+        "Autenticação",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.623",
       "build": 5914,
       "commit": null,

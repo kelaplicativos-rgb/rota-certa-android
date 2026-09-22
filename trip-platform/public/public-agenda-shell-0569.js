@@ -41,8 +41,6 @@ const passengerContextKey0623 = "rotaCertaPassengerContext0491:" + driverUsernam
 let passengerSessionToken0623 = sessionStorage.getItem(passengerSessionKey0623) || "";
 let bookingSelection0623 = null;
 let bookingSeats0623 = 1;
-let phoneConfirmation0623 = null;
-let recaptchaVerifier0623 = null;
 let bookingBusy0623 = false;
 
 function passengerSessionContext0623() {
@@ -98,12 +96,6 @@ function bookingHelpHref0623() {
 
 function showBookingIdentityStep0623() {
   setVisible0569("bookingIdentityStep0623", true);
-  setVisible0569("bookingOtpStep0623", false);
-  phoneConfirmation0623 = null;
-  if (recaptchaVerifier0623) {
-    try { recaptchaVerifier0623.clear(); } catch (_) {}
-    recaptchaVerifier0623 = null;
-  }
 }
 
 function closeBooking0623() {
@@ -193,15 +185,14 @@ function openFullTripBooking0623(item) {
 
 function setBookingBusy0623(busy) {
   bookingBusy0623 = Boolean(busy);
-  ["bookingSendCode0623","bookingConfirm0623","bookingBack0623","bookingClose0623",
-   "bookingSeatsMinus0623","bookingSeatsPlus0623"].forEach((id) => {
+  ["bookingSubmit0624","bookingClose0623","bookingSeatsMinus0623","bookingSeatsPlus0623"].forEach((id) => {
     const node = $0569(id);
     if (node) node.disabled = bookingBusy0623;
   });
   if (!bookingBusy0623) syncBookingSeatCount0623();
 }
 
-async function sendBookingCode0623() {
+async function authenticateAndReserve0624() {
   if (bookingBusy0623 || !bookingSelection0623) return;
   const displayName = String($0569("bookingName0623")?.value || "").trim();
   if (displayName.length < 2) {
@@ -209,6 +200,7 @@ async function sendBookingCode0623() {
     $0569("bookingName0623")?.focus();
     return;
   }
+
   let phone;
   try { phone = normalizePhoneE1640623($0569("bookingPhone0623")?.value || ""); }
   catch (error) {
@@ -216,66 +208,32 @@ async function sendBookingCode0623() {
     $0569("bookingPhone0623")?.focus();
     return;
   }
-  if (!window.firebase?.auth) {
-    setBookingStatus0623("A confirmação por telefone está temporariamente indisponível. Use “Preciso de ajuda pelo WhatsApp”.", "error");
+
+  const pin = String($0569("bookingPin0624")?.value || "").trim();
+  const pinConfirmation = String($0569("bookingPinConfirm0624")?.value || "").trim();
+  if (!/^\d{4}$/.test(pin)) {
+    setBookingStatus0623("Crie um PIN com exatamente 4 números.", "error");
+    $0569("bookingPin0624")?.focus();
+    return;
+  }
+  if (pin !== pinConfirmation) {
+    setBookingStatus0623("Os dois PINs precisam ser iguais.", "error");
+    $0569("bookingPinConfirm0624")?.focus();
     return;
   }
 
   setBookingBusy0623(true);
-  setBookingStatus0623("Enviando o código de segurança…");
-  try {
-    if (recaptchaVerifier0623) {
-      try { recaptchaVerifier0623.clear(); } catch (_) {}
-    }
-    firebase.auth().languageCode = "pt-br";
-    recaptchaVerifier0623 = new firebase.auth.RecaptchaVerifier("bookingSendCode0623", { size: "invisible" });
-    phoneConfirmation0623 = await firebase.auth().signInWithPhoneNumber(phone, recaptchaVerifier0623);
-    setVisible0569("bookingIdentityStep0623", false);
-    setVisible0569("bookingOtpStep0623", true);
-    setBookingStatus0623("Código enviado. Digite os 6 números recebidos por SMS.");
-    window.setTimeout(() => $0569("bookingOtp0623")?.focus(), 50);
-  } catch (error) {
-    if (recaptchaVerifier0623) {
-      try { recaptchaVerifier0623.clear(); } catch (_) {}
-      recaptchaVerifier0623 = null;
-    }
-    const code = String(error?.code || "");
-    const message = code.includes("too-many-requests")
-      ? "Muitas tentativas neste número. Aguarde um pouco antes de pedir outro código."
-      : code.includes("invalid-phone-number")
-        ? "Confira o número do WhatsApp com DDD."
-        : "Não conseguimos enviar o código agora. Confira o número ou use a ajuda pelo WhatsApp.";
-    setBookingStatus0623(message, "error");
-  } finally {
-    setBookingBusy0623(false);
-  }
-}
+  setBookingStatus0623("Entrando com seu PIN e guardando a vaga…");
 
-function bookingIdempotencyKey0623() {
-  return "vc0623_" + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "_" + Math.random().toString(36).slice(2)))
-    .replace(/[^A-Za-z0-9_-]/g, "_");
-}
-
-async function confirmAndReserve0623() {
-  if (bookingBusy0623 || !bookingSelection0623 || !phoneConfirmation0623) return;
-  const code = String($0569("bookingOtp0623")?.value || "").replace(/\D/g, "");
-  if (!/^\d{6}$/.test(code)) {
-    setBookingStatus0623("Digite os 6 números do código recebido.", "error");
-    $0569("bookingOtp0623")?.focus();
-    return;
-  }
-  const displayName = String($0569("bookingName0623")?.value || "").trim();
-  setBookingBusy0623(true);
-  setBookingStatus0623("Confirmando seu telefone e guardando a vaga…");
   try {
-    const credential = await phoneConfirmation0623.confirm(code);
-    const firebaseIdToken = await credential.user.getIdToken(true);
-    const sessionResponse = await fetch("/v1/public/passenger-phone-session", {
+    const sessionResponse = await fetch("/v1/public/passenger-pin-session", {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json", Authorization: "Bearer " + firebaseIdToken },
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
       cache: "no-store",
       body: JSON.stringify({
         displayName,
+        passengerContact: phone,
+        pin,
         publicSlug: publicSlug0569,
         driverUsername: driverUsername0569,
         agendaToken: agendaToken0569,
@@ -284,9 +242,14 @@ async function confirmAndReserve0623() {
       }),
     });
     const sessionBody = await sessionResponse.json().catch(() => ({}));
-    if (!sessionResponse.ok) throw new Error(safeMessage0569(sessionBody?.message) || "Não foi possível confirmar seu acesso.");
+    if (!sessionResponse.ok) {
+      throw new Error(safeMessage0569(sessionBody?.message) || "Não foi possível entrar com este PIN.");
+    }
+
     passengerSessionToken0623 = String(sessionBody.sessionToken || "");
-    if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) throw new Error("A confirmação do telefone não gerou um acesso válido.");
+    if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) {
+      throw new Error("O acesso por PIN não gerou uma sessão válida.");
+    }
     sessionStorage.setItem(passengerSessionKey0623, passengerSessionToken0623);
     syncPassengerNav0623();
 
@@ -313,10 +276,13 @@ async function confirmAndReserve0623() {
       },
     );
     const bookingBody = await bookingResponse.json().catch(() => ({}));
-    if (!bookingResponse.ok) throw new Error(safeMessage0569(bookingBody?.message) || "Não foi possível solicitar a reserva.");
+    if (!bookingResponse.ok) {
+      throw new Error(safeMessage0569(bookingBody?.message) || "Não foi possível solicitar a reserva.");
+    }
 
-    setVisible0569("bookingOtpStep0623", false);
     setVisible0569("bookingIdentityStep0623", false);
+    if ($0569("bookingPin0624")) $0569("bookingPin0624").value = "";
+    if ($0569("bookingPinConfirm0624")) $0569("bookingPinConfirm0624").value = "";
     setBookingStatus0623(
       "✓ Pedido enviado. " +
       (bookingSeats0623 === 1 ? "Sua vaga está" : "Suas vagas estão") +
@@ -325,20 +291,16 @@ async function confirmAndReserve0623() {
       "success",
     );
     await loadAgenda0569(true);
-    window.setTimeout(() => {
-      if ($0569("bookingModal0623") && !$0569("bookingModal0623").classList.contains("hidden")) {
-        setBookingBusy0623(false);
-      }
-    }, 250);
   } catch (error) {
-    const codeText = String(error?.code || "");
-    const message = codeText.includes("invalid-verification-code") || codeText.includes("code-expired")
-      ? "Esse código não é válido ou expirou. Volte e solicite outro."
-      : (error?.message || "Não foi possível concluir a reserva.");
-    setBookingStatus0623(message, "error");
+    setBookingStatus0623(error?.message || "Não foi possível concluir a reserva.", "error");
   } finally {
     setBookingBusy0623(false);
   }
+}
+
+function bookingIdempotencyKey0623() {
+  return "vc0623_" + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "_" + Math.random().toString(36).slice(2)))
+    .replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 function shareTripUrl0623(item) {
@@ -381,11 +343,6 @@ function initSelfBooking0623() {
     syncPassengerNav0623();
   });
   $0569("bookingClose0623")?.addEventListener("click", closeBooking0623);
-  $0569("bookingBack0623")?.addEventListener("click", () => {
-    if (bookingBusy0623) return;
-    showBookingIdentityStep0623();
-    setBookingStatus0623("");
-  });
   $0569("bookingSeatsMinus0623")?.addEventListener("click", () => {
     if (bookingBusy0623) return;
     bookingSeats0623 = Math.max(1, bookingSeats0623 - 1);
@@ -397,10 +354,9 @@ function initSelfBooking0623() {
     bookingSeats0623 = Math.min(max, bookingSeats0623 + 1);
     syncBookingSeatCount0623();
   });
-  $0569("bookingSendCode0623")?.addEventListener("click", sendBookingCode0623);
-  $0569("bookingConfirm0623")?.addEventListener("click", confirmAndReserve0623);
-  $0569("bookingOtp0623")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") confirmAndReserve0623();
+  $0569("bookingSubmit0624")?.addEventListener("click", authenticateAndReserve0624);
+  $0569("bookingPinConfirm0624")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") authenticateAndReserve0624();
   });
   $0569("bookingModal0623")?.addEventListener("click", (event) => {
     if (event.target === $0569("bookingModal0623")) closeBooking0623();

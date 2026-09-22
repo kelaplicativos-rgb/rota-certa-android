@@ -4,7 +4,6 @@ const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
-const { getAuth } = require("firebase-admin/auth");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
@@ -5171,8 +5170,68 @@ function passengerPasswordDigest(password, salt) {
   return crypto.scryptSync(password, salt, 64).toString("hex");
 }
 
+function passengerPin0624(value) {
+  const pin = String(value || "").trim();
+  if (!/^\d{4}$/.test(pin)) {
+    throw Object.assign(
+      new Error("O PIN precisa ter exatamente 4 números."),
+      { httpStatus: 400, code: "invalid_pin" },
+    );
+  }
+  return pin;
+}
+
+const PASSENGER_PIN_MAX_FAILURES_0624 = 5;
+const PASSENGER_PIN_LOCK_MILLIS_0624 = 15 * 60 * 1000;
+
+function passengerPinGuardRef0624(driverUsername, passengerContact) {
+  return db.collection("passengerPinGuards0624").doc(
+    sha256Hex(normalizeUsername(driverUsername) + ":" + cleanText(passengerContact, 40)),
+  );
+}
+
+async function assertPassengerPinAvailable0624(driverUsername, passengerContact) {
+  const snap = await passengerPinGuardRef0624(driverUsername, passengerContact).get();
+  if (!snap.exists) return;
+  const lockUntilMillis = Math.max(0, Number(snap.data().lockUntilMillis || 0));
+  if (lockUntilMillis > Date.now()) {
+    throw Object.assign(
+      new Error("Muitas tentativas de PIN. Aguarde alguns minutos antes de tentar novamente."),
+      { httpStatus: 429, code: "pin_locked", retryAfterMillis: lockUntilMillis - Date.now() },
+    );
+  }
+}
+
+async function recordPassengerPinFailure0624(driverUsername, passengerContact) {
+  const ref = passengerPinGuardRef0624(driverUsername, passengerContact);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    const data = snap.exists ? snap.data() : {};
+    const previousLock = Math.max(0, Number(data.lockUntilMillis || 0));
+    const previousFailures = previousLock > 0 && previousLock <= now
+      ? 0
+      : Math.max(0, Number(data.failures || 0));
+    const failures = previousFailures + 1;
+    const lockUntilMillis = failures >= PASSENGER_PIN_MAX_FAILURES_0624
+      ? now + PASSENGER_PIN_LOCK_MILLIS_0624
+      : 0;
+    tx.set(ref, {
+      failures: lockUntilMillis ? 0 : failures,
+      lockUntilMillis,
+      updatedAtMillis: now,
+      expiresAtMillis: now + 24 * 60 * 60 * 1000,
+    }, { merge: true });
+    return { failures, lockUntilMillis };
+  });
+}
+
+async function clearPassengerPinFailures0624(driverUsername, passengerContact) {
+  await passengerPinGuardRef0624(driverUsername, passengerContact).delete().catch(() => {});
+}
+
 function temporaryPassengerPassword() {
-  return String(crypto.randomInt(10_000_000, 100_000_000));
+  return String(crypto.randomInt(0, 10_000)).padStart(4, "0");
 }
 
 function driverPassengerAccessId(driverUsername, passengerContact) {
@@ -5437,27 +5496,16 @@ async function openPassengerAgendaView(req, res) {
   });
 }
 
-async function exchangeVerifiedPassengerPhoneSession0623(req, res) {
+async function openPassengerPinSession0624(req, res) {
   await enforceBookingRateLimit(req);
 
-  const authorization = String(req.get("Authorization") || "").trim();
-  const match = /^Bearer\s+(.{100,6000})$/i.exec(authorization);
-  if (!match) {
-    return fail(res, 401, "phone_verification_required", "Confirme o código recebido no celular para continuar.");
-  }
-
-  let decoded;
+  let passengerContact;
+  let pin;
   try {
-    decoded = await getAuth().verifyIdToken(match[1], true);
-  } catch (_) {
-    return fail(res, 401, "phone_verification_invalid", "A confirmação do telefone expirou ou não é válida. Solicite um novo código.");
-  }
-
-  let verifiedContact;
-  try {
-    verifiedContact = normalizeBrazilWhatsapp(decoded && decoded.phone_number);
-  } catch (_) {
-    return fail(res, 401, "phone_number_unverified", "Não foi possível confirmar o número deste celular.");
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    pin = passengerPin0624(req.body && req.body.pin);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_pin_access", error.message || "Confira seu WhatsApp e o PIN.");
   }
 
   const displayName = cleanText(req.body && req.body.displayName, 120);
@@ -5494,10 +5542,26 @@ async function exchangeVerifiedPassengerPhoneSession0623(req, res) {
     }
   }
 
-  const accessRef = driverPassengerAccessRef(driverUsername, verifiedContact);
-  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(verifiedContact));
+  try {
+    await assertPassengerPinAvailable0624(driverUsername, passengerContact);
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 429,
+      error.code || "pin_locked",
+      error.message || "Aguarde antes de tentar novamente.",
+      Number.isFinite(Number(error.retryAfterMillis))
+        ? { retryAfterMillis: Math.max(0, Number(error.retryAfterMillis)) }
+        : null,
+    );
+  }
+
+  const accessRef = driverPassengerAccessRef(driverUsername, passengerContact);
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
   const now = Date.now();
   let passengerId = "";
+  let createdAccount = false;
+  let contactVerified = false;
 
   try {
     await db.runTransaction(async (tx) => {
@@ -5510,42 +5574,85 @@ async function exchangeVerifiedPassengerPhoneSession0623(req, res) {
           { httpStatus: 403, code: "passenger_access_unavailable" },
         );
       }
+      if (status === "MOVED") {
+        throw Object.assign(
+          new Error("Este número foi substituído no cadastro do passageiro. Fale com o motorista para corrigir o acesso."),
+          { httpStatus: 409, code: "passenger_contact_moved" },
+        );
+      }
 
       const account = accountSnap.exists ? accountSnap.data() : {};
       passengerId = cleanText(access.passengerId || account.passengerId, 120) ||
-        ("passenger_" + sha256Hex("phone:" + verifiedContact).slice(0, 40));
+        ("passenger_" + sha256Hex("phone:" + passengerContact).slice(0, 40));
+      contactVerified = Number(account.phoneVerifiedAtMillis0623 || 0) > 0 || access.selfVerifiedPhone0623 === true;
+
+      if (accountSnap.exists && passengerAccountIsActivated(account)) {
+        const supplied = passengerPasswordDigest(pin, cleanText(account.passwordSalt, 80));
+        if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
+          throw Object.assign(
+            new Error("WhatsApp ou PIN incorreto."),
+            { httpStatus: 401, code: "invalid_pin" },
+          );
+        }
+        tx.set(accountRef, {
+          passengerContact,
+          passengerId,
+          pinLastLoginAtMillis0624: now,
+          updatedAtMillis: now,
+        }, { merge: true });
+      } else {
+        const salt = crypto.randomBytes(16).toString("hex");
+        tx.set(accountRef, {
+          passengerContact,
+          passengerId,
+          passwordSalt: salt,
+          passwordHash: passengerPasswordDigest(pin, salt),
+          mustChangePassword: false,
+          pinAuthVersion0624: 1,
+          contactVerificationStatus0624: contactVerified ? "VERIFIED_LEGACY_OTP" : "UNVERIFIED",
+          createdAtMillis: Number(account.createdAtMillis || now),
+          updatedAtMillis: now,
+        }, { merge: true });
+        createdAccount = true;
+      }
 
       tx.set(accessRef, {
         driverUsername,
-        passengerContact: verifiedContact,
+        passengerContact,
         displayName,
         passengerId,
         status: "AUTHORIZED",
-        selfVerifiedPhone0623: true,
-        phoneVerifiedAtMillis0623: now,
+        pinAccess0624: true,
+        contactVerificationStatus0624: contactVerified ? "VERIFIED_LEGACY_OTP" : "UNVERIFIED",
         createdAtMillis: Number(access.createdAtMillis || now),
         updatedAtMillis: now,
       }, { merge: true });
-
-      tx.set(accountRef, {
-        passengerContact: verifiedContact,
-        passengerId,
-        phoneVerifiedAtMillis0623: now,
-        updatedAtMillis: now,
-        createdAtMillis: Number(account.createdAtMillis || now),
-      }, { merge: true });
     });
   } catch (error) {
+    if (error.code === "invalid_pin") {
+      const guard = await recordPassengerPinFailure0624(driverUsername, passengerContact).catch(() => null);
+      if (guard && Number(guard.lockUntilMillis || 0) > Date.now()) {
+        return fail(
+          res,
+          429,
+          "pin_locked",
+          "Muitas tentativas de PIN. Aguarde 15 minutos antes de tentar novamente.",
+          { retryAfterMillis: Math.max(0, Number(guard.lockUntilMillis) - Date.now()) },
+        );
+      }
+    }
     return fail(
       res,
       error.httpStatus || 409,
-      error.code || "passenger_phone_session_failed",
+      error.code || "passenger_pin_session_failed",
       error.message || "Não foi possível liberar a reserva.",
     );
   }
 
+  await clearPassengerPinFailures0624(driverUsername, passengerContact);
+
   const session = await createPassengerSession(
-    verifiedContact,
+    passengerContact,
     passengerId,
     cleanText(req.body && req.body.sessionContextId, 120),
     "",
@@ -5554,12 +5661,24 @@ async function exchangeVerifiedPassengerPhoneSession0623(req, res) {
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
-    passengerContact: verifiedContact,
+    passengerContact,
     passengerId,
     driverUsername,
-    phoneVerified: true,
+    pinAuthenticated: true,
+    accountCreated: createdAccount,
+    contactVerified,
     reservationAccess: "AUTHORIZED",
   });
+}
+
+async function retiredPassengerPhoneSession0624(req, res) {
+  await enforceBookingRateLimit(req);
+  return fail(
+    res,
+    410,
+    "phone_otp_retired",
+    "A confirmação por SMS foi substituída pelo PIN de 4 dígitos do Viagem Certa.",
+  );
 }
 
 async function invalidatePassengerSessions(passengerContact) {
@@ -6337,8 +6456,8 @@ async function changePassengerPassword(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   let password;
-  try { password = passengerPassword(req.body && req.body.password); }
-  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_password", error.message); }
+  try { password = passengerPin0624(req.body && req.body.password); }
+  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_pin", error.message); }
   const salt = crypto.randomBytes(16).toString("hex");
   await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).set({
     passengerContact: session.passengerContact,
@@ -6651,7 +6770,7 @@ async function activatePassengerAccount(req, res) {
   let password;
   try {
     passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
-    password = passengerPassword(req.body && req.body.password);
+    password = passengerPin0624(req.body && req.body.password);
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_activation", error.message || "Não foi possível criar sua senha.");
   }
@@ -10105,7 +10224,8 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
-    if (req.method === "POST" && path === "/v1/public/passenger-phone-session") return await exchangeVerifiedPassengerPhoneSession0623(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-pin-session") return await openPassengerPinSession0624(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-phone-session") return await retiredPassengerPhoneSession0624(req, res);
     if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/activate") return await activatePassengerAccount(req, res);

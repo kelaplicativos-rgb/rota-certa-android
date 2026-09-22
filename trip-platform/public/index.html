@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://www.google.com https://www.recaptcha.net; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>Viagem Certa — Suas viagens</title>
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
@@ -117,7 +117,7 @@
     <section class="bookingSheet0623">
       <button id="bookingClose0623" class="bookingClose0623" type="button" aria-label="Fechar">×</button>
       <h2 id="bookingTitle0623" class="bookingTitle0623">Reservar meu lugar</h2>
-      <p class="bookingLead0623">São poucos passos. Você não precisa criar senha.</p>
+      <p class="bookingLead0623">Crie seu PIN de 4 dígitos. Sem SMS e sem código de confirmação.</p>
       <div id="bookingSummary0623" class="bookingSummary0623"></div>
 
       <div id="bookingIdentityStep0623">
@@ -127,23 +127,20 @@
         <label class="bookingLabel0623">Seu WhatsApp
           <input id="bookingPhone0623" class="bookingInput0623" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
         </label>
+        <label class="bookingLabel0623">Seu PIN de acesso
+          <input id="bookingPin0624" class="bookingInput0623 bookingOtp0623" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+        <label class="bookingLabel0623">Confirme seu PIN
+          <input id="bookingPinConfirm0624" class="bookingInput0623 bookingOtp0623" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
         <label class="bookingLabel0623">Quantos lugares?</label>
         <div class="bookingSeats0623" role="group" aria-label="Quantidade de lugares">
           <button id="bookingSeatsMinus0623" class="bookingSeatButton0623" type="button" aria-label="Diminuir lugares">−</button>
           <div id="bookingSeatCount0623" class="bookingSeatCount0623" aria-live="polite">1 lugar</div>
           <button id="bookingSeatsPlus0623" class="bookingSeatButton0623" type="button" aria-label="Aumentar lugares">+</button>
         </div>
-        <button id="bookingSendCode0623" class="bookingPrimary0623" type="button">RECEBER CÓDIGO</button>
-        <p class="bookingFine0623">Enviaremos um SMS de segurança para confirmar que o número é seu. Tarifas da operadora podem ser aplicadas.</p>
-        <div id="recaptchaContainer0623"></div>
-      </div>
-
-      <div id="bookingOtpStep0623" class="hidden">
-        <label class="bookingLabel0623">Código recebido por SMS
-          <input id="bookingOtp0623" class="bookingInput0623 bookingOtp0623" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="000000">
-        </label>
-        <button id="bookingConfirm0623" class="bookingPrimary0623" type="button">CONFIRMAR E SOLICITAR RESERVA</button>
-        <button id="bookingBack0623" class="bookingSecondary0623" type="button">Corrigir número</button>
+        <button id="bookingSubmit0624" class="bookingPrimary0623" type="button">SOLICITAR RESERVA</button>
+        <p class="bookingFine0623">No primeiro acesso, este será o seu PIN. Nos próximos acessos, use o mesmo PIN. O Viagem Certa não envia código por SMS.</p>
       </div>
 
       <p id="bookingStatus0623" class="bookingStatus0623 hidden" role="status" aria-live="polite"></p>
@@ -151,9 +148,6 @@
     </section>
   </div>
 
-  <script src="/__/firebase/8.10.1/firebase-app.js" defer></script>
-  <script src="/__/firebase/8.10.1/firebase-auth.js" defer></script>
-  <script src="/__/firebase/init.js" defer></script>
-  <script src="/public-agenda-shell-0569.js?v=0.1.623-self-booking" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.624-pin-booking" defer></script>
 </body>
 </html>
