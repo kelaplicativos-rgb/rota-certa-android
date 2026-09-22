@@ -301,10 +301,53 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                             previous.copy(tripCaptures0605 = captures.toList())
                         }
 
+                        val liveCommitted0617 =
+                            captured.operationalComplete &&
+                                captured.trip != null &&
+                                publishLiveHtmlCard0617(
+                                    context = app,
+                                    account = account,
+                                    trip = captured.trip,
+                                    lastUrl = captured.evidence.finalUrl,
+                                    captureId = captureId,
+                                )
+                        if (liveCommitted0617) {
+                            onProgress(
+                                "Atualizado agora • ${index + 1}/${futureRides.size} • " +
+                                    "${ride.date} ${ride.departureTime} • ${account.displayLabel}",
+                            )
+                        }
+
                         UnifiedDebugEventStore.recordAlways(
                             "BLABLACAR_UNIFIED_HTML_TRIP_CAPTURED_0609",
                             app.packageName,
-                            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} trip=${index + 1}/${futureRides.size} complete=${captured.operationalComplete} canonicalDeltaEnqueued=false globalCommitPending=true",
+                            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                "accountKey=${store.accountKey(account.id)} trip=${index + 1}/${futureRides.size} " +
+                                "complete=${captured.operationalComplete} liveCommitted0617=$liveCommitted0617 " +
+                                "normalized=${captured.evidence.normalized} roster=${captured.evidence.passengerRosterComplete} " +
+                                "itinerary=${captured.evidence.itineraryAuthoritative} " +
+                                "segments=${captured.evidence.passengerSegmentsResolved} seats=${captured.evidence.publishedSeats != null} " +
+                                "publicLink=${captured.evidence.publicTripUrl.isNotBlank()} " +
+                                "errorCode=${captured.evidence.errorCode.ifBlank { "NONE" }} globalCommitFinalizer=true",
+                            diagnosticContext = DiagnosticEventContext0507(
+                                parentModule = DiagnosticModule0507.BLABLACAR,
+                                operation = "HTML_TRIP_CAPTURE",
+                                entityType = "BLABLACAR_TRIP",
+                                entityId = seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId),
+                                result = if (liveCommitted0617) {
+                                    "LIVE_COMMITTED"
+                                } else if (captured.operationalComplete) {
+                                    "COMMIT_FAILED"
+                                } else {
+                                    "INCOMPLETE"
+                                },
+                                severity = if (captured.operationalComplete && !liveCommitted0617) {
+                                    DiagnosticSeverity0507.ERROR
+                                } else {
+                                    DiagnosticSeverity0507.INFO
+                                },
+                                errorCode = captured.evidence.errorCode,
+                            ),
                         )
                     }
                 } finally {
@@ -411,6 +454,184 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             stagedTrips0610 = collected.toList(),
             stagedLastUrl0610 = captures.lastOrNull()?.finalUrl.orEmpty(),
         )
+    }
+
+    /**
+     * 0.1.617 — live HTML card commit.
+     *
+     * A fully validated trip becomes canonical as soon as its own HTML finishes.
+     * Sibling trips and other profiles are never tombstoned here: absence is only
+     * authoritative in the final full-profile/global verification path.
+     */
+    private suspend fun publishLiveHtmlCard0617(
+        context: Context,
+        account: BlaBlaDynamicAccount,
+        trip: BlaBlaCollectorTrip,
+        lastUrl: String,
+        captureId: String,
+    ): Boolean {
+        val app = context.applicationContext
+        val transaction = BlaBlaHtmlCaptureTransaction0610.active(app)
+            ?.takeIf { it.captureId == captureId }
+            ?: return false
+        val profileUuid = trip.profile_uuid.trim().takeIf(String::isNotBlank) ?: return false
+        val tripId = trip.trip_id?.trim()?.takeIf(String::isNotBlank) ?: return false
+        if (
+            account.profileUuid?.trim()?.equals(profileUuid, ignoreCase = true) != true ||
+            BlaBlaCollectorUrlModule.tripId(trip.trip_href.orEmpty()) != tripId ||
+            !trip.passenger_roster_complete ||
+            !trip.itinerary_authoritative ||
+            trip.published_seats == null ||
+            trip.public_trip_href.isNullOrBlank()
+        ) {
+            return false
+        }
+
+        val settings = withContext(Dispatchers.IO) {
+            SettingsRepository(app).settings.first()
+        }
+        return withContext(Dispatchers.IO) {
+            liveCardCommitMutex0617.withLock {
+                val exactResponse = BlaBlaCollectorMonthResponse(
+                    collected_at = Instant.now().toString(),
+                    status = "validated",
+                    strategy = "html_live_card_commit_0617",
+                    authority_source_0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+                    profiles = listOf(
+                        BlaBlaCollectorProfile(
+                            uuid = profileUuid,
+                            name = account.displayLabel,
+                            title = "HTML individual validado • commit imediato por card",
+                        ),
+                    ),
+                    trips = listOf(trip),
+                    coverage = BlaBlaCollectorCoverage(
+                        complete_for_scope = false,
+                        global_profile_month_complete = false,
+                        reason = "live_html_card_commit_0617",
+                        requested_queries = 1,
+                        validated_queries = 1,
+                        failed_or_mismatched_queries = 0,
+                        unresolved_target_cards = 0,
+                        past_dates_skipped = false,
+                    ),
+                )
+                val tripStore = TripStore(app)
+                val outbox = TripPublicationOutbox0387(app)
+                val tripRollback = tripStore.snapshotHtmlRollback0612()
+                val outboxRollback = outbox.snapshotHtmlRollback0612()
+
+                val batch = runCatching {
+                    AgendaBackgroundSync0392.reconcileCollectedExternalTrips0403(
+                        context = app,
+                        store = tripStore,
+                        response = exactResponse,
+                        rotaCertaSeatAllocation = settings.rotaCertaSeatAllocation,
+                        seatAllocationVersion = settings.rotaCertaSeatAllocationVersion,
+                        collectionRunId = "html-live-card-0617:" + captureId.take(48),
+                        collectionGeneration = transaction.generation,
+                        completeProfileUuids = emptySet(),
+                        htmlTransactionCaptureId0610 = captureId,
+                    )
+                }.getOrElse { error ->
+                    tripStore.restoreHtmlRollback0612(tripRollback)
+                    outbox.restoreHtmlRollback0612(outboxRollback)
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_LIVE_CARD_COMMIT_FAILED_0617",
+                        app.packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                            "tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                            "stage=canonical_reconcile error=${error::class.java.simpleName.take(80)} " +
+                            "rollback=true preserveSiblings=true tombstone=false",
+                        diagnosticContext = DiagnosticEventContext0507(
+                            parentModule = DiagnosticModule0507.BLABLACAR,
+                            operation = "HTML_LIVE_CARD_COMMIT",
+                            entityType = "BLABLACAR_TRIP",
+                            entityId = seatSyncDiagnosticKey(profileUuid + "|" + tripId),
+                            result = "FAILED",
+                            severity = DiagnosticSeverity0507.ERROR,
+                            errorCode = "CANONICAL_RECONCILE_EXCEPTION",
+                        ),
+                    )
+                    return@withLock false
+                }
+
+                val matches = tripStore.trips().filter { canonical ->
+                    !canonical.deleted &&
+                        canonical.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
+                        canonical.blablaProfileUuid?.trim()?.equals(profileUuid, ignoreCase = true) == true &&
+                        canonical.blablaTripId?.trim() == tripId
+                }
+                if (
+                    matches.size != 1 ||
+                    batch.blockedTrips != 0 ||
+                    batch.staleResultsRejected != 0 ||
+                    matches.singleOrNull()?.lastCollectionGeneration != transaction.generation
+                ) {
+                    val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback)
+                    val outboxRestored = outbox.restoreHtmlRollback0612(outboxRollback)
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_LIVE_CARD_COMMIT_FAILED_0617",
+                        app.packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                            "tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                            "stage=canonical_readback matches=${matches.size} blocked=${batch.blockedTrips} " +
+                            "stale=${batch.staleResultsRejected} tripRollback=$tripRestored outboxRollback=$outboxRestored " +
+                            "preserveSiblings=true tombstone=false",
+                        diagnosticContext = DiagnosticEventContext0507(
+                            parentModule = DiagnosticModule0507.BLABLACAR,
+                            operation = "HTML_LIVE_CARD_COMMIT",
+                            entityType = "BLABLACAR_TRIP",
+                            entityId = seatSyncDiagnosticKey(profileUuid + "|" + tripId),
+                            result = "FAILED",
+                            severity = DiagnosticSeverity0507.ERROR,
+                            errorCode = "CANONICAL_READBACK_FAILED",
+                        ),
+                    )
+                    return@withLock false
+                }
+
+                // Persist only after canonical readback succeeds. The exact-target session
+                // replacement preserves every sibling card, so a partial capture cannot erase
+                // another trip or another profile.
+                val sessionStore = BlaBlaDynamicSessionStore(app)
+                sessionStore.saveSync(
+                    account = account,
+                    lastUrl = lastUrl,
+                    trips = listOf(trip),
+                    skippedTrips = 0,
+                    identityVerified = true,
+                    targetedTripId = tripId,
+                    selectiveScriptSync0449 = false,
+                    acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
+                )
+                val combined = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
+                BlaBlaCollectorStateStore(app).saveResponse(
+                    response = combined,
+                    preserveOnPartial = true,
+                )
+
+                BookingRealtimeEvents0356.notifyChanged()
+                TripWidgetProvider.updateAll(app)
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_LIVE_CARD_COMMITTED_0617",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                        "generation=${transaction.generation} tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                        "changed=${batch.changedTrips} unchanged=${batch.skippedTrips} " +
+                        "publicationQueued=${batch.publicationQueued} preserveSiblings=true tombstone=false " +
+                        "authority=HTML_DIRECT_0607 visibleImmediately=true",
+                    diagnosticContext = DiagnosticEventContext0507(
+                        parentModule = DiagnosticModule0507.BLABLACAR,
+                        operation = "HTML_LIVE_CARD_COMMIT",
+                        entityType = "BLABLACAR_TRIP",
+                        entityId = seatSyncDiagnosticKey(profileUuid + "|" + tripId),
+                        result = "COMMITTED",
+                    ),
+                )
+                true
+            }
+        }
     }
 
     suspend fun captureSingleTrip0607(
