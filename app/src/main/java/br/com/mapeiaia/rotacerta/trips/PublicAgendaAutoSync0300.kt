@@ -2262,6 +2262,7 @@ internal object PublicAgendaAutoSync0300 {
             blablaPublicHref = trip.blablaPublicUrl.orEmpty(),
             sourceComplete = verifiedPublishedSeats != null &&
                 source.passenger_roster_complete &&
+                source.itinerary_authoritative &&
                 externalPassengerSegmentsResolved(source, trip),
             snapshotRevision = externalCapacitySnapshotRevision(source, rotaCertaSeatAllocation),
             realAvailableSeats = (safeCapacity - booked).coerceAtLeast(0),
