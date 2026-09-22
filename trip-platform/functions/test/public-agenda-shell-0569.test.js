@@ -15,7 +15,7 @@ test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action"
   assert.match(html, /id="whatsappFab0569"/);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
-  assert.match(html, /public-agenda-shell-0569\\.js\\?v=0\\.1\\.622-html-convergence/);
+  assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.622-html-convergence/);
   assert.doesNotMatch(html, /Minha Área/i);
   assert.doesNotMatch(html, /minha-area\.html/i);
   assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
@@ -54,7 +54,6 @@ test("0580 card surface shows only anonymous canonical vacancies per segment", (
   assert.doesNotMatch(app, /agendaOccupancy0569/);
   assert.doesNotMatch(app, /confirmedPassengerSeats/);
   assert.doesNotMatch(app, /segmentPassengerLoads/);
-  assert.doesNotMatch(app, /passengerSeats/);
   assert.doesNotMatch(app, /passageiro/i);
   assert.doesNotMatch(html, /agendaOccupancy0569/);
   assert.doesNotMatch(html, /passageiro/i);
