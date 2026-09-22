@@ -10,18 +10,23 @@ const html = fs.readFileSync(path.join(root, "trip-platform", "public", "index.h
 const app = fs.readFileSync(path.join(root, "trip-platform", "public", "public-agenda-shell-0569.js"), "utf8");
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 
-test("0569 public Agenda exposes only shell cards and one fixed WhatsApp action", () => {
+test("0569 public Agenda keeps passenger access separate from trip-card actions", () => {
   assert.match(html, /id="agendaTrips"/);
   assert.match(html, /id="whatsappFab0569"/);
+  assert.match(html, /id="accessGate0589"/);
+  assert.match(html, /id="passengerAreaLink0589"/);
+  assert.match(html, /minha-area\.html/i);
   assert.match(html, /position:fixed/);
   assert.match(html, /safe-area-inset-bottom/);
   assert.match(html, /public-agenda-shell-0569\.js\?v=0\.1\.622-html-convergence/);
-  assert.doesNotMatch(html, /Minha Área/i);
-  assert.doesNotMatch(html, /minha-area\.html/i);
-  assert.doesNotMatch(html, /Administrar|Login|Senha|Reservar vaga|Fazer pedido de reserva/i);
+  assert.doesNotMatch(html, /Administrar|Senha|Reservar vaga|Fazer pedido de reserva/i);
 });
 
 test("0584 BlaBlaCar navigation is isolated in Ver carona and never attached to the whole card", () => {
+  const cardRenderer = app.slice(
+    app.indexOf("function renderTripCard0569"),
+    app.indexOf("function renderAgenda0569"),
+  );
   assert.match(app, /function validatedBlaBlaPublicUrl0569/);
   assert.match(app, /\["http:", "https:"\]\.includes\(url\.protocol\)/);
   assert.match(app, /requested_seats/);
@@ -37,10 +42,20 @@ test("0584 BlaBlaCar navigation is isolated in Ver carona and never attached to 
   assert.match(app, /viewRide\.textContent = "Ver carona"/);
   assert.doesNotMatch(app, /\/search\?/i);
   assert.doesNotMatch(app, /blablacar:\/\//i);
-  assert.doesNotMatch(app, /method:\s*["']POST["']/);
+  assert.doesNotMatch(cardRenderer, /method:\s*["']POST["']/);
+  assert.doesNotMatch(cardRenderer, /bindTripCardNavigation0596|window\.location\.assign\(publicUrl\)/);
+  assert.doesNotMatch(app, /function bindTripCardNavigation0596/);
 });
 
 test("0580 card surface shows only anonymous canonical vacancies per segment", () => {
+  const cardRenderer = app.slice(
+    app.indexOf("function renderTripCard0569"),
+    app.indexOf("function renderAgenda0569"),
+  );
+  const segmentRenderer = app.slice(
+    app.indexOf("function publicSegmentRows0580"),
+    app.indexOf("const AGENDA_CARD_REFRESH_KEY_0596"),
+  );
   assert.match(app, /agendaDate0569/);
   assert.match(app, /agendaDriver0569/);
   assert.match(app, /agendaJourney0569/);
@@ -50,16 +65,13 @@ test("0580 card surface shows only anonymous canonical vacancies per segment", (
   assert.match(app, /"LOTADO"/);
   assert.match(app, /segmentSeatDots0580/);
   assert.match(app, /appendSegmentAvailability0580\(card, item, stops\)/);
-  assert.doesNotMatch(app, /passengerCount0569/);
-  assert.doesNotMatch(app, /agendaOccupancy0569/);
-  assert.doesNotMatch(app, /confirmedPassengerSeats/);
-  assert.doesNotMatch(app, /segmentPassengerLoads/);
-  assert.doesNotMatch(app, /passageiro/i);
+  assert.doesNotMatch(cardRenderer, /passengerCount0569|agendaOccupancy0569|confirmedPassengerSeats|segmentPassengerLoads/);
+  assert.doesNotMatch(cardRenderer, /passengerName|passengerId|phone|contact|bookingId|sourceReference|passageiro/i);
+  assert.doesNotMatch(segmentRenderer, /passengerName|passengerId|phone|contact|bookingId|sourceReference/);
   assert.doesNotMatch(html, /agendaOccupancy0569/);
-  assert.doesNotMatch(html, /passageiro/i);
-  assert.doesNotMatch(app, /priceToNextCents/);
-  assert.doesNotMatch(app, /plannedAddress|\.address/);
-  assert.doesNotMatch(app, /toggleAgendaTripDetails|agendaExpanded|expandedItinerary|expandHint/i);
+  assert.doesNotMatch(cardRenderer, /priceToNextCents/);
+  assert.doesNotMatch(cardRenderer, /plannedAddress|\.address/);
+  assert.doesNotMatch(cardRenderer, /toggleAgendaTripDetails|agendaExpanded|expandedItinerary|expandHint/i);
 });
 
 test("0569 WhatsApp uses configured public driver field dynamically and never hardcodes a number", () => {
