@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.616 Timeline HTML fidelity exact SHA
-# trigger: timeline-html-fidelity-0616-r1
+# trigger: timeline-html-fidelity-0616-r2
 
 on:
   push:
