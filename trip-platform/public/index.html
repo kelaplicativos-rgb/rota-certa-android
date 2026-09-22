@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.googleapis.com; frame-src https://www.google.com https://www.recaptcha.net; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
   <title>Viagem Certa — Suas viagens</title>
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
@@ -63,6 +63,34 @@
     .accessButton0589{width:100%;min-height:50px;margin-top:12px;border:0;border-radius:14px;padding:12px 16px;background:#7055bd;color:#fff;font:inherit;font-weight:900;cursor:pointer}
     .accessButton0589:disabled{opacity:.62;cursor:wait}
     .accessMessage0589{margin:11px 0 0;color:#8f1d1d;font-size:14px;line-height:1.35;font-weight:750}
+
+    .agendaTopIdentity0623{min-width:0;flex:1}
+    .agendaTopActions0623{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+    .agendaShare0623{display:inline-flex;align-items:center;justify-content:center;min-width:46px;min-height:46px;border:1px solid #d7d0d9;border-radius:14px;background:#fff;color:#4f3c8e;font:inherit;font-size:22px;font-weight:900;cursor:pointer;touch-action:manipulation}
+    .agendaShare0623:focus-visible{outline:3px solid #4f3c8e;outline-offset:2px}
+    .agendaShare0623:active{transform:translateY(1px)}
+    .bookingBackdrop0623{position:fixed;z-index:2200;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:14px;background:#0008}
+    .bookingSheet0623{width:min(100%,620px);max-height:calc(100dvh - 28px);overflow:auto;border-radius:28px 28px 20px 20px;background:#fff;padding:20px 18px calc(22px + env(safe-area-inset-bottom,0px));box-shadow:0 18px 70px #0005}
+    .bookingClose0623{float:right;display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;border:0;border-radius:50%;background:#f0ebf2;color:#29232c;font:inherit;font-size:26px;font-weight:900;cursor:pointer}
+    .bookingTitle0623{margin:2px 54px 6px 0;font-size:29px;line-height:1.08;letter-spacing:-.025em}
+    .bookingLead0623{margin:0 0 14px;color:var(--muted);font-size:17px;line-height:1.35}
+    .bookingSummary0623{margin:14px 0;padding:14px 15px;border-radius:16px;background:#f6f2f8;font-size:17px;line-height:1.35;font-weight:800}
+    .bookingLabel0623{display:grid;gap:7px;margin-top:14px;font-size:16px;font-weight:900}
+    .bookingInput0623{width:100%;min-height:58px;border:2px solid #c9c1cb;border-radius:16px;padding:13px 14px;background:#fff;color:#171717;font:inherit;font-size:20px}
+    .bookingInput0623:focus{outline:3px solid #d9cff8;border-color:#7055bd}
+    .bookingSeats0623{display:grid;grid-template-columns:60px 1fr 60px;gap:10px;align-items:center;margin-top:8px}
+    .bookingSeatButton0623{height:58px;border:0;border-radius:16px;background:#eee8f0;color:#332a36;font:inherit;font-size:28px;font-weight:900;cursor:pointer}
+    .bookingSeatCount0623{height:58px;display:flex;align-items:center;justify-content:center;border:2px solid #c9c1cb;border-radius:16px;font-size:22px;font-weight:900}
+    .bookingPrimary0623{width:100%;min-height:60px;margin-top:16px;border:0;border-radius:16px;padding:13px 16px;background:#128c4a;color:#fff;font:inherit;font-size:19px;font-weight:950;cursor:pointer}
+    .bookingPrimary0623:disabled{opacity:.55;cursor:not-allowed}
+    .bookingSecondary0623{width:100%;min-height:52px;margin-top:10px;border:1px solid #d7d0d9;border-radius:14px;padding:11px 14px;background:#fff;color:#4f3c8e;font:inherit;font-size:16px;font-weight:850;cursor:pointer}
+    .bookingStatus0623{margin:12px 0 0;padding:12px 13px;border-radius:14px;background:#f7f3f8;color:#4c4650;font-size:15px;line-height:1.4;font-weight:750}
+    .bookingStatus0623.error0623{background:#fff0f0;color:#8f1d1d}
+    .bookingStatus0623.success0623{background:#ecfaef;color:#0b6033}
+    .bookingHelp0623{display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:12px;border-radius:14px;background:#f4f1f5;color:#4f3c8e;font-size:16px;font-weight:850;text-decoration:none}
+    .bookingFine0623{margin:9px 0 0;color:#6e6871;font-size:13px;line-height:1.35}
+    .bookingOtp0623{letter-spacing:.24em;text-align:center;font-size:26px;font-weight:900}
+    .agendaViewRide0584{background:#fff;color:#075f9e;border:1px solid #8abde1}
     .passengerNav0589{display:flex;justify-content:center;gap:8px;margin-top:12px}
     .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:14px;font-weight:850;text-decoration:none;cursor:pointer}
     @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaSegmentRow0580{grid-template-columns:minmax(0,1fr) auto auto;column-gap:6px;row-gap:3px}.agendaSegmentSeats0580{min-width:52px;font-size:13px}.agendaSegmentReserve0584{min-width:82px;min-height:32px;padding:6px 8px;font-size:12px}.agendaCardActions0584{justify-content:stretch}.agendaViewRide0584{width:100%}}
@@ -78,20 +106,54 @@
         <button id="passengerAgendaLogout0589" type="button">Sair</button>
       </nav>
     </header>
-    <section id="accessGate0589" class="accessGate0589">
-      <h1>Entre com seu WhatsApp</h1>
-      <p class="accessLead0589">Use o mesmo número cadastrado com o motorista para consultar as viagens.</p>
-      <label class="accessLabel0589">WhatsApp
-        <input id="passengerWhatsapp0589" class="accessInput0589" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
-      </label>
-      <button id="passengerAccessContinue0589" class="accessButton0589" type="button">Continuar</button>
-      <p id="passengerAccessMessage0589" class="accessMessage0589 hidden" role="alert"></p>
-    </section>
+    <section id="accessGate0589" class="accessGate0589 hidden" aria-hidden="true"></section>
     <section id="loading" class="state0569 hidden">Carregando viagens…</section>
     <section id="error" class="state0569 error0569 hidden" role="alert"></section>
     <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
   </main>
   <a id="whatsappFab0569" class="whatsappFab0569 hidden" aria-hidden="true" aria-label="Falar com o motorista pelo WhatsApp"><span aria-hidden="true">✆</span><span>WhatsApp</span></a>
-  <script src="/public-agenda-shell-0569.js?v=0.1.622-html-convergence" defer></script>
+
+  <div id="bookingModal0623" class="bookingBackdrop0623 hidden" role="dialog" aria-modal="true" aria-labelledby="bookingTitle0623">
+    <section class="bookingSheet0623">
+      <button id="bookingClose0623" class="bookingClose0623" type="button" aria-label="Fechar">×</button>
+      <h2 id="bookingTitle0623" class="bookingTitle0623">Reservar meu lugar</h2>
+      <p class="bookingLead0623">São poucos passos. Você não precisa criar senha.</p>
+      <div id="bookingSummary0623" class="bookingSummary0623"></div>
+
+      <div id="bookingIdentityStep0623">
+        <label class="bookingLabel0623">Seu nome
+          <input id="bookingName0623" class="bookingInput0623" autocomplete="name" maxlength="120" placeholder="Como podemos chamar você?">
+        </label>
+        <label class="bookingLabel0623">Seu WhatsApp
+          <input id="bookingPhone0623" class="bookingInput0623" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
+        </label>
+        <label class="bookingLabel0623">Quantos lugares?</label>
+        <div class="bookingSeats0623" role="group" aria-label="Quantidade de lugares">
+          <button id="bookingSeatsMinus0623" class="bookingSeatButton0623" type="button" aria-label="Diminuir lugares">−</button>
+          <div id="bookingSeatCount0623" class="bookingSeatCount0623" aria-live="polite">1 lugar</div>
+          <button id="bookingSeatsPlus0623" class="bookingSeatButton0623" type="button" aria-label="Aumentar lugares">+</button>
+        </div>
+        <button id="bookingSendCode0623" class="bookingPrimary0623" type="button">RECEBER CÓDIGO</button>
+        <p class="bookingFine0623">Enviaremos um SMS de segurança para confirmar que o número é seu. Tarifas da operadora podem ser aplicadas.</p>
+        <div id="recaptchaContainer0623"></div>
+      </div>
+
+      <div id="bookingOtpStep0623" class="hidden">
+        <label class="bookingLabel0623">Código recebido por SMS
+          <input id="bookingOtp0623" class="bookingInput0623 bookingOtp0623" autocomplete="one-time-code" inputmode="numeric" maxlength="6" placeholder="000000">
+        </label>
+        <button id="bookingConfirm0623" class="bookingPrimary0623" type="button">CONFIRMAR E SOLICITAR RESERVA</button>
+        <button id="bookingBack0623" class="bookingSecondary0623" type="button">Corrigir número</button>
+      </div>
+
+      <p id="bookingStatus0623" class="bookingStatus0623 hidden" role="status" aria-live="polite"></p>
+      <a id="bookingHelp0623" class="bookingHelp0623 hidden" rel="noopener noreferrer">Preciso de ajuda pelo WhatsApp</a>
+    </section>
+  </div>
+
+  <script src="/__/firebase/8.10.1/firebase-app.js" defer></script>
+  <script src="/__/firebase/8.10.1/firebase-auth.js" defer></script>
+  <script src="/__/firebase/init.js" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.623-self-booking" defer></script>
 </body>
 </html>
