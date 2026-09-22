@@ -271,31 +271,49 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         val captures = mutableListOf<BlaBlaRidesTripCapture0605>()
         val collected = mutableListOf<BlaBlaCollectorTrip>()
         var incomplete = 0
+        var transportRecoveryExhausted0621 = false
+        var unattemptedDueTransport0621 = 0
         try {
             withContext(Dispatchers.Main.immediate) {
-                val themed = ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault)
-                val webView = WebView(themed)
+                var webView = createUnifiedCaptureWebView0621(app, account)
                 try {
-                    WebViewCompat.setProfile(webView, account.webProfileName)
-                    WebViewCompat.getProfile(webView).cookieManager.apply {
-                        setAcceptCookie(true)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                            setAcceptThirdPartyCookies(webView, true)
-                        }
-                    }
-                    webView.settings.javaScriptEnabled = true
-                    webView.settings.domStorageEnabled = true
-                    webView.settings.allowFileAccess = false
-                    webView.settings.allowContentAccess = false
-                    webView.settings.loadsImagesAutomatically = false
-                    webView.settings.blockNetworkImage = true
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                    }
-
-                    futureRides.forEachIndexed { index, ride ->
+                    for ((index, ride) in futureRides.withIndex()) {
                         onProgress("Capturando viagem ${index + 1}/${futureRides.size} • ${ride.date} ${ride.departureTime} • ${account.displayLabel}")
-                        val captured = captureTrip0605(webView, store, captureId, definition, ride, scripts)
+                        var captured = captureTrip0605(webView, store, captureId, definition, ride, scripts)
+                        var recoveryAttempt0621 = 0
+                        while (
+                            !captured.operationalComplete &&
+                            captured.evidence.errorCode == "TRIP_DETAIL_HTML_UNVERIFIED" &&
+                            recoveryAttempt0621 < TRANSPORT_RECOVERY_ATTEMPTS_0621
+                        ) {
+                            recoveryAttempt0621++
+                            val backoffMs = TRANSPORT_RECOVERY_BACKOFF_MS_0621 * recoveryAttempt0621
+                            UnifiedDebugEventStore.recordAlways(
+                                "BLABLACAR_HTML_TRANSPORT_RECOVERY_0621",
+                                app.packageName,
+                                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                    "accountKey=${store.accountKey(account.id)} trip=${index + 1}/${futureRides.size} " +
+                                    "attempt=$recoveryAttempt0621 action=RECYCLE_WEBVIEW_RETRY_SAME_CARD backoffMs=$backoffMs " +
+                                    "preserveLastValidated=true advanceToNextCard=false",
+                            )
+                            destroyUnifiedCaptureWebView0621(webView)
+                            delay(backoffMs)
+                            webView = createUnifiedCaptureWebView0621(app, account)
+                            captured = captureTrip0605(webView, store, captureId, definition, ride, scripts)
+                        }
+
+                        val recoveredAfterTransport0621 =
+                            captured.operationalComplete && recoveryAttempt0621 > 0
+                        if (recoveredAfterTransport0621) {
+                            UnifiedDebugEventStore.recordAlways(
+                                "BLABLACAR_HTML_TRANSPORT_RECOVERED_0621",
+                                app.packageName,
+                                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                    "accountKey=${store.accountKey(account.id)} trip=${index + 1}/${futureRides.size} " +
+                                    "attempts=$recoveryAttempt0621 sameCard=true resumeSequence=true",
+                            )
+                        }
+
                         captures += captured.evidence
                         captured.trip?.let(collected::add)
                         if (!captured.operationalComplete) incomplete++
@@ -333,6 +351,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                 "itinerary=${captured.evidence.itineraryAuthoritative} " +
                                 "segments=${captured.evidence.passengerSegmentsResolved} seats=${captured.evidence.publishedSeats != null} " +
                                 "publicLink=${captured.evidence.publicTripUrl.isNotBlank()} " +
+                                "transportRecoveryAttempts0621=$recoveryAttempt0621 " +
                                 "errorCode=${captured.evidence.errorCode.ifBlank { "NONE" }} globalCommitFinalizer=true",
                             diagnosticContext = DiagnosticEventContext0507(
                                 parentModule = DiagnosticModule0507.BLABLACAR,
@@ -354,20 +373,41 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                                 errorCode = captured.evidence.errorCode,
                             ),
                         )
+
+                        if (
+                            !captured.operationalComplete &&
+                            captured.evidence.errorCode == "TRIP_DETAIL_HTML_UNVERIFIED" &&
+                            recoveryAttempt0621 >= TRANSPORT_RECOVERY_ATTEMPTS_0621
+                        ) {
+                            transportRecoveryExhausted0621 = true
+                            unattemptedDueTransport0621 = futureRides.size - index - 1
+                            UnifiedDebugEventStore.recordAlways(
+                                "BLABLACAR_HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621",
+                                app.packageName,
+                                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                    "accountKey=${store.accountKey(account.id)} failedTrip=${index + 1}/${futureRides.size} " +
+                                    "recoveryAttempts=$recoveryAttempt0621 remainingUnattempted=$unattemptedDueTransport0621 " +
+                                    "action=STOP_PROFILE_PRESERVE_CANONICAL cascadePrevented=true",
+                                diagnosticContext = DiagnosticEventContext0507(
+                                    parentModule = DiagnosticModule0507.BLABLACAR,
+                                    operation = "HTML_TRANSPORT_RECOVERY",
+                                    entityType = "BLABLACAR_PROFILE",
+                                    entityId = store.accountKey(account.id),
+                                    result = "INCOMPLETE",
+                                    severity = DiagnosticSeverity0507.WARNING,
+                                    errorCode = "HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621",
+                                ),
+                            )
+                            break
+                        }
                     }
                 } finally {
-                    runCatching { webView.stopLoading() }
-                    runCatching { webView.webViewClient = WebViewClient() }
-                    runCatching { webView.loadUrl("about:blank") }
-                    runCatching { webView.clearHistory() }
-                    runCatching { webView.removeAllViews() }
-                    runCatching { webView.destroy() }
+                    destroyUnifiedCaptureWebView0621(webView)
                 }
             }
         } finally {
             sessionStore.releaseExternalFlight0426(lease)
         }
-
         var indexError0612 = ""
         val existingIndex = store.read(captureId)
             ?.profiles
@@ -433,7 +473,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
 
         val captureIncomplete = captures.count { it.status != "COMPLETE" }
-        val finalIncomplete = captureIncomplete + if (indexError0612.isNotBlank()) 1 else 0
+        val finalIncomplete =
+            captureIncomplete + unattemptedDueTransport0621 + if (indexError0612.isNotBlank()) 1 else 0
         store.updateProfile(captureId, account.id) { previous ->
             if (finalIncomplete == 0) {
                 previous.copy(tripCaptures0605 = captures.toList(), errorCode = "")
@@ -441,7 +482,11 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 previous.copy(
                     tripCaptures0605 = captures.toList(),
                     status = BlaBlaRidesSnapshotStatus0526.INCOMPLETE,
-                    errorCode = indexError0612.ifBlank { "UNIFIED_FUTURE_TRIPS_INCOMPLETE_$captureIncomplete" },
+                    errorCode = when {
+                        indexError0612.isNotBlank() -> indexError0612
+                        transportRecoveryExhausted0621 -> "UNIFIED_TRANSPORT_RECOVERY_EXHAUSTED_0621"
+                        else -> "UNIFIED_FUTURE_TRIPS_INCOMPLETE_$captureIncomplete"
+                    },
                 )
             }
         }
@@ -449,7 +494,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         UnifiedDebugEventStore.recordAlways(
             "BLABLACAR_UNIFIED_HTML_PROFILE_COMPLETED_0605",
             app.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} futureTrips=${futureRides.size} captured=${captures.size} normalized=${collected.size} complete=${captures.count { it.status == "COMPLETE" }} incomplete=$finalIncomplete directWebView=true orchestrator=false automaticCollector=false",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=${store.accountKey(account.id)} futureTrips=${futureRides.size} captured=${captures.size} normalized=${collected.size} complete=${captures.count { it.status == "COMPLETE" }} incomplete=$finalIncomplete unattemptedDueTransport0621=$unattemptedDueTransport0621 transportRecoveryExhausted0621=$transportRecoveryExhausted0621 directWebView=true orchestrator=false automaticCollector=false",
         )
         return BlaBlaUnifiedProfileCaptureResult0605(
             futureTrips = futureRides.size,
@@ -853,6 +898,39 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
     }
 
+    private fun createUnifiedCaptureWebView0621(
+        app: Context,
+        account: BlaBlaDynamicAccount,
+    ): WebView {
+        val themed = ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault)
+        return WebView(themed).also { webView ->
+            WebViewCompat.setProfile(webView, account.webProfileName)
+            WebViewCompat.getProfile(webView).cookieManager.apply {
+                setAcceptCookie(true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    setAcceptThirdPartyCookies(webView, true)
+                }
+            }
+            webView.settings.javaScriptEnabled = true
+            webView.settings.domStorageEnabled = true
+            webView.settings.allowFileAccess = false
+            webView.settings.allowContentAccess = false
+            webView.settings.loadsImagesAutomatically = false
+            webView.settings.blockNetworkImage = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            }
+        }
+    }
+
+    private fun destroyUnifiedCaptureWebView0621(webView: WebView) {
+        runCatching { webView.stopLoading() }
+        runCatching { webView.webViewClient = WebViewClient() }
+        runCatching { webView.loadUrl("about:blank") }
+        runCatching { webView.clearHistory() }
+        runCatching { webView.removeAllViews() }
+        runCatching { webView.destroy() }
+    }
     private suspend fun captureTrip0605(
         webView: WebView,
         store: BlaBlaRidesSnapshotStore0526,
@@ -1498,6 +1576,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
     private const val PUBLIC_SHARE_RETRY_MS_0605 = 350L
     private const val UNIFIED_FLIGHT_ATTEMPTS_0605 = 20
     private const val UNIFIED_FLIGHT_RETRY_MS_0605 = 250L
+    private const val TRANSPORT_RECOVERY_ATTEMPTS_0621 = 2
+    private const val TRANSPORT_RECOVERY_BACKOFF_MS_0621 = 2_500L
 
     private val TRIP_READY_0606 = """
         (function() {
