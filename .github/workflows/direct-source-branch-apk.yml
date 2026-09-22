@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.619 Verified Timeline download exact SHA
-# trigger: timeline-download-0619-r2
+name: Rota Certa 0.1.620 HTML public parity exact SHA
+# trigger: html-public-parity-0620-r1
 
 on:
   push:
     branches:
-      - agent/timeline-download-verified-0.1.619
+      - agent/html-public-parity-0.1.620
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   pull_request:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: timeline-download-0619-${{ github.ref }}
+  group: html-public-parity-0620-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,9 +32,9 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5910'
-      EXPECTED_VERSION_NAME: '0.1.619'
-      BASE_SHA: 'a81108527ab25089a77540e39c7103bd3d258d61'
+      EXPECTED_VERSION_CODE: '5911'
+      EXPECTED_VERSION_NAME: '0.1.620'
+      BASE_SHA: '8415a7e3d853ba4cbe5744ed18a7d4b2403fabb4'
       SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
 
@@ -60,8 +60,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_910' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.619"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_911' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.620"' app/build.gradle.kts
           grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
@@ -156,6 +156,11 @@ jobs:
           grep -Fq 'EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'val committed = withContext(Dispatchers.IO)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq 'liveCardFastPathSkipsGlobalAbsenceWorkAndFinalizerRunsOffMain0618' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'TripMutationCoordinator0387(app, tripStore).drainPending(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'canonicalTripIds = targetPublicationIds0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'waitForGlobalBatch=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'changedLiveHtmlCardDrainsOnlyItsPublicPublicationBeforeCommitCompletes0620' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
           grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
@@ -270,7 +275,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0619
+          OUT=/tmp/0620
           mkdir -p "$OUT"
           SHORT_SHA="${SOURCE_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -346,6 +351,10 @@ jobs:
           timeline_download_size_verified=PASS
           timeline_download_picker_fallback=PASS
           timeline_download_root_downloads=PASS
+          live_html_public_parity=PASS
+          per_card_public_drain=PASS
+          public_readback_pipeline=PASS
+          no_global_batch_wait=PASS
           timeline_download_direct_downloads=PASS
           legacy_snapshot_controller=ABSENT
           legacy_identity_probe=ABSENT
@@ -362,7 +371,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.619-5910-${{ env.SOURCE_SHA }}
+          name: rota-certa-0.1.620-5911-${{ env.SOURCE_SHA }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0619
+          path: /tmp/0620
