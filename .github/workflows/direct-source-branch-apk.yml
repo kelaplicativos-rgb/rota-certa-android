@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.616 Timeline HTML fidelity exact SHA
-# trigger: timeline-html-fidelity-0616-r4
+name: Rota Certa 0.1.617 Live HTML cards exact SHA
+# trigger: live-html-card-0617-r1
 
 on:
   push:
     branches:
-      - agent/timeline-html-fidelity-0.1.616
+      - agent/html-live-card-commit-0.1.617
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: timeline-html-fidelity-0616-${{ github.ref }}
+  group: live-html-card-0617-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,9 +26,9 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5907'
-      EXPECTED_VERSION_NAME: '0.1.616'
-      BASE_SHA: '41dc5d94a3e02501e8ca0c62dd5c119ce529d282'
+      EXPECTED_VERSION_CODE: '5908'
+      EXPECTED_VERSION_NAME: '0.1.617'
+      BASE_SHA: '2002c1bd9956915e66ec912d009ebe419376b20e'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_907' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.616"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_908' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.617"' app/build.gradle.kts
           grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
@@ -126,7 +126,25 @@ jobs:
           grep -Fq 'cityOnlyPassengerLabelsResolveAgainstUniqueHtmlStopAddresses0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300Test.kt
           grep -Fq 'nonEmptyInventoryRequiresExplicitValidatedTripLinks0612' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528Test.kt
           grep -Fq 'BLABLACAR_GLOBAL_HTML_COMMIT_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'globalCommitPending=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'globalCommitFinalizer=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'publishLiveHtmlCard0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_LIVE_CARD_COMMITTED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'liveCardCommitMutex0617.withLock' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'completeProfileUuids = emptySet()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'preserveSiblings=true tombstone=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BookingRealtimeEvents0356.notifyChanged()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'visibleImmediately=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'futureRides.forEachIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_RETRY_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'BLABLACAR_RIDES_STABILIZATION_FAILED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'repeat(2) { attempt ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'BLABLACAR_HTML_CAPTURE_BUTTON_PRESSED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'BLABLACAR_HTML_CAPTURE_UI_FAILED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'globalCapturePublishesEachValidatedCardImmediately0617' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605Test.kt
+          grep -Fq 'liveCommitCannotTombstoneSiblingsAndRefreshesVisibleTimeline0617' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
           grep -Fq 'BLABLACAR_GLOBAL_HTML_TRANSACTION_STARTED_0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq 'replaceHtmlSnapshotsAtomically0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
           grep -Fq 'effectiveSkippedTrips0610' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
@@ -199,6 +217,7 @@ jobs:
             --tests '*OperationalBrowserVideoStyle0568Test' \
             --tests '*BlaBlaDomNormalizationDiagnostic0274Test' \
             --tests '*OperationalTimelineDownload0616Test' \
+            --tests '*BlaBlaLiveHtmlCommit0617Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
 
       - name: Assemble exact-head APK
@@ -229,7 +248,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0616
+          OUT=/tmp/0617
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -251,13 +270,21 @@ jobs:
           relative_ride_dates=PASS
           active_ride_arrival_plus_1h=PASS
           passenger_segment_resolution_required=PASS
-          private_html_staging=PASS
-          shared_session_write_during_global_capture=ABSENT
+          live_html_per_card_commit=PASS
+          live_card_tombstone=DISABLED
+          live_card_ui_invalidation=PASS
+          live_card_canonical_readback=PASS
+          live_card_rollback=PASS
+          multi_profile_isolated_concurrency=PASS
+          single_profile_trip_navigation=SEQUENTIAL
+          rides_stability_fresh_webview_retry=PASS
+          blablacar_capture_contextual_diagnostics=PASS
+          global_finalizer_retained=PASS
           skipped_history_reset_on_authoritative_complete=PASS
           background_blablacar_canonical_write=DISABLED
           targeted_refresh_during_global_capture=BLOCKED
-          direct_n_of_n_canonical_reconcile=PASS
-          per_trip_canonical_enqueue=ABSENT
+          direct_n_of_n_canonical_reconcile=FINALIZER_ONLY
+          per_trip_canonical_commit=PASS
           outbox_revision_coalescing=PASS
           current_dom_itinerary_fallback=PASS
           current_dom_roster_fallback=PASS
@@ -305,7 +332,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.616-5907-${{ github.sha }}
+          name: rota-certa-0.1.617-5908-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0616
+          path: /tmp/0617
