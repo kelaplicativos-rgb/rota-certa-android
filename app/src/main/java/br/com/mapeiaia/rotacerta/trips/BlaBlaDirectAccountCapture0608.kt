@@ -137,32 +137,66 @@ internal object BlaBlaDirectAccountCapture0608 {
         onProgress("${account.displayLabel} • abrindo Suas viagens")
 
         val samples = mutableListOf<DirectRideListEnvelope0608>()
+        val stabilizationFailures0617 = mutableListOf<String>()
         val captured = try {
             withContext(Dispatchers.Main.immediate) {
-                val themed = ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault)
-                val webView = WebView(themed)
-                try {
-                    configure(webView, account)
-                    loadStable(
-                        webView = webView,
-                        script = script,
-                        onSample = { sample ->
-                            samples += sample
-                            onProgress("${account.displayLabel} • ${sample.observedCardCount} viagem(ns)")
-                        },
-                    )
-                } finally {
-                    runCatching { webView.stopLoading() }
-                    runCatching { webView.webViewClient = WebViewClient() }
-                    runCatching { webView.loadUrl("about:blank") }
-                    runCatching { webView.clearHistory() }
-                    runCatching { webView.removeAllViews() }
-                    runCatching { webView.destroy() }
+                var successful: Pair<String, DirectRideListEnvelope0608>? = null
+                repeat(2) { attempt ->
+                    if (successful != null) return@repeat
+                    val themed = ContextThemeWrapper(app, android.R.style.Theme_DeviceDefault)
+                    val webView = WebView(themed)
+                    try {
+                        configure(webView, account)
+                        successful = loadStable(
+                            webView = webView,
+                            script = script,
+                            onSample = { sample ->
+                                samples += sample
+                                onProgress("${account.displayLabel} • ${sample.observedCardCount} viagem(ns)")
+                            },
+                            onFailureReason0617 = { reason ->
+                                stabilizationFailures0617 += reason.ifBlank { "UNKNOWN" }
+                            },
+                        )
+                    } finally {
+                        runCatching { webView.stopLoading() }
+                        runCatching { webView.webViewClient = WebViewClient() }
+                        runCatching { webView.loadUrl("about:blank") }
+                        runCatching { webView.clearHistory() }
+                        runCatching { webView.removeAllViews() }
+                        runCatching { webView.destroy() }
+                    }
+                    if (successful == null && attempt == 0) {
+                        UnifiedDebugEventStore.recordAlways(
+                            "BLABLACAR_RIDES_STABILIZATION_RETRY_0617",
+                            app.packageName,
+                            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                "accountKey=${store.accountKey(account.id)} attempt=1/2 " +
+                                "reason=${stabilizationFailures0617.lastOrNull().orEmpty()} freshWebView=true",
+                        )
+                        onProgress("${account.displayLabel} • repetindo leitura estável com WebView limpa")
+                        delay(700L)
+                    }
                 }
+                successful
             }
         } finally {
             sessionStore.releaseExternalFlight0426(lease)
-        } ?: return fail(store, account, captureId, "RIDES_PAGE_NOT_STABLE")
+        } ?: run {
+            val last = samples.lastOrNull()
+            val reason = stabilizationFailures0617.lastOrNull().orEmpty().ifBlank { "RIDES_PAGE_NOT_STABLE" }
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_RIDES_STABILIZATION_FAILED_0617",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                    "accountKey=${store.accountKey(account.id)} reason=$reason samples=${samples.size} " +
+                    "cards=${last?.observedCardCount ?: -1} atBottom=${last?.atBottom ?: false} " +
+                    "loading=${last?.loadingActive ?: false} mutationAgeMs=${last?.lastMutationAgeMs ?: -1L} " +
+                    "materialized=${last?.snapshotContainsAllObservedCards ?: false} " +
+                    "htmlLength=${last?.snapshotHtmlLength ?: 0} retryCount=${stabilizationFailures0617.size.coerceAtMost(2)}",
+            )
+            return fail(store, account, captureId, "RIDES_PAGE_NOT_STABLE_${reason.take(72)}")
+        }
 
         val finalUrl = captured.first
         val finalSample = captured.second
@@ -407,6 +441,7 @@ internal object BlaBlaDirectAccountCapture0608 {
         webView: WebView,
         script: String,
         onSample: (DirectRideListEnvelope0608) -> Unit,
+        onFailureReason0617: (String) -> Unit = {},
     ): Pair<String, DirectRideListEnvelope0608>? =
         withTimeoutOrNull(PAGE_TIMEOUT_MS) {
             suspendCancellableCoroutine { continuation ->
@@ -426,6 +461,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                     if (done) return
                     val finalUrl = webView.url.orEmpty()
                     if (!BlaBlaCollectorUrlModule.ridesPageMatches(finalUrl)) {
+                        onFailureReason0617("URL_LEFT_RIDES_PAGE")
                         finish(null)
                         return
                     }
@@ -434,8 +470,10 @@ internal object BlaBlaDirectAccountCapture0608 {
                         val sample = decode(raw)
                         if (sample == null) {
                             pass++
-                            if (pass >= MAX_PASSES) finish(null)
-                            else handler.postDelayed(::evaluate, RETRY_MS)
+                            if (pass >= MAX_PASSES) {
+                                onFailureReason0617("SCRIPT_DECODE_MAX_PASSES")
+                                finish(null)
+                            } else handler.postDelayed(::evaluate, RETRY_MS)
                             return@evaluateJavascript
                         }
                         onSample(sample)
@@ -464,6 +502,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                                 return@evaluateJavascript
                             }
                             BlaBlaRidesSnapshotAction0526.INCOMPLETE -> {
+                                onFailureReason0617(decision.reason.ifBlank { "STABILIZER_INCOMPLETE" })
                                 finish(null)
                                 return@evaluateJavascript
                             }
@@ -472,6 +511,7 @@ internal object BlaBlaDirectAccountCapture0608 {
 
                         pass++
                         if (pass >= MAX_PASSES) {
+                            onFailureReason0617("MAX_EVALUATION_PASSES")
                             finish(null)
                             return@evaluateJavascript
                         }
@@ -504,13 +544,17 @@ internal object BlaBlaDirectAccountCapture0608 {
                         error: WebResourceError,
                     ) {
                         super.onReceivedError(view, request, error)
-                        if (request.isForMainFrame) finish(null)
+                        if (request.isForMainFrame) {
+                            onFailureReason0617("MAIN_FRAME_ERROR")
+                            finish(null)
+                        }
                     }
 
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
                         if (done) return
                         if (!BlaBlaCollectorUrlModule.ridesPageMatches(url)) {
+                            onFailureReason0617("PAGE_FINISHED_OUTSIDE_RIDES")
                             finish(null)
                             return
                         }
