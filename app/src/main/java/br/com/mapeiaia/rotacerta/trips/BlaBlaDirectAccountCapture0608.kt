@@ -27,6 +27,7 @@ import kotlin.coroutines.resume
 @Serializable
 private data class DirectRideListEnvelope0608(
     val candidates: List<BlaBlaDomRideCandidate> = emptyList(),
+    val observedTripHrefs: List<String> = emptyList(),
     val observedCardCount: Int = 0,
     val snapshotContainsAllObservedCards: Boolean = true,
     val explicitEmptyList: Boolean = false,
@@ -53,6 +54,33 @@ internal data class BlaBlaDirectAccountCaptureResult0608(
     val errorCode: String = "",
     val privateStage0610: BlaBlaUnifiedProfileCaptureResult0605? = null,
 )
+
+internal fun directRidesStabilizer0613(
+    startedAtMillis: Long = System.currentTimeMillis(),
+): BlaBlaRidesSnapshotStabilizer0526 =
+    BlaBlaRidesSnapshotStabilizer0526(
+        startedAtMillis = startedAtMillis,
+        maxCycles = 120,
+        maxTotalMillis = 90_000L,
+        maxNoProgressCycles = 120,
+        requiredStablePasses = 6,
+        mutationQuietMillis = 2_000L,
+    )
+
+internal fun directObservedInventoryMatches0613(
+    snapshotTripIds: List<String>,
+    observedTripHrefs: List<String>,
+    observedCardCount: Int,
+): Boolean {
+    if (observedCardCount < 0) return false
+    val snapshot = snapshotTripIds.map(String::trim).filter(String::isNotBlank).toSet()
+    val observed = observedTripHrefs
+        .mapNotNull(BlaBlaCollectorUrlModule::tripId)
+        .map(String::trim)
+        .filter(String::isNotBlank)
+        .toSet()
+    return observed.size == observedCardCount && snapshot == observed
+}
 
 /**
  * 0.1.608 fast-path for the global HTML button.
@@ -158,6 +186,15 @@ internal object BlaBlaDirectAccountCapture0608 {
         }
 
         val tripIds = extractAdministrativeTripIds0528(finalSample.snapshotHtml)
+        if (
+            !directObservedInventoryMatches0613(
+                snapshotTripIds = tripIds,
+                observedTripHrefs = finalSample.observedTripHrefs,
+                observedCardCount = finalSample.observedCardCount,
+            )
+        ) {
+            return fail(store, account, captureId, "RIDES_OBSERVED_INVENTORY_MISMATCH_0613")
+        }
         val inventory = buildTripInventory0528(tripIds, finalSample.explicitEmptyList)
         if (inventory.duplicateCount != 0) {
             return fail(store, account, captureId, "RIDES_DUPLICATE_TRIP_IDS")
@@ -227,9 +264,7 @@ internal object BlaBlaDirectAccountCapture0608 {
 
         val fingerprints = samples.map { sample ->
             tripSetSha2560528(
-                sample.candidates.mapNotNull { candidate ->
-                    BlaBlaCollectorUrlModule.tripId(candidate.href)
-                },
+                sample.observedTripHrefs.mapNotNull(BlaBlaCollectorUrlModule::tripId),
             )
         }.filter(String::isNotBlank)
         val stablePasses = fingerprints
@@ -376,8 +411,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                 val handler = Handler(Looper.getMainLooper())
                 var done = false
                 var pass = 0
-                var stable = 0
-                var lastFingerprint = ""
+                val stabilizer = directRidesStabilizer0613()
 
                 fun finish(value: Pair<String, DirectRideListEnvelope0608>?) {
                     if (done) return
@@ -404,35 +438,58 @@ internal object BlaBlaDirectAccountCapture0608 {
                         }
                         onSample(sample)
                         val fingerprint = tripSetSha2560528(
-                            sample.candidates.mapNotNull { candidate ->
-                                BlaBlaCollectorUrlModule.tripId(candidate.href)
-                            },
+                            sample.observedTripHrefs.mapNotNull(BlaBlaCollectorUrlModule::tripId),
                         )
-                        stable = if (fingerprint == lastFingerprint) stable + 1 else 1
-                        lastFingerprint = fingerprint
+                        val decision = stabilizer.observe(
+                            BlaBlaRidesSnapshotObservation0526(
+                                cardCount = sample.observedCardCount,
+                                scrollY = sample.scrollY,
+                                scrollHeight = sample.scrollHeight,
+                                viewportHeight = sample.viewportHeight,
+                                atBottom = sample.atBottom,
+                                loadingActive = sample.loadingActive,
+                                lastMutationAgeMs = sample.lastMutationAgeMs,
+                                explicitEmptyList = sample.explicitEmptyList,
+                                tripSetSha256 = fingerprint,
+                                htmlTruncated = sample.snapshotTruncated || sample.snapshotHtml.isBlank(),
+                                htmlMaterializedComplete = sample.snapshotContainsAllObservedCards,
+                            ),
+                        )
 
-                        val ready =
-                            sample.documentReady &&
-                                !sample.loadingActive &&
-                                sample.atBottom &&
-                                sample.lastMutationAgeMs >= MUTATION_QUIET_MS &&
-                                !sample.snapshotTruncated &&
-                                sample.snapshotHtml.isNotBlank() &&
-                                sample.snapshotContainsAllObservedCards &&
-                                stable >= REQUIRED_STABLE_PASSES
-
-                        if (ready) {
-                            finish(finalUrl to sample)
-                            return@evaluateJavascript
+                        when (decision.action) {
+                            BlaBlaRidesSnapshotAction0526.CAPTURE -> {
+                                finish(finalUrl to sample)
+                                return@evaluateJavascript
+                            }
+                            BlaBlaRidesSnapshotAction0526.INCOMPLETE -> {
+                                finish(null)
+                                return@evaluateJavascript
+                            }
+                            else -> Unit
                         }
+
                         pass++
                         if (pass >= MAX_PASSES) {
                             finish(null)
                             return@evaluateJavascript
                         }
-                        webView.evaluateJavascript(
-                            "(function(){try{window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));}catch(_){ } return true;})();",
+
+                        val scrollScript = if (
+                            sample.atBottom &&
+                            !sample.explicitEmptyList &&
+                            !sample.endSentinelVisible
                         ) {
+                            // 0.1.613: actively re-arm lazy/infinite-list observers. A transient
+                            // bottom with ten visible cards is not evidence that /rides is exhausted.
+                            "(function(){try{" +
+                                "var h=Math.max(document.documentElement.clientHeight||0,window.innerHeight||0,600);" +
+                                "window.scrollBy(0,-Math.max(240,Math.floor(h*0.65)));" +
+                                "setTimeout(function(){window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));},180);" +
+                                "}catch(_){ } return true;})();"
+                        } else {
+                            "(function(){try{window.scrollTo(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));}catch(_){ } return true;})();"
+                        }
+                        webView.evaluateJavascript(scrollScript) {
                             handler.postDelayed(::evaluate, RETRY_MS)
                         }
                     }
@@ -503,10 +560,8 @@ internal object BlaBlaDirectAccountCapture0608 {
     }
 
     private const val RIDES_URL = "https://www.blablacar.com.br/rides"
-    private const val PAGE_TIMEOUT_MS = 15_000L
-    private const val INITIAL_SETTLE_MS = 450L
-    private const val RETRY_MS = 280L
-    private const val MAX_PASSES = 24
-    private const val REQUIRED_STABLE_PASSES = 2
-    private const val MUTATION_QUIET_MS = 350L
+    private const val PAGE_TIMEOUT_MS = 95_000L
+    private const val INITIAL_SETTLE_MS = 750L
+    private const val RETRY_MS = 650L
+    private const val MAX_PASSES = 120
 }
