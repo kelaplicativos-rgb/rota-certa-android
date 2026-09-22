@@ -18,7 +18,7 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(coordinator.contains("accounts.mapIndexed"))
         assertTrue(coordinator.contains("async {"))
         assertTrue(coordinator.contains(".awaitAll()"))
-        assertTrue(capture.contains("futureRides.forEachIndexed"))
+        assertTrue(capture.contains("for ((index, ride) in futureRides.withIndex())"))
         assertTrue(capture.contains("liveCardCommitMutex0617"))
     }
 
