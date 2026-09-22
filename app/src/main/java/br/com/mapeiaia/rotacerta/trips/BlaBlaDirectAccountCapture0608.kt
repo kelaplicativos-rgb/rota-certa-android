@@ -55,6 +55,8 @@ internal data class BlaBlaDirectAccountCaptureResult0608(
     val privateStage0610: BlaBlaUnifiedProfileCaptureResult0605? = null,
 )
 
+private const val DIRECT_STABLE_PASSES_0613 = 6
+
 internal fun directRidesStabilizer0613(
     startedAtMillis: Long = System.currentTimeMillis(),
 ): BlaBlaRidesSnapshotStabilizer0526 =
@@ -63,7 +65,7 @@ internal fun directRidesStabilizer0613(
         maxCycles = 120,
         maxTotalMillis = 90_000L,
         maxNoProgressCycles = 120,
-        requiredStablePasses = 6,
+        requiredStablePasses = DIRECT_STABLE_PASSES_0613,
         mutationQuietMillis = 2_000L,
     )
 
@@ -270,7 +272,7 @@ internal object BlaBlaDirectAccountCapture0608 {
         val stablePasses = fingerprints
             .takeLastWhile { it == inventory.tripIdsSha256 }
             .size
-            .coerceAtLeast(REQUIRED_STABLE_PASSES)
+            .coerceAtLeast(DIRECT_STABLE_PASSES_0613 + 1)
         val updated = store.updateProfile(captureId, account.id) { previous ->
             previous.copy(
                 authenticatedProfileUuid = expected,
@@ -304,7 +306,7 @@ internal object BlaBlaDirectAccountCapture0608 {
                 ),
                 stabilized = true,
                 stabilizationEvidence = BlaBlaRidesStabilizationEvidence0528(
-                    requiredStableIterations = REQUIRED_STABLE_PASSES,
+                    requiredStableIterations = DIRECT_STABLE_PASSES_0613 + 1,
                     observedStableIterations = stablePasses,
                     cardCounts = samples.takeLast(8).map(DirectRideListEnvelope0608::observedCardCount),
                     tripSetFingerprintsSha256 = fingerprints.takeLast(8),
