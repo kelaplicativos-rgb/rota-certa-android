@@ -410,12 +410,41 @@ class BlaBlaDynamicSessionStore(context: Context) {
                 identityVerified && skippedTrips == 0 && exactTargetId == null && !selectiveScriptSync0449
             val sameAuthorityPrevious = previous
                 ?.takeIf { it.acquisitionAuthority0607 == acquisitionAuthority0607 }
-            val merged = BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
-                previous = sameAuthorityPrevious?.trips.orEmpty(),
-                current = scopedTrips,
-                authoritativeComplete = authoritativeComplete,
-                authoritativeDateScope = dateScopeKeys,
-            )
+            val targetedHtmlReplace0615 =
+                acquisitionAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT && exactTargetId != null
+            if (targetedHtmlReplace0615) {
+                val exact = scopedTrips.singleOrNull()
+                val operationallyComplete =
+                    exact != null &&
+                        exact.trip_id?.trim() == exactTargetId &&
+                        BlaBlaCollectorUrlModule.tripId(exact.trip_href.orEmpty()) == exactTargetId &&
+                        exact.passenger_roster_complete &&
+                        exact.itinerary_authoritative &&
+                        exact.published_seats != null &&
+                        !exact.public_trip_href.isNullOrBlank()
+                if (!identityVerified || skippedTrips != 0 || !operationallyComplete) {
+                    UnifiedDebugEventStore.recordAlways(
+                        "TARGETED_HTML_SESSION_WRITE_BLOCKED_0615",
+                        appContext.packageName,
+                        "accountKey=${seatSyncDiagnosticKey(account.id)} targetTripIdPresent=true identityVerified=$identityVerified skipped=$skippedTrips scopedTrips=${scopedTrips.size} operationallyComplete=$operationallyComplete action=PRESERVE_LAST_VALIDATED_HTML",
+                    )
+                    return@withAccountLock
+                }
+            }
+            val merged = if (targetedHtmlReplace0615) {
+                BlaBlaCollectorTimelineModule.replaceAuthoritativeHtmlTarget0615(
+                    previous = sameAuthorityPrevious?.trips.orEmpty(),
+                    current = scopedTrips,
+                    targetTripId = requireNotNull(exactTargetId),
+                )
+            } else {
+                BlaBlaCollectorTimelineModule.mergeSnapshotTrips(
+                    previous = sameAuthorityPrevious?.trips.orEmpty(),
+                    current = scopedTrips,
+                    authoritativeComplete = authoritativeComplete,
+                    authoritativeDateScope = dateScopeKeys,
+                )
+            }
             val preservedVerifiedIdentity =
                 !authoritativeComplete &&
                     sameAuthorityPrevious?.identityVerified == true &&
@@ -460,7 +489,7 @@ class BlaBlaDynamicSessionStore(context: Context) {
             UnifiedDebugEventStore.record(
                 "SNAPSHOT_SAVED",
                 appContext.packageName,
-                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete selectiveScriptSync0449=$selectiveScriptSync0449 targeted=${exactTargetId != null} targetTripIdPresent=${exactTargetId != null} dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
+                "account=${account.displayLabel} expectedUuid=${account.profileUuid.orEmpty()} trips=${merged.trips.size} rosterComplete=${merged.trips.count { it.passenger_roster_complete }} rosterIncomplete=${merged.trips.count { !it.passenger_roster_complete }} preservedIncomplete=${merged.preservedIncompleteRosters} preservedMissing=${merged.preservedMissingTrips} skipped=$effectiveSkippedTrips currentSkipped=$skippedTrips identityVerified=$effectiveIdentityVerified currentIdentityVerified=$identityVerified authoritativeComplete=$authoritativeComplete targetedHtmlStrictReplace0615=$targetedHtmlReplace0615 selectiveScriptSync0449=$selectiveScriptSync0449 targeted=${exactTargetId != null} targetTripIdPresent=${exactTargetId != null} dateScope=${dateScopeKeys?.sorted()?.joinToString(",") ?: "all"} droppedOutOfScope=$droppedOutOfScope authority=session_store",
             )
         }
     }
