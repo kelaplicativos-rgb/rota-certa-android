@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.619 Verified Timeline download exact SHA
-# trigger: timeline-download-0619-r1
+# trigger: timeline-download-0619-r2
 
 on:
   push:
