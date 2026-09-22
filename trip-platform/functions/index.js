@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { getAuth } = require("firebase-admin/auth");
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { interpretAssistantCommand0410, AssistantInterpreterError0410, normalizeAllowedActions0410 } = require("./assistant-command-interpreter-0410");
@@ -1512,6 +1513,7 @@ function publicTripProjection0491(value) {
   const publicTripKey0506 = publicAgendaUiTripKey0506(input);
   if (publicTripKey0506) out.publicTripKey0506 = publicTripKey0506;
   const allowed = [
+    "tripId", "publicToken",
     "title", "departureAtMillis", "timezoneId", "capacity", "status",
     "segmentLoads", "segmentPassengerLoads", "segmentBlockedLoads",
     "availableSeatsMinimum", "availableSeatsMaximum", "isFull", "canReserve",
@@ -1532,7 +1534,7 @@ function publicTripProjection0491(value) {
     out.stops = input.stops.map((rawStop) => {
       const stop = rawStop && typeof rawStop === "object" ? rawStop : {};
       const safe = {};
-      ["order", "name", "plannedArrivalMillis", "plannedDepartureMillis", "priceToNextCents"]
+      ["id", "order", "name", "plannedArrivalMillis", "plannedDepartureMillis", "priceToNextCents"]
         .forEach((field) => {
           if (Object.prototype.hasOwnProperty.call(stop, field)) safe[field] = stop[field];
         });
@@ -4404,19 +4406,13 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     }
   }
   const driver = driverSnap.data();
-  // 0589: Viagem Certa is no longer anonymously readable. The first surface
-  // identifies an already-authorized passenger by WhatsApp and exchanges it for
-  // a short-lived, driver-scoped view token. Private passenger data still
-  // requires the stronger passenger session below /v1/passenger/*.
+  // 0623: A Agenda volta a ser realmente pública para consulta. Identidade
+  // e autenticação ficam restritas ao momento em que o passageiro solicita
+  // uma reserva. Dados privados continuam protegidos pelos endpoints /v1/passenger/*.
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
-  }
-  let passengerView0589 = null;
-  if (!tester) {
-    passengerView0589 = await requirePassengerAgendaView(req, res, username);
-    if (!passengerView0589) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
@@ -4447,8 +4443,8 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
     authenticationRequired: false,
-    identifiedAccessRequired0589: true,
-    accessMode0589: "PASSENGER_WHATSAPP_VIEW",
+    identifiedAccessRequired0589: false,
+    accessMode0589: "PUBLIC_READ_RESERVE_ON_DEMAND_0623",
     readOnly: true,
     changeCursor0495: canonicalDocs0495.reduce(
       (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
@@ -4474,10 +4470,8 @@ async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agenda
     tester0589 = await requireTesterSession(req, res, username);
     if (!tester0589) return;
   }
-  if (!tester0589) {
-    const passengerView0589 = await requirePassengerAgendaView(req, res, username);
-    if (!passengerView0589) return;
-  }
+  // 0623: the canonical-change channel follows the same public-read contract
+  // as the Agenda itself; no passenger identity is required to observe public data.
   const query = db.collection("trips").where("driverUsername", "==", username).limit(300);
   return await waitForCanonicalInvalidation0495(
     req,
@@ -5070,10 +5064,8 @@ async function getPublicTrip(res, req, token) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
   }
-  if (!tester) {
-    const passengerView0589 = await requirePassengerAgendaView(req, res, driverUsername);
-    if (!passengerView0589) return;
-  }
+  // 0623: public trip details are readable from a valid public trip URL.
+  // Reservation mutations still require a verified passenger session.
   if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
     return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
   }
@@ -5116,9 +5108,9 @@ async function getPublicTrip(res, req, token) {
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : "PASSENGER_WHATSAPP_VIEW",
+    sessionType: tester ? "TESTER" : "PUBLIC_READ_RESERVE_ON_DEMAND_0623",
     authenticationRequired: false,
-    identifiedAccessRequired0589: true,
+    identifiedAccessRequired0589: false,
   });
 }
 
@@ -5442,6 +5434,131 @@ async function openPassengerAgendaView(req, res) {
     passengerId,
     accessStatus: "AUTHORIZED",
     accountActivated: passengerAccountIsActivated(account),
+  });
+}
+
+async function exchangeVerifiedPassengerPhoneSession0623(req, res) {
+  await enforceBookingRateLimit(req);
+
+  const authorization = String(req.get("Authorization") || "").trim();
+  const match = /^Bearer\s+(.{100,6000})$/i.exec(authorization);
+  if (!match) {
+    return fail(res, 401, "phone_verification_required", "Confirme o código recebido no celular para continuar.");
+  }
+
+  let decoded;
+  try {
+    decoded = await getAuth().verifyIdToken(match[1], true);
+  } catch (_) {
+    return fail(res, 401, "phone_verification_invalid", "A confirmação do telefone expirou ou não é válida. Solicite um novo código.");
+  }
+
+  let verifiedContact;
+  try {
+    verifiedContact = normalizeBrazilWhatsapp(decoded && decoded.phone_number);
+  } catch (_) {
+    return fail(res, 401, "phone_number_unverified", "Não foi possível confirmar o número deste celular.");
+  }
+
+  const displayName = cleanText(req.body && req.body.displayName, 120);
+  if (displayName.length < 2) {
+    return fail(res, 400, "passenger_name_required", "Informe seu nome para solicitar a reserva.");
+  }
+
+  const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
+  if (publicSlug && isReservedPublicUsername(publicSlug)) {
+    return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+  }
+  const requestedDriverUsername = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
+  const resolvedDriver = await resolveDriverUsername(requestedDriverUsername);
+  const driverUsername = resolvedDriver ? resolvedDriver.canonicalUsername : "";
+  const agendaToken = cleanText(req.body && req.body.agendaToken, 160).replace(/[^A-Za-z0-9_-]/g, "");
+  const tripToken = cleanText(req.body && req.body.tripToken, 180).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!driverUsername) {
+    return fail(res, 400, "driver_username_required", "Agenda do motorista não identificada.");
+  }
+  if (!publicSlug && !agendaToken && !tripToken) {
+    return fail(res, 400, "agenda_target_required", "Abra novamente o link da viagem para continuar.");
+  }
+
+  if (agendaToken) {
+    const agendaHash = await publicAgendaLinkHash(driverUsername, resolvedDriver.driverSnap);
+    if (!tokenMatches(agendaToken, agendaHash)) {
+      return fail(res, 404, "agenda_not_found", "Agenda não encontrada.");
+    }
+  }
+  if (tripToken) {
+    const tripSnap = await db.collection("trips").doc(tripToken).get();
+    if (!tripSnap.exists || normalizeUsername(tripSnap.data().driverUsername || "") !== driverUsername) {
+      return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
+    }
+  }
+
+  const accessRef = driverPassengerAccessRef(driverUsername, verifiedContact);
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(verifiedContact));
+  const now = Date.now();
+  let passengerId = "";
+
+  try {
+    await db.runTransaction(async (tx) => {
+      const [accessSnap, accountSnap] = await Promise.all([tx.get(accessRef), tx.get(accountRef)]);
+      const access = accessSnap.exists ? accessSnap.data() : {};
+      const status = cleanText(access.status, 20).toUpperCase();
+      if (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(status)) {
+        throw Object.assign(
+          new Error("Este número não está disponível para reservas nesta Agenda."),
+          { httpStatus: 403, code: "passenger_access_unavailable" },
+        );
+      }
+
+      const account = accountSnap.exists ? accountSnap.data() : {};
+      passengerId = cleanText(access.passengerId || account.passengerId, 120) ||
+        ("passenger_" + sha256Hex("phone:" + verifiedContact).slice(0, 40));
+
+      tx.set(accessRef, {
+        driverUsername,
+        passengerContact: verifiedContact,
+        displayName,
+        passengerId,
+        status: "AUTHORIZED",
+        selfVerifiedPhone0623: true,
+        phoneVerifiedAtMillis0623: now,
+        createdAtMillis: Number(access.createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+
+      tx.set(accountRef, {
+        passengerContact: verifiedContact,
+        passengerId,
+        phoneVerifiedAtMillis0623: now,
+        updatedAtMillis: now,
+        createdAtMillis: Number(account.createdAtMillis || now),
+      }, { merge: true });
+    });
+  } catch (error) {
+    return fail(
+      res,
+      error.httpStatus || 409,
+      error.code || "passenger_phone_session_failed",
+      error.message || "Não foi possível liberar a reserva.",
+    );
+  }
+
+  const session = await createPassengerSession(
+    verifiedContact,
+    passengerId,
+    cleanText(req.body && req.body.sessionContextId, 120),
+    "",
+  );
+
+  return json(res, 200, {
+    sessionToken: session.token,
+    expiresAtMillis: session.expiresAtMillis,
+    passengerContact: verifiedContact,
+    passengerId,
+    driverUsername,
+    phoneVerified: true,
+    reservationAccess: "AUTHORIZED",
   });
 }
 
@@ -9988,6 +10105,7 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-phone-session") return await exchangeVerifiedPassengerPhoneSession0623(req, res);
     if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/register") return await registerPassengerAccount(req, res);
     if (req.method === "POST" && path === "/v1/passenger/activate") return await activatePassengerAccount(req, res);
