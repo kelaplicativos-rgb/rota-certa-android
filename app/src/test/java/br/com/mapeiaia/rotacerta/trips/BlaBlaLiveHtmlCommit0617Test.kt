@@ -82,4 +82,22 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(source.contains("batch.changedTrips > 0"))
         assertTrue(source.contains("batch.publicationQueued > 0"))
     }
+    @Test
+    fun transientHtmlTransportFailureRetriesSameCardAndPreventsCascade0621() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt",
+        ).readText()
+
+        assertTrue(source.contains("BLABLACAR_HTML_TRANSPORT_RECOVERY_0621"))
+        assertTrue(source.contains("RECYCLE_WEBVIEW_RETRY_SAME_CARD"))
+        assertTrue(source.contains("advanceToNextCard=false"))
+        assertTrue(source.contains("destroyUnifiedCaptureWebView0621(webView)"))
+        assertTrue(source.contains("webView = createUnifiedCaptureWebView0621(app, account)"))
+        assertTrue(source.contains("BLABLACAR_HTML_TRANSPORT_RECOVERED_0621"))
+        assertTrue(source.contains("BLABLACAR_HTML_TRANSPORT_RECOVERY_EXHAUSTED_0621"))
+        assertTrue(source.contains("STOP_PROFILE_PRESERVE_CANONICAL"))
+        assertTrue(source.contains("cascadePrevented=true"))
+        assertTrue(source.contains("unattemptedDueTransport0621"))
+        assertTrue(source.contains("TRANSPORT_RECOVERY_ATTEMPTS_0621 = 2"))
+    }
 }
