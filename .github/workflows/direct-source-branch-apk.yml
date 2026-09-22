@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.621 HTML network recovery exact SHA
-# trigger: html-network-recovery-0621-r1
+# trigger: html-network-recovery-0621-r2
 
 on:
   push:
@@ -168,7 +168,7 @@ jobs:
           grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
-          grep -Fq 'futureRides.forEachIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'for ((index, ride) in futureRides.withIndex())' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'BLABLACAR_RIDES_STABILIZATION_RETRY_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'BLABLACAR_RIDES_STABILIZATION_FAILED_0617' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
           grep -Fq 'repeat(2) { attempt ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
