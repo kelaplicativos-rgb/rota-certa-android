@@ -616,6 +616,76 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     preserveOnPartial = true,
                 )
 
+                val publicParityStartedNs0620 = System.nanoTime()
+                val targetPublicationIds0620 = batch.publicationCanonicalTripIds0431
+                    .ifEmpty {
+                        matches.singleOrNull()
+                            ?.let { canonical -> setOf(canonical.tripKey.ifBlank { canonical.id }) }
+                            .orEmpty()
+                    }
+                val publicDelivered0620 = if (
+                    batch.changedTrips > 0 &&
+                    batch.publicationQueued > 0 &&
+                    targetPublicationIds0620.isNotEmpty()
+                ) {
+                    runCatching {
+                        TripMutationCoordinator0387(app, tripStore).drainPending(
+                            limit = targetPublicationIds0620.size.coerceAtLeast(1),
+                            canonicalTripIds = targetPublicationIds0620,
+                        )
+                    }.getOrElse { error ->
+                        UnifiedDebugEventStore.recordAlways(
+                            "BLABLACAR_LIVE_CARD_PUBLIC_PARITY_FAILED_0620",
+                            app.packageName,
+                            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                                "generation=${transaction.generation} tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                                "changed=${batch.changedTrips} publicationQueued=${batch.publicationQueued} " +
+                                "error=${error.javaClass.simpleName.take(80)} immediateRetry=false outboxPreserved=true",
+                            diagnosticContext = DiagnosticEventContext0507(
+                                parentModule = DiagnosticModule0507.BLABLACAR,
+                                operation = "HTML_LIVE_CARD_PUBLIC_PARITY",
+                                entityType = "BLABLACAR_TRIP",
+                                entityId = seatSyncDiagnosticKey(profileUuid + "|" + tripId),
+                                result = "FAILED",
+                                severity = DiagnosticSeverity0507.ERROR,
+                                errorCode = "PUBLIC_PARITY_DELIVERY_FAILED",
+                            ),
+                        )
+                        0
+                    }
+                } else {
+                    0
+                }
+                val publicParityRequired0620 = batch.changedTrips > 0 && batch.publicationQueued > 0
+                val publicParityConfirmed0620 =
+                    !publicParityRequired0620 || publicDelivered0620 >= targetPublicationIds0620.size
+                val publicParityDurationMs0620 =
+                    ((System.nanoTime() - publicParityStartedNs0620).coerceAtLeast(0L)) / 1_000_000L
+
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
+                        "generation=${transaction.generation} tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
+                        "changed=${batch.changedTrips} publicationQueued=${batch.publicationQueued} " +
+                        "targetPublications=${targetPublicationIds0620.size} delivered=$publicDelivered0620 " +
+                        "parityRequired=$publicParityRequired0620 parityConfirmed=$publicParityConfirmed0620 " +
+                        "durationMs=$publicParityDurationMs0620 waitForGlobalBatch=false",
+                    diagnosticContext = DiagnosticEventContext0507(
+                        parentModule = DiagnosticModule0507.BLABLACAR,
+                        operation = "HTML_LIVE_CARD_PUBLIC_PARITY",
+                        entityType = "BLABLACAR_TRIP",
+                        entityId = seatSyncDiagnosticKey(profileUuid + "|" + tripId),
+                        result = if (publicParityConfirmed0620) "CONFIRMED" else "PENDING_RETRY",
+                        severity = if (publicParityConfirmed0620) {
+                            DiagnosticSeverity0507.INFO
+                        } else {
+                            DiagnosticSeverity0507.ERROR
+                        },
+                        errorCode = if (publicParityConfirmed0620) "" else "PUBLIC_PARITY_NOT_CONFIRMED",
+                    ),
+                )
+
                 BookingRealtimeEvents0356.notifyChanged()
                 TripWidgetProvider.updateAll(app)
                 UnifiedDebugEventStore.recordAlways(
@@ -624,8 +694,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} " +
                         "generation=${transaction.generation} tripKey=${seatSyncDiagnosticKey(profileUuid + "|" + tripId)} " +
                         "changed=${batch.changedTrips} unchanged=${batch.skippedTrips} " +
-                        "publicationQueued=${batch.publicationQueued} preserveSiblings=true tombstone=false " +
-                        "authority=HTML_DIRECT_0607 visibleImmediately=true",
+                        "publicationQueued=${batch.publicationQueued} publicDelivered=$publicDelivered0620 " +
+                        "publicParityConfirmed=$publicParityConfirmed0620 preserveSiblings=true tombstone=false " +
+                        "authority=HTML_DIRECT_0607 visibleImmediately=true waitForGlobalBatch=false",
                     diagnosticContext = DiagnosticEventContext0507(
                         parentModule = DiagnosticModule0507.BLABLACAR,
                         operation = "HTML_LIVE_CARD_COMMIT",
