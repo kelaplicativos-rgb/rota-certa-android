@@ -87,6 +87,8 @@ data class Trip(
     val publicUrl: String? = null,
     /** Strong BlaBlaCar identity captured from the exact external card. */
     val blablaProfileUuid: String? = null,
+    /** Human-readable BlaBlaCar profile observed with the same strong HTML identity. */
+    val blablaProfileName: String? = null,
     val blablaTripId: String? = null,
     /** Authenticated driver/admin target. Never expose this URL to passengers. */
     val blablaManageUrl: String? = null,
@@ -225,6 +227,7 @@ internal fun canonicalTripStateHash0406(
         append(trip.tripKey).append('|')
         append(trip.recordOrigin.name).append('|')
         append(trip.blablaProfileUuid.orEmpty().trim().lowercase()).append('|')
+        append(trip.blablaProfileName.orEmpty().trim()).append('|')
         append(trip.blablaTripId.orEmpty().trim()).append('|')
         append(canonicalBoundBlaBlaPublicUrl0423(trip.blablaPublicUrl, trip.blablaTripId).orEmpty()).append('|')
         append(trip.publicTimezoneId0411.trim()).append('|')
