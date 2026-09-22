@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.webkit.WebViewFeature
+import br.com.mapeiaia.rotacerta.DiagnosticEventContext0507
+import br.com.mapeiaia.rotacerta.DiagnosticModule0507
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,6 +125,17 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                         !ridesSnapshotJsonDownloadRunning0531 &&
                         !externalTimelineDownloadRunning0535,
                     onClick = {
+                        UnifiedDebugEventStore.recordAlways(
+                            "BLABLACAR_HTML_CAPTURE_BUTTON_PRESSED_0617",
+                            context.packageName,
+                            "accounts=${accounts.size} multiProfileAvailable=$multiProfileAvailable " +
+                                "captureRunning=$ridesSnapshotRunning0526 explicitUserAction=true",
+                            diagnosticContext = DiagnosticEventContext0507(
+                                parentModule = DiagnosticModule0507.BLABLACAR,
+                                operation = "HTML_CAPTURE",
+                                result = "REQUESTED",
+                            ),
+                        )
                         ridesSnapshotRunning0526 = true
                         ridesSnapshotSummary0526 = ""
                         lastRidesSnapshot0526 = null
@@ -146,6 +160,17 @@ internal fun BlaBlaAccountsAndBrowsersScreen0399() {
                                 }
                             }
                             ridesSnapshotProgress0526 = "Captura finalizada • ${manifest.result}"
+                            UnifiedDebugEventStore.recordAlways(
+                                "BLABLACAR_HTML_CAPTURE_UI_FINISHED_0617",
+                                context.packageName,
+                                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                                    "result=${manifest.result} profiles=${manifest.profiles.size}",
+                                diagnosticContext = DiagnosticEventContext0507(
+                                    parentModule = DiagnosticModule0507.BLABLACAR,
+                                    operation = "HTML_CAPTURE",
+                                    result = manifest.result,
+                                ),
+                            )
                             ridesSnapshotRunning0526 = false
                         }
                     },
