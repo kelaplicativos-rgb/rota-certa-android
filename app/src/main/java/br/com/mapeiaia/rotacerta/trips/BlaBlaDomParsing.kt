@@ -191,8 +191,12 @@ object BlaBlaDomNormalizer {
         val expectedUuid = account.uuid.lowercase()
         val uuidValidation = when {
             expectedUuid in detailUuids -> "verified_from_trip_detail_profile_link"
-            detailUuids.isNotEmpty() -> return rejected("profile_uuid_conflict")
+            // 0.1.616: trip detail pages can expose passenger profile links without exposing
+            // the driver's own profile link. A positively verified isolated account session,
+            // combined with the exact administrative trip id, remains stronger identity
+            // evidence than unrelated profile links rendered inside the passenger roster.
             authenticatedProfileSessionVerified -> "verified_from_authenticated_profile_session"
+            detailUuids.isNotEmpty() -> return rejected("profile_uuid_conflict")
             else -> return rejected("identity_unverified")
         }
         val date = parseDate(
