@@ -21,17 +21,23 @@ function between(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("0589 gate is explicitly superseded by 0624 public-read PIN reserve-on-demand", () => {
+test("0589 gate is superseded by 0625 public-read password reserve-on-demand", () => {
   assert.match(html, /id="accessGate0589" class="accessGate0589 hidden"/);
   assert.doesNotMatch(html, /id="passengerWhatsapp0589"/);
-  assert.match(html, /id="bookingPhone0623"/);
-  assert.match(html, /id="bookingPin0624"/);
-  assert.match(html, /id="bookingPinConfirm0624"/);
+  for (const id of [
+    "bookingContactStep0625",
+    "bookingPasswordStep0625",
+    "bookingPasswordConfirmStep0625",
+    "bookingSeatsStep0625",
+    "bookingReviewStep0625",
+  ]) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
   assert.match(html, />SOLICITAR RESERVA</);
-  assert.doesNotMatch(html, /bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
+  assert.doesNotMatch(html, /PIN|bookingPin0624|bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
-test("0624 keeps the 0623 public-read contract while PIN protects reservation identity", () => {
+test("0625 keeps the 0623 public-read contract while password protects reservation identity", () => {test("0624 keeps the 0623 public-read contract while PIN protects reservation identity", () => {
   const agenda = between(api, "async function getPublicDriverAgenda", "async function waitPublicAgendaCanonicalChange0495");
   assert.doesNotMatch(agenda, /requirePassengerAgendaView/);
   assert.match(agenda, /identifiedAccessRequired0589: false/);
@@ -53,7 +59,7 @@ test("private passenger data stays protected even after the public agenda is reo
   assert.doesNotMatch(privateJs, /localStorage/);
 });
 
-test("0.1.624 package metadata is explicit", () => {
-  assert.match(gradle, /releaseVersionCode = 5_915/);
-  assert.match(gradle, /releaseVersionName = "0\.1\.624"/);
+test("0.1.625 package metadata is explicit", () => {
+  assert.match(gradle, /releaseVersionCode = 5_916/);
+  assert.match(gradle, /releaseVersionName = "0\.1\.625"/);
 });

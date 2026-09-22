@@ -34,24 +34,30 @@ test("backend validates Brazilian WhatsApp and public source", () => {
   assert.match(api, /sourceReference: `PUBLIC_LINK:/);
 });
 
-test("mobile portal reserves directly after PIN authentication with dynamic seat limits and idempotency", () => {
+test("mobile portal reserves through one-question password steps with dynamic seat limits and idempotency", () => {
   assert.match(web, /openBooking0623/);
-  assert.match(web, /authenticateAndReserve0624/);
-  assert.doesNotMatch(web, /signInWithPhoneNumber|phoneConfirmation0623|RecaptchaVerifier/);
+  assert.match(web, /continueBookingContact0625/);
+  assert.match(web, /\/v1\/public\/passenger-access\/status/);
+  assert.match(web, /\/v1\/public\/passenger-password-session/);
   assert.match(web, /bookingSeats0623 = Math\.min\(max, bookingSeats0623 \+ 1\)/);
   assert.match(web, /bookingIdempotencyKey0623/);
   assert.match(web, /"Idempotency-Key": idempotencyKey/);
-  assert.match(web, /\/v1\/public\/passenger-pin-session/);
   assert.match(web, /\/v1\/public\/trips\/.*\/bookings/);
-  assert.match(html, /id="bookingPhone0623"/);
-  assert.match(html, /id="bookingPin0624"/);
-  assert.match(html, /id="bookingPinConfirm0624"/);
+  for (const id of [
+    "bookingContactStep0625",
+    "bookingNameStep0625",
+    "bookingPasswordStep0625",
+    "bookingPasswordConfirmStep0625",
+    "bookingSeatsStep0625",
+    "bookingReviewStep0625",
+  ]) {
+    assert.match(html, new RegExp('id="' + id + '"'));
+  }
   assert.match(html, />SOLICITAR RESERVA</);
-  assert.match(html, /PIN de 4 dígitos/);
-  assert.doesNotMatch(html, /bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
+  assert.doesNotMatch(html, /PIN|bookingPin0624|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
-test("driver validates the permanent public agenda token before sharing without self-healing", () => {
+test("driver validates the permanent public agenda token before sharing without self-healing", () => {test("driver validates the permanent public agenda token before sharing without self-healing", () => {
   assert.match(api, /async function ensureDriverPublicAgenda/);
   assert.match(api, /publicAgendaLinkHash/);
   assert.match(api, /tokenIsCurrent/);
