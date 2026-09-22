@@ -6,6 +6,7 @@ on:
       - agent/viagem-certa-self-booking-0.1.623
     paths:
       - '.github/workflows/viagem-certa-self-booking-0.1.623.yml'
+      - '.github/workflows/viagem-certa-deploy-0.1.623.yml'
       - 'trip-platform/**'
       - 'app/**'
   workflow_dispatch:
