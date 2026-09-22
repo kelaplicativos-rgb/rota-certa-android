@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.623",
+      "build": 5914,
+      "commit": null,
+      "branch": "agent/viagem-certa-self-booking-0.1.623",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Agenda pública volta a abrir as viagens sem exigir cadastro prévio do passageiro.",
+        "Cada trecho com vaga recebe reserva própria no Viagem Certa, sem redirecionar a solicitação para o WhatsApp.",
+        "Passageiro confirma o número por OTP/SMS do Firebase Phone Auth e recebe sessão própria sem criar senha.",
+        "Solicitação REQUESTED bloqueia a vaga transacionalmente e dispara notificação para o Rota Certa do motorista.",
+        "Cada card ganha compartilhamento nativo da viagem e mantém o anúncio da BlaBlaCar como referência secundária."
+      ],
+      "fixed": [
+        "Remove a regressão 0.1.589/0.1.622 que fechava a Agenda para WhatsApps previamente autorizados.",
+        "Impede que o botão Reserve Já contorne o livro canônico de reservas abrindo apenas uma conversa de WhatsApp.",
+        "Preserva a identidade exata da viagem e dos pontos do trecho durante autenticação e criação da reserva."
+      ],
+      "improved": [
+        "Fluxo de reserva usa botões grandes, linguagem simples e não exige senha, favorecendo passageiros com baixa familiaridade digital.",
+        "Link compartilhado aponta para a viagem correta e destaca o card correspondente ao abrir.",
+        "Ver anúncio na BlaBlaCar permanece disponível como ação secundária de confiança."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.589: identificação obrigatória antes de visualizar a Agenda.",
+        "0.1.622: reserva pública ainda desviava para WhatsApp em vez de criar solicitação transacional."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Agenda Pública",
+        "Reservas",
+        "Passageiros",
+        "Notificações",
+        "BlaBlaCar",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.622",
       "build": 5913,
       "commit": null,
