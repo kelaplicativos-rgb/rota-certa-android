@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.613 HTML rides exhaustion exact SHA
-# trigger: html-rides-exhaustion-0613
+name: Rota Certa 0.1.614 HTML legacy identity promotion exact SHA
+# trigger: html-legacy-identity-promotion-0614
 
 on:
   push:
     branches:
-      - agent/html-list-exhaustion-0.1.613
+      - agent/html-legacy-identity-promotion-0.1.614
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-rides-exhaustion-0613-${{ github.ref }}
+  group: html-legacy-identity-promotion-0614-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -21,14 +21,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: html_rides_exhaustion_0613_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: html_legacy_identity_promotion_0614_ci_dummy_key
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5904'
-      EXPECTED_VERSION_NAME: '0.1.613'
-      BASE_SHA: 'e3719b2959faf895702c160ff229cdd1c4515c5e'
+      EXPECTED_VERSION_CODE: '5905'
+      EXPECTED_VERSION_NAME: '0.1.614'
+      BASE_SHA: '3690f161386dd2e1df93853eacf6f84b2e92f16d'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_904' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.613"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_905' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.614"' app/build.gradle.kts
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -90,6 +90,10 @@ jobs:
           grep -Fq 'observedTripHrefs' app/src/main/assets/blablacar/scripts/ride_list.js
           grep -Fq 'initialTenCardBottomCannotCompleteBeforeLazyListFinishes0613' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608Test.kt
           grep -Fq 'sameDateDoesNotCollapseDistinctStrongTripIds0613' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608Test.kt
+          grep -Fq 'HTML_LEGACY_IDENTITY_PROMOTED_0614' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'htmlLegacyIdentityPromotionEligible0614' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'store.promoteExternalIdentity0472(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'legacyDeterministicBackingCanBePromotedOnlyWithMatchingPhysicalAndStrongIdentity0614' app/src/test/java/br/com/mapeiaia/rotacerta/trips/AgendaCanonicalCentralSync0403Test.kt
           grep -Fq 'globalHtmlAtomicCommitEligible0609' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'htmlCanonicalResponseStatusAccepted0611' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'status.lowercase() in setOf("validated", "complete")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -170,6 +174,7 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
+            --tests '*AgendaCanonicalCentralSync0403Test' \
             --tests '*BlaBlaDirectAccountCapture0608Test' \
             --tests '*BlaBlaUnifiedHtmlCapture0605Test' \
             --tests '*BlaBlaRidesExternalTimeline0535Test' \
@@ -207,7 +212,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0613
+          OUT=/tmp/0614
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -256,6 +261,10 @@ jobs:
           accumulated_trip_inventory_parity=PASS
           transient_bottom_false_complete=BLOCKED
           same_date_distinct_tripids=PASS
+          legacy_deterministic_identity_promotion=PASS
+          legacy_revision_collision_150=BLOCKED
+          legacy_public_binding_promotion=PASS
+          html_55_to_54_regression=BLOCKED
           legacy_snapshot_controller=ABSENT
           legacy_identity_probe=ABSENT
           global_mhtml_requirement=DISABLED
@@ -271,7 +280,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.613-5904-${{ github.sha }}
+          name: rota-certa-0.1.614-5905-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0613
+          path: /tmp/0614
