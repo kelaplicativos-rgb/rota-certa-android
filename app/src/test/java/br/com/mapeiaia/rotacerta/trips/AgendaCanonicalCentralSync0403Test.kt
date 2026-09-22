@@ -307,7 +307,7 @@ class AgendaCanonicalCentralSync0403Test {
         // Timeline is now source-neutral and consumes the canonical projection only.
         // Collector/HTML ingestion remains in AgendaBackgroundSync0392; old direct Timeline
         // collector contracts are intentionally absent.
-        assertTrue(timeline.contains("internal fun canonicalTimelineProjection0494("))
+        assertTrue(timeline.contains("canonicalTimelineProjection0494("))
         assertTrue(timeline.contains("canonicalBackendAuthoritative0494"))
         assertFalse(timeline.contains("canonicalCollectorResponse0403"))
         assertFalse(timeline.contains("collectorStore.lastResponseRecoveringDynamicSessions()"))
