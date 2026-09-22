@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
-const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "public-agenda-shell-0569.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
 test("published future trips are available from the permanent public agenda", () => {
@@ -34,20 +34,21 @@ test("backend validates Brazilian WhatsApp and public source", () => {
   assert.match(api, /sourceReference: `PUBLIC_LINK:/);
 });
 
-test("mobile portal reserves directly while keeping dynamic seat limits and idempotency", () => {
-  assert.match(web, /startQuickReservation/);
-  assert.match(web, /seatsInput\.max = String\(Math\.max\(1, available\)\)/);
-  assert.match(web, /requestIdentity/);
-  assert.match(web, /bookingRequestInFlight/);
-  assert.match(web, /body\.replayed/);
-  assert.match(html, /id="startBooking"[^>]*>Reservar pelo WhatsApp</);
-  assert.match(html, /mudar o trecho, pedir mais lugares ou usar créditos/);
-  assert.match(html, /id="name" type="hidden"/);
-  assert.match(html, /id="contact" type="hidden"/);
-  assert.doesNotMatch(html, /<label>Seu nome\s*<input id="name"/);
-  assert.doesNotMatch(html, /<label>Seu WhatsApp\s*<input id="contact"/);
+test("mobile portal reserves directly after phone verification with dynamic seat limits and idempotency", () => {
+  assert.match(web, /openBooking0623/);
+  assert.match(web, /signInWithPhoneNumber/);
+  assert.match(web, /phoneConfirmation0623\.confirm\(code\)/);
+  assert.match(web, /bookingSeats0623 = Math\.min\(max, bookingSeats0623 \+ 1\)/);
+  assert.match(web, /bookingIdempotencyKey0623/);
+  assert.match(web, /"Idempotency-Key": idempotencyKey/);
+  assert.match(web, /\/v1\/public\/passenger-phone-session/);
+  assert.match(web, /\/v1\/public\/trips\/.*\/bookings/);
+  assert.match(html, /id="bookingPhone0623"/);
+  assert.match(html, /id="bookingOtp0623"/);
+  assert.match(html, />RECEBER CÓDIGO</);
+  assert.match(html, />CONFIRMAR E SOLICITAR RESERVA</);
+  assert.match(html, /Você não precisa criar senha/);
 });
-
 
 test("driver validates the permanent public agenda token before sharing without self-healing", () => {
   assert.match(api, /async function ensureDriverPublicAgenda/);
