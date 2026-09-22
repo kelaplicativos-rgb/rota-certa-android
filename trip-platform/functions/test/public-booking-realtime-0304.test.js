@@ -5,7 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
-const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
+const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "public-agenda-shell-0569.js"), "utf8");
 const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
 
 test("driver push token registration is authenticated and stored server-side", () => {
@@ -31,10 +31,11 @@ test("public booking changes are capacity-safe and protected by cancellation sec
   assert.match(api, /req\.method === "PUT"/);
 });
 
-test("public portal exposes change action and sends PUT instead of creating a duplicate", () => {
-  assert.match(html, /id="changeReservation"/);
-  assert.match(web, /beginExistingReservationEdit/);
-  assert.match(web, /updateExistingReservation/);
-  assert.match(web, /method: "PUT"/);
-  assert.match(web, /cancellationToken: confirmedBooking\.cancellationToken/);
+test("0.1.623 public portal creates one authenticated request and routes later management to Minhas viagens", () => {
+  assert.match(html, /id="passengerAreaLink0589"/);
+  assert.match(web, /sessionStorage\.setItem\(passengerSessionKey0623, passengerSessionToken0623\)/);
+  assert.match(web, /"Idempotency-Key": idempotencyKey/);
+  assert.match(web, /method: "POST"/);
+  assert.match(web, /syncPassengerNav0623\(\)/);
+  assert.doesNotMatch(web, /startQuickReservation/);
 });
