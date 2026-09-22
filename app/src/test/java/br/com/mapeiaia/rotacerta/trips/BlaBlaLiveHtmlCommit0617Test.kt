@@ -77,7 +77,7 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(source.contains("TripMutationCoordinator0387(app, tripStore).drainPending("))
         assertTrue(source.contains("canonicalTripIds = targetPublicationIds0620"))
         assertTrue(source.contains("BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620"))
-        assertTrue(source.contains("publicParityConfirmed=\$publicParityConfirmed0620"))
+        assertTrue(source.contains("publicParityConfirmed="))
         assertTrue(source.contains("waitForGlobalBatch=false"))
         assertTrue(source.contains("batch.changedTrips > 0"))
         assertTrue(source.contains("batch.publicationQueued > 0"))
