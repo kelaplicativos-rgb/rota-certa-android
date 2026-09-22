@@ -159,4 +159,3 @@ test("0622 public Agenda renders exact year, per-trip profile and near-live refr
   assert.match(app, /\}, 2000\);/);
   assert.match(api, /blablaProfileName/);
 });
-
