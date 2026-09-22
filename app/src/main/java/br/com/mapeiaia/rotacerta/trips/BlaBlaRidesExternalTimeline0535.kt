@@ -169,7 +169,7 @@ private val TRIP_ID_FROM_URL_0535 = Regex(
 private val HREF_0535 = Regex("""(?is)href\s*=\s*["']([^"']{1,1500})["']""")
 private val H2_0535 = Regex("""(?is)<h2\b[^>]*>(.*?)</h2>""")
 private val DATE_0535 = Regex(
-    """(?iu)(\d{1,2})\s+(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\.?(?:\s+(\d{4}))?""",
+    """(?iu)\b(\d{1,2})\s+(?:de\s+)?(jan(?:eiro)?|fev(?:ereiro)?|mar(?:co)?|abr(?:il)?|mai(?:o)?|jun(?:ho)?|jul(?:ho)?|ago(?:sto)?|set(?:embro)?|out(?:ubro)?|nov(?:embro)?|dez(?:embro)?)\b(?:\s+(?:de\s+)?(\d{4}))?\b""",
 )
 private val TIME_0535 = Regex("""^([01]?\d|2[0-3]):[0-5]\d$""")
 private val TAG_0535 = Regex("""(?is)<[^>]+>""")
@@ -217,9 +217,13 @@ private fun parseCardDate0535(raw: String, captureDate: LocalDate): Triple<Strin
         Regex("""\bamanha\b""").containsMatchIn(relative) ->
             return Triple(captureDate.plusDays(1).toString(), false, "RELATIVE_TOMORROW")
     }
-    val match = DATE_0535.find(text.lowercase()) ?: return Triple("", false, "UNPARSED")
+    // 0.1.616: parse the normalized whole month token instead of allowing a
+    // three-letter prefix (for example "set" inside "setembro") to consume the date
+    // while silently dropping an explicit future year such as 2027.
+    val match = DATE_0535.find(relative) ?: return Triple("", false, "UNPARSED")
     val day = match.groupValues[1].toIntOrNull() ?: return Triple("", false, "UNPARSED")
-    val month = MONTHS_0535[match.groupValues[2].lowercase()] ?: return Triple("", false, "UNPARSED")
+    val month = MONTHS_0535[match.groupValues[2].lowercase().take(3)]
+        ?: return Triple("", false, "UNPARSED")
     val explicitYear = match.groupValues[3].toIntOrNull()
     val year = explicitYear ?: if (month < captureDate.monthValue) captureDate.year + 1 else captureDate.year
     val resolved = runCatching { LocalDate.of(year, month, day) }.getOrNull() ?: return Triple("", false, "UNPARSED")
