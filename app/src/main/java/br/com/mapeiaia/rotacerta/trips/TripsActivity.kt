@@ -308,6 +308,7 @@ private fun TripApp(
     var passengerExternalBackToken0396 by remember { mutableStateOf(0) }
     var timelineUiCommand0396 by remember { mutableStateOf<AgendaTimelineCommand0396?>(null) }
     var timelineUiCommandToken0396 by remember { mutableStateOf(0) }
+    var operationalTimelineDownloadToken0616 by remember { mutableStateOf(0) }
     var scriptsUiCommand0488 by remember { mutableStateOf<BlaBlaScriptsCommand0488?>(null) }
     var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
     var debugReportModule0507 by rememberSaveable { mutableStateOf(DiagnosticModule0507.ALL_TRIPS.name) }
@@ -585,7 +586,7 @@ private fun TripApp(
                 sendTimelineCommand0396(AgendaTimelineCommand0396.TOGGLE_ARCHIVED)
             },
             AgendaHeaderAction0396("Baixar Timeline") {
-                sendTimelineCommand0396(AgendaTimelineCommand0396.DOWNLOAD_TIMELINE)
+                operationalTimelineDownloadToken0616 += 1
             },
             AgendaHeaderAction0396("Fixar atalho") {
                 val requested = TripShortcutInstaller.requestPinnedCreateShortcut(activity)
@@ -801,6 +802,7 @@ private fun TripApp(
                     bookings = bookings,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     onMessage = { text -> message = text },
+                    downloadTriggerToken0616 = operationalTimelineDownloadToken0616,
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
                             activity = activity,
