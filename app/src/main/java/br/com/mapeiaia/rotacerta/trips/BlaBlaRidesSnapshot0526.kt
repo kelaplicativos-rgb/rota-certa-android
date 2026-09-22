@@ -17,6 +17,9 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import kotlin.coroutines.resume
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -708,8 +711,11 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
 }
 
 /**
- * Sequential multi-profile coordinator. It reuses BlaBlaDynamicAccountSessionController0401
- * for every account, so browser profile/session authority remains singular.
+ * 0.1.617 multi-profile HTML coordinator.
+ *
+ * Accounts run concurrently only across isolated AndroidX WebView profiles. Each individual
+ * account still navigates its own cards sequentially, avoiding burst traffic inside one
+ * BlaBlaCar session. Canonical card commits are serialized downstream.
  */
 internal object BlaBlaRidesSnapshotCoordinator0526 {
     suspend fun captureAll(
@@ -739,18 +745,27 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         )
         val stagedByAccount = linkedMapOf<String, BlaBlaUnifiedProfileCaptureResult0605>()
         return try {
-            accounts.forEachIndexed { index, account ->
-                onProgress("Perfil ${index + 1}/${accounts.size} • ${account.displayLabel}")
-                val result = BlaBlaDirectAccountCapture0608.capture(
-                    context = app,
-                    store = store,
-                    account = account,
-                    captureId = manifest.captureId,
-                    onProgress = onProgress,
-                )
-                result.privateStage0610?.let { stagedByAccount[account.id] = it }
-                manifest = store.read(manifest.captureId) ?: manifest
+            val accountResults0617 = coroutineScope {
+                accounts.mapIndexed { index, account ->
+                    async {
+                        onProgress(
+                            "Perfil ${index + 1}/${accounts.size} • ${account.displayLabel} • captura isolada",
+                        )
+                        val result = BlaBlaDirectAccountCapture0608.capture(
+                            context = app,
+                            store = store,
+                            account = account,
+                            captureId = manifest.captureId,
+                            onProgress = onProgress,
+                        )
+                        account to result
+                    }
+                }.awaitAll()
             }
+            accountResults0617.forEach { (account, result) ->
+                result.privateStage0610?.let { stagedByAccount[account.id] = it }
+            }
+            manifest = store.read(manifest.captureId) ?: manifest
 
             val finalized = store.finish(manifest.captureId) ?: manifest
             val committed = runCatching {
@@ -770,9 +785,9 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             }
             onProgress(
                 if (committed) {
-                    "HTML validado • estado canônico atualizado"
+                    "HTML validado • cards atualizados ao vivo • verificação final concluída"
                 } else {
-                    "HTML preservado • estado canônico anterior mantido"
+                    "Captura parcial • cards validados já foram atualizados • pendências preservadas"
                 },
             )
             finalized
