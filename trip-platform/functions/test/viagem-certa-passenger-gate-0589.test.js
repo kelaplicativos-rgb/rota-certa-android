@@ -37,7 +37,7 @@ test("0589 gate is superseded by 0625 public-read password reserve-on-demand", (
   assert.doesNotMatch(html, /PIN|bookingPin0624|bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
-test("0625 keeps the 0623 public-read contract while password protects reservation identity", () => {test("0624 keeps the 0623 public-read contract while PIN protects reservation identity", () => {
+test("0625 keeps the 0623 public-read contract while password protects reservation identity", () => {
   const agenda = between(api, "async function getPublicDriverAgenda", "async function waitPublicAgendaCanonicalChange0495");
   assert.doesNotMatch(agenda, /requirePassengerAgendaView/);
   assert.match(agenda, /identifiedAccessRequired0589: false/);

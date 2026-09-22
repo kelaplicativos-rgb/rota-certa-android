@@ -31,9 +31,9 @@ test("public booking changes are capacity-safe and protected by cancellation sec
   assert.match(api, /req\.method === "PUT"/);
 });
 
-test("0.1.623 public portal creates one authenticated request and routes later management to Minhas viagens", () => {
+test("0.1.625 public portal creates one authenticated request and routes later management to Minhas viagens", () => {
   assert.match(html, /id="passengerAreaLink0589"/);
-  assert.match(web, /sessionStorage\.setItem\(passengerSessionKey0623, passengerSessionToken0623\)/);
+  assert.match(web, /sessionStorage\.setItem\(passengerSessionKey0625, passengerSessionToken0623\)/);
   assert.match(web, /"Idempotency-Key": idempotencyKey/);
   assert.match(web, /method: "POST"/);
   assert.match(web, /syncPassengerNav0623\(\)/);

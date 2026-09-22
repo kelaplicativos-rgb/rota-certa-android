@@ -34,7 +34,7 @@ test("0625 keeps one canonical passenger directory keyed by permanent passengerI
   assert.match(sync, /writeCanonicalPassenger0625/);
   const invite = between(api, "async function inviteDriverPassenger", "async function syncDriverPassengerDirectory");
   assert.match(invite, /DRIVER_INVITE_0625/);
-  const whatsapp = between(api, "async function updateDriverPassengerWhatsapp", "async function setDriverPassengerBlocked");
+  const whatsapp = between(api, "async function updateDriverPassengerWhatsapp", "async function setDriverPassengerAgendaAdmin0418");
   assert.match(whatsapp, /WHATSAPP_UPDATE_0625/);
   assert.match(whatsapp, /passenger_whatsapp_global_conflict/);
   assert.match(whatsapp, /batch\.delete\(passengerContactIndexRef0625\(previousPassengerContact\)\)/);

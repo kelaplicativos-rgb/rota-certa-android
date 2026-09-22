@@ -57,7 +57,7 @@ test("mobile portal reserves through one-question password steps with dynamic se
   assert.doesNotMatch(html, /PIN|bookingPin0624|RECEBER CÓDIGO|firebase-auth\.js/);
 });
 
-test("driver validates the permanent public agenda token before sharing without self-healing", () => {test("driver validates the permanent public agenda token before sharing without self-healing", () => {
+test("driver validates the permanent public agenda token before sharing without self-healing", () => {
   assert.match(api, /async function ensureDriverPublicAgenda/);
   assert.match(api, /publicAgendaLinkHash/);
   assert.match(api, /tokenIsCurrent/);
