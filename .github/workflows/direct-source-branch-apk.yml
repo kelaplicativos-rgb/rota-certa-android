@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.620 HTML public parity exact SHA
-# trigger: html-public-parity-0620-r3
+name: Rota Certa 0.1.621 HTML network recovery exact SHA
+# trigger: html-network-recovery-0621-r1
 
 on:
   push:
     branches:
-      - agent/html-public-parity-0.1.620
+      - agent/html-network-recovery-0.1.621
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   pull_request:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-public-parity-0620-${{ github.ref }}
+  group: html-network-recovery-0621-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,9 +32,9 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5911'
-      EXPECTED_VERSION_NAME: '0.1.620'
-      BASE_SHA: '8415a7e3d853ba4cbe5744ed18a7d4b2403fabb4'
+      EXPECTED_VERSION_CODE: '5912'
+      EXPECTED_VERSION_NAME: '0.1.621'
+      BASE_SHA: '6a7368175fded28c6562e9efd13acea9c7bd1fe8'
       SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
 
@@ -60,8 +60,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_911' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.620"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_912' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.621"' app/build.gradle.kts
           grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
@@ -161,6 +161,10 @@ jobs:
           grep -Fq 'canonicalTripIds = targetPublicationIds0620' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'waitForGlobalBatch=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'changedLiveHtmlCardDrainsOnlyItsPublicPublicationBeforeCommitCompletes0620' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
+          grep -Fq 'BLABLACAR_HTML_TRANSPORT_RECOVERY_0621' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'RECYCLE_WEBVIEW_RETRY_SAME_CARD' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'STOP_PROFILE_PRESERVE_CANONICAL' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'transientHtmlTransportFailureRetriesSameCardAndPreventsCascade0621' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
           grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
@@ -275,7 +279,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0620
+          OUT=/tmp/0621
           mkdir -p "$OUT"
           SHORT_SHA="${SOURCE_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -355,6 +359,10 @@ jobs:
           per_card_public_drain=PASS
           public_readback_pipeline=PASS
           no_global_batch_wait=PASS
+          html_transport_same_card_retry=PASS
+          webview_recycle_on_timeout=PASS
+          cascade_prevention=PASS
+          preserve_canonical_on_transport_exhaustion=PASS
           timeline_download_direct_downloads=PASS
           legacy_snapshot_controller=ABSENT
           legacy_identity_probe=ABSENT
@@ -371,7 +379,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.620-5911-${{ env.SOURCE_SHA }}
+          name: rota-certa-0.1.621-5912-${{ env.SOURCE_SHA }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0620
+          path: /tmp/0621
