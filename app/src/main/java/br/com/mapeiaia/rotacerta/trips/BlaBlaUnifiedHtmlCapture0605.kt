@@ -1323,7 +1323,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 }.toSet(),
                 htmlTransactionCaptureId0610 = manifest.captureId,
                 evaluateAbsentTrips0618 = true,
-                skipPresentAlreadyCommittedGeneration0618 = true,
+                // 0.1.622: COMPLETE is a convergence barrier, not a presence-only pass.
+                // Reconcile every HTML card again so stale per-card/public state cannot survive.
+                skipPresentAlreadyCommittedGeneration0618 = false,
             )
         } catch (error: Throwable) {
             val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback0612)
@@ -1340,6 +1342,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         data class Readback0612(
             val profileUuid: String,
             val tripId: String,
+            val source: BlaBlaCollectorTrip,
             val matches: List<Trip>,
         )
         val readback0612 = published.trips.map { source ->
@@ -1348,6 +1351,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             Readback0612(
                 profileUuid = profileUuid,
                 tripId = tripId,
+                source = source,
                 matches = canonicalTrips.filter { trip ->
                     !trip.deleted &&
                         trip.externalSnapshotAuthority0607 == BlaBlaAcquisitionAuthority0607.HTML_DIRECT &&
@@ -1358,13 +1362,23 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         }
         val canonicalized = readback0612.count { it.matches.size == 1 }
         val unresolved0612 = readback0612.filter { it.matches.size != 1 }
+        val semanticMismatch06122 = readback0612.filter { readback ->
+            val current = readback.matches.singleOrNull() ?: return@filter false
+            val allocation = current.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+                ?: settings.rotaCertaSeatAllocation
+            val expectedFingerprint =
+                PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(readback.source, allocation)
+            !current.externalSnapshotComplete ||
+                current.lastCollectionGeneration != transaction.generation ||
+                current.externalSnapshotFingerprint != expectedFingerprint
+        }
         val canonicalComplete =
             canonicalized == expectedTripCount &&
                 unresolved0612.isEmpty() &&
+                semanticMismatch06122.isEmpty() &&
                 batch.blockedTrips == 0 &&
                 batch.staleResultsRejected == 0 &&
                 batch.missingPreserved == 0
-
         if (!canonicalComplete) {
             unresolved0612.take(24).forEach { unresolved ->
                 UnifiedDebugEventStore.recordAlways(
@@ -1373,12 +1387,28 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} profileKey=${seatSyncDiagnosticKey(unresolved.profileUuid)} tripId=${unresolved.tripId.take(160)} activeMatches=${unresolved.matches.size} internalTripIds=${unresolved.matches.joinToString(",") { seatSyncDiagnosticKey(it.id) }.take(400)}",
                 )
             }
+            semanticMismatch06122.take(24).forEach { mismatch ->
+                val current = mismatch.matches.singleOrNull()
+                val allocation = current?.rotaCertaSeatAllocation?.takeIf { it in 0..999 }
+                    ?: settings.rotaCertaSeatAllocation
+                val expectedFingerprint =
+                    PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(mismatch.source, allocation)
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_GLOBAL_HTML_SEMANTIC_MISMATCH_0622",
+                    app.packageName,
+                    "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                        "profileKey=${seatSyncDiagnosticKey(mismatch.profileUuid)} tripId=${mismatch.tripId.take(160)} " +
+                        "expectedFingerprint=${expectedFingerprint.takeLast(12)} " +
+                        "actualFingerprint=${current?.externalSnapshotFingerprint.orEmpty().takeLast(12)} " +
+                        "expectedGeneration=${transaction.generation} actualGeneration=${current?.lastCollectionGeneration ?: -1L}",
+                )
+            }
             val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback0612)
             val outboxRestored = outbox.restoreHtmlRollback0612(outboxRollback0612)
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_GLOBAL_HTML_CANONICAL_VALIDATION_FAILED_0610",
                 app.packageName,
-                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} htmlTrips=$expectedTripCount canonicalized=$canonicalized unresolved=${unresolved0612.size} blocked=${batch.blockedTrips} stale=${batch.staleResultsRejected} missingPreserved=${batch.missingPreserved} changed=${batch.changedTrips} skipped=${batch.skippedTrips} rollbackTripStore=$tripRestored rollbackOutbox=$outboxRestored",
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} htmlTrips=$expectedTripCount canonicalized=$canonicalized unresolved=${unresolved0612.size} semanticMismatch=${semanticMismatch06122.size} blocked=${batch.blockedTrips} stale=${batch.staleResultsRejected} missingPreserved=${batch.missingPreserved} changed=${batch.changedTrips} skipped=${batch.skippedTrips} rollbackTripStore=$tripRestored rollbackOutbox=$outboxRestored",
             )
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_GLOBAL_HTML_ROLLBACK_0612",
@@ -1387,15 +1417,43 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             )
             return false
         }
+        // 0.1.622: retry publication for every identity from the COMPLETE HTML generation.
+        // A failed live-card transport must not remain stale merely because no new event
+        // was queued by the final reconciliation.
+        val tenantId06122 = RotaCertaTenantRegistry(app).activeScope().tenantId
+        val completeCanonicalIds06122 = published.trips.mapNotNull { source ->
+            canonicalBlaBlaTripKey0406(
+                tenantId = tenantId06122,
+                profileUuid = source.profile_uuid,
+                providerTripId = source.trip_id,
+            )
+        }.toSet()
+        val parityTargets06122 =
+            (completeCanonicalIds06122 + batch.publicationCanonicalTripIds0431).toSet()
+        val parityDrainLimit06122 = maxOf(128, parityTargets06122.size + 32)
         val delivered = TripMutationCoordinator0387(app, tripStore).drainPending(
-            canonicalTripIds = batch.publicationCanonicalTripIds0431,
+            limit = parityDrainLimit06122,
+            canonicalTripIds = parityTargets06122,
         )
+        val pendingParity06122 = outbox.pending(
+            limit = parityDrainLimit06122,
+            canonicalTripIds = parityTargets06122,
+        )
+        if (pendingParity06122.isNotEmpty()) {
+            UnifiedDebugEventStore.recordAlways(
+                "BLABLACAR_GLOBAL_HTML_PUBLIC_PARITY_PENDING_0622",
+                app.packageName,
+                "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                    "targets=${parityTargets06122.size} delivered=$delivered pending=${pendingParity06122.size} " +
+                    "action=retryable_outbox_preserved",
+            )
+        }
         BookingRealtimeEvents0356.notifyChanged()
         TripWidgetProvider.updateAll(app)
         UnifiedDebugEventStore.recordAlways(
             "BLABLACAR_GLOBAL_HTML_COMMIT_0610",
             app.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} generation=${transaction.generation} profiles=${accounts.size} htmlTrips=$expectedTripCount canonicalized=$canonicalized changed=${batch.changedTrips} unchanged=${batch.skippedTrips} tombstoned=${batch.tombstonedTrips} blocked=${batch.blockedTrips} conflicts=0 outboxDelivered=$delivered status=complete completeForScope=true skipped=0 canonicalDeltaEnqueued=false directReconcile=true commitCount=1",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} generation=${transaction.generation} profiles=${accounts.size} htmlTrips=$expectedTripCount canonicalized=$canonicalized semanticMismatch=0 parityTargets=${parityTargets06122.size} parityPending=${pendingParity06122.size} changed=${batch.changedTrips} unchanged=${batch.skippedTrips} tombstoned=${batch.tombstonedTrips} blocked=${batch.blockedTrips} conflicts=0 outboxDelivered=$delivered status=complete completeForScope=true skipped=0 canonicalDeltaEnqueued=false directReconcile=true commitCount=1",
         )
         return true
     }
