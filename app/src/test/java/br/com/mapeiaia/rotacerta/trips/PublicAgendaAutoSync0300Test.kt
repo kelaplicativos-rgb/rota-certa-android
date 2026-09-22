@@ -705,6 +705,8 @@ class PublicAgendaCanonicalExternalResolution0507Test {
         kotlin.test.assertEquals("IDENTITY_CONFLICT", resolution.state)
         kotlin.test.assertEquals(null, resolution.canonical)
     }
+    private val zone0622 = ZoneId.of("America/Sao_Paulo")
+
     @Test
     fun completeHtmlProjectionMarksSaoPauloToTresCoracoesFullWithOnePlusThreePassengers0622() {
         val source = BlaBlaCollectorTrip(
@@ -743,7 +745,7 @@ class PublicAgendaCanonicalExternalResolution0507Test {
             source = source,
             capacity = 4,
             nowMillis = 0L,
-            zoneId = zone,
+            zoneId = zone0622,
         )
         assertNotNull(projected)
         assertTrue(projected.sourceComplete)
@@ -792,7 +794,7 @@ class PublicAgendaCanonicalExternalResolution0507Test {
             source = source,
             capacity = 4,
             nowMillis = 0L,
-            zoneId = zone,
+            zoneId = zone0622,
         )
         assertNotNull(projected)
         assertTrue(projected.sourceComplete)
@@ -821,7 +823,7 @@ class PublicAgendaCanonicalExternalResolution0507Test {
                 BlaBlaCollectorPassenger(name = "P", seats = 1, boarding = "B", dropoff = "C"),
             ),
         )
-        val projected = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone0622)
         assertNotNull(projected)
         assertEquals(false, projected.sourceComplete)
     }
