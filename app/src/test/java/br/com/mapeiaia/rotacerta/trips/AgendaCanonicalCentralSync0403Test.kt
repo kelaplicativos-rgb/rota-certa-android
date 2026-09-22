@@ -52,6 +52,126 @@ class AgendaCanonicalCentralSync0403Test {
     }
 
     @Test
+    fun legacyDeterministicBackingCanBePromotedOnlyWithMatchingPhysicalAndStrongIdentity0614() {
+        val profile = "175a7068-50d8-40c3-a27a-214b9c6e0461"
+        val tripId = "019ed00e-7c37-7d89-ad6c-5da16abdbef3"
+        val href = "https://www.blablacar.com.br/rides/offer?id=$tripId&source=CARPOOLING"
+        val deterministicId = externalBackingTripIdFor(profile, tripId, href)
+        assertEquals("timeline-ext-fc2ab95908a2ad8fe0f28b52", deterministicId)
+
+        val departure = 1_814_360_400_000L
+        val stops = listOf(
+            TripStop(id = "a", order = 0, name = "São Tomé das Letras"),
+            TripStop(id = "b", order = 1, name = "Santo André"),
+        )
+        val legacy = Trip(
+            id = deterministicId!!,
+            title = "São Tomé das Letras → Santo André",
+            departureAtMillis = departure,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = stops,
+            canonicalRevision = 150L,
+            recordOrigin = TripRecordOrigin.LOCAL,
+        )
+        val incoming = legacy.copy(
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = profile,
+            blablaTripId = tripId,
+        )
+
+        assertTrue(
+            htmlLegacyIdentityPromotionEligible0614(
+                legacy = legacy,
+                incomingProjection = incoming,
+                profileUuid = profile,
+                blablaTripId = tripId,
+            ),
+        )
+        assertFalse(
+            htmlLegacyIdentityPromotionEligible0614(
+                legacy = legacy.copy(blablaTripId = "different-trip"),
+                incomingProjection = incoming,
+                profileUuid = profile,
+                blablaTripId = tripId,
+            ),
+        )
+        assertFalse(
+            htmlLegacyIdentityPromotionEligible0614(
+                legacy = legacy.copy(
+                    stops = listOf(
+                        TripStop(id = "x", order = 0, name = "Outra cidade"),
+                        TripStop(id = "y", order = 1, name = "Santo André"),
+                    ),
+                ),
+                incomingProjection = incoming,
+                profileUuid = profile,
+                blablaTripId = tripId,
+            ),
+        )
+    }
+
+    @Test
+    fun legacyPublicBindingPromotionRequiresSameCanonicalPhysicalTrip0614() {
+        val profile = "175a7068-50d8-40c3-a27a-214b9c6e0461"
+        val tripId = "019ed00e-7c37-7d89-ad6c-5da16abdbef3"
+        val departure = 1_814_360_400_000L
+        val stops = listOf(
+            TripStop(id = "a", order = 0, name = "São Tomé das Letras"),
+            TripStop(id = "b", order = 1, name = "Santo André"),
+        )
+        val incoming = Trip(
+            id = "timeline-ext-fc2ab95908a2ad8fe0f28b52",
+            title = "São Tomé das Letras → Santo André",
+            departureAtMillis = departure,
+            capacity = 4,
+            status = TripStatus.PUBLISHED,
+            stops = stops,
+            recordOrigin = TripRecordOrigin.EXTERNAL_BACKING,
+            blablaProfileUuid = profile,
+            blablaTripId = tripId,
+        )
+        val binding = PublicExternalTripBinding(
+            remoteTripId = "remote",
+            publicToken = "public",
+            bookingTripId = incoming.id,
+            title = incoming.title,
+            departureAtMillis = incoming.departureAtMillis,
+            capacity = incoming.capacity,
+            stops = incoming.stops,
+        )
+        assertTrue(
+            htmlLegacyBindingPromotionEligible0614(
+                binding = binding,
+                incomingProjection = incoming,
+                profileUuid = profile,
+                blablaTripId = tripId,
+            ),
+        )
+        assertFalse(
+            htmlLegacyBindingPromotionEligible0614(
+                binding = binding.copy(profileUuid = "7371f028-9c55-4903-8444-308015823efd"),
+                incomingProjection = incoming,
+                profileUuid = profile,
+                blablaTripId = tripId,
+            ),
+        )
+    }
+
+    @Test
+    fun htmlReconcilePromotesLegacyIdentityBeforeCanonicalFingerprintWrite0614() {
+        val background = source("AgendaBackgroundSync0392.kt")
+        val promotion = background.indexOf("val promotedLegacy0614")
+        val fingerprint = background.indexOf("val incomingFingerprint", startIndex = promotion)
+        assertTrue(promotion >= 0)
+        assertTrue(fingerprint > promotion)
+        assertTrue(background.contains("store.promoteExternalIdentity0472("))
+        assertTrue(background.contains("HTML_LEGACY_IDENTITY_PROMOTED_0614"))
+        assertTrue(background.contains("bindingPromoted="))
+        assertTrue(background.contains("bookingsPreserved="))
+    }
+
+    @Test
     fun externalFingerprintIncludesOperationalPassengerAndTimingChanges() {
         val base = BlaBlaCollectorTrip(
             profile_uuid = "7371f028-9c55-4903-8444-308015823efd",
