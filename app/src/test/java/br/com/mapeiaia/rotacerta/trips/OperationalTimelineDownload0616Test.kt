@@ -38,4 +38,23 @@ class OperationalTimelineDownload0616Test {
         assertTrue(source.contains("TIMELINE_DOWNLOAD_FAILED_0616"))
         assertTrue(source.contains("withContext(Dispatchers.IO)"))
     }
+    @Test
+    fun modernAndroidDownloadIsVerifiedBeforeSuccessAndFallsBackToPicker0619() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt",
+        ).readText()
+
+        assertTrue(source.contains("TimelineDownloadReceipt0619"))
+        assertTrue(source.contains("publishedRows == 1"))
+        assertTrue(source.contains("MediaStore.MediaColumns.IS_PENDING"))
+        assertTrue(source.contains("receipt.pending == 0"))
+        assertTrue(source.contains("receipt.storedBytes == payloadBytes.size.toLong()"))
+        assertTrue(source.contains("TIMELINE_DOWNLOAD_COMPLETED_0619"))
+        assertTrue(source.contains("TIMELINE_DOWNLOAD_DIRECT_FAILED_0619"))
+        assertTrue(source.contains("fallback=document_picker"))
+        assertTrue(source.contains("launcher.launch(fileName)"))
+        assertTrue(source.contains("val relativePath = Environment.DIRECTORY_DOWNLOADS"))
+        assertFalse(source.contains("Environment.DIRECTORY_DOWNLOADS}/Rota Certa"))
+    }
+
 }
