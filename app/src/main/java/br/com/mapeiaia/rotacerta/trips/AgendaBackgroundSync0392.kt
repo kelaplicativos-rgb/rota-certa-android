@@ -2133,10 +2133,11 @@ internal object AgendaBackgroundSync0392 {
                     ?.rotaCertaSeatAllocation
                     ?.takeIf { it in 0..999 }
                     ?: 0
-            val incomingCompleteForPromotion0614 =
-                source.published_seats != null && source.passenger_roster_complete
-            val incomingPromotionProjection0614 = if (
-                legacyDeterministic0614 != null && incomingCompleteForPromotion0614
+            val incomingPromotionEnvelope06122 = if (
+                legacyDeterministic0614 != null &&
+                    source.published_seats != null &&
+                    source.passenger_roster_complete &&
+                    source.itinerary_authoritative
             ) {
                 val quota = source.published_seats?.takeIf { it in 0..999 } ?: 0
                 PublicAgendaAutoSync0300.toPublicTrip(
@@ -2144,10 +2145,14 @@ internal object AgendaBackgroundSync0392 {
                     capacity = (quota + legacyAllocation0614).coerceIn(0, 999),
                     nowMillis = Long.MIN_VALUE,
                     rotaCertaSeatAllocation = legacyAllocation0614,
-                )?.trip
+                )
             } else {
                 null
             }
+            val incomingCompleteForPromotion0614 =
+                incomingPromotionEnvelope06122?.sourceComplete == true
+            val incomingPromotionProjection0614 =
+                incomingPromotionEnvelope06122?.trip?.takeIf { incomingCompleteForPromotion0614 }
 
             val promotedLegacy0614 = if (legacyDeterministic0614 != null) {
                 if (
@@ -2271,7 +2276,26 @@ internal object AgendaBackgroundSync0392 {
             }
             val canonicalTripId = existing?.id ?: deterministicTripId0614
             val incomingFingerprint = PublicAgendaAutoSync0300.externalCapacitySnapshotRevision(source, perTripAllocation)
-            val incomingComplete = source.published_seats != null && source.passenger_roster_complete
+            // 0.1.622: HTML can replace canonical/public state only when the complete
+            // operational projection is independently reproducible from this same card.
+            // Roster + seat count alone is insufficient: missing itinerary/segment
+            // resolution previously allowed a stale route or stale segment load to survive.
+            val incomingProjection06122 = if (
+                source.published_seats != null &&
+                    source.passenger_roster_complete &&
+                    source.itinerary_authoritative
+            ) {
+                val quota06122 = source.published_seats?.takeIf { it in 0..999 } ?: 0
+                PublicAgendaAutoSync0300.toPublicTrip(
+                    source = source,
+                    capacity = (quota06122 + perTripAllocation).coerceIn(0, 999),
+                    nowMillis = Long.MIN_VALUE,
+                    rotaCertaSeatAllocation = perTripAllocation,
+                )
+            } else {
+                null
+            }
+            val incomingComplete = incomingProjection06122?.sourceComplete == true
             // 0.1.612: an HTML-authoritative trip that reappears after a tombstone must
             // be reconstructed even when its semantic fingerprint is unchanged. Treating a
             // deleted record as SKIP_UNCHANGED left deleted=true behind and caused the global
@@ -2326,24 +2350,15 @@ internal object AgendaBackgroundSync0392 {
                     existing
                 }
                 ExternalCollectorDeltaDecision0403.UPDATE_CANONICAL -> {
-                    val blablaQuota = source.published_seats?.takeIf { it in 0..999 }
-                        ?: existingHtmlAuthority0607?.publishedSeats?.takeIf { it in 0..999 }
-                        ?: 0
-                    val synthesized = PublicAgendaAutoSync0300.toPublicTrip(
-                        source = source,
-                        capacity = (blablaQuota + perTripAllocation).coerceIn(0, 999),
-                        nowMillis = Long.MIN_VALUE,
-                        rotaCertaSeatAllocation = perTripAllocation,
-                    )
-                    if (synthesized == null) {
+                    val synthesized = incomingProjection06122
+                    if (synthesized == null || !incomingComplete) {
                         blockedTrips++
                         null
                     } else {
-                        val observed = preserveCanonicalRouteTopologyOnPartialRefresh0597(
-                            existing = existingHtmlAuthority0607,
-                            observed = synthesized.trip,
-                            source = source,
-                        )
+                        // 0.1.622: a COMPLETE HTML card is a replacement, not a merge.
+                        // All BlaBla-owned fields (route, passengers, seats, public link)
+                        // must come from the same authoritative observation.
+                        val observed = synthesized.trip
                         val saved = store.saveTrip(
                             observed.copy(
                                 id = canonicalTripId,
@@ -2353,7 +2368,7 @@ internal object AgendaBackgroundSync0392 {
                                 publicToken = existing?.publicToken ?: binding?.publicToken ?: observed.publicToken,
                                 publicUrl = existing?.publicUrl,
                                 blablaPublicUrl = canonicalBlaBlaPublicUrl0409(
-                                    existingHtmlAuthority0607?.blablaPublicUrl,
+                                    null,
                                     observed.blablaPublicUrl,
                                     blablaTripId,
                                     source.public_trip_href_binding,
