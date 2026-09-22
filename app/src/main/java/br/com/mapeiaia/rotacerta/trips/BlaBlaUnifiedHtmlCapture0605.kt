@@ -507,12 +507,24 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     errorCode = captured.evidence.errorCode.ifBlank { "HTML_TARGET_NORMALIZATION_FAILED" },
                     evidencePath = captured.evidence.htmlFile,
                 )
+            if (!captured.operationalComplete) {
+                UnifiedDebugEventStore.recordAlways(
+                    "TARGETED_HTML_INCOMPLETE_REJECTED_0615",
+                    app.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} error=${captured.evidence.errorCode.take(120)} action=PRESERVE_LAST_VALIDATED_HTML canonicalWrite=false sessionWrite=false",
+                )
+                return BlaBlaTargetedHtmlRefreshResult0607(
+                    errorCode = captured.evidence.errorCode.ifBlank { "HTML_TARGET_OPERATIONALLY_INCOMPLETE_0615" },
+                    operationalComplete = false,
+                    evidencePath = captured.evidence.htmlFile,
+                )
+            }
 
             sessionStore.saveSync(
                 account = account,
                 lastUrl = captured.evidence.finalUrl.ifBlank { administrativeUrl },
                 trips = listOf(trip),
-                skippedTrips = if (captured.operationalComplete) 0 else 1,
+                skippedTrips = 0,
                 identityVerified = true,
                 dateScope = listOfNotNull(runCatching { LocalDate.parse(trip.date) }.getOrNull()),
                 targetedTripId = target.tripId,
@@ -520,11 +532,11 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 acquisitionAuthority0607 = BlaBlaAcquisitionAuthority0607.HTML_DIRECT,
             )
             val response = sessionStore.combinedResponse(BlaBlaDynamicAccountRegistry(app).list())
-            BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = true)
+            BlaBlaCollectorStateStore(app).saveResponse(response, preserveOnPartial = false)
             UnifiedDebugEventStore.recordAlways(
                 "BLABLACAR_TARGETED_HTML_REFRESH_0607",
                 app.packageName,
-                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=${captured.operationalComplete} evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false",
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} normalized=true operationalComplete=true exactCardReset=true staleFieldInheritance=false evidencePathPresent=${captured.evidence.htmlFile.isNotBlank()} authority=HTML_DIRECT_0607 legacyCollector=false",
             )
             BlaBlaTargetedHtmlRefreshResult0607(
                 trip = trip,
