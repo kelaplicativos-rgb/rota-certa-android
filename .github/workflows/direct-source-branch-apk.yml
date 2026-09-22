@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.617 Live HTML cards exact SHA
-# trigger: live-html-card-0617-r2
+name: Rota Certa 0.1.618 Incremental HTML fast path exact SHA
+# trigger: html-fastpath-0618-r1
 
 on:
   push:
     branches:
-      - agent/html-live-card-commit-0.1.617
+      - agent/html-incremental-fastpath-0.1.618
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: live-html-card-0617-${{ github.ref }}
+  group: html-fastpath-0618-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,8 +26,8 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5908'
-      EXPECTED_VERSION_NAME: '0.1.617'
+      EXPECTED_VERSION_CODE: '5909'
+      EXPECTED_VERSION_NAME: '0.1.618'
       BASE_SHA: '2002c1bd9956915e66ec912d009ebe419376b20e'
 
     steps:
@@ -51,8 +51,8 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_908' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.617"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_909' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.618"' app/build.gradle.kts
           grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
           grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
@@ -134,6 +134,12 @@ jobs:
           grep -Fq 'preserveSiblings=true tombstone=false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'BookingRealtimeEvents0356.notifyChanged()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'visibleImmediately=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'evaluateAbsentTrips0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'skipPresentAlreadyCommittedGeneration0618 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'val committed = withContext(Dispatchers.IO)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'liveCardFastPathSkipsGlobalAbsenceWorkAndFinalizerRunsOffMain0618' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaLiveHtmlCommit0617Test.kt
           grep -Fq 'preserveOnPartial = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
           grep -Fq 'accounts.mapIndexed' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           grep -Fq '.awaitAll()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
@@ -332,7 +338,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.617-5908-${{ github.sha }}
+          name: rota-certa-0.1.618-5908-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0617
