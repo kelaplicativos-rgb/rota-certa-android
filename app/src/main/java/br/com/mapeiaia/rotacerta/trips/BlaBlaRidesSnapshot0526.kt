@@ -711,11 +711,11 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
 }
 
 /**
- * 0.1.617 multi-profile HTML coordinator.
+ * 0.1.618 multi-profile HTML coordinator.
  *
  * Accounts run concurrently only across isolated AndroidX WebView profiles. Each individual
  * account still navigates its own cards sequentially, avoiding burst traffic inside one
- * BlaBlaCar session. Canonical card commits are serialized downstream.
+ * BlaBlaCar session. Canonical card commits are serialized; global finalization runs off-main.
  */
 internal object BlaBlaRidesSnapshotCoordinator0526 {
     suspend fun captureAll(
@@ -768,13 +768,15 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
             manifest = store.read(manifest.captureId) ?: manifest
 
             val finalized = store.finish(manifest.captureId) ?: manifest
-            val committed = runCatching {
-                BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0610(
-                    context = app,
-                    accounts = accounts,
-                    manifest = finalized,
-                    stagedByAccount = stagedByAccount,
-                )
+            val committed = withContext(Dispatchers.IO) {
+                runCatching {
+                    BlaBlaUnifiedHtmlCapture0605.commitCompletedCapture0610(
+                        context = app,
+                        accounts = accounts,
+                        manifest = finalized,
+                        stagedByAccount = stagedByAccount,
+                    )
+                }
             }.getOrElse { error ->
                 UnifiedDebugEventStore.recordAlways(
                     "BLABLACAR_GLOBAL_HTML_COMMIT_FAILED_0610",
