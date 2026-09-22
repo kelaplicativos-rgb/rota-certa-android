@@ -67,4 +67,19 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(coordinator.contains("val committed = withContext(Dispatchers.IO)"))
     }
 
+    @Test
+    fun changedLiveHtmlCardDrainsOnlyItsPublicPublicationBeforeCommitCompletes0620() {
+        val source = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt",
+        ).readText()
+
+        assertTrue(source.contains("targetPublicationIds0620 = batch.publicationCanonicalTripIds0431"))
+        assertTrue(source.contains("TripMutationCoordinator0387(app, tripStore).drainPending("))
+        assertTrue(source.contains("canonicalTripIds = targetPublicationIds0620"))
+        assertTrue(source.contains("BLABLACAR_LIVE_CARD_PUBLIC_PARITY_0620"))
+        assertTrue(source.contains("publicParityConfirmed=$publicParityConfirmed0620"))
+        assertTrue(source.contains("waitForGlobalBatch=false"))
+        assertTrue(source.contains("batch.changedTrips > 0"))
+        assertTrue(source.contains("batch.publicationQueued > 0"))
+    }
 }
