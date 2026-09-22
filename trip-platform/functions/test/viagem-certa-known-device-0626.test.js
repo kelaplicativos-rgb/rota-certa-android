@@ -92,7 +92,7 @@ test("0626 private area probes the server cookie on every browser start and does
 });
 
 test("0626 logout revokes the server session and clears the known-device cookie", () => {
-  const logout = between(api, "async function logoutPassengerAccount", "async function passengerBookingIndexEntries0491");
+  const logout = between(api, "async function logoutPassengerAccount", "async function signupPassengerAccount");
   assert.match(logout, /sessionRefId/);
   assert.match(logout, /clearPassengerKnownDeviceCookie0626\(res\)/);
   assert.match(publicJs, /fetch\("\/v1\/passenger\/logout"/);
