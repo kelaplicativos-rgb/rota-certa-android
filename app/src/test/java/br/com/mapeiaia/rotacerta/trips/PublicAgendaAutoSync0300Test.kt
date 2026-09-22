@@ -45,6 +45,7 @@ class PublicAgendaAutoSync0300Test {
         assertTrue(trip.trip.publicBookingEnabled)
         assertTrue(trip.trip.publicToken.startsWith("bb"))
         assertEquals("profile-ezequiel", trip.trip.blablaProfileUuid)
+        assertEquals("Ezequiel S", trip.trip.blablaProfileName)
         assertEquals("trip-123", trip.trip.blablaTripId)
         assertEquals("https://www.blablacar.com.br/rides/offer/trip-123", trip.trip.blablaManageUrl)
         assertEquals("https://www.blablacar.com.br/trip?id=trip-123", trip.trip.blablaPublicUrl)
