@@ -174,7 +174,8 @@
     const href = clean(candidate && candidate.href);
     if (href) probe.observedRideHrefs[href] = true;
   });
-  const observedCardCount = Object.keys(probe.observedRideHrefs).length;
+  const observedTripHrefs = Object.keys(probe.observedRideHrefs).sort();
+  const observedCardCount = observedTripHrefs.length;
   const isVisible = (node) => {
     if (!node) return false;
     const style = window.getComputedStyle ? window.getComputedStyle(node) : null;
@@ -242,6 +243,7 @@
 
   return JSON.stringify({
     candidates: currentCandidates,
+    observedTripHrefs: observedTripHrefs,
     observedCardCount: observedCardCount,
     snapshotContainsAllObservedCards: currentCandidates.length >= observedCardCount,
     bodyText: bodyText,
