@@ -43,7 +43,13 @@ class OperationalBrowserAutoDiscovery0567Test {
     fun manifestKeepsNonExportedCompatibilityProvider() {
         val manifest = File("src/main/AndroidManifest.xml").readText()
         assertTrue(manifest.contains(".trips.OperationalBrowserAutoDiscoveryProvider0567"))
-        assertTrue(manifest.contains("${applicationId}.operational.browser.auto.discovery"))
+        assertTrue(manifest.contains("${'.operational.browser.auto.discovery"))
+        val providerBlock = manifest.substringAfter(".trips.OperationalBrowserAutoDiscoveryProvider0567")
+            .substringBefore("/>")
+        assertTrue(providerBlock.contains("android:exported=\"false\""))
+    }
+}
+}{applicationId}.operational.browser.auto.discovery"))
         val providerBlock = manifest.substringAfter(".trips.OperationalBrowserAutoDiscoveryProvider0567")
             .substringBefore("/>")
         assertTrue(providerBlock.contains("android:exported=\"false\""))
