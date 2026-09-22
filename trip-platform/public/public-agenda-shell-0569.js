@@ -470,18 +470,6 @@ function consumeAgendaCardRefresh0596() {
   }
 }
 
-function bindTripCardNavigation0596(card, publicUrl) {
-  if (!card || !publicUrl) return;
-  card.classList.add("agendaTripClickable0596");
-  card.addEventListener("click", (event) => {
-    if (event.defaultPrevented) return;
-    const interactive = event.target?.closest?.("a,button,input,select,textarea,label");
-    if (interactive) return;
-    armAgendaCardRefresh0596();
-    window.location.assign(publicUrl);
-  });
-}
-
 function appendJourney0569(card, item, firstStop, lastStop) {
   const start = startMillis0569(item, firstStop);
   const end = endMillis0569(lastStop);
@@ -560,7 +548,6 @@ function renderTripCard0569(item) {
     actions.appendChild(unavailable);
   }
   card.appendChild(actions);
-  bindTripCardNavigation0596(card, publicUrl);
   return card;
 }
 
