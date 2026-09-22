@@ -48,4 +48,23 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(source.contains("visibleImmediately=true"))
         assertTrue(source.contains("restoreHtmlRollback0612"))
     }
+    @Test
+    fun liveCardFastPathSkipsGlobalAbsenceWorkAndFinalizerRunsOffMain0618() {
+        val capture = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt",
+        ).readText()
+        val agenda = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt",
+        ).readText()
+        val coordinator = File(
+            "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt",
+        ).readText()
+
+        assertTrue(capture.contains("evaluateAbsentTrips0618 = false"))
+        assertTrue(capture.contains("skipPresentAlreadyCommittedGeneration0618 = true"))
+        assertTrue(agenda.contains("EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618"))
+        assertTrue(agenda.contains("EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618"))
+        assertTrue(coordinator.contains("val committed = withContext(Dispatchers.IO)"))
+    }
+
 }
