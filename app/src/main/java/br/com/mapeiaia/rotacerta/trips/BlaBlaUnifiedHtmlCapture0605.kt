@@ -531,7 +531,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         store = tripStore,
                         response = exactResponse,
                         rotaCertaSeatAllocation = rotaCertaSeatAllocation,
-                        seatAllocationVersion = rotaCertaSeatAllocationVersion,
+                        seatAllocationVersion = seatAllocationVersion,
                         collectionRunId = "html-live-card-0617:" + captureId.take(48),
                         collectionGeneration = transaction.generation,
                         completeProfileUuids = emptySet(),
