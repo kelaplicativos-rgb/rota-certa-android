@@ -704,4 +704,124 @@ class PublicAgendaCanonicalExternalResolution0507Test {
         kotlin.test.assertEquals("IDENTITY_CONFLICT", resolution.state)
         kotlin.test.assertEquals(null, resolution.canonical)
     }
+    @Test
+    fun completeHtmlProjectionMarksSaoPauloToTresCoracoesFullWithOnePlusThreePassengers0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-outbound-0622",
+            profile_name = "Perfil Ida",
+            date = "2030-09-24",
+            departure_time = "10:30",
+            arrival_time = "16:00",
+            actual_departure = "Santo André",
+            actual_arrival = "São Tomé das Letras",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-outbound-0622",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-outbound-0622",
+            trip_id = "trip-outbound-0622",
+            itinerary_stops = listOf("Santo André", "São Paulo", "Três Corações", "São Tomé das Letras"),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro A",
+                    seats = 1,
+                    boarding = "São Paulo",
+                    dropoff = "Três Corações",
+                ),
+                BlaBlaCollectorPassenger(
+                    name = "Passageiro B",
+                    seats = 3,
+                    boarding = "São Paulo",
+                    dropoff = "São Tomé das Letras",
+                ),
+            ),
+            booked_seats = 4,
+        )
+
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(projected)
+        assertTrue(projected.sourceComplete)
+        val loads = SeatAvailabilityEngine.segmentLoads(projected.trip, projected.capacityClaims)
+        assertEquals(
+            listOf("Santo André → São Paulo", "São Paulo → Três Corações", "Três Corações → São Tomé das Letras"),
+            loads.map { "${it.from.name} → ${it.to.name}" },
+        )
+        assertEquals(listOf(0, 4, 3), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(4, 0, 1), loads.map(SegmentLoad::availableSeats))
+    }
+
+    @Test
+    fun completeHtmlProjectionPreservesSaoGoncaloAndAccumulatesReturnPassengers0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-return-0622",
+            profile_name = "Perfil Volta",
+            date = "2030-09-24",
+            departure_time = "18:00",
+            arrival_time = "22:30",
+            actual_departure = "Três Corações",
+            actual_arrival = "Santo André",
+            trip_href = "https://www.blablacar.com.br/rides/offer/trip-return-0622",
+            public_trip_href = "https://www.blablacar.com.br/trip?id=trip-return-0622",
+            trip_id = "trip-return-0622",
+            itinerary_stops = listOf(
+                "Três Corações",
+                "São Gonçalo do Sapucaí",
+                "Minas Gerais",
+                "Cachoeirinha",
+                "São Paulo",
+                "Santo André",
+            ),
+            itinerary_authoritative = true,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P1", seats = 1, boarding = "São Gonçalo do Sapucaí", dropoff = "São Paulo"),
+                BlaBlaCollectorPassenger(name = "P2", seats = 1, boarding = "Minas Gerais", dropoff = "São Paulo"),
+                BlaBlaCollectorPassenger(name = "P3", seats = 1, boarding = "Cachoeirinha", dropoff = "São Paulo"),
+            ),
+            booked_seats = 3,
+        )
+
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(
+            source = source,
+            capacity = 4,
+            nowMillis = 0L,
+            zoneId = zone,
+        )
+        assertNotNull(projected)
+        assertTrue(projected.sourceComplete)
+        assertEquals(
+            listOf("Três Corações", "São Gonçalo do Sapucaí", "Minas Gerais", "Cachoeirinha", "São Paulo", "Santo André"),
+            projected.trip.stops.sortedBy(TripStop::order).map(TripStop::name),
+        )
+        val loads = SeatAvailabilityEngine.segmentLoads(projected.trip, projected.capacityClaims)
+        assertEquals(listOf(0, 1, 2, 3, 0), loads.map(SegmentLoad::occupiedSeats))
+        assertEquals(listOf(4, 3, 2, 1, 4), loads.map(SegmentLoad::availableSeats))
+    }
+
+    @Test
+    fun rosterAndSeatCountWithoutAuthoritativeItineraryNeverQualifyAsComplete0622() {
+        val source = BlaBlaCollectorTrip(
+            profile_uuid = "profile-incomplete-0622",
+            date = "2030-09-24",
+            departure_time = "10:30",
+            actual_departure = "A",
+            actual_arrival = "C",
+            itinerary_stops = listOf("A", "B", "C"),
+            itinerary_authoritative = false,
+            published_seats = 4,
+            passenger_roster_complete = true,
+            passengers = listOf(
+                BlaBlaCollectorPassenger(name = "P", seats = 1, boarding = "B", dropoff = "C"),
+            ),
+        )
+        val projected = PublicAgendaAutoSync0300.toPublicTrip(source, 4, 0L, zone)
+        assertNotNull(projected)
+        assertEquals(false, projected.sourceComplete)
+    }
 }
