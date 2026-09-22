@@ -1420,7 +1420,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         // 0.1.622: retry publication for every identity from the COMPLETE HTML generation.
         // A failed live-card transport must not remain stale merely because no new event
         // was queued by the final reconciliation.
-        val tenantId06122 = RotaCertaTenantRegistry(app).activeScope().tenantId
+        val tenantId06122 = tripStore.bookingReconcileScopeKey()
         val completeCanonicalIds06122 = published.trips.mapNotNull { source ->
             canonicalBlaBlaTripKey0406(
                 tenantId = tenantId06122,
