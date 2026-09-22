@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.620",
+      "build": 5911,
+      "commit": null,
+      "branch": "agent/html-public-parity-0.1.620",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cada card HTML alterado passa a drenar imediatamente a publicação da mesma identidade canônica para a Agenda pública.",
+        "A propagação deixa de esperar o fechamento global da captura para enviar alterações já validadas.",
+        "O drain é restrito ao canonicalTripId do card alterado e usa o pipeline existente com revisionamento, idempotência e readback público."
+      ],
+      "fixed": [
+        "Corrige a janela em que Timeline já refletia a verdade HTML mas a Agenda pública permanecia com horário, rota, passageiros ou vagas antigos.",
+        "Evita depender apenas de publicationQueued durante BLABLACAR_LIVE_CARD_COMMITTED_0617.",
+        "Telemetria passa a registrar explicitamente publicParityConfirmed, quantidade entregue e duração da publicação por card."
+      ],
+      "improved": [
+        "Cards sem mudança continuam sem publicação desnecessária.",
+        "Falha de rede preserva a outbox e é marcada como paridade pública pendente em vez de declarar sincronização total.",
+        "Mantém tombstones apenas no fechamento autoritativo global e preserva irmãos durante commits individuais."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.619: commit HTML individual podia atualizar Timeline imediatamente, mas deixar a Agenda pública aguardando outro ciclo de entrega."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Timeline",
+        "Agenda Pública",
+        "Outbox",
+        "Diagnósticos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.619",
       "build": 5910,
       "commit": null,
