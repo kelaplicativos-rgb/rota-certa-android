@@ -34,8 +34,8 @@ class OperationalTimelineDownload0616Test {
 
         assertTrue(source.contains("MediaStore.Downloads.EXTERNAL_CONTENT_URI"))
         assertTrue(source.contains("Environment.DIRECTORY_DOWNLOADS"))
-        assertTrue(source.contains("TIMELINE_DOWNLOAD_COMPLETED_0616"))
-        assertTrue(source.contains("TIMELINE_DOWNLOAD_FAILED_0616"))
+        assertTrue(source.contains("TIMELINE_DOWNLOAD_COMPLETED_0619"))
+        assertTrue(source.contains("TIMELINE_DOWNLOAD_DIRECT_FAILED_0619"))
         assertTrue(source.contains("withContext(Dispatchers.IO)"))
     }
     @Test
