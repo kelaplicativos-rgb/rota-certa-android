@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.616 Timeline HTML fidelity exact SHA
-# trigger: timeline-html-fidelity-0616-r2
+# trigger: timeline-html-fidelity-0616-r3
 
 on:
   push:
@@ -285,6 +285,11 @@ jobs:
           legacy_revision_collision_150=BLOCKED
           legacy_public_binding_promotion=PASS
           html_55_to_54_regression=BLOCKED
+          verified_session_passenger_profile_false_conflict=BLOCKED
+          explicit_future_year_full_month=PASS
+          all_trips_entry_immediate_sync=DISABLED
+          operational_timeline_download=PASS
+          timeline_download_direct_downloads=PASS
           legacy_snapshot_controller=ABSENT
           legacy_identity_probe=ABSENT
           global_mhtml_requirement=DISABLED
@@ -300,7 +305,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.615-5906-${{ github.sha }}
+          name: rota-certa-0.1.616-5907-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0616
