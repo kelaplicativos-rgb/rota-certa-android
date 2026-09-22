@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.622 HTML authoritative convergence exact SHA
-# trigger: html-authoritative-convergence-0622-r1
+# trigger: html-authoritative-convergence-0622-r2
 
 on:
   push:
