@@ -185,8 +185,8 @@ internal fun htmlCanonicalResponseStatusAccepted0611(
 
 internal object BlaBlaUnifiedHtmlCapture0605 {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
-    // 0.1.617: capture may run both isolated profiles concurrently, but canonical
-    // publication remains serialized so TripStore/outbox read-modify-write stays deterministic.
+    // 0.1.618: capture may run both isolated profiles concurrently; canonical
+    // publication remains serialized, while partial-card absence scans are skipped to keep commits bounded.
     private val liveCardCommitMutex0617 = Mutex()
 
     suspend fun captureProfile(
@@ -536,6 +536,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         collectionGeneration = transaction.generation,
                         completeProfileUuids = emptySet(),
                         htmlTransactionCaptureId0610 = captureId,
+                        evaluateAbsentTrips0618 = false,
                     )
                 }.getOrElse { error ->
                     tripStore.restoreHtmlRollback0612(tripRollback)
@@ -1172,6 +1173,8 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     it.profileUuid?.trim()?.lowercase()?.takeIf(String::isNotBlank)
                 }.toSet(),
                 htmlTransactionCaptureId0610 = manifest.captureId,
+                evaluateAbsentTrips0618 = true,
+                skipPresentAlreadyCommittedGeneration0618 = true,
             )
         } catch (error: Throwable) {
             val tripRestored = tripStore.restoreHtmlRollback0612(tripRollback0612)
