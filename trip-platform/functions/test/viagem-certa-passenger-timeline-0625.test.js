@@ -107,6 +107,6 @@ test("0625 reservation still creates a transactional canonical REQUESTED capacit
   assert.match(api, /status: "REQUESTED",\s*operationalStatus: "PENDING"/);
   assert.match(api, /eventType: "RESERVATION_REQUESTED"/);
   assert.match(api, /if \(seats > available\)/);
-  assert.match(publicJs, /Authorization: "Bearer " \+ passengerSessionToken0623/);
   assert.match(publicJs, /"Idempotency-Key": idempotencyKey/);
+  assert.match(publicJs, /credentials: "same-origin"/);
 });
