@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.613",
+      "build": 5904,
+      "commit": null,
+      "branch": "agent/html-list-exhaustion-0.1.613",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Captura direta de Suas viagens reutiliza o estabilizador robusto já testado, com até 90 segundos, inventário cumulativo de tripIds e múltiplas provas de estabilidade antes de COMPLETE.",
+        "Quando a página aparenta estar no fim sem sentinela terminal, o WebView executa sondagem ativa de rolagem para rearmar lazy/infinite loading em vez de aceitar um fundo transitório.",
+        "O HTML final precisa conter exatamente o mesmo conjunto de tripIds acumulados durante toda a varredura; divergência falha fechada antes da canonicalização."
+      ],
+      "fixed": [
+        "Corrige falso COMPLETE em listas que estabilizavam temporariamente nos primeiros aproximadamente dez cards por perfil.",
+        "Impede que uma captura com 19 viagens seja considerada integral quando a própria página já havia observado mais cards.",
+        "Preserva duas viagens diferentes na mesma data pela identidade forte profileUuid + tripId, incluindo a regressão ida/volta de 01/10."
+      ],
+      "improved": [
+        "Timeout direto passa de 15 para 95 segundos e a janela de estabilidade deixa de ser uma heurística curta de 350 ms/2 passes.",
+        "Fingerprint de estabilidade usa o inventário acumulado de hrefs observados, não apenas os cards presentes no DOM naquele instante.",
+        "Virtualização que retire cards já observados do DOM impede COMPLETE por incompatibilidade entre inventário acumulado e snapshot materializado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Suas viagens podia declarar COMPLETE após alcançar o fundo transitório da primeira leva lazy-loaded.",
+        "Validação de contagem era circular porque expectedTripCount nascia somente do subconjunto que o próprio capturador havia conseguido enxergar."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Suas viagens",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.612",
       "build": 5903,
       "commit": null,
