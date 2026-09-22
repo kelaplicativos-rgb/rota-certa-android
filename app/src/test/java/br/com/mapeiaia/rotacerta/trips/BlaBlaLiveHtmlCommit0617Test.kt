@@ -49,7 +49,7 @@ class BlaBlaLiveHtmlCommit0617Test {
         assertTrue(source.contains("restoreHtmlRollback0612"))
     }
     @Test
-    fun liveCardFastPathSkipsGlobalAbsenceWorkAndFinalizerRunsOffMain0618() {
+    fun liveCardStaysIncrementalButCompleteFinalizerForcesSemanticConvergence0622() {
         val capture = File(
             "src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt",
         ).readText()
@@ -61,12 +61,14 @@ class BlaBlaLiveHtmlCommit0617Test {
         ).readText()
 
         assertTrue(capture.contains("evaluateAbsentTrips0618 = false"))
-        assertTrue(capture.contains("skipPresentAlreadyCommittedGeneration0618 = true"))
+        assertTrue(capture.contains("skipPresentAlreadyCommittedGeneration0618 = false"))
+        assertTrue(capture.contains("semanticMismatch06122"))
+        assertTrue(capture.contains("completeCanonicalIds06122"))
+        assertTrue(capture.contains("pendingParity06122"))
         assertTrue(agenda.contains("EXTERNAL_CANONICAL_ABSENCE_SCAN_SKIPPED_0618"))
         assertTrue(agenda.contains("EXTERNAL_CANONICAL_FINALIZER_FASTPATH_0618"))
         assertTrue(coordinator.contains("val committed = withContext(Dispatchers.IO)"))
     }
-
     @Test
     fun changedLiveHtmlCardDrainsOnlyItsPublicPublicationBeforeCommitCompletes0620() {
         val source = File(
