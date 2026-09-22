@@ -2229,6 +2229,7 @@ internal object PublicAgendaAutoSync0300 {
             notes = "",
             remoteId = token,
             blablaProfileUuid = source.profile_uuid.trim().takeIf(String::isNotEmpty),
+            blablaProfileName = source.profile_name.trim().takeIf(String::isNotEmpty),
             blablaTripId = source.trip_id.orEmpty().trim().takeIf(String::isNotEmpty),
             blablaManageUrl = source.trip_href
                 ?.takeIf(BlaBlaCollectorUrlModule::isManageTarget)
