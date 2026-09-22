@@ -1,10 +1,10 @@
-name: Rota Certa 0.1.615 HTML card authoritative reset exact SHA
-# trigger: html-card-authoritative-reset-0615-r1
+name: Rota Certa 0.1.616 Timeline HTML fidelity exact SHA
+# trigger: timeline-html-fidelity-0616-r1
 
 on:
   push:
     branches:
-      - agent/html-card-authoritative-reset-0.1.615
+      - agent/timeline-html-fidelity-0.1.616
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: html-card-authoritative-reset-0615-${{ github.ref }}
+  group: timeline-html-fidelity-0616-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,9 +26,9 @@ jobs:
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5906'
-      EXPECTED_VERSION_NAME: '0.1.615'
-      BASE_SHA: '9bf57d271f16e2c67c3dd1e7248bf182052b81db'
+      EXPECTED_VERSION_CODE: '5907'
+      EXPECTED_VERSION_NAME: '0.1.616'
+      BASE_SHA: '41dc5d94a3e02501e8ca0c62dd5c119ce529d282'
 
     steps:
       - name: Checkout exact triggering HEAD
@@ -51,8 +51,15 @@ jobs:
           sha256sum "$FAROL" | tee /tmp/farol-before.sha256
           git diff --quiet "$BASE_SHA" HEAD -- "$FAROL"
 
-          grep -Fq 'val releaseVersionCode = 5_906' app/build.gradle.kts
-          grep -Fq 'val releaseVersionName = "0.1.615"' app/build.gradle.kts
+          grep -Fq 'val releaseVersionCode = 5_907' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.616"' app/build.gradle.kts
+          grep -Fq 'OPERATIONAL_BROWSER_AUTO_DISCOVERY_DISABLED_0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
+          ! grep -Fq 'AgendaBackgroundSync0392.enqueueImmediate' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalBrowserAutoDiscovery0567.kt
+          grep -Fq 'agendaTimelineWriteToDownloads0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'MediaStore.Downloads.EXTERNAL_CONTENT_URI' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaTimelineDownload0398.kt
+          grep -Fq 'downloadTriggerToken0616' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
+          grep -Fq 'fullMonthCardKeepsExplicitNextYear0616' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesExternalTimeline0535Test.kt
+          grep -Fq 'verifiedAccountSessionIsNotRejectedByPassengerProfileLinks0616' app/src/test/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDomNormalizationDiagnostic0274Test.kt
           grep -Fq 'writeTripHtml0605' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'reverifyTripHeadless0407' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
           ! grep -Fq 'BlaBlaAutomaticCollectionCoordinator0400' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
@@ -188,6 +195,10 @@ jobs:
             --tests '*PublicAgendaAutoSync0300Test' \
             --tests '*SegmentAvailabilityTruthGate0603Test' \
             --tests '*OperationalOutboxCompaction0600Test' \
+            --tests '*OperationalBrowserAutoDiscovery0567Test' \
+            --tests '*OperationalBrowserVideoStyle0568Test' \
+            --tests '*BlaBlaDomNormalizationDiagnostic0274Test' \
+            --tests '*OperationalTimelineDownload0616Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/tests.log
 
       - name: Assemble exact-head APK
@@ -218,7 +229,7 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0615
+          OUT=/tmp/0616
           mkdir -p "$OUT"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
@@ -292,4 +303,4 @@ jobs:
           name: rota-certa-0.1.615-5906-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0615
+          path: /tmp/0616
