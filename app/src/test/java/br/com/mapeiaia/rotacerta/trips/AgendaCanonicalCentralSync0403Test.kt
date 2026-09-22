@@ -304,9 +304,12 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(background.contains("EXTERNAL_CANONICAL_MISSING_PRESERVED_0403"))
         assertTrue(background.contains("recordExternalCollectionMutation("))
         assertTrue(outbox.contains("eventSource = if (remoteProjectionDivergenceObserved) \"PROJECTION_RECONCILER\" else \"EXTERNAL_COLLECTION\""))
-        assertTrue(timeline.contains("resolvedTripRecordOrigin(it) == TripRecordOrigin.EXTERNAL_BACKING"))
-        assertTrue(timeline.contains("canonicalCollectorResponse0403"))
-        assertTrue(timeline.contains("localTripId = binding.bookingTripId.takeIf(String::isNotBlank)"))
+        // Timeline is now source-neutral and consumes the canonical projection only.
+        // Collector/HTML ingestion remains in AgendaBackgroundSync0392; old direct Timeline
+        // collector contracts are intentionally absent.
+        assertTrue(timeline.contains("internal fun canonicalTimelineProjection0494("))
+        assertTrue(timeline.contains("canonicalBackendAuthoritative0494"))
+        assertFalse(timeline.contains("canonicalCollectorResponse0403"))
         assertFalse(timeline.contains("collectorStore.lastResponseRecoveringDynamicSessions()"))
         assertFalse(timeline.contains("BlaBlaCollectorTimelineEvents0400.revision.collectAsState()"))
     }
