@@ -63,6 +63,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
     modifier: Modifier = Modifier,
     onMessage: (String) -> Unit = {},
     onFirstUsableFrame: (Int) -> Unit = {},
+    downloadTriggerToken0616: Int = 0,
 ) {
     val context = LocalContext.current
     val accounts = remember(trips, bookings) {
@@ -86,6 +87,15 @@ internal fun OperationalAllTripsBrowserScreen0563(
         )
     }
     val entries = selection.includedEntries
+
+    AgendaTimelineDownloadAction0399(
+        entries = entries,
+        canonicalResponse0494 = localAgendaTimelineDownloadResponse0516(projectedTimeline0602),
+        canonicalBookings0494 = projectedTimeline0602.bookings,
+        triggerToken = downloadTriggerToken0616,
+        onChanged = onMessage,
+    )
+
     val decisionByEntry = remember(selection.decisions) {
         selection.decisions.associateBy(OperationalTripDecision0564::entry)
     }
