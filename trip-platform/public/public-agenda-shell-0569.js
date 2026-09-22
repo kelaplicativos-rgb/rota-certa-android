@@ -104,6 +104,8 @@ function closeBooking0623() {
   document.body.style.overflow = "";
   showBookingIdentityStep0623();
   setBookingStatus0623("");
+  if ($0569("bookingPin0624")) $0569("bookingPin0624").value = "";
+  if ($0569("bookingPinConfirm0624")) $0569("bookingPinConfirm0624").value = "";
   bookingSelection0623 = null;
 }
 

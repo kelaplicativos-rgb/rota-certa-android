@@ -5186,7 +5186,7 @@ const PASSENGER_PIN_LOCK_MILLIS_0624 = 15 * 60 * 1000;
 
 function passengerPinGuardRef0624(driverUsername, passengerContact) {
   return db.collection("passengerPinGuards0624").doc(
-    sha256Hex(normalizeUsername(driverUsername) + ":" + cleanText(passengerContact, 40)),
+    sha256Hex("passenger-pin:" + cleanText(passengerContact, 40)),
   );
 }
 

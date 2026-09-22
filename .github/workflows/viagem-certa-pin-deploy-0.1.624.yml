@@ -36,7 +36,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           grep -Fq 'val releaseVersionCode = 5_915' app/build.gradle.kts
           grep -Fq 'val releaseVersionName = "0.1.624"' app/build.gradle.kts
-          grep -Fq 'PUBLIC_READ_RESERVE_ON_DEMAND_0624' trip-platform/functions/index.js
+          grep -Fq 'PUBLIC_READ_RESERVE_ON_DEMAND_0623' trip-platform/functions/index.js
           grep -Fq 'passenger-pin-session' trip-platform/functions/index.js
           grep -Fq 'bookingPin0624' trip-platform/public/index.html
           grep -Fq '0.1.624-pin-booking' trip-platform/public/index.html
