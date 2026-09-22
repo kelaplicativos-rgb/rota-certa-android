@@ -2495,6 +2495,7 @@ internal object PublicAgendaAutoSync0300 {
         }.sorted()
         val semantic = buildString {
             append(source.profile_uuid.trim()).append('|')
+            append(source.profile_name.trim()).append('|')
             append(source.trip_id.orEmpty().trim()).append('|')
             append(source.date.trim()).append('|')
             append(source.departure_time.orEmpty().trim()).append('|').append(source.arrival_time.orEmpty().trim()).append('|')
