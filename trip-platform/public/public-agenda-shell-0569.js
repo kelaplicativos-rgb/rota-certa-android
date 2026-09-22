@@ -40,7 +40,8 @@ const passengerSessionKey0625 = "viagemCertaPassengerSession0625";
 const passengerLegacySessionKey0623 = "rotaCertaPassengerSession0491:" + driverUsername0569;
 const passengerContextKey0623 = "rotaCertaPassengerContext0491:" + driverUsername0569;
 let passengerSessionToken0623 = sessionStorage.getItem(passengerSessionKey0625) || sessionStorage.getItem(passengerLegacySessionKey0623) || "";
-if (passengerSessionToken0623) sessionStorage.setItem(passengerSessionKey0625, passengerSessionToken0623);
+let passengerAuthenticated0626 = false;
+let passengerSessionProbePromise0626 = null;
 let bookingSelection0623 = null;
 let bookingSeats0623 = 1;
 let bookingBusy0623 = false;
@@ -59,9 +60,43 @@ function passengerSessionContext0623() {
   return value;
 }
 
+function passengerAuthHeaders0626() {
+  return passengerSessionToken0623 ? { Authorization: "Bearer " + passengerSessionToken0623 } : {};
+}
+
 function syncPassengerNav0623() {
-  setVisible0569("passengerNav0589", Boolean(passengerSessionToken0623));
+  setVisible0569("passengerNav0589", true);
+  setVisible0569("passengerAgendaLogout0589", passengerAuthenticated0626);
   configurePassengerAreaLink0589();
+}
+
+async function probePassengerSession0626() {
+  if (passengerSessionProbePromise0626) return passengerSessionProbePromise0626;
+  passengerSessionProbePromise0626 = (async () => {
+    try {
+      const response = await fetch("/v1/passenger/me", {
+        method: "GET",
+        headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      passengerAuthenticated0626 = response.ok;
+      if (response.ok) {
+        passengerSessionToken0623 = "";
+        sessionStorage.removeItem(passengerSessionKey0625);
+        sessionStorage.removeItem(passengerLegacySessionKey0623);
+      } else if (response.status === 401) {
+        passengerSessionToken0623 = "";
+        sessionStorage.removeItem(passengerSessionKey0625);
+        sessionStorage.removeItem(passengerLegacySessionKey0623);
+      }
+    } catch (_) {
+      passengerAuthenticated0626 = Boolean(passengerSessionToken0623);
+    }
+    syncPassengerNav0623();
+    return passengerAuthenticated0626;
+  })().finally(() => { passengerSessionProbePromise0626 = null; });
+  return passengerSessionProbePromise0626;
 }
 
 function normalizePhoneE1640623(raw) {
@@ -95,7 +130,7 @@ const BOOKING_STEP_IDS_0625 = {
 };
 
 function bookingVisibleFlow0625() {
-  if (passengerSessionToken0623) return ["seats", "review"];
+  if (passengerAuthenticated0626) return ["seats", "review"];
   if (bookingKnownPassenger0625 && bookingPasswordCreated0625) return ["contact", "password", "seats", "review"];
   if (bookingKnownPassenger0625) return ["contact", "password", "confirm", "seats", "review"];
   return ["contact", "name", "password", "confirm", "seats", "review"];
@@ -162,7 +197,7 @@ function closeBooking0623() {
 function prepareBookingWizard0625() {
   bookingSeats0623 = 1;
   syncBookingSeatCount0623();
-  if (passengerSessionToken0623) showBookingStep0625("seats");
+  if (passengerAuthenticated0626) showBookingStep0625("seats");
   else {
     resetBookingIdentity0625();
     showBookingStep0625("contact");
@@ -304,13 +339,14 @@ function continueBookingSeats0625() {
 }
 
 async function ensurePassengerSession0625() {
-  if (passengerSessionToken0623) return passengerSessionToken0623;
+  if (passengerAuthenticated0626) return true;
   const password = String($0569("bookingPassword0625")?.value || "").trim();
   const confirmation = String($0569("bookingPasswordConfirm0625")?.value || "").trim();
   const response = await fetch("/v1/public/passenger-password-session", {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
     cache: "no-store",
+    credentials: "same-origin",
     body: JSON.stringify({
       passengerContact: bookingPhone0625,
       displayName: bookingName0625,
@@ -327,10 +363,11 @@ async function ensurePassengerSession0625() {
   if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível entrar com sua senha.");
   passengerSessionToken0623 = String(body?.sessionToken || "");
   if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) throw new Error("A sessão do passageiro não foi criada.");
-  sessionStorage.setItem(passengerSessionKey0625, passengerSessionToken0623);
+  passengerAuthenticated0626 = true;
+  sessionStorage.removeItem(passengerSessionKey0625);
   sessionStorage.removeItem(passengerLegacySessionKey0623);
   syncPassengerNav0623();
-  return passengerSessionToken0623;
+  return true;
 }
 
 async function confirmBooking0625() {
@@ -348,8 +385,9 @@ async function confirmBooking0625() {
           Accept: "application/json",
           "Content-Type": "application/json",
           "Idempotency-Key": idempotencyKey,
-          Authorization: "Bearer " + passengerSessionToken0623,
+          ...passengerAuthHeaders0626(),
         },
+        credentials: "same-origin",
         cache: "no-store",
         body: JSON.stringify({
           boardingStopId: bookingSelection0623.boardingStopId,
@@ -364,8 +402,15 @@ async function confirmBooking0625() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       if (response.status === 401) {
+        passengerAuthenticated0626 = false;
         passengerSessionToken0623 = "";
         sessionStorage.removeItem(passengerSessionKey0625);
+        sessionStorage.removeItem(passengerLegacySessionKey0623);
+        syncPassengerNav0623();
+        resetBookingIdentity0625();
+        showBookingStep0625("contact");
+        setBookingStatus0623("Sua identificação expirou. Entre novamente para continuar; nenhuma reserva foi enviada.", "error");
+        return;
       }
       throw new Error(safeMessage0569(body?.message) || "Não foi possível solicitar a reserva.");
     }
@@ -424,7 +469,16 @@ async function shareTrip0623(item) {
 function initSelfBooking0623() {
   setVisible0569("accessGate0589", false);
   syncPassengerNav0623();
-  $0569("passengerAgendaLogout0589")?.addEventListener("click", () => {
+  $0569("passengerAgendaLogout0589")?.addEventListener("click", async () => {
+    try {
+      await fetch("/v1/passenger/logout", {
+        method: "POST",
+        headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+    } catch (_) {}
+    passengerAuthenticated0626 = false;
     passengerSessionToken0623 = "";
     sessionStorage.removeItem(passengerSessionKey0625);
     sessionStorage.removeItem(passengerLegacySessionKey0623);
@@ -464,7 +518,7 @@ function initSelfBooking0623() {
     if (event.key === "Escape" && !$0569("bookingModal0623")?.classList.contains("hidden")) closeBooking0623();
   });
   setVisible0569("loading", true);
-  loadAgenda0569(false);
+  probePassengerSession0626().finally(() => loadAgenda0569(false));
 }
 
 function setPassengerAccessMessage0589(message) {
@@ -477,7 +531,7 @@ function setPassengerAccessMessage0589(message) {
 function configurePassengerAreaLink0589() {
   const link = $0569("passengerAreaLink0589");
   if (!link) return;
-  link.href = driverUsername0569 ? "/minha-area.html?motorista=" + encodeURIComponent(driverUsername0569) : "/minha-area.html";
+  link.href = "/minha-area.html";
 }
 
 function showPassengerAccessGate0589(message = "") {

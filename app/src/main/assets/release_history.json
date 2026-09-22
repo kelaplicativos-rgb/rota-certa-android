@@ -2,6 +2,49 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.626",
+      "build": 5917,
+      "commit": null,
+      "branch": "agent/viagem-certa-known-device-reservation-0.1.626",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Aparelho conhecido passa a permanecer autenticado por cookie de sessão persistente HttpOnly, Secure e SameSite=Lax, sem armazenar credenciais de autenticação em sessionStorage ou localStorage.",
+        "Sessão do passageiro passa a durar 180 dias e renova a validade em uso normal, encerrando somente por logout, revogação, limpeza de dados do navegador ou longa inatividade.",
+        "Minha área fica sempre visível no canto superior direito da Agenda pública e abre a Timeline pessoal, próximas viagens e histórico mesmo quando o passageiro ainda precisa se autenticar.",
+        "Reserva pública cria automaticamente o vínculo de acesso do passageiro autenticado com o motorista quando o vínculo ainda não existe, preservando bloqueios explícitos.",
+        "Fluxo de reserva em aparelho conhecido pula WhatsApp e senha e segue direto para quantidade de lugares e revisão."
+      ],
+      "fixed": [
+        "Remove a duplicação de scripts 0.1.625 e 0.1.624 que fazia a Agenda pública carregar duas versões do mesmo shell.",
+        "Corrige a perda de login ao fechar aba ou navegador causada pelo uso de sessionStorage para a sessão principal.",
+        "Corrige a falha no fim da reserva quando uma sessão global válida ainda não possuía driverPassengerAccess para o motorista da viagem.",
+        "Corrige a navegação do passageiro que escondia Minha área quando o token JavaScript não estava na aba atual."
+      ],
+      "improved": [
+        "Migração transparente de sessões antigas em Bearer/sessionStorage para o novo cookie conhecido sem exigir novo login quando a sessão anterior ainda é válida.",
+        "Logout invalida a sessão no servidor e apaga o cookie conhecido.",
+        "Falha 401 durante reserva redireciona para autenticação no próprio fluxo em vez de terminar com erro genérico."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.625: usuário autenticado voltava a receber pedido de WhatsApp e senha em nova aba ou após reabrir o navegador.",
+        "0.1.625: Minha área permanecia escondida sem token na sessionStorage da aba.",
+        "0.1.625: sessão global podia falhar no POST final da reserva por ausência de acesso específico ao motorista."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Sessão do passageiro",
+        "Agenda Pública",
+        "Minha área",
+        "Reservas",
+        "Timeline do passageiro",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.625",
       "build": 5916,
       "commit": null,

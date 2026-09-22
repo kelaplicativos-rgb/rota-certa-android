@@ -13,7 +13,7 @@
     body{margin:0;background:#fbf8fc;color:var(--ink)}
     main{width:min(100%,760px);margin:0 auto;padding:18px 14px calc(104px + env(safe-area-inset-bottom,0px))}
     .hidden{display:none!important}
-    .top0569{padding:3px 2px 14px;border-bottom:1px solid #e6e0e7;text-align:center}
+    .top0569{position:relative;min-height:58px;padding:3px 92px 14px;border-bottom:1px solid #e6e0e7;text-align:center}
     .brand0569{font-size:24px;line-height:1.05;font-weight:900;letter-spacing:-.02em}
     .title0569{margin-top:5px;font-size:18px;line-height:1.15;color:var(--muted);font-weight:650}
     .state0569{margin-top:18px;padding:18px;border:1px solid #ebe6ec;border-radius:22px;background:#fff;font-size:17px;line-height:1.4}
@@ -91,8 +91,8 @@
     .bookingFine0623{margin:9px 0 0;color:#6e6871;font-size:13px;line-height:1.35}
     .bookingPassword0625{letter-spacing:.24em;text-align:center;font-size:26px;font-weight:900}
     .agendaViewRide0584{background:#fff;color:#075f9e;border:1px solid #8abde1}
-    .passengerNav0589{display:flex;justify-content:center;gap:8px;margin-top:12px}
-    .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:8px 12px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:14px;font-weight:850;text-decoration:none;cursor:pointer}
+    .passengerNav0589{position:absolute;top:0;right:0;display:flex;justify-content:flex-end;gap:6px;margin:0}
+    .passengerNav0589 a,.passengerNav0589 button{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:7px 10px;border:1px solid #d7d0d9;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-size:13px;font-weight:900;text-decoration:none;cursor:pointer}
     @media(max-width:420px){main{padding-left:10px;padding-right:10px}.agendaTrip0569{padding:18px 15px 20px;border-radius:23px}.agendaDate0569{font-size:25px}.agendaDriver0569{font-size:18px}.agendaJourney0569{grid-template-columns:68px 23px minmax(0,1fr);column-gap:7px}.agendaTime0569 strong{font-size:22px}.agendaTime0569 small{font-size:16px}.agendaCity0569{font-size:23px}.agendaSegmentRow0580{grid-template-columns:minmax(0,1fr) auto auto;column-gap:6px;row-gap:3px}.agendaSegmentSeats0580{min-width:52px;font-size:13px}.agendaSegmentReserve0584{min-width:82px;min-height:32px;padding:6px 8px;font-size:12px}.agendaCardActions0584{justify-content:stretch}.agendaViewRide0584{width:100%}}
   </style>
 </head>
@@ -101,9 +101,9 @@
     <header class="top0569" aria-label="Viagem Certa">
       <div class="brand0569">Viagem Certa</div>
       <div class="title0569">Viagens disponíveis</div>
-      <nav id="passengerNav0589" class="passengerNav0589 hidden" aria-label="Área do passageiro">
-        <a id="passengerAreaLink0589" href="/minha-area.html">Minhas viagens</a>
-        <button id="passengerAgendaLogout0589" type="button">Sair</button>
+      <nav id="passengerNav0589" class="passengerNav0589" aria-label="Área do passageiro">
+        <a id="passengerAreaLink0589" href="/minha-area.html">Minha área</a>
+        <button id="passengerAgendaLogout0589" class="hidden" type="button">Sair</button>
       </nav>
     </header>
     <section id="accessGate0589" class="accessGate0589 hidden" aria-hidden="true"></section>
@@ -176,6 +176,6 @@
     </section>
   </div>
 
-  <script src="/public-agenda-shell-0569.js?v=0.1.625-password-steps" defer></script>  <script src="/public-agenda-shell-0569.js?v=0.1.624-pin-booking" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.626-known-device" defer></script>
 </body>
 </html>

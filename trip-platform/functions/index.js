@@ -5505,7 +5505,7 @@ async function openPassengerPasswordSession0625(req, res) {
     }
   });
   await clearPassengerPinFailures0624("", passengerContact);
-  const session = await createPassengerSession(passengerContact, passengerId, cleanText(req.body && req.body.sessionContextId, 120), "");
+  const session = await createPassengerSession(passengerContact, passengerId, cleanText(req.body && req.body.sessionContextId, 120), "", res);
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
@@ -5940,6 +5940,7 @@ async function openPassengerPinSession0624(req, res) {
     passengerId,
     cleanText(req.body && req.body.sessionContextId, 120),
     "",
+    res,
   );
 
   return json(res, 200, {
@@ -6872,16 +6873,66 @@ function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
+const PASSENGER_KNOWN_DEVICE_COOKIE_0626 = "__Host-viagem_certa_device_0626";
+const PASSENGER_KNOWN_DEVICE_TTL_MILLIS_0626 = 180 * 24 * 60 * 60 * 1000;
+const PASSENGER_KNOWN_DEVICE_RENEW_MILLIS_0626 = 24 * 60 * 60 * 1000;
+
+function passengerKnownDeviceCookieToken0626(req) {
+  const raw = cleanText(req.get("Cookie"), 4000);
+  if (!raw) return "";
+  const prefix = PASSENGER_KNOWN_DEVICE_COOKIE_0626 + "=";
+  const part = raw.split(";").map((item) => item.trim()).find((item) => item.startsWith(prefix));
+  if (!part) return "";
+  const value = part.slice(prefix.length);
+  return /^[A-Za-z0-9_-]{32,200}$/.test(value) ? value : "";
+}
+
+function passengerSessionCandidates0626(req) {
+  const values = [];
+  const authorization = cleanText(req.get("Authorization"), 400);
+  const bearer = /^Bearer\s+([A-Za-z0-9_-]{32,200})$/i.exec(authorization);
+  if (bearer) values.push(bearer[1]);
+  const cookie = passengerKnownDeviceCookieToken0626(req);
+  if (cookie && !values.includes(cookie)) values.push(cookie);
+  return values;
+}
+
+function setPassengerKnownDeviceCookie0626(res, token, expiresAtMillis) {
+  const value = cleanText(token, 220);
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(value)) return;
+  const maxAgeSeconds = Math.max(1, Math.floor((Number(expiresAtMillis || 0) - Date.now()) / 1000));
+  res.set(
+    "Set-Cookie",
+    PASSENGER_KNOWN_DEVICE_COOKIE_0626 + "=" + value +
+      "; Path=/; Max-Age=" + maxAgeSeconds +
+      "; Secure; HttpOnly; SameSite=Lax",
+  );
+}
+
+function clearPassengerKnownDeviceCookie0626(res) {
+  res.set(
+    "Set-Cookie",
+    PASSENGER_KNOWN_DEVICE_COOKIE_0626 +
+      "=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+  );
+}
+
 function passengerSessionContextHash0427(raw) {
   const value = cleanText(raw, 120);
   return /^[A-Za-z0-9_-]{16,120}$/.test(value) ? sha256Hex(value) : "";
 }
 
-async function createPassengerSession(passengerContact, passengerId = "", sessionContextId = "", driverScope0428 = "") {
+async function createPassengerSession(
+  passengerContact,
+  passengerId = "",
+  sessionContextId = "",
+  driverScope0428 = "",
+  response = null,
+) {
   const token = passengerSessionToken();
   const tokenHash = sha256Hex(token);
   const now = Date.now();
-  const expiresAtMillis = now + 30 * 24 * 60 * 60 * 1000;
+  const expiresAtMillis = now + PASSENGER_KNOWN_DEVICE_TTL_MILLIS_0626;
   const contactHash = sha256Hex(passengerContact);
   const sessionContextHash = passengerSessionContextHash0427(sessionContextId);
   const driverScope = normalizeUsername(driverScope0428);
@@ -6911,10 +6962,12 @@ async function createPassengerSession(passengerContact, passengerId = "", sessio
     passengerId: cleanText(passengerId, 120),
     sessionContextHash,
     driverScope0428: driverScope,
+    knownDevice0626: true,
     createdAtMillis: now,
     lastActivityAtMillis: now,
     expiresAtMillis,
   });
+  if (response) setPassengerKnownDeviceCookie0626(response, token, expiresAtMillis);
   return { token, expiresAtMillis };
 }
 
@@ -6932,23 +6985,36 @@ async function requirePassengerSession(req, res) {
     fail(res, 403, "tester_not_passenger", "Sessão TESTER não é uma sessão de passageiro real.");
     return null;
   }
-  const authorization = cleanText(req.get("Authorization"), 400);
-  const match = /^Bearer\s+([A-Za-z0-9_-]{32,200})$/i.exec(authorization);
-  if (!match) {
-    fail(res, 401, "passenger_auth_required", "Entre com seu telefone e senha.");
+
+  const candidates = passengerSessionCandidates0626(req);
+  if (!candidates.length) {
+    clearPassengerKnownDeviceCookie0626(res);
+    fail(res, 401, "passenger_auth_required", "Entre com seu WhatsApp e senha.");
     return null;
   }
-  const sessionRef = db.collection("passengerSessions").doc(sha256Hex(match[1]));
-  const snap = await sessionRef.get();
-  if (!snap.exists) {
-    fail(res, 401, "passenger_session_invalid", "Sua sessão não é válida. Entre novamente.");
-    return null;
-  }
-  const data = snap.data();
+
   const now = Date.now();
-  if (Number(data.expiresAtMillis || 0) <= now) {
-    await sessionRef.delete().catch(() => {});
-    fail(res, 401, "passenger_session_expired", "Sua sessão expirou. Entre novamente.");
+  let selectedToken = "";
+  let sessionRef = null;
+  let data = null;
+  for (const candidate of candidates) {
+    const ref = db.collection("passengerSessions").doc(sha256Hex(candidate));
+    const snap = await ref.get();
+    if (!snap.exists) continue;
+    const candidateData = snap.data();
+    if (Number(candidateData.expiresAtMillis || 0) <= now) {
+      await ref.delete().catch(() => {});
+      continue;
+    }
+    selectedToken = candidate;
+    sessionRef = ref;
+    data = candidateData;
+    break;
+  }
+
+  if (!sessionRef || !data) {
+    clearPassengerKnownDeviceCookie0626(res);
+    fail(res, 401, "passenger_session_invalid", "Sua sessão não é válida. Entre novamente.");
     return null;
   }
 
@@ -6961,6 +7027,7 @@ async function requirePassengerSession(req, res) {
       : null;
     if (!scopedDriver || scopedDriver !== driverScope0428 || agendaAuthenticationRequired0428(scopedDriverData)) {
       await sessionRef.delete().catch(() => {});
+      clearPassengerKnownDeviceCookie0626(res);
       fail(res, 401, "passenger_auth_restored", "A autenticação desta Agenda foi reativada. Entre novamente com sua senha.");
       return null;
     }
@@ -6993,11 +7060,31 @@ async function requirePassengerSession(req, res) {
       }
     }
   }
-  let lastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
-  if (now - lastActivityAtMillis > 60 * 1000) {
-    await sessionRef.set({ lastActivityAtMillis: now }, { merge: true }).catch(() => {});
+
+  const originalLastActivityAtMillis = Number(data.lastActivityAtMillis || data.createdAtMillis || 0);
+  let lastActivityAtMillis = originalLastActivityAtMillis;
+  let expiresAtMillis = Number(data.expiresAtMillis || 0);
+  const cookieToken = passengerKnownDeviceCookieToken0626(req);
+  const shouldRenewKnownDevice =
+    !cookieToken ||
+    cookieToken !== selectedToken ||
+    now - originalLastActivityAtMillis >= PASSENGER_KNOWN_DEVICE_RENEW_MILLIS_0626 ||
+    expiresAtMillis - now < 30 * 24 * 60 * 60 * 1000;
+
+  if (shouldRenewKnownDevice) {
+    expiresAtMillis = now + PASSENGER_KNOWN_DEVICE_TTL_MILLIS_0626;
     lastActivityAtMillis = now;
+    await sessionRef.set({
+      knownDevice0626: true,
+      lastActivityAtMillis,
+      expiresAtMillis,
+    }, { merge: true }).catch(() => {});
+    setPassengerKnownDeviceCookie0626(res, selectedToken, expiresAtMillis);
+  } else if (now - originalLastActivityAtMillis > 60 * 1000) {
+    lastActivityAtMillis = now;
+    await sessionRef.set({ lastActivityAtMillis }, { merge: true }).catch(() => {});
   }
+
   return {
     passengerContact: cleanText(data.passengerContact, 40),
     passengerId: cleanText(data.passengerId, 120),
@@ -7007,7 +7094,7 @@ async function requirePassengerSession(req, res) {
     sessionRefId: sessionRef.id,
     createdAtMillis: Number(data.createdAtMillis || 0),
     lastActivityAtMillis,
-    expiresAtMillis: Number(data.expiresAtMillis || 0),
+    expiresAtMillis,
   };
 }
 
@@ -7024,6 +7111,7 @@ async function logoutPassengerAccount(req, res) {
     agendaAdmin = Boolean(access && access.agendaAdmin === true);
   }
   await db.collection("passengerSessions").doc(session.sessionRefId).delete().catch(() => {});
+  clearPassengerKnownDeviceCookie0626(res);
   if (driverUsername && agendaAdmin) {
     const now = Date.now();
     const id = "admin_logout_" + sha256Hex([
@@ -7141,7 +7229,7 @@ async function activatePassengerAccount(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "passenger_activation_failed", error.message || "Não foi possível criar sua senha.");
   }
-  const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId);
+  const session = await createPassengerSession(passengerContact, passengerId, req.body && req.body.sessionContextId, "", res);
   return json(res, 201, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
@@ -7215,6 +7303,7 @@ async function loginPassengerAccount(req, res) {
     passengerId,
     req.body && req.body.sessionContextId,
     authenticationRequired ? "" : driverUsername,
+    res,
   );
   return json(res, 200, {
     sessionToken: session.token,
@@ -7452,6 +7541,76 @@ async function listPassengerTimeline0625(req, res) {
   });
 }
 
+async function ensurePublicBookingPassengerAccess0626(driverUsername, session, requestedPassengerName = "") {
+  const username = normalizeUsername(driverUsername);
+  if (!username) {
+    throw Object.assign(new Error("Agenda do motorista não identificada."), { httpStatus: 400, code: "driver_username_required" });
+  }
+  const passengerId = cleanText(session && session.passengerId, 120);
+  const passengerContact = cleanText(session && session.passengerContact, 40);
+  if (!passengerId || !passengerContact) {
+    throw Object.assign(new Error("Sua identidade de passageiro ainda não está disponível."), { httpStatus: 409, code: "passenger_identity_unavailable" });
+  }
+
+  const existing = await passengerAccessForIdentity(username, passengerId, passengerContact);
+  const existingStatus = cleanText(existing && existing.status, 20).toUpperCase();
+  if (existing && (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(existingStatus) || existingStatus === "MOVED")) {
+    throw Object.assign(new Error("Seu acesso a esta viagem não está disponível."), { httpStatus: 403, code: "passenger_access_unavailable" });
+  }
+  if (existing && passengerAccessIsAuthorized(existing)) {
+    return { session, access: existing, driverUsername: username };
+  }
+
+  const identity = await resolveCanonicalPassengerByContact0625(passengerContact);
+  if (identity.passengerId && identity.passengerId !== passengerId) {
+    throw Object.assign(new Error("Seu WhatsApp está vinculado a outra identidade de passageiro."), { httpStatus: 409, code: "passenger_identity_conflict" });
+  }
+  const displayName = cleanText(
+    (existing && existing.displayName) ||
+    identity.displayName ||
+    requestedPassengerName,
+    120,
+  );
+  if (!displayName) {
+    throw Object.assign(new Error("Seu cadastro ainda não possui um nome válido."), { httpStatus: 409, code: "passenger_name_unavailable" });
+  }
+
+  const now = Date.now();
+  const accessRef = driverPassengerAccessRef(username, passengerContact);
+  const batch = db.batch();
+  batch.set(accessRef, {
+    driverUsername: username,
+    passengerContact,
+    passengerId,
+    displayName,
+    status: "AUTHORIZED",
+    selfServicePublicBooking0626: true,
+    createdAtMillis: Number(existing && existing.createdAtMillis || now),
+    updatedAtMillis: now,
+  }, { merge: true });
+  writeCanonicalPassenger0625(batch, {
+    passengerId,
+    passengerContact,
+    displayName,
+    source: "PUBLIC_BOOKING_ACCESS_0626",
+    createdAtMillis: Number(identity.account && identity.account.createdAtMillis || now),
+  }, now);
+  await batch.commit();
+  return {
+    session,
+    access: {
+      ...(existing || {}),
+      driverUsername: username,
+      passengerContact,
+      passengerId,
+      displayName,
+      status: "AUTHORIZED",
+      selfServicePublicBooking0626: true,
+    },
+    driverUsername: username,
+  };
+}
+
 async function createBooking(req, res, token) {
   if (await blockTesterFromRealPassengerMutation(req, res)) return;
   await enforceBookingRateLimit(req);
@@ -7488,9 +7647,26 @@ async function createBooking(req, res, token) {
   const bookingRef = tripRef.collection("bookings").doc(bookingId);
   const authTrip = await tripRef.get();
   if (!authTrip.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
-  debugDriverUsername = normalizeUsername(authTrip.data().driverUsername || "");
-  const authorized = await requirePassengerDriverAccess(req, res, debugDriverUsername, session);
-  if (!authorized) return;
+  const authTripData = authTrip.data();
+  debugDriverUsername = normalizeUsername(authTripData.driverUsername || "");
+  if (!tripPublicOnline0471(authTripData)) {
+    return fail(res, 409, "trip_offline", "Esta viagem está offline no momento.");
+  }
+  if (!PUBLIC_STATUSES.has(authTripData.status)) {
+    return fail(res, 409, "trip_closed", "Esta viagem não aceita reservas pelo link.");
+  }
+  if (authTripData.status === "FULL") {
+    return fail(res, 409, "trip_full", "Esta viagem está lotada.");
+  }
+  if (Number(authTripData.departureAtMillis || 0) <= Date.now()) {
+    return fail(res, 409, "trip_departed", "Esta viagem já saiu.");
+  }
+  let authorized;
+  try {
+    authorized = await ensurePublicBookingPassengerAccess0626(debugDriverUsername, session, requestedPassengerName);
+  } catch (error) {
+    return fail(res, error.httpStatus || 403, error.code || "passenger_access_unavailable", error.message || "Não foi possível liberar seu acesso a esta viagem.");
+  }
   const driverAuth0512 = await resolveDriverUsername(debugDriverUsername);
   const driverSecretHash0512 = cleanText(
     driverAuth0512 && driverAuth0512.driverSnap && driverAuth0512.driverSnap.exists

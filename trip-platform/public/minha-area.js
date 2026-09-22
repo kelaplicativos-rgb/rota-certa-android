@@ -17,7 +17,7 @@ const sessionKey0625 = "viagemCertaPassengerSession0625";
 const legacySessionKey0491 = "rotaCertaPassengerSession0491:" + driverUsername0491;
 const contextKey0491 = "rotaCertaPassengerContext0491:" + (driverUsername0491 || "global");
 let sessionToken0491 = sessionStorage.getItem(sessionKey0625) || sessionStorage.getItem(legacySessionKey0491) || "";
-if (sessionToken0491) sessionStorage.setItem(sessionKey0625, sessionToken0491);
+let passengerAuthenticated0626 = false;
 let entryContact0625 = "";
 let entryPasswordCreated0625 = false;
 let refreshInFlight0491 = false;
@@ -61,6 +61,7 @@ async function request0491(path, options = {}) {
     ...options,
     headers,
     body,
+    credentials: "same-origin",
     cache: "no-store",
   });
   let payload = {};
@@ -465,10 +466,15 @@ function setAuthLoadingMessage0492(text) {
 }
 
 function enterPrivateMode0491() {
+  passengerAuthenticated0626 = true;
+  sessionToken0491 = "";
+  sessionStorage.removeItem(sessionKey0625);
+  sessionStorage.removeItem(legacySessionKey0491);
   renderAuthState0492("authenticated");
 }
 
 function leavePrivateMode0491() {
+  passengerAuthenticated0626 = false;
   sessionToken0491 = "";
   sessionStorage.removeItem(sessionKey0625);
   sessionStorage.removeItem(legacySessionKey0491);
@@ -481,12 +487,12 @@ function leavePrivateMode0491() {
 }
 
 async function watchPrivateCanonicalChanges0495() {
-  if (!sessionToken0491 || changeWatchRunning0495 || navigator.onLine === false) return;
+  if (!passengerAuthenticated0626 || changeWatchRunning0495 || navigator.onLine === false) return;
   changeWatchRunning0495 = true;
   const generation = changeWatchGeneration0495;
   try {
     while (
-      sessionToken0491 &&
+      passengerAuthenticated0626 &&
       generation === changeWatchGeneration0495 &&
       navigator.onLine !== false
     ) {
@@ -494,7 +500,7 @@ async function watchPrivateCanonicalChanges0495() {
         "?driverUsername=" + encodeURIComponent(driverUsername0491) +
         "&since=" + encodeURIComponent(String(changeCursor0495));
       const result = await request0491("/v1/passenger/me/changes" + scoped);
-      if (generation !== changeWatchGeneration0495 || !sessionToken0491) break;
+      if (generation !== changeWatchGeneration0495 || !passengerAuthenticated0626) break;
       changeCursor0495 = Math.max(changeCursor0495, Number(result?.cursor || 0));
       if (result?.degraded === true) break;
       if (result?.changed === true) {
@@ -509,7 +515,7 @@ async function watchPrivateCanonicalChanges0495() {
 }
 
 async function refreshPrivateArea0491(silent = false) {
-  if (!sessionToken0491 || refreshInFlight0491) return;
+  if (refreshInFlight0491) return;
   refreshInFlight0491 = true;
   try {
     const [me, bookings, notifications, timeline] = await Promise.all([
@@ -614,7 +620,8 @@ async function finishPassengerEntry0625() {
     });
     sessionToken0491 = String(result?.sessionToken || "");
     if (!sessionToken0491) throw new Error("Sessão não recebida.");
-    sessionStorage.setItem(sessionKey0625, sessionToken0491);
+    passengerAuthenticated0626 = true;
+    sessionStorage.removeItem(sessionKey0625);
     sessionStorage.removeItem(legacySessionKey0491);
     $("password0491").value = "";
     $("passwordConfirm0625").value = "";
@@ -699,14 +706,9 @@ function init0491() {
     }
   });
 
-  if (sessionToken0491) {
-    renderAuthState0492("loading");
-    setAuthLoadingMessage0492("Carregando sua sessão...");
-    refreshPrivateArea0491(false);
-  } else {
-    renderAuthState0492("unauthenticated");
-    showEntryStep0625("contact");
-  }
+  renderAuthState0492("loading");
+  setAuthLoadingMessage0492("Carregando sua sessão...");
+  refreshPrivateArea0491(false);
 }
 
 init0491();
