@@ -1,5 +1,5 @@
 name: Rota Certa 0.1.618 Incremental HTML fast path exact SHA
-# trigger: html-fastpath-0618-r1
+# trigger: html-fastpath-0618-r2
 
 on:
   push:
@@ -7,6 +7,12 @@ on:
       - agent/html-incremental-fastpath-0.1.618
     paths:
       - '.github/workflows/direct-source-branch-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/direct-source-branch-apk.yml'
+      - 'app/**'
   workflow_dispatch:
 
 permissions:
@@ -28,23 +34,26 @@ jobs:
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       EXPECTED_VERSION_CODE: '5909'
       EXPECTED_VERSION_NAME: '0.1.618'
-      BASE_SHA: '2002c1bd9956915e66ec912d009ebe419376b20e'
+      BASE_SHA: '1fc4e5d3a0ae8bcc44d95f49c759ea6b1b121a0e'
+      SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
 
     steps:
       - name: Checkout exact triggering HEAD
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Prove exact source and unified acquisition contract
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
-          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
-          printf '%s\n' "$GITHUB_SHA" | tee /tmp/source-head.txt
-          printf '%s\n' "$GITHUB_REF_NAME" | tee /tmp/source-branch.txt
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
+          printf '%s\n' "$SOURCE_SHA" | tee /tmp/source-head.txt
+          printf '%s\n' "$SOURCE_BRANCH" | tee /tmp/source-branch.txt
 
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           test -s "$FAROL"
@@ -231,7 +240,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           APK='app/build/outputs/apk/debug/app-debug.apk'
           test -s "$APK"
           unzip -t "$APK" | tee /tmp/zip-integrity.txt
@@ -244,7 +253,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           grep -Fq 'Verified' /tmp/apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$GITHUB_SHA" /tmp/dex-strings.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex-strings.txt
           sha256sum "$APK" | tee /tmp/apk.sha256
 
       - name: Verify FAROL and package evidence
@@ -254,9 +263,9 @@ jobs:
           FAROL='app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt'
           sha256sum "$FAROL" | tee /tmp/farol-after.sha256
           diff -u /tmp/farol-before.sha256 /tmp/farol-after.sha256
-          OUT=/tmp/0617
+          OUT=/tmp/0618
           mkdir -p "$OUT"
-          SHORT_SHA="${GITHUB_SHA:0:12}"
+          SHORT_SHA="${SOURCE_SHA:0:12}"
           FINAL_APK="$OUT/rota-certa-$EXPECTED_VERSION_NAME-$EXPECTED_VERSION_CODE-$SHORT_SHA.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
           sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
@@ -265,8 +274,8 @@ jobs:
           cat > "$OUT/final-status.txt" <<EOF
           package=br.com.mapeiaia.rotacerta
           version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
-          source_head=$GITHUB_SHA
-          source_branch=$GITHUB_REF_NAME
+          source_head=$SOURCE_SHA
+          source_branch=$SOURCE_BRANCH
           unified_html_capture=PASS
           global_html_atomic_commit=PASS
           html_validated_complete_contract=PASS
@@ -286,6 +295,9 @@ jobs:
           rides_stability_fresh_webview_retry=PASS
           blablacar_capture_contextual_diagnostics=PASS
           global_finalizer_retained=PASS
+          global_finalizer_off_main=PASS
+          live_card_absence_scan=SKIPPED
+          finalizer_present_card_fastpath=PASS
           skipped_history_reset_on_authoritative_complete=PASS
           background_blablacar_canonical_write=DISABLED
           targeted_refresh_during_global_capture=BLOCKED
@@ -338,7 +350,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.618-5908-${{ github.sha }}
+          name: rota-certa-0.1.618-5909-${{ env.SOURCE_SHA }}
           retention-days: 30
           if-no-files-found: error
-          path: /tmp/0617
+          path: /tmp/0618
