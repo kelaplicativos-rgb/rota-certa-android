@@ -54,7 +54,7 @@ class AgendaCanonicalCentralSync0403Test {
     @Test
     fun completeTargetedHtmlReplacesRosterAndSeatsWithoutMonotonicInheritance0615() {
         val profile = "7371f028-9c55-4903-8444-308015823efd"
-        val tripId = "019f-targeted-html-0615"
+        val tripId = "019ed00e-7c37-7d89-ad6c-5da16abdbef3"
         val href = "https://www.blablacar.com.br/rides/offer?id=$tripId&source=CARPOOLING"
         val base = BlaBlaCollectorTrip(
             profile_uuid = profile,
@@ -83,9 +83,9 @@ class AgendaCanonicalCentralSync0403Test {
             published_seats = 4,
         )
         val sibling = base.copy(
-            trip_id = "sibling-0615",
-            trip_href = "https://www.blablacar.com.br/rides/offer?id=sibling-0615&source=CARPOOLING",
-            public_trip_href = "https://www.blablacar.com.br/trip/sibling-0615",
+            trip_id = "019ed00e-7c37-7d89-ad6c-5da16abdbef4",
+            trip_href = "https://www.blablacar.com.br/rides/offer?id=019ed00e-7c37-7d89-ad6c-5da16abdbef4&source=CARPOOLING",
+            public_trip_href = "https://www.blablacar.com.br/trip/019ed00e-7c37-7d89-ad6c-5da16abdbef4",
             date = "2030-09-23",
         )
 
@@ -99,7 +99,7 @@ class AgendaCanonicalCentralSync0403Test {
         assertTrue(target.passengers.isEmpty())
         assertEquals(0, target.booked_seats)
         assertEquals(4, target.published_seats)
-        assertTrue(replaced.trips.any { it.trip_id == "sibling-0615" })
+        assertTrue(replaced.trips.any { it.trip_id == "019ed00e-7c37-7d89-ad6c-5da16abdbef4" })
         assertEquals(0, replaced.preservedIncompleteRosters)
     }
 
