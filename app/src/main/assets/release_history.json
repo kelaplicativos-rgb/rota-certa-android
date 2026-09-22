@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.616",
+      "build": 5907,
+      "commit": null,
+      "branch": "agent/timeline-html-fidelity-0.1.616",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Todas as viagens passa a abrir em modo somente leitura, sem disparar sincronização imediata no ciclo de resume.",
+        "Baixar Timeline é ligado à superfície operacional atualmente exibida e grava o JSON diretamente em Downloads/Rota Certa no Android 10 ou superior.",
+        "O parser de datas da lista BlaBlaCar passa a preservar anos explícitos em nomes de mês completos, inclusive datas de 2027."
+      ],
+      "fixed": [
+        "Corrige o comando Baixar Timeline que era enviado para a antiga TripTimelineScreen enquanto a tela visível já era OperationalAllTripsBrowserScreen0563.",
+        "Corrige a interpretação de datas como 30 de Setembro de 2027, onde o prefixo set podia consumir apenas parte do mês e descartar o ano explícito.",
+        "Corrige falso profile_uuid_conflict quando o detalhe da viagem contém links de perfis de passageiros dentro de uma sessão isolada do motorista já positivamente verificada.",
+        "Remove o disparo AgendaBackgroundSync0392.enqueueImmediate ao simplesmente entrar ou retornar para Todas as viagens."
+      ],
+      "improved": [
+        "Mantém fail-closed para identidade realmente não verificada, mas evita que links legítimos de passageiros invalidem uma viagem cuja sessão e tripId administrativo já estão confirmados.",
+        "Telemetria passa a provar download concluído/falho e que a entrada em Todas as viagens não solicitou sincronização."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.615: uma única rejeição falsa de identidade podia deixar 54 de 55 viagens HTML corretas sem publicação canônica por bloquear o commit global.",
+        "0.1.615: a tela operacional exibia o ano apenas quando o timestamp recebido já estava correto, mas o parser da lista podia perder o ano explícito antes da projeção.",
+        "0.1.615: Baixar Timeline não alcançava a tela operacional ativa."
+      ],
+      "modulesAffected": [
+        "Todas as viagens",
+        "Timeline",
+        "Captura HTML",
+        "BlaBlaCar",
+        "Datas",
+        "Download",
+        "Sincronização",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.615",
       "build": 5906,
       "commit": null,
