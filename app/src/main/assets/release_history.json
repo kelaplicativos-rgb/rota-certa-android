@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.621",
+      "build": 5912,
+      "commit": null,
+      "branch": "agent/html-network-recovery-0.1.621",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Captura HTML passa a repetir o mesmo card após TRIP_DETAIL_HTML_UNVERIFIED em vez de avançar imediatamente.",
+        "WebView do perfil é reciclado entre tentativas preservando o WebView Profile/cookies autenticados.",
+        "Backoff progressivo curto é aplicado antes da nova tentativa do mesmo card.",
+        "Se a recuperação de transporte esgotar, o perfil é encerrado preservando o último canônico validado e os cards restantes ficam não tentados, evitando cascata falsa."
+      ],
+      "fixed": [
+        "Corrige a cascata observada na 0.1.620 em que uma queda transitória de rede fez 39/55 viagens falharem após a 9ª viagem de ambos os perfis.",
+        "Evita classificar cards posteriores como TRIP_DETAIL_HTML_UNVERIFIED quando a causa real é indisponibilidade transitória de transporte.",
+        "Mantém a paridade imediata HTML→Timeline→Agenda pública da 0.1.620 para cards efetivamente validados."
+      ],
+      "improved": [
+        "Telemetria distingue retry, recuperação efetiva e esgotamento de transporte.",
+        "Contagem de incompletos inclui cards não tentados após esgotamento do transporte sem inventar evidência individual falsa.",
+        "Falha persistente de rede encerra o perfil de forma fail-closed e preserva o estado anterior."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.620: timeout simultâneo de rede nos dois perfis causava avanço contínuo e dezenas de falhas de captura em cascata."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "WebView",
+        "Timeline",
+        "Agenda Pública",
+        "Diagnósticos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.620",
       "build": 5911,
       "commit": null,
