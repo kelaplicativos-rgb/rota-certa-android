@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.625",
+      "build": 5916,
+      "commit": null,
+      "branch": "agent/viagem-certa-passenger-timeline-0.1.625",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Cria um diretório canônico único de passageiros no backend, indexado por passengerId permanente e por WhatsApp, alimentado automaticamente pelo cadastro local do Rota Certa.",
+        "Passageiro já conhecido pelo Rota Certa entra com o WhatsApp; se ainda não tiver senha, cria e confirma a própria senha de 4 números no primeiro acesso.",
+        "Reserva pública passa a usar um assistente de uma pergunta por tela: WhatsApp, nome quando necessário, senha, confirmação, lugares e revisão final.",
+        "Área do passageiro passa a ser global e exibe Próximas viagens e uma Timeline pessoal com eventos imutáveis e reconstrução histórica a partir das reservas canônicas.",
+        "Sincronização Android de reservas envia o diretório local de passageiros ao backend automaticamente antes da reconciliação, mantendo o banco único atualizado."
+      ],
+      "fixed": [
+        "Remove a terminologia PIN da experiência do passageiro e usa somente senha.",
+        "Evita criar nova identidade para um WhatsApp já ligado a um passengerId canônico.",
+        "Permite que uma conta reconhecida sem senha seja ativada pelo próprio passageiro sem SMS, OTP ou intervenção do motorista."
+      ],
+      "improved": [
+        "Sessão do passageiro passa a ser global no Viagem Certa e não fica presa a uma Agenda específica.",
+        "Histórico pessoal é ordenado do evento mais recente para o mais antigo e inclui mudanças de reserva, cancelamentos, confirmações e viagens históricas conhecidas.",
+        "Rate limit por WhatsApp continua protegendo a senha curta contra tentativas repetidas."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.624: formulário de reserva ainda mostrava todos os campos ao mesmo tempo e usava a palavra PIN.",
+        "0.1.624: conta e área privada ainda estavam orientadas por Agenda em vez de uma identidade global de passageiro."
+      ],
+      "modulesAffected": ["Viagem Certa","Passageiros","Reservas","Timeline do passageiro","Agenda Pública","Backend","Sincronização Android","Build"],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.624",
       "build": 5915,
       "commit": null,

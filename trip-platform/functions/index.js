@@ -5234,6 +5234,290 @@ function temporaryPassengerPassword() {
   return String(crypto.randomInt(0, 10_000)).padStart(4, "0");
 }
 
+function passengerPassword0625(value) {
+  const password = String(value || "").trim();
+  if (!/^\d{4}$/.test(password)) {
+    throw Object.assign(
+      new Error("A senha precisa ter exatamente 4 números."),
+      { httpStatus: 400, code: "invalid_password" },
+    );
+  }
+  return password;
+}
+
+function passengerDirectoryRef0625(passengerId) {
+  return db.collection("passengerDirectory0625").doc(sha256Hex(cleanText(passengerId, 120)));
+}
+
+function passengerContactIndexRef0625(passengerContact) {
+  return db.collection("passengerContactIndex0625").doc(sha256Hex(cleanText(passengerContact, 40)));
+}
+
+function writeCanonicalPassenger0625(writer, data, now = Date.now()) {
+  const stableId = cleanText(data && data.passengerId, 120);
+  const contact = cleanText(data && data.passengerContact, 40);
+  if (!stableId || !contact) return;
+  const name = cleanText(data && data.displayName, 120);
+  const createdAtMillis = Math.max(0, Number(data && data.createdAtMillis || now));
+  writer.set(passengerDirectoryRef0625(stableId), {
+    passengerId: stableId,
+    primaryContact: contact,
+    displayName: name,
+    source: cleanText(data && data.source, 80),
+    firstSeenAtMillis: createdAtMillis,
+    updatedAtMillis: now,
+  }, { merge: true });
+  writer.set(passengerContactIndexRef0625(contact), {
+    passengerId: stableId,
+    passengerContact: contact,
+    updatedAtMillis: now,
+  }, { merge: true });
+  writer.set(db.collection("passengerAccounts").doc(sha256Hex(contact)), {
+    passengerId: stableId,
+    passengerContact: contact,
+    displayName: name,
+    createdAtMillis,
+    updatedAtMillis: now,
+  }, { merge: true });
+}
+
+async function resolveCanonicalPassengerByContact0625(passengerContact) {
+  const contact = normalizeBrazilWhatsapp(passengerContact);
+  const [indexSnap, accountSnap, accessSnap] = await Promise.all([
+    passengerContactIndexRef0625(contact).get(),
+    db.collection("passengerAccounts").doc(sha256Hex(contact)).get(),
+    db.collection("driverPassengerAccess").where("passengerContact", "==", contact).limit(50).get(),
+  ]);
+  const account = accountSnap.exists ? accountSnap.data() : {};
+  const ids = new Set();
+  const indexId = indexSnap.exists ? cleanText(indexSnap.data().passengerId, 120) : "";
+  const accountId = cleanText(account.passengerId, 120);
+  if (indexId) ids.add(indexId);
+  if (accountId) ids.add(accountId);
+  accessSnap.docs.forEach((doc) => {
+    const item = doc.data();
+    const id = cleanText(item.passengerId, 120);
+    const status = cleanText(item.status, 20).toUpperCase();
+    if (id && status !== "MOVED") ids.add(id);
+  });
+  if (ids.size > 1) {
+    throw Object.assign(
+      new Error("Este WhatsApp possui mais de uma identidade canônica. O motorista precisa corrigir o cadastro antes do acesso."),
+      { httpStatus: 409, code: "passenger_identity_conflict" },
+    );
+  }
+  const activeAccess = accessSnap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .find((item) => cleanText(item.status, 20).toUpperCase() !== "MOVED") || null;
+  const passengerId = [...ids][0] || (activeAccess ? "passenger_" + sha256Hex("phone:" + contact).slice(0, 40) : "");
+  const directorySnap = passengerId ? await passengerDirectoryRef0625(passengerId).get() : null;
+  const directory = directorySnap && directorySnap.exists ? directorySnap.data() : {};
+  return {
+    passengerContact: contact,
+    passengerId,
+    displayName: cleanText(directory.displayName || account.displayName || (activeAccess && activeAccess.displayName), 120),
+    accountRef: db.collection("passengerAccounts").doc(sha256Hex(contact)),
+    accountSnap,
+    account,
+    accessDocs: accessSnap.docs,
+    knownPassenger: Boolean(passengerId),
+    passwordCreated: accountSnap.exists && passengerAccountIsActivated(account),
+  };
+}
+
+async function ensureCanonicalPassengerResolved0625(identity, source = "LAZY_MIGRATION") {
+  if (!identity || !identity.passengerId || !identity.passengerContact) return identity;
+  const now = Date.now();
+  const batch = db.batch();
+  writeCanonicalPassenger0625(batch, {
+    passengerId: identity.passengerId,
+    passengerContact: identity.passengerContact,
+    displayName: identity.displayName,
+    source,
+    createdAtMillis: Number(identity.account && identity.account.createdAtMillis || now),
+  }, now);
+  identity.accessDocs.forEach((doc) => {
+    const data = doc.data();
+    if (!cleanText(data.passengerId, 120) && cleanText(data.status, 20).toUpperCase() !== "MOVED") {
+      batch.set(doc.ref, { passengerId: identity.passengerId, updatedAtMillis: now }, { merge: true });
+    }
+  });
+  await batch.commit();
+  return identity;
+}
+
+async function publicPassengerAccessStatus0625(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
+  }
+  try {
+    const identity = await resolveCanonicalPassengerByContact0625(passengerContact);
+    if (identity.knownPassenger) await ensureCanonicalPassengerResolved0625(identity, "ACCESS_STATUS_0625");
+    return json(res, 200, {
+      knownPassenger: identity.knownPassenger,
+      passwordCreated: identity.passwordCreated,
+      nameRequired: !identity.knownPassenger,
+    });
+  } catch (error) {
+    return fail(res, error.httpStatus || 409, error.code || "passenger_identity_unavailable", error.message || "Não foi possível localizar seu cadastro.");
+  }
+}
+
+async function resolvePassengerTarget0625(req) {
+  const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
+  if (publicSlug && isReservedPublicUsername(publicSlug)) return null;
+  const requestedDriver = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
+  const tripToken = cleanText(req.body && req.body.tripToken, 180).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!requestedDriver && !tripToken) return { driverUsername: "", tripToken: "" };
+  let driverUsername = requestedDriver;
+  if (tripToken) {
+    const tripSnap = await db.collection("trips").doc(tripToken).get();
+    if (!tripSnap.exists) return null;
+    const tripDriver = normalizeUsername(tripSnap.data().driverUsername || "");
+    if (driverUsername && tripDriver !== driverUsername) return null;
+    driverUsername = tripDriver;
+  }
+  if (!driverUsername) return null;
+  const resolved = await resolveDriverUsername(driverUsername);
+  if (!resolved) return null;
+  return { driverUsername: resolved.canonicalUsername, tripToken };
+}
+
+async function openPassengerPasswordSession0625(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  let password;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+    password = passengerPassword0625(req.body && req.body.password);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_credentials", error.message || "Confira seu WhatsApp e sua senha.");
+  }
+  const target = await resolvePassengerTarget0625(req);
+  if (target == null) return fail(res, 404, "agenda_target_invalid", "A viagem informada não está disponível.");
+  const displayNameInput = cleanText(req.body && req.body.displayName, 120);
+  let identity;
+  try {
+    identity = await resolveCanonicalPassengerByContact0625(passengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 409, error.code || "passenger_identity_unavailable", error.message || "Não foi possível localizar seu cadastro.");
+  }
+  if (!identity.knownPassenger && !target.driverUsername) {
+    return fail(res, 404, "passenger_not_found", "Este WhatsApp ainda não possui cadastro no Viagem Certa.");
+  }
+  const creatingIdentity = !identity.knownPassenger;
+  const passengerId = identity.passengerId || ("passenger_" + sha256Hex("phone:" + passengerContact).slice(0, 40));
+  const displayName = cleanText(identity.displayName || displayNameInput, 120);
+  if (displayName.length < 2) {
+    return fail(res, 400, "passenger_name_required", "Informe seu nome para criar seu cadastro.");
+  }
+  const accountRef = db.collection("passengerAccounts").doc(sha256Hex(passengerContact));
+  const accountSnap = identity.accountSnap;
+  const account = identity.account || {};
+  const alreadyActivated = accountSnap.exists && passengerAccountIsActivated(account);
+
+  try {
+    await assertPassengerPinAvailable0624("", passengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 429, "password_locked", "Muitas tentativas de senha. Aguarde alguns minutos antes de tentar novamente.");
+  }
+  if (alreadyActivated) {
+    const supplied = passengerPasswordDigest(password, cleanText(account.passwordSalt, 80));
+    if (!safeEqual(supplied, cleanText(account.passwordHash, 256))) {
+      const guard = await recordPassengerPinFailure0624("", passengerContact).catch(() => null);
+      if (guard && Number(guard.lockUntilMillis || 0) > Date.now()) {
+        return fail(res, 429, "password_locked", "Muitas tentativas de senha. Aguarde 15 minutos antes de tentar novamente.");
+      }
+      return fail(res, 401, "invalid_credentials", "WhatsApp ou senha incorretos.");
+    }
+  } else {
+    let confirmation;
+    try {
+      confirmation = passengerPassword0625(req.body && req.body.passwordConfirmation);
+    } catch (error) {
+      return fail(res, error.httpStatus || 400, "password_confirmation_required", "Confirme a mesma senha de 4 números.");
+    }
+    if (password !== confirmation) {
+      return fail(res, 400, "password_confirmation_mismatch", "As duas senhas precisam ser iguais.");
+    }
+  }
+
+  const now = Date.now();
+  let targetAccess = null;
+  if (target.driverUsername) {
+    targetAccess = await passengerAccessForIdentity(target.driverUsername, passengerId, passengerContact);
+    const targetStatus = cleanText(targetAccess && targetAccess.status, 20).toUpperCase();
+    if (targetAccess && (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(targetStatus) || targetStatus === "MOVED")) {
+      return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta viagem não está disponível.");
+    }
+  }
+
+  await db.runTransaction(async (tx) => {
+    const freshAccount = await tx.get(accountRef);
+    const fresh = freshAccount.exists ? freshAccount.data() : {};
+    if (freshAccount.exists && cleanText(fresh.passengerId, 120) && cleanText(fresh.passengerId, 120) !== passengerId) {
+      throw Object.assign(new Error("Este WhatsApp já está vinculado a outro passageiro."), { httpStatus: 409, code: "passenger_whatsapp_conflict" });
+    }
+    if (!alreadyActivated) {
+      const salt = crypto.randomBytes(16).toString("hex");
+      tx.set(accountRef, {
+        passengerId,
+        passengerContact,
+        displayName,
+        passwordSalt: salt,
+        passwordHash: passengerPasswordDigest(password, salt),
+        mustChangePassword: false,
+        passwordFormat0625: "FOUR_DIGIT",
+        createdAtMillis: Number(fresh.createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+    } else {
+      tx.set(accountRef, {
+        passengerId,
+        passengerContact,
+        displayName,
+        lastLoginAtMillis0625: now,
+        updatedAtMillis: now,
+      }, { merge: true });
+    }
+    writeCanonicalPassenger0625(tx, {
+      passengerId,
+      passengerContact,
+      displayName,
+      source: creatingIdentity ? "PUBLIC_SELF_REGISTRATION_0625" : "PASSENGER_LOGIN_0625",
+      createdAtMillis: Number(fresh.createdAtMillis || now),
+    }, now);
+    if (target.driverUsername) {
+      const accessRef = driverPassengerAccessRef(target.driverUsername, passengerContact);
+      tx.set(accessRef, {
+        driverUsername: target.driverUsername,
+        passengerContact,
+        passengerId,
+        displayName,
+        status: "AUTHORIZED",
+        createdAtMillis: Number(targetAccess && targetAccess.createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+    }
+  });
+  await clearPassengerPinFailures0624("", passengerContact);
+  const session = await createPassengerSession(passengerContact, passengerId, cleanText(req.body && req.body.sessionContextId, 120), "");
+  return json(res, 200, {
+    sessionToken: session.token,
+    expiresAtMillis: session.expiresAtMillis,
+    passengerId,
+    passengerContact,
+    displayName,
+    accountCreated: !alreadyActivated,
+    identityCreated: creatingIdentity,
+    passwordCreated: true,
+  });
+}
+
 function driverPassengerAccessId(driverUsername, passengerContact) {
   const username = normalizeUsername(driverUsername);
   return `${username}_${sha256Hex(passengerContact).slice(0, 40)}`;
@@ -5808,8 +6092,17 @@ async function syncDriverPassengerDirectory(req, res) {
     inRequestContacts.set(item.passengerContact, item.passengerId);
   }
 
-  const existingDocs = await Promise.all(normalized.map((item) => driverPassengerAccessRef(driver.username, item.passengerContact).get()));
+  const [existingDocs, globalIndexDocs, accountDocs] = await Promise.all([
+    Promise.all(normalized.map((item) => driverPassengerAccessRef(driver.username, item.passengerContact).get())),
+    Promise.all(normalized.map((item) => passengerContactIndexRef0625(item.passengerContact).get())),
+    Promise.all(normalized.map((item) => db.collection("passengerAccounts").doc(sha256Hex(item.passengerContact)).get())),
+  ]);
   for (let index = 0; index < normalized.length; index++) {
+    const globalIndexId = globalIndexDocs[index].exists ? cleanText(globalIndexDocs[index].data().passengerId, 120) : "";
+    const accountId = accountDocs[index].exists ? cleanText(accountDocs[index].data().passengerId, 120) : "";
+    if ((globalIndexId && globalIndexId !== normalized[index].passengerId) || (accountId && accountId !== normalized[index].passengerId)) {
+      return fail(res, 409, "passenger_global_identity_conflict", "Este WhatsApp já pertence a outro passengerId no banco único de passageiros.");
+    }
     const previous = existingDocs[index];
     if (!previous.exists) continue;
     const previousData = previous.data();
@@ -5840,18 +6133,27 @@ async function syncDriverPassengerDirectory(req, res) {
       ) || {};
     const status = item.blocked ? "BLOCKED" : "AUTHORIZED";
     const currentRef = driverPassengerAccessRef(driver.username, item.passengerContact);
-    writes.push((batch) => batch.set(currentRef, {
-      driverUsername: driver.username,
-      passengerContact: item.passengerContact,
-      passengerId: item.passengerId,
-      displayName: item.displayName,
-      status,
-      agendaAdmin: item.blocked ? false : (data.agendaAdmin === true || identitySource.agendaAdmin === true),
-      referredByContact: cleanText(data.referredByContact || identitySource.referredByContact, 40),
-      referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
-      createdAtMillis: Number(data.createdAtMillis || now),
-      updatedAtMillis: now,
-    }, { merge: true }));
+    writes.push((batch) => {
+      batch.set(currentRef, {
+        driverUsername: driver.username,
+        passengerContact: item.passengerContact,
+        passengerId: item.passengerId,
+        displayName: item.displayName,
+        status,
+        agendaAdmin: item.blocked ? false : (data.agendaAdmin === true || identitySource.agendaAdmin === true),
+        referredByContact: cleanText(data.referredByContact || identitySource.referredByContact, 40),
+        referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
+        createdAtMillis: Number(data.createdAtMillis || now),
+        updatedAtMillis: now,
+      }, { merge: true });
+      writeCanonicalPassenger0625(batch, {
+        passengerId: item.passengerId,
+        passengerContact: item.passengerContact,
+        displayName: item.displayName,
+        source: "ROTA_CERTA_DIRECTORY_SYNC_0625",
+        createdAtMillis: Number(data.createdAtMillis || now),
+      }, now);
+    });
 
     identitySnapshots[index].docs
       .filter((doc) => normalizeUsername(doc.data().driverUsername || "") === driver.username)
@@ -6456,8 +6758,8 @@ async function changePassengerPassword(req, res) {
   const session = await requirePassengerSession(req, res);
   if (!session) return;
   let password;
-  try { password = passengerPin0624(req.body && req.body.password); }
-  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_pin", error.message); }
+  try { password = passengerPassword0625(req.body && req.body.password); }
+  catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_password", error.message); }
   const salt = crypto.randomBytes(16).toString("hex");
   await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).set({
     passengerContact: session.passengerContact,
@@ -6744,10 +7046,15 @@ async function getPassengerMe(req, res) {
       return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta agenda não está disponível.");
     }
   }
+  const stablePassengerId = cleanText(session.passengerId || (accountSnap.exists && accountSnap.data().passengerId), 120);
+  const directorySnap = stablePassengerId ? await passengerDirectoryRef0625(stablePassengerId).get() : null;
+  const directory = directorySnap && directorySnap.exists ? directorySnap.data() : {};
   return json(res, 200, {
     passengerContact: session.passengerContact,
-    passengerId: cleanText(session.passengerId || (accountSnap.exists && accountSnap.data().passengerId), 120),
-    mustChangePassword: authenticationRequired && accountSnap.exists && accountSnap.data().mustChangePassword === true,
+    passengerId: stablePassengerId,
+    displayName: cleanText(directory.displayName || (accountSnap.exists && accountSnap.data().displayName), 120),
+    passwordCreated: accountSnap.exists && passengerAccountIsActivated(accountSnap.data()),
+    mustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
     agendaAdmin: Boolean(access && access.agendaAdmin === true),
     driverUsername,
     authenticationRequired,
@@ -6993,6 +7300,128 @@ async function listPassengerBookings(req, res) {
     };
   }));
   return json(res, 200, { bookings: entries.filter(Boolean) });
+}
+
+
+async function listPassengerTimeline0625(req, res) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const passengerId = cleanText(session.passengerId, 120);
+  if (!passengerId) return fail(res, 409, "passenger_identity_unavailable", "Sua identidade de passageiro ainda não está disponível.");
+
+  const [indexedEntries, directEvents, affectedEvents] = await Promise.all([
+    passengerBookingIndexEntries0491(session),
+    db.collection("tripChangeEvents").where("passengerId", "==", passengerId).limit(300).get(),
+    db.collection("tripChangeEvents").where("affectedPassengerIds", "array-contains", passengerId).limit(300).get(),
+  ]);
+
+  const bookingRows = (await Promise.all(indexedEntries.map(async (ref) => {
+    const tripToken = cleanText(ref.tripToken, 120);
+    const bookingId = cleanText(ref.bookingId, 120);
+    if (!tripToken || !bookingId) return null;
+    const tripRef = db.collection("trips").doc(tripToken);
+    const [tripSnap, bookingSnap] = await Promise.all([
+      tripRef.get(),
+      tripRef.collection("bookings").doc(bookingId).get(),
+    ]);
+    if (!tripSnap.exists || !bookingSnap.exists) return null;
+    const booking = bookingSnap.data();
+    if (!passengerSessionOwnsBooking(session, booking)) return null;
+    return { tripToken, bookingId, trip: tripSnap.data(), booking };
+  }))).filter(Boolean);
+
+  const eventDocs = new Map();
+  [...directEvents.docs, ...affectedEvents.docs].forEach((doc) => eventDocs.set(doc.id, doc));
+  const tripIds = new Set(bookingRows.map((row) => row.tripToken));
+  eventDocs.forEach((doc) => {
+    const tripId = cleanText(doc.data().tripId, 120);
+    if (tripId) tripIds.add(tripId);
+  });
+  const tripSnaps = await Promise.all([...tripIds].map((id) => db.collection("trips").doc(id).get()));
+  const trips = new Map(tripSnaps.filter((snap) => snap.exists).map((snap) => [snap.id, snap.data()]));
+
+  const events = [];
+  eventDocs.forEach((doc, eventId) => {
+    const data = doc.data();
+    const tripId = cleanText(data.tripId, 120);
+    const trip = trips.get(tripId) || {};
+    const eventType = cleanText(data.eventType, 80);
+    const copy = passengerNotificationCopy(eventType, cleanText(trip.title, 180));
+    events.push({
+      eventId,
+      type: eventType,
+      title: cleanText(copy.title, 120) || "Atualização da viagem",
+      message: cleanText(copy.message, 500),
+      occurredAtMillis: Math.max(0, Number(data.createdAtMillis || 0)),
+      tripId,
+      bookingId: cleanText(data.bookingId, 120),
+      tripTitle: cleanText(trip.title, 180),
+      departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
+      source: cleanText(data.source, 80),
+      historicalBackfill: false,
+    });
+  });
+
+  const eventBookingKeys = new Set(events.map((event) => event.bookingId ? event.tripId + ":" + event.bookingId : "").filter(Boolean));
+  bookingRows.forEach((row) => {
+    const booking = row.booking || {};
+    const trip = row.trip || {};
+    const key = row.tripToken + ":" + row.bookingId;
+    const createdAtMillis = Math.max(0, Number(booking.createdAtMillis || booking.updatedAtMillis || trip.departureAtMillis || 0));
+    if (!eventBookingKeys.has(key) && createdAtMillis > 0) {
+      const status = cleanText(booking.status, 24).toUpperCase();
+      const operational = cleanText(booking.operationalStatus, 32).toUpperCase();
+      const title = status === "CANCELLED" || operational === "CANCELLED"
+        ? "Reserva cancelada"
+        : (operational === "COMPLETED" ? "Viagem concluída" : "Reserva registrada");
+      events.push({
+        eventId: "history_booking_" + sha256Hex(key).slice(0, 32),
+        type: "BOOKING_HISTORY",
+        title,
+        message: cleanText(trip.title, 180) || "Viagem registrada no Rota Certa.",
+        occurredAtMillis: createdAtMillis,
+        tripId: row.tripToken,
+        bookingId: row.bookingId,
+        tripTitle: cleanText(trip.title, 180),
+        departureAtMillis: Math.max(0, Number(trip.departureAtMillis || 0)),
+        status,
+        operationalStatus: operational,
+        historicalBackfill: true,
+      });
+    }
+    const departureAtMillis = Math.max(0, Number(trip.departureAtMillis || 0));
+    const cancelled = cleanText(booking.status, 24).toUpperCase() === "CANCELLED" ||
+      cleanText(booking.operationalStatus, 32).toUpperCase() === "CANCELLED";
+    if (!cancelled && departureAtMillis > 0 && departureAtMillis < Date.now()) {
+      events.push({
+        eventId: "history_trip_" + sha256Hex(key).slice(0, 32),
+        type: "TRIP_HISTORY",
+        title: cleanText(booking.operationalStatus, 32).toUpperCase() === "COMPLETED" ? "Viagem concluída" : "Data da viagem",
+        message: cleanText(trip.title, 180) || "Viagem registrada no seu histórico.",
+        occurredAtMillis: departureAtMillis,
+        tripId: row.tripToken,
+        bookingId: row.bookingId,
+        tripTitle: cleanText(trip.title, 180),
+        departureAtMillis,
+        historicalBackfill: true,
+      });
+    }
+  });
+
+  const deduped = new Map();
+  events.forEach((event) => {
+    if (!event.eventId || !event.occurredAtMillis) return;
+    const previous = deduped.get(event.eventId);
+    if (!previous || Number(event.occurredAtMillis) > Number(previous.occurredAtMillis)) deduped.set(event.eventId, event);
+  });
+  const timeline = [...deduped.values()]
+    .sort((a, b) => Number(b.occurredAtMillis) - Number(a.occurredAtMillis) || String(a.eventId).localeCompare(String(b.eventId)))
+    .slice(0, 300);
+  return json(res, 200, {
+    timeline,
+    count: timeline.length,
+    newestAtMillis: timeline.length ? Number(timeline[0].occurredAtMillis || 0) : 0,
+  });
 }
 
 async function createBooking(req, res, token) {
@@ -10224,6 +10653,8 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/drivers/register") return await registerDriver(req, res);
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-access/status") return await publicPassengerAccessStatus0625(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-password-session") return await openPassengerPasswordSession0625(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-pin-session") return await openPassengerPinSession0624(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-phone-session") return await retiredPassengerPhoneSession0624(req, res);
     if (req.method === "POST" && path === "/v1/passenger/signup") return await signupPassengerAccount(req, res);
@@ -10237,6 +10668,7 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/passenger/me/referral") return await createPassengerReferral(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/bookings") return await listPassengerBookings(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/changes") return await waitPassengerCanonicalChange0495(req, res);
+    if (req.method === "GET" && path === "/v1/passenger/me/timeline") return await listPassengerTimeline0625(req, res);
     if (req.method === "GET" && path === "/v1/passenger/me/notifications") return await listPassengerNotifications(req, res);
     if (req.method === "POST" && path === "/v1/passenger/me/notifications/read-all") return await markPassengerNotificationRead(req, res, "", true);
     if (req.method === "GET" && path === "/v1/driver/notifications") return await listDriverNotifications(req, res);

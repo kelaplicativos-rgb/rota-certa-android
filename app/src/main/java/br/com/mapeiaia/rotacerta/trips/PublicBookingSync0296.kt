@@ -118,6 +118,24 @@ internal object PublicBookingRemoteSync0296 {
             return PublicBookingPullResult(0, emptySet(), 0)
         }
         val api = TripRemoteApi(settings)
+        val directoryProfiles0625 = PassengerIdentityStore(context).profiles()
+        if (directoryProfiles0625.isNotEmpty()) {
+            runCatching { api.syncPassengerDirectory(directoryProfiles0625) }
+                .onSuccess { response ->
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_DIRECTORY_SYNC_0625",
+                        context.packageName,
+                        "synced=" + response.synced + " local=" + directoryProfiles0625.size + " authority=passengerId",
+                    )
+                }
+                .onFailure { error ->
+                    UnifiedDebugEventStore.record(
+                        "PASSENGER_DIRECTORY_SYNC_FAILED_0625",
+                        context.packageName,
+                        "local=" + directoryProfiles0625.size + " error=" + error::class.java.simpleName,
+                    )
+                }
+        }
         pullPublicLinkDebugTrace(context, api)
 
         val localReadOperation = AgendaTrace.operationStart(
