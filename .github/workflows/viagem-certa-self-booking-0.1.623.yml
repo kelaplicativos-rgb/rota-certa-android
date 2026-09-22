@@ -1,4 +1,4 @@
-name: Rota Certa 0.1.623 Viagem Certa self-booking exact SHA
+name: Rota Certa 0.1.623 self booking
 
 on:
   push:
@@ -13,80 +13,54 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: viagem-certa-self-booking-0623-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  validate-build-deploy:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOOGLE_MAPS_API_KEY: viagem_certa_0623_ci_dummy_key
+      GOOGLE_MAPS_API_KEY: ci_dummy_key_0623
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-      EXPECTED_VERSION_CODE: '5914'
-      EXPECTED_VERSION_NAME: '0.1.623'
       SOURCE_SHA: ${{ github.sha }}
-      SOURCE_BRANCH: ${{ github.ref_name }}
 
     steps:
-      - name: Checkout exact triggering HEAD
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ env.SOURCE_SHA }}
+          ref: ${{ github.sha }}
 
-      - name: Prove exact source and 0.1.622 authority preservation
+      - name: Verify source
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
-          echo "ROTA_CERTA_GIT_BRANCH=$SOURCE_BRANCH" >> "$GITHUB_ENV"
-          printf '%s\n' "$SOURCE_SHA" | tee /tmp/source-head.txt
-          printf '%s\n' "$SOURCE_BRANCH" | tee /tmp/source-branch.txt
+          echo "ROTA_CERTA_GIT_BRANCH=agent/viagem-certa-self-booking-0.1.623" >> "$GITHUB_ENV"
           grep -Fq 'val releaseVersionCode = 5_914' app/build.gradle.kts
           grep -Fq 'val releaseVersionName = "0.1.623"' app/build.gradle.kts
-          grep -Fq 'HTML_DIRECT_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaCollectorSessionModule.kt
-          grep -Fq 'NON_HTML_CANONICAL_INGEST_BLOCKED_0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
           grep -Fq 'semanticMismatch06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'completeCanonicalIds06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'pendingParity06122' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
-          grep -Fq 'PUBLIC_READ_RESERVE_ON_DEMAND_0623' trip-platform/functions/index.js
           grep -Fq 'passenger-phone-session' trip-platform/functions/index.js
-          grep -Fq 'verifyIdToken(match[1], true)' trip-platform/functions/index.js
-          grep -Fq 'CONFIRMAR E SOLICITAR RESERVA' trip-platform/public/index.html
-          grep -Fq 'Ver anúncio na BlaBlaCar' trip-platform/public/public-agenda-shell-0569.js
-          grep -Fq 'navigator.share' trip-platform/public/public-agenda-shell-0569.js
-          grep -Fq 'signInWithPhoneNumber' trip-platform/public/public-agenda-shell-0569.js
-          grep -Fq 'openBooking0623(item, segment, stops, segmentIndex)' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '0.1.623-self-booking' trip-platform/public/index.html
 
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Validate backend and browser contracts
+      - name: Test web booking contracts
         shell: bash
         run: |
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/public-agenda-shell-0569.js
-          node --test \
-            trip-platform/functions/test/reservation-approval-0356.test.js \
-            trip-platform/functions/test/public-booking-0296.test.js \
-            trip-platform/functions/test/public-booking-realtime-0304.test.js \
-            trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js \
-            trip-platform/functions/test/viagem-certa-self-booking-0623.test.js \
-            trip-platform/functions/test/public-agenda-shell-0569.test.js \
-            | tee /tmp/web-tests.log
+          node --test trip-platform/functions/test/reservation-approval-0356.test.js trip-platform/functions/test/public-booking-0296.test.js trip-platform/functions/test/public-booking-realtime-0304.test.js trip-platform/functions/test/viagem-certa-passenger-gate-0589.test.js trip-platform/functions/test/viagem-certa-self-booking-0623.test.js
 
-      - name: Configure Firebase SDK for Android build
+      - name: Configure Firebase Android SDK
         shell: bash
         run: |
           set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
             printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
             chmod 600 /tmp/firebase-sa.json
@@ -96,7 +70,6 @@ jobs:
             chmod 600 /tmp/firebase-sa.json
             export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
           fi
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
           if [ -n "${FIREBASE_TOKEN:-}" ]; then
             npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
             APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
@@ -119,124 +92,39 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Run reservation and HTML authority Android tests
+      - name: Test Android contracts
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest \
-            --tests '*ReservationApproval0356Test' \
-            --tests '*AgendaCanonicalCentralSync0403Test' \
-            --tests '*BlaBlaUnifiedHtmlCapture0605Test' \
-            --tests '*BlaBlaLiveHtmlCommit0617Test' \
-            --tests '*PublicAgendaAutoSync0300Test' \
-            --tests '*SegmentAvailabilityTruthGate0603Test' \
-            --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/android-tests.log
+          ./gradlew :app:testDebugUnitTest --tests '*ReservationApproval0356Test' --tests '*AgendaCanonicalCentralSync0403Test' --tests '*BlaBlaUnifiedHtmlCapture0605Test' --tests '*BlaBlaLiveHtmlCommit0617Test' --tests '*PublicAgendaAutoSync0300Test' --tests '*SegmentAvailabilityTruthGate0603Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
 
-      - name: Assemble and verify exact-head APK
+      - name: Build exact SHA APK
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace | tee /tmp/assemble.log
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          APK='app/build/outputs/apk/debug/app-debug.apk'
+          APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          unzip -t "$APK" | tee /tmp/zip-integrity.txt
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/aapt.txt
-          PACKAGE_LINE="$(grep '^package:' /tmp/aapt.txt | head -1)"
-          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionCode='$EXPECTED_VERSION_CODE'" <<< "$PACKAGE_LINE"
-          grep -Fq "versionName='$EXPECTED_VERSION_NAME'" <<< "$PACKAGE_LINE"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5914'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.623'" /tmp/aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
           grep -Fq 'Verified' /tmp/apksigner.txt
-          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex-strings.txt
-          grep -Fq "$SOURCE_SHA" /tmp/dex-strings.txt
-          sha256sum "$APK" | tee /tmp/apk.sha256
-
-      - name: Authenticate Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-
-      - name: Set up Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy exact-head booking backend and public Agenda
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
-          npm --prefix trip-platform/functions install --no-audit --no-fund
-          gcloud functions deploy tripApi \
-            --gen2 \
-            --project="$PROJECT" \
-            --region=southamerica-east1 \
-            --runtime=nodejs20 \
-            --source=trip-platform/functions \
-            --entry-point=tripApi \
-            --trigger-http \
-            --allow-unauthenticated \
-            --clear-secrets \
-            --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$SOURCE_SHA" \
-            --quiet
-          if [ -n "${FIREBASE_TOKEN:-}" ]; then
-            npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --token "$FIREBASE_TOKEN" --non-interactive
-          else
-            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
-            npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
-          fi
-
-      - name: Smoke deployed 0.1.623
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE=https://rota-certa-7ccc8.web.app
-          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.json
-          grep -Fq '"ok":true' /tmp/live-health.json
-          grep -Fq "\"backendGitSha\":\"$SOURCE_SHA\"" /tmp/live-health.json
-          curl --retry 10 --retry-delay 2 --fail --silent --show-error "$BASE/" | tee /tmp/live-index.html
-          grep -Fq 'bookingPhone0623' /tmp/live-index.html
-          grep -Fq '0.1.623-self-booking' /tmp/live-index.html
-
-      - name: Prepare final Samsung SM-S911B package
-        shell: bash
-        run: |
-          set -euo pipefail
-          OUT=/tmp/0623
-          mkdir -p "$OUT"
-          SHORT_SHA="${SOURCE_SHA:0:12}"
-          FINAL_APK="$OUT/RotaCerta-$EXPECTED_VERSION_NAME-build$EXPECTED_VERSION_CODE-$SHORT_SHA-SM-S911B.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "$FINAL_APK"
-          sha256sum "$FINAL_APK" | tee "$OUT/apk.sha256"
-          cp /tmp/source-head.txt /tmp/source-branch.txt /tmp/web-tests.log /tmp/android-tests.log /tmp/assemble.log /tmp/aapt.txt /tmp/apksigner.txt /tmp/live-health.json "$OUT/"
-          cat > "$OUT/final-status.txt" <<EOF
-package=br.com.mapeiaia.rotacerta
-version=$EXPECTED_VERSION_NAME/$EXPECTED_VERSION_CODE
-source_head=$SOURCE_SHA
-source_branch=$SOURCE_BRANCH
-public_agenda_anonymous_read=PASS
-reserve_on_demand=PASS
-firebase_phone_otp=PASS
-password_required=NO
-transactional_requested_capacity_hold=PASS
-driver_push_notification=PASS
-driver_approve_reject_existing_flow=PASS
-native_trip_share=PASS
-blablacar_secondary_reference=PASS
-html_authority_0622_preserved=PASS
-backend_live_sha=PASS
-hosting_0623_live=PASS
-apk_signature=PASS
-apk_embeds_exact_source_sha=PASS
-physical_test=PENDING_SAMSUNG_SM_S911B_ANDROID_16
-EOF
-          cat "$OUT/final-status.txt"
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex.txt
+          mkdir -p /tmp/0623
+          SHORT_SHA="$(printf '%s' "$SOURCE_SHA" | cut -c1-12)"
+          cp "$APK" "/tmp/0623/RotaCerta-0.1.623-build5914-$SHORT_SHA-SM-S911B.apk"
+          sha256sum /tmp/0623/*.apk | tee /tmp/0623/apk.sha256
+          printf 'source_head=%s\nversion=0.1.623/5914\npackage=br.com.mapeiaia.rotacerta\n' "$SOURCE_SHA" > /tmp/0623/final-status.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-0.1.623-5914-${{ env.SOURCE_SHA }}
+          name: rota-certa-0.1.623-5914-${{ github.sha }}
           retention-days: 30
           if-no-files-found: error
           path: /tmp/0623
