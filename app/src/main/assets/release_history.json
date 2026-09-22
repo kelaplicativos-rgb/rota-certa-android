@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.614",
+      "build": 5905,
+      "commit": null,
+      "branch": "agent/html-legacy-identity-promotion-0.1.614",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reconciliação HTML detecta colisão entre a identidade forte profileUuid + tripId e um backing legado já existente no ID determinístico antes da escrita canônica.",
+        "Backings legados fisicamente compatíveis são promovidos pela API canônica existente antes da aplicação do fingerprint HTML, preservando reservas, revisão monotônica e identidade interna.",
+        "Vínculo público associado ao mesmo bookingTripId também recebe a identidade forte confirmada e os metadados físicos da projeção HTML antes de nova publicação."
+      ],
+      "fixed": [
+        "Corrige o caso real 55 HTML → 54 canônicos em que timeline-ext-fc2ab95908a2ad8fe0f28b52 estava em canonicalRevision=150 e fazia saveTrip rejeitar o snapshot novo como revisão 0 antiga.",
+        "Evita canonical_revision_race causado por promoção tardia da identidade de um backing legado.",
+        "Mantém fail-closed quando o backing legado ou o binding público divergem fisicamente da viagem HTML ou carregam identidade forte conflitante."
+      ],
+      "improved": [
+        "Logs distinguem promoção aceita de bloqueio por geração antiga, conflito de identidade, divergência física ou binding incompatível.",
+        "Regressão automatizada reproduz a publicação 019ed00e-7c37-7d89-ad6c-5da16abdbef3 com revisão canônica histórica 150."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Um registro legado ocupando o mesmo internalTripId determinístico impedia a identidade HTML forte de ser materializada e provocava rollback N/N."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Captura HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "TripStore",
+        "Bindings públicos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.613",
       "build": 5904,
       "commit": null,
