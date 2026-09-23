@@ -89,7 +89,7 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: FAROL instant-first-paint regression suite
+      - name: FAROL semantic-lease regression suite
         shell: bash
         run: |
           set -euo pipefail
@@ -158,7 +158,10 @@ jobs:
             echo "entrySignatureFailClosed=PASS"
             echo "semanticLeaseContinuity=PASS"
             echo "repeatSignatureMatcherDuringLease=SKIPPED"
-            echo "firstFeedbackBeforeHeavyPipeline=PASS\n            echo "windowIdLeaseAuthority=REMOVED"\n            echo "idleSignatureMissHardClear=SUPPRESSED"\n            echo "notificationDuringLease=IGNORED""
+            echo "firstFeedbackBeforeHeavyPipeline=PASS"
+            echo "windowIdLeaseAuthority=REMOVED"
+            echo "idleSignatureMissHardClear=SUPPRESSED"
+            echo "notificationDuringLease=IGNORED"
             echo "localColorBeforeExactRoadKm=PASS"
             echo "platformGeocoderCriticalPath=PASS"
           } | tee farol-semantic-lease-0641-proof.txt
