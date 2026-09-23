@@ -61,6 +61,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -187,6 +188,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var overlayParams: WindowManager.LayoutParams? = null
     @Volatile private var bubbleGestureActive = false
     private var bubbleDragStartedAtMillis = 0L
+    private data class DeferredBubblePaintStage637(
+        val color: RadarColor,
+        val distanceKm: Double?,
+        val forcePhysicalCommit: Boolean,
+    )
+    @Volatile private var deferredBubblePaintStage637: DeferredBubblePaintStage637? = null
+    private val bubbleMoveEventsStage637 = AtomicLong(0L)
     private var overlayMenuView: View? = null
     private var overlayMenuParams: WindowManager.LayoutParams? = null
     private var whatsappShortcutView: TextView? = null
@@ -6331,6 +6339,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun renderOverlayStage40(color: RadarColor, distanceKm: Double? = null, forcePhysicalCommitStage43: Boolean = false) {
         if (!serviceReady) return
+        if (bubbleGestureActive && !forcePhysicalCommitStage43) {
+            deferredBubblePaintStage637 = DeferredBubblePaintStage637(color, distanceKm, false)
+            return
+        }
         val manager = windowManager ?: return
         if (color != currentRadarColor || distanceKm != currentDistanceKm) {
             stage21SelfEventSuppressionUntilNs = SystemClock.elapsedRealtimeNanos() + 250_000_000L
@@ -6393,6 +6405,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
     } // no_duplicate_overlay_render_checklist_15
  // no_duplicate_overlay_render_checklist_15
 
+    private fun flushDeferredBubblePaintStage637() {
+        val pending = deferredBubblePaintStage637 ?: return
+        deferredBubblePaintStage637 = null
+        renderOverlayStage40(pending.color, pending.distanceKm, pending.forcePhysicalCommit)
+    }
 
     private fun applyAgendaNotificationDecoration0416(view: TextView, color: RadarColor) {
         val unread = agendaUnreadCount0416.coerceAtLeast(0)
@@ -7909,7 +7926,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         private var startY = 0
         private var moved = false
         private var lastTapUpMillis = 0L
-        private var pendingSingleTapJob: kotlinx.coroutines.Job? = null
+        private var pendingMoveXStage637: Int? = null
+        private var pendingMoveYStage637: Int? = null
+        private var moveFrameScheduledStage637 = false
+        private var moveViewStage637: View? = null
+        private var moveManagerStage637: WindowManager? = null
         private val mainHoldHandler0179 = android.os.Handler(android.os.Looper.getMainLooper())
         private var mainHoldView0179: View? = null
         private var mainHoldTriggered0179 = false
@@ -7925,17 +7946,48 @@ class LiveRideAccessibilityService : AccessibilityService() {
         private val touchSlop: Int by lazy {
             android.view.ViewConfiguration.get(this@LiveRideAccessibilityService).scaledTouchSlop.coerceAtLeast(1)
         }
+        private val moveFrameCallbackStage637 = android.view.Choreographer.FrameCallback {
+            moveFrameScheduledStage637 = false
+            applyPendingMoveStage637()
+        }
+
+        private fun scheduleMoveStage637(view: View, manager: WindowManager, x: Int, y: Int) {
+            pendingMoveXStage637 = x
+            pendingMoveYStage637 = y
+            moveViewStage637 = view
+            moveManagerStage637 = manager
+            if (moveFrameScheduledStage637) return
+            moveFrameScheduledStage637 = true
+            android.view.Choreographer.getInstance().postFrameCallback(moveFrameCallbackStage637)
+        }
+
+        private fun applyPendingMoveStage637() {
+            val x = pendingMoveXStage637 ?: return
+            val y = pendingMoveYStage637 ?: return
+            val params = overlayParams ?: return
+            val view = moveViewStage637 ?: return
+            val manager = moveManagerStage637 ?: return
+            pendingMoveXStage637 = null
+            pendingMoveYStage637 = null
+            params.x = x
+            params.y = y
+            runCatching { manager.updateViewLayout(view, params) }
+        }
+
+        private fun flushMoveStage637() {
+            if (moveFrameScheduledStage637) {
+                android.view.Choreographer.getInstance().removeFrameCallback(moveFrameCallbackStage637)
+                moveFrameScheduledStage637 = false
+            }
+            applyPendingMoveStage637()
+        }
 
         override fun onTouch(view: View, event: MotionEvent): Boolean {
-            FarolMaximumForensicsStage38.record(
-                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_BUBBLE_MOTION_EVENT", universalResolvedForegroundPackage(),
-                details = "action=${event.actionMasked}; actionIndex=${event.actionIndex}; eventTimeMs=${event.eventTime}; downTimeMs=${event.downTime}; rawX=${event.rawX}; rawY=${event.rawY}; x=${event.x}; y=${event.y}; pointers=${event.pointerCount}; pressure=${runCatching { event.getPressure(0) }.getOrDefault(0f)}; size=${runCatching { event.getSize(0) }.getOrDefault(0f)}",
-            )
             val params = overlayParams ?: return false
             val manager = windowManager ?: return false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    bubbleGestureActive = (true)
+                    bubbleGestureActive = true
                     bubbleDragStartedAtMillis = event.eventTime
                     analyzeJob?.cancel()
                     downRawX = event.rawX
@@ -7951,65 +8003,56 @@ class LiveRideAccessibilityService : AccessibilityService() {
                         ShortcutGesturePolicy0179.MAIN_CUSTOMIZATION_HOLD_MILLIS,
                     )
                     view.animate().cancel()
-                    Unit /* diagnostics_off_checklist_4 */
                     return true
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+                    bubbleMoveEventsStage637.incrementAndGet()
                     val deltaX = event.rawX - downRawX
                     val deltaY = event.rawY - downRawY
                     if (!moved && BubbleDragPolicy.hasExceededTouchSlop(deltaX, deltaY, touchSlop)) {
                         moved = true
                         mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
-                        closeResourceShortcuts() // popup_close_only_on_drag_0_1_120
+                        closeResourceShortcuts()
                     }
 
                     val maxX = (resources.displayMetrics.widthPixels - view.width).coerceAtLeast(0)
                     val maxY = (resources.displayMetrics.heightPixels - view.height).coerceAtLeast(0)
-                    params.x = BubbleDragPolicy.clampCoordinate((startX + deltaX).roundToInt(), maxX)
-                    params.y = BubbleDragPolicy.clampCoordinate((startY + deltaY).roundToInt(), maxY)
-                    runCatching { manager.updateViewLayout(view, params) }
+                    val nextX = BubbleDragPolicy.clampCoordinate((startX + deltaX).roundToInt(), maxX)
+                    val nextY = BubbleDragPolicy.clampCoordinate((startY + deltaY).roundToInt(), maxY)
+                    scheduleMoveStage637(view, manager, nextX, nextY)
                     return true
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    val elapsedMillis = (event.eventTime - bubbleDragStartedAtMillis).coerceAtLeast(0L)
+                    flushMoveStage637()
                     bubbleGestureActive = false
                     mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
                     mainHoldView0179 = null
                     if (mainHoldTriggered0179) {
                         mainHoldTriggered0179 = false
-                        pendingSingleTapJob?.cancel()
-                        pendingSingleTapJob = null
                         lastTapUpMillis = 0L
                     } else if (moved) {
                         bubblePrefs.edit()
                             .putInt(KEY_BUBBLE_X, params.x)
                             .putInt(KEY_BUBBLE_Y, params.y)
                             .apply()
-                        Unit /* diagnostics_off_checklist_4 */
                     } else {
                         val tapAt = event.eventTime
                         val timeout = android.view.ViewConfiguration.getDoubleTapTimeout().toLong()
-                        if (lastTapUpMillis > 0L && tapAt - lastTapUpMillis <= timeout) {
-                            pendingSingleTapJob?.cancel()
-                            pendingSingleTapJob = null
+                        val isSecondTap = lastTapUpMillis > 0L && tapAt - lastTapUpMillis <= timeout
+                        // Stage637: single tap is immediate. No waiting for the double-tap timeout.
+                        view.performClick()
+                        if (isSecondTap) {
                             lastTapUpMillis = 0L
                             shortcutOverlayController.hideShortcuts()
                             persistResourceShortcutState()
                             saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, "Alerta")
                         } else {
                             lastTapUpMillis = tapAt
-                            pendingSingleTapJob?.cancel()
-                            pendingSingleTapJob = scope.launch {
-                                delay(timeout)
-                                if (lastTapUpMillis == tapAt) {
-                                    lastTapUpMillis = 0L
-                                    view.performClick()
-                                }
-                            }
                         }
                     }
+                    flushDeferredBubblePaintStage637()
                     scope.launch {
                         delay(BubbleDragPolicy.ANALYSIS_RESUME_DELAY_MS)
                         if (!bubbleGestureActive) scheduleVisibleTextAnalysis(delayMs = 0L)
@@ -8018,17 +8061,18 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
+                    flushMoveStage637()
                     bubbleGestureActive = false
                     mainHoldHandler0179.removeCallbacks(mainHoldAction0179)
                     mainHoldView0179 = null
                     mainHoldTriggered0179 = false
-                    Unit /* diagnostics_off_checklist_4 */
+                    flushDeferredBubblePaintStage637()
                     return true
                 }
             }
             return true
         }
-    } // bubble_instant_drag_0_1_116
+    } // bubble_instant_drag_0_1_116 // farol_zero_jank_touch_stage637
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
     @androidx.annotation.RequiresApi(30)
