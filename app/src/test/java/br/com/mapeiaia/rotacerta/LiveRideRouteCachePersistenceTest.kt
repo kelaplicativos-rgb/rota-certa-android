@@ -30,7 +30,7 @@ class LiveRideRouteCachePersistenceTest {
         )
 
         val payload = original.exportSnapshot()
-        assertTrue(payload.startsWith("RC_ROUTE_CACHE_V1"))
+        assertTrue(payload.startsWith("RC_EDGE_DISTANCE_CACHE_V2"))
 
         now += 2_000L
         val restored = LiveRideRouteCache(nowMillis = { now })
