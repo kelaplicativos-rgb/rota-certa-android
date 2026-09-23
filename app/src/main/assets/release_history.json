@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.642",
+      "build": 5933,
+      "commit": null,
+      "branch": "agent/farol-offline-ai-0.1.642",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage642 adiciona recuperação visual por inteligência local quando a assinatura estrutural falha: screenshot único, OCR neural ML Kit embarcado e classificador semântico local de card/destino.",
+        "O destino final é escolhido localmente por geometria, marcadores de destino e ordem de leitura; o resultado é reintroduzido no pipeline com bounds originais do OCR.",
+        "Novo atlas de endereços offline aprendido persiste coordenadas resolvidas no aparelho com chave SHA-256; endereços já vistos deixam de depender de rede.",
+        "A decisão crítica passa a usar resolveFarolCoordinateInstant642, consultando primeiro o atlas local, depois cache/plataforma e só então contingências remotas."
+      ],
+      "fixed": [
+        "Quando o inDrive exibisse um card real mas a árvore Accessibility não batesse com a assinatura 638, a 0.1.641 podia permanecer amarela e nem iniciar Stage19; agora há segunda via visual local.",
+        "O reconhecimento do último endereço não depende exclusivamente da árvore de acessibilidade: o OCR neural offline pode recuperar o card a partir dos pixels da tela.",
+        "Chamadas repetidas de geocodificação para endereços já resolvidos são eliminadas pelo atlas local aprendido."
+      ],
+      "improved": [
+        "Nenhuma chamada OpenAI participa do Farol Stage642; o reconhecimento visual/semântico é executado no Samsung.",
+        "A captura Stage642 é single-flight e deduplicada por pacote/janela/fingerprint para não criar OCR contínuo.",
+        "Falsos positivos são bloqueados exigindo destino reconhecível e evidência semântica de corrida ou similaridade visual com modelo memorizado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.641: assinatura estrutural ausente podia impedir totalmente o pipeline apesar de um card visual real estar presente.",
+        "0.1.641: endereços frios ainda dependiam de geocodificação externa até entrarem no cache temporário."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "ML Kit OCR",
+        "Reconhecimento visual offline",
+        "Classificador semântico local",
+        "Atlas de endereços offline",
+        "Geocodificação",
+        "Acessibilidade",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.641",
       "build": 5932,
       "commit": null,
