@@ -114,15 +114,21 @@ object FarolCardSignatureCompiler638 {
     }
 
     private fun textShape(value: String): String {
-        val canonical = canonical(value)
+        val raw = value.trim()
+        val canonical = canonical(raw)
             .replace(Regex("\\b\\d+(?:[.,]\\d+)?\\b"), "#")
             .replace(Regex("\\s+"), " ")
-            .take(64)
+            .take(96)
+        if (canonical.isBlank()) return "_"
+        val anchors = rideAnchors.mapNotNull { (id, regex) -> id.takeIf { regex.containsMatchIn(raw) } }
         return when {
-            canonical.isBlank() -> "_"
-            canonical.contains("r #") || canonical.startsWith("r #") -> "money"
-            Regex("\\b#\\s*km\\b").containsMatchIn(canonical) -> "distance"
-            Regex("\\b#\\s*min").containsMatchIn(canonical) -> "eta"
+            anchors.isNotEmpty() -> "anchor:" + anchors.sorted().joinToString("+")
+            Regex("R\\$\\s*\\d", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> "money"
+            Regex("\\b\\d+(?:[.,]\\d+)?\\s*km\\b", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> "distance"
+            Regex("\\b\\d{1,3}\\s*(?:min|minutos?)\\b", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> "eta"
+            Regex("\\b(?:rua|r\\.|avenida|av\\.|alameda|travessa|estrada|rodovia|bairro|jardim|vila|centro|parque|shopping|terminal|estacao|estação|aeroporto|rodoviaria|rodoviária|hospital|posto)\\b", RegexOption.IGNORE_CASE).containsMatchIn(raw) -> "location"
+            raw.contains(',') && Regex("\\b\\d{1,6}\\b").containsMatchIn(raw) -> "location"
+            canonical.length > 28 -> "dynamic_text"
             else -> canonical
         }
     }
