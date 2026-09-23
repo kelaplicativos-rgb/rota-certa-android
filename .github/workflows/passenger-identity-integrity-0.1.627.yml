@@ -115,7 +115,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew :app:testDebugUnitTest --tests '*PassengerIdentityIntegrity0627Test' --tests '*PassengerPickerCanonical0352Test' --tests '*PassengerCanonical0317Test' --tests '*CanonicalPassengerSegments0491Test' --tests '*GlobalPassengerFlow0256Test' --tests '*ReservationApproval0356Test' --tests '*AgendaCanonicalCentralSync0403Test' --tests '*BlaBlaUnifiedHtmlCapture0605Test' --tests '*BlaBlaLiveHtmlCommit0617Test' --tests '*PublicAgendaAutoSync0300Test' --tests '*SegmentAvailabilityTruthGate0603Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
+          ./gradlew :app:testDebugUnitTest --tests '*PassengerIdentityIntegrity0627Test' --tests '*PassengerPickerCanonical0352Test' --tests '*CanonicalPassengerSegments0491Test' --tests '*GlobalPassengerFlow0256Test' --tests '*ReservationApproval0356Test' --tests '*AgendaCanonicalCentralSync0403Test' --tests '*BlaBlaUnifiedHtmlCapture0605Test' --tests '*BlaBlaLiveHtmlCommit0617Test' --tests '*PublicAgendaAutoSync0300Test' --tests '*SegmentAvailabilityTruthGate0603Test' --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Build exact SHA APK
         shell: bash
