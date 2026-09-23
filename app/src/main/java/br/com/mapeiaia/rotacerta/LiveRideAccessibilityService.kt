@@ -1968,7 +1968,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val ownershipStage47 = rawEvaluationStage19?.let { candidate ->
             FarolRideCardOwnershipStage47.evaluate(
                 packageName = ownershipPackageStage47,
-                selectedPackages = activationStage26.selectedPackages,
+                selectedPackages = SelectedRideAppStore.read(applicationContext),
                 text = ownershipTextStage47,
                 locationCount = candidate.addresses.size,
                 structuralSignature = cheapSignalStage26.structuralSignature,
