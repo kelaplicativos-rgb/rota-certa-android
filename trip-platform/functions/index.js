@@ -5369,22 +5369,34 @@ async function publicPassengerAccessStatus0625(req, res) {
 
 async function resolvePassengerTarget0625(req) {
   const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
-  if (publicSlug && isReservedPublicUsername(publicSlug)) return null;
   const requestedDriver = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
   const tripToken = cleanText(req.body && req.body.tripToken, 180).replace(/[^A-Za-z0-9_-]/g, "");
   if (!requestedDriver && !tripToken) return { driverUsername: "", tripToken: "" };
-  let driverUsername = requestedDriver;
+
+  // 0.1.628: the concrete trip token is the strongest target identity.
+  // The public slug may be an alias (or may have changed since a shared link was issued),
+  // so never compare the alias text directly with the canonical trip owner.
+  let requestedResolved = null;
+  if (requestedDriver && !isReservedPublicUsername(requestedDriver)) {
+    requestedResolved = await resolveDriverUsername(requestedDriver);
+  }
+
   if (tripToken) {
     const tripSnap = await db.collection("trips").doc(tripToken).get();
     if (!tripSnap.exists) return null;
     const tripDriver = normalizeUsername(tripSnap.data().driverUsername || "");
-    if (driverUsername && tripDriver !== driverUsername) return null;
-    driverUsername = tripDriver;
+    if (!tripDriver) return null;
+    const tripResolved = await resolveDriverUsername(tripDriver);
+    if (!tripResolved) return null;
+    if (
+      requestedResolved &&
+      requestedResolved.canonicalUsername !== tripResolved.canonicalUsername
+    ) return null;
+    return { driverUsername: tripResolved.canonicalUsername, tripToken };
   }
-  if (!driverUsername) return null;
-  const resolved = await resolveDriverUsername(driverUsername);
-  if (!resolved) return null;
-  return { driverUsername: resolved.canonicalUsername, tripToken };
+
+  if (!requestedDriver || isReservedPublicUsername(requestedDriver) || !requestedResolved) return null;
+  return { driverUsername: requestedResolved.canonicalUsername, tripToken: "" };
 }
 
 async function openPassengerPasswordSession0625(req, res) {
