@@ -200,7 +200,7 @@ private fun recordModuleObservation0507(
 
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.CENTRAL_DAY -> "Central do Dia"
-    TripScreen.TIMELINE -> "Todas as viagens"
+    TripScreen.TIMELINE -> "Viagens"
     TripScreen.RESERVATIONS -> "Reservas"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
@@ -793,12 +793,12 @@ private fun TripApp(
                                         addPassengerResumeToken++
                                         message = "Viagem criada no backend canônico. Continue a inclusão do passageiro já selecionado."
                                     } else {
-                                        message = "Viagem manual criada no backend canônico. Ela não depende de identidade BlaBlaCar."
+                                        message = "Viagem Rota Certa publicada no backend canônico e disponível na Agenda Pública."
                                     }
                                     UnifiedDebugEventStore.record(
                                         "MANUAL_TRIP_CANONICAL_CREATED_0494",
                                         activity.packageName,
-                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} authority=CANONICAL_BACKEND",
+                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} publicBookingEnabled=${canonicalCache0494.publicBookingEnabled} status=${canonicalCache0494.status.name} authority=CANONICAL_BACKEND",
                                     )
                                     screen = parentRootScreen0396
                                 }.onFailure { error ->
@@ -813,6 +813,16 @@ private fun TripApp(
                     bookings = bookings,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     onMessage = { text -> message = text },
+                    onCreateTrip = {
+                        pendingCreateForPassengerId = ""
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.CREATE
+                    },
+                    onManageCanonicalTrip = { tripId ->
+                        selectedId = tripId
+                        parentRootScreen0396 = TripScreen.TIMELINE
+                        screen = TripScreen.LIST
+                    },
                     downloadTriggerToken0616 = operationalTimelineDownloadToken0616,
                     onFirstUsableFrame = { renderedItems ->
                         AgendaTrace.reportTimelineFirstUsableFrame(
@@ -1217,12 +1227,23 @@ private fun TripEditor(
     var showDepartureDatePicker by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf("") }
     var segmentPrices by remember { mutableStateOf("") }
+    var passengerSeats by remember(defaultRotaCertaSeatAllocation) {
+        mutableStateOf(defaultRotaCertaSeatAllocation.takeIf { it in 1..99 }?.toString() ?: "3")
+    }
     var error by remember { mutableStateOf<String?>(null) }
     var routePlan by remember { mutableStateOf<TripRoutePlan?>(null) }
 
     Text("Criar viagem", style = MaterialTheme.typography.titleLarge)
     OutlinedTextField(origin, { origin = it }, label = { Text("Origem") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(destination, { destination = it }, label = { Text("Destino") }, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value = passengerSeats,
+        onValueChange = { passengerSeats = it.filter(Char::isDigit).take(2) },
+        label = { Text("Vagas para passageiros") },
+        supportingText = { Text("Capacidade própria desta viagem. Não depende das vagas da BlaBlaCar.") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
     OutlinedTextField(
         intermediate,
         { intermediate = it },
@@ -1272,7 +1293,9 @@ private fun TripEditor(
             runCatching {
                 require(origin.isNotBlank()) { "Informe a origem." }
                 require(destination.isNotBlank()) { "Informe o destino." }
-                val allocatedSeats = defaultRotaCertaSeatAllocation.coerceIn(0, 999)
+                val allocatedSeats = passengerSeats.toIntOrNull()
+                    ?.takeIf { it in 1..99 }
+                    ?: throw IllegalArgumentException("Informe de 1 a 99 vagas para passageiros.")
                 val departureMillis = tripEditorDepartureMillis(departureDate, departureTime)
                     ?: throw IllegalArgumentException("Selecione a data e informe o horário da saída no formato HH:mm.")
                 val names = buildList {
@@ -1305,12 +1328,17 @@ private fun TripEditor(
                     title = "${origin.trim()} → ${destination.trim()}",
                     departureAtMillis = departureMillis,
                     capacity = allocatedSeats,
+                    status = TripStatus.PUBLISHED,
                     rotaCertaSeatAllocation = allocatedSeats,
                     stops = stops,
                     notes = notes.trim(),
-                )
+                    publicBookingEnabled = true,
+                    capacityReliable = true,
+                    itineraryAuthoritative = true,
+                    recordOrigin = TripRecordOrigin.LOCAL,
+                ).withCanonicalAgendaVisibility0581()
             }.onSuccess(onSave).onFailure { error = it.message ?: "Não foi possível criar a viagem." }
-        }) { Text("Salvar rascunho") }
+        }) { Text("Publicar viagem") }
         TextButton(onClick = onCancel) { Text("Cancelar") }
     }
 
