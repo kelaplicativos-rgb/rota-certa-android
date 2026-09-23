@@ -698,6 +698,18 @@ internal data class RemotePublicationEvidenceContext0421(
     val mutationId: String,
     val idempotencyKey: String,
 )
+private const val PASSENGER_DIRECTORY_BATCH_SIZE_0629 = 40
+
+internal class PassengerDirectoryBatchException0629(
+    val batchIndex: Int,
+    val batchSize: Int,
+    val totalPassengers: Int,
+    cause: Throwable,
+) : IllegalStateException(
+    "Passenger directory batch failed batchIndex=$batchIndex batchSize=$batchSize totalPassengers=$totalPassengers",
+    cause,
+)
+
 internal class TripRemoteApiException(
     val httpMethod: String,
     val endpoint: String,
@@ -1371,26 +1383,42 @@ class TripRemoteApi(
 
     suspend fun syncPassengerDirectory(
         profiles: List<PassengerProfile>,
-    ): DriverPassengerDirectoryResponse = request(
-        method = "POST",
-        path = "/v1/driver/passengers/sync",
-        body = json.encodeToString(
-            DriverPassengerDirectoryRequest(
-                profiles
-                    .filter { it.id.isNotBlank() && passengerContactKey(it.agendaAccessContact()).isNotBlank() }
-                    .distinctBy { passengerContactKey(it.agendaAccessContact()) }
-                    .map {
-                        DriverPassengerDirectoryItem(
-                            passengerId = it.id,
-                            displayName = it.displayName,
-                            passengerContact = it.agendaAccessContact(),
-                            blocked = it.blocked,
-                        )
-                    },
-            ),
-        ),
-        requireDriverToken = true,
-    )
+    ): DriverPassengerDirectoryResponse {
+        val normalized = profiles
+            .filter { it.id.isNotBlank() && passengerContactKey(it.agendaAccessContact()).isNotBlank() }
+            .distinctBy { passengerContactKey(it.agendaAccessContact()) }
+            .map {
+                DriverPassengerDirectoryItem(
+                    passengerId = it.id,
+                    displayName = it.displayName,
+                    passengerContact = it.agendaAccessContact(),
+                    blocked = it.blocked,
+                )
+            }
+        if (normalized.isEmpty()) return DriverPassengerDirectoryResponse(synced = 0)
+
+        var synced = 0
+        normalized.chunked(PASSENGER_DIRECTORY_BATCH_SIZE_0629).forEachIndexed { batchIndex, batch ->
+            try {
+                val response: DriverPassengerDirectoryResponse = request(
+                    method = "POST",
+                    path = "/v1/driver/passengers/sync",
+                    body = json.encodeToString(DriverPassengerDirectoryRequest(batch)),
+                    requireDriverToken = true,
+                )
+                synced += response.synced
+            } catch (error: Throwable) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                throw PassengerDirectoryBatchException0629(
+                    batchIndex = batchIndex,
+                    batchSize = batch.size,
+                    totalPassengers = normalized.size,
+                    cause = error,
+                )
+            }
+        }
+        return DriverPassengerDirectoryResponse(synced = synced)
+    }
 
     suspend fun updatePassengerAccessWhatsapp(
         passengerId: String,
