@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.629",
+      "build": 5920,
+      "commit": null,
+      "branch": "agent/viagem-certa-exactly-once-0.1.629",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reserva pública passa a usar uma intenção idempotente persistida na sessão da aba e reutilizada em retry/reconciliação.",
+        "Backend expõe read-back autenticado da intenção de reserva e reconhece semanticamente reserva ativa equivalente do mesmo passageiro/trecho.",
+        "Sincronização do diretório de passageiros passa a ser enviada em lotes pequenos, reduzindo fan-out e isolando falhas de transporte."
+      ],
+      "fixed": [
+        "Impede falso negativo em que o backend cria a reserva, mas uma resposta perdida faz a interface declarar falha.",
+        "Impede uma segunda reserva real quando o passageiro repete a confirmação após timeout ou resposta ambígua.",
+        "Separa a confirmação da reserva do refresh da Agenda; falha posterior de atualização visual não rebaixa uma reserva já criada.",
+        "Amplia a telemetria do erro de sincronização do diretório com HTTP, código do backend, fase de transporte e IDs de correlação."
+      ],
+      "improved": [
+        "Retry de transporte reutiliza a mesma chave e converge para o mesmo booking.",
+        "Read-back confirma o estado real no Firestore antes de declarar resultado indeterminado.",
+        "Diretório grande deixa de depender de uma única requisição monolítica com centenas de passageiros."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.628: reserva podia existir no backend enquanto o navegador exibia 'Não foi possível concluir a reserva'.",
+        "0.1.628: novo clique após resposta ambígua gerava nova idempotencyKey.",
+        "0.1.628: PASSENGER_DIRECTORY_SYNC_FAILED_0625 registrava apenas o nome da exceção."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Reserva pública",
+        "Backend",
+        "Agenda Pública",
+        "Passageiros",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.628",
       "build": 5919,
       "commit": null,
