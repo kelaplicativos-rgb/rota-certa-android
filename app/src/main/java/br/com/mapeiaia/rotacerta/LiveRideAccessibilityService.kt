@@ -2087,6 +2087,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val runtimeStage36 = if (::stage36RuntimeAuthority.isInitialized) {
             stage36RuntimeAuthority.updateSelection(SelectedRideAppStore.read(applicationContext))
             stage36RuntimeAuthority.setManualAuthority(manualEnabledStage42)
+            stage36RuntimeAuthority.configureDriverTarget(currentSettings.homeAddress, currentSettings.homeRadiusKm)
             stage36RuntimeAuthority.observeWindowBoundary(currentRootPackageName() ?: eventPackageStage26)
             if (manualEnabledStage42) stage36RuntimeAuthority.observeAccessibility(eventPackageStage26)
             stage36RuntimeAuthority.snapshot()
@@ -3563,6 +3564,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         routeJobIdStage20: String,
     ) {
         val initialFreshStage20 = isStage19BindingFresh(bindingStage19)
+        if (!initialFreshStage20) FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
         FarolForensicTraceStage20.bindingCheck(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), "ROUTE_ENTER", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), initialFreshStage20, stage19VisualVerificationPending)
         if (!initialFreshStage20) return
         val settingsStage19 = currentSettings
@@ -3581,7 +3583,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!stage28RouteGate.begin(routeKeyStage28)) return
         val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
         FarolMaximumForensicsStage38.record(
-            routeStartedNsStage26, System.currentTimeMillis(), "S38_GOOGLE_ROUTE_START", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
+            routeStartedNsStage26, System.currentTimeMillis(), "S38_DISTANCE_RESOLUTION_START", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
             details = "destination=${fieldsStage19.destination.orEmpty().take(900)}; targets=${targetsStage19.destinations.joinToString(" || ").take(1200)}",
         )
         FarolCausalLatencyStage28.Metrics.sample(
@@ -3596,7 +3598,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         FarolForensicTraceStage20.routeCallFinished(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), distancesStage19.toString())
         val routeEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
         FarolMaximumForensicsStage38.record(
-            routeEndedNsStage26, System.currentTimeMillis(), "S38_GOOGLE_ROUTE_END", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
+            routeEndedNsStage26, System.currentTimeMillis(), "S38_DISTANCE_RESOLUTION_END", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
             details = "duration_ns=${(routeEndedNsStage26 - routeStartedNsStage26).coerceAtLeast(0L)}; response=${distancesStage19.toString().take(1200)}",
         )
         FarolForensicCardBlackBoxStage32.recordRouteResponse(routeEndedNsStage26, distancesStage19 != null, routeEndedNsStage26 - routeStartedNsStage26)
@@ -3605,6 +3607,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage28RouteGate.finish(routeKeyStage28)
         FarolCausalLatencyStage28.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
         val routeFreshStage20 = isStage19BindingFresh(bindingStage19)
+        if (!routeFreshStage20) FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
         FarolForensicTraceStage20.bindingCheck(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), "AFTER_ROUTE", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), routeFreshStage20, stage19VisualVerificationPending)
         if (!routeFreshStage20) return
         FarolForensicTraceStage20.decisionStarted(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos())
@@ -4184,6 +4187,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                             nodes = nodeSnapshot0161,
                                             recovered = recovery0161 != null,
                                             recoveryStrategy = recovery0161?.strategy,
+                                            cardLeaseId = stage36RuntimeAuthority.snapshot().leaseId.takeIf { it > 0L },
+                                            destination = recovery0161?.fields?.destination,
+                                            confidence = recovery0161?.modelCandidate?.confidence,
+                                            distanceKm = currentDistanceKm,
+                                            result = when (currentRadarColor) {
+                                                RadarColor.Green -> "GREEN"
+                                                RadarColor.Red -> "RED"
+                                                else -> "YELLOW_INCONCLUSIVE"
+                                            },
                                         ),
                                         bitmap = bitmap0161,
                                     )
@@ -5297,6 +5309,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             apiKey = apiKeyChecklist13,
         ) // single_exact_route_matrix_checklist_13
         if (!isDecisionBindingFresh0187Phase4(decisionBinding0187Phase4)) {
+            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            FarolMaximumForensicsStage38.record(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "STALE_RESULT_DROPPED", decisionBinding0187Phase4.packageName, details = "phase=local_distance")
             UnifiedDebugEventStore.record(
                 "BUBBLE_ROUTE_RESULT_DISCARDED_0187_PHASE4",
                 decisionBinding0187Phase4.packageName,
@@ -5575,8 +5589,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
     ): List<Double?> {
         if (originAddress.isBlank() || destinations.isEmpty()) return List(destinations.size) { null }
         val started = SystemClock.elapsedRealtimeNanos()
+        val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
+        stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
         val cached = googleMapsService.cachedFarolCoordinate(originAddress)
         val origin = cached ?: googleMapsService.resolveFarolCoordinate(originAddress, destinations, apiKey)
+        stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
         val values = origin?.let { coordinate -> destinations.map { GeoDistance.kilometers(coordinate, it) } }
@@ -6247,6 +6264,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolVisualStateAuthorityStage40.PublicState.GREEN -> RadarColor.Green
             FarolVisualStateAuthorityStage40.PublicState.RED -> RadarColor.Red
         }
+        val runtimePaintState0634 = when (decisionStage40.state) {
+            FarolVisualStateAuthorityStage40.PublicState.GRAY -> FarolRuntimeAuthorityStage36.PaintState.OFF
+            FarolVisualStateAuthorityStage40.PublicState.YELLOW -> FarolRuntimeAuthorityStage36.PaintState.YELLOW
+            FarolVisualStateAuthorityStage40.PublicState.GREEN -> FarolRuntimeAuthorityStage36.PaintState.GREEN
+            FarolVisualStateAuthorityStage40.PublicState.RED -> FarolRuntimeAuthorityStage36.PaintState.RED
+        }
+        val runtimePaintToken0634 = if (
+            runtimePaintState0634 == FarolRuntimeAuthorityStage36.PaintState.GREEN ||
+            runtimePaintState0634 == FarolRuntimeAuthorityStage36.PaintState.RED
+        ) stage36RuntimeAuthority.captureWorkToken() else null
+        stage36RuntimeAuthority.markPaint(runtimePaintToken0634, runtimePaintState0634)
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S40_VISUAL_AUTHORITY_DECISION", universalResolvedForegroundPackage(),
             details = "requested=$color; requestedDistance=${distanceKm ?: -1.0}; effective=$effectiveColorStage40; effectiveDistance=${decisionStage40.distanceKm ?: -1.0}; reading=$readingEnabledStage40; reason=${decisionStage40.reason}",
