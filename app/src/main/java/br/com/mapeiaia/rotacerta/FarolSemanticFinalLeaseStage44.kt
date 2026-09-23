@@ -32,6 +32,6 @@ object FarolSemanticFinalLeaseStage44 {
         if (!lease.activeFinal) return false
         val current = lease.addressSignature?.trim()?.takeIf { it.isNotEmpty() } ?: return false
         val candidate = candidateAddressSignature?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-        return current == candidate
+        return DestinationAddressIdentityPolicy.sameDestinationSignatures(current, candidate)
     }
 }
