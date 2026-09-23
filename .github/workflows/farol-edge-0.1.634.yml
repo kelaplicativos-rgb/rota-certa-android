@@ -70,12 +70,23 @@ jobs:
           test -x "${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/cmdline-tools/latest/bin/sdkmanager" || true
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Unit regression stress benchmark
+      - name: FAROL unit regression stress benchmark
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 --stacktrace
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolRealtimeEventGate0167Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage36Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolMaximumForensicsStage38Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingProximity0545ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --no-daemon --max-workers=2 --stacktrace
 
       - name: Assemble exact source APK
         shell: bash
