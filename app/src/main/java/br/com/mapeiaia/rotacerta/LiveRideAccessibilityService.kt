@@ -3397,9 +3397,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
         evaluationStage19: FarolUniversalVisualPipelineStage19.Evaluation,
         sourceStage19: String,
         cycleIdStage20: Long? = null,
+        ownershipTextStage47: String = evaluationStage19.analysisText,
+        ownershipPackageStage47: String? = null,
     ) {
         if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings)) return
         if (!stage36RuntimeAuthority.snapshot().enabled) return
+        val packageStage47 = ownershipPackageStage47
+            ?: observePackageForWindowIdStage46R3(evaluationStage19.windowId)
+            ?: currentRootPackageName()
+        val ownershipStage47 = FarolRideCardOwnershipStage47.evaluate(
+            packageName = packageStage47,
+            selectedPackages = SelectedRideAppStore.read(applicationContext),
+            text = ownershipTextStage47,
+            locationCount = evaluationStage19.addresses.size,
+        )
+        if (!ownershipStage47.owned) {
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S47_ROUTE_BLOCKED_NOT_RIDE_CARD",
+                packageStage47, cycleId = cycleIdStage20,
+                details = "reason=${ownershipStage47.reason}; source=$sourceStage19; locations=${evaluationStage19.addresses.size}; destination=${evaluationStage19.destination.take(700)}",
+            )
+            return
+        }
         stage26RouteResponseNs = 0L
         val semanticStage21 = FarolRouteLocationEvidenceStage46R8.validateEvaluation(evaluationStage19)
         val singleImmediateAddressStage46R7 = FarolRouteLocationEvidenceStage46R8.isSingleImmediateEvaluation(evaluationStage19)
