@@ -112,6 +112,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val externalPackageEventGate0187 = FarolExternalPackageEventGate0187()
     private val failedCardAutoCaptureGate0161 = FailedCardAutoCaptureGate0161()
     private lateinit var failedCardLayoutModelStore0161: FailedCardLayoutModelStore0161
+    private lateinit var farolCardSignatureStore638: FarolCardSignatureStore638
+    private lateinit var farolCardTrainingModule638: FarolCardTrainingModule638
+    private val farolCardTrainingInProgress638 = AtomicBoolean(false)
     private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
     private var lastFailedCardSignature0161: String? = null
     private var lastFailedCardAccessibilityHash0161: Int? = null
@@ -326,6 +329,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         repository = SettingsRepository(applicationContext)
         failedCardLayoutModelStore0161 = FailedCardLayoutModelStore0161(applicationContext)
+        farolCardSignatureStore638 = FarolCardSignatureStore638(applicationContext)
+        farolCardTrainingModule638 = FarolCardTrainingModule638(applicationContext, farolCardSignatureStore638)
         DiagnosticRuntimeGate.setEnabled(DebugLogPreferenceStore.isEnabled(applicationContext))
         UnifiedDebugEventStore.record("SERVICE_CREATE", packageName, "serviço de acessibilidade criado")
         geocodingService = GeocodingService(applicationContext)
@@ -7116,6 +7121,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
             BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.SaveScreenPrint -> saveScreenPrintStage32()
+            BubbleShortcutAction.MemorizeFarolCard -> memorizeFarolCard638()
             BubbleShortcutAction.OpenAuthorizedAppsAndCards -> openAuthorizedAppsAndCards146()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
