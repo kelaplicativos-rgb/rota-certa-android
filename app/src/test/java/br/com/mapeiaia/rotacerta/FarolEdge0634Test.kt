@@ -134,6 +134,118 @@ class FarolEdge0634Test {
     }
 
     @Test
+    fun route_cache_hit_and_miss_are_deterministic_after_edge_semantic_version() {
+        val settings = AppSettings(
+            homeAddress = "Destino do motorista",
+            homeRadiusKm = 8.0,
+            homeCoordinate = Coordinate(-23.5505, -46.6333),
+        )
+        val fields = RideFields(destination = "Rua Exemplo, 100")
+        val key = LiveRideRouteCache.keyFor(fields, settings)
+        val cache = LiveRideRouteCache(nowMillis = { 1_000L })
+        assertEquals(null, cache.get(key))
+        cache.put(
+            key,
+            LiveRideRouteCache.CachedRoute(
+                destinationCoordinate = Coordinate(-23.5600, -46.6400),
+                homeCoordinate = settings.homeCoordinate,
+                alternativeCoordinate = null,
+                homeDistanceKm = 1.25,
+                alternativeDistanceKm = null,
+            ),
+        )
+        assertEquals(1.25, cache.get(key)?.homeDistanceKm ?: -1.0, 0.0001)
+        assertTrue(cache.exportSnapshot().startsWith("RC_EDGE_DISTANCE_CACHE_V2"))
+    }
+
+    @Test
+    fun no_destination_stays_inconclusive_and_never_red() {
+        val result = DecisionEngine().decideWorkRegion(
+            fields = RideFields(destination = null),
+            settings = AppSettings(homeRadiusKm = 5.0),
+            fullText = "texto sem destino confiavel",
+            homeTargetActive = true,
+            homeDistanceKm = null,
+            pinRoutes = emptyList(),
+        )
+        assertEquals(Recommendation.InsufficientData, result.recommendation)
+        val live = src("LiveRideAccessibilityService.kt")
+        assertTrue(live.contains("Recommendation.InsufficientData -> RadarColor.Default"))
+        assertFalse(live.contains("Recommendation.InsufficientData -> RadarColor.Red"))
+    }
+
+    @Test
+    fun duplicate_event_stress_does_not_grow_heavy_work_admission() {
+        val gate = FarolRealtimeEventGate0167(duplicateWindowMillis = 100L)
+        var accepted = 0
+        repeat(20_000) { i ->
+            if (gate.shouldCollect(
+                    "com.example.driver",
+                    "com.example.driver",
+                    7,
+                    2048,
+                    "RecyclerView",
+                    1_000L + (i % 50),
+                    eventSemanticHash = 777,
+                )
+            ) accepted++
+        }
+        assertEquals(1, accepted)
+    }
+
+    @Test
+    fun rapid_distinct_cards_are_all_admitted_and_latest_lease_wins() {
+        val gate = FarolRealtimeEventGate0167(duplicateWindowMillis = 100L)
+        val authority = FarolRuntimeAuthorityStage36.Authority(0L)
+        authority.updateSelection(setOf("com.example.driver"))
+        authority.setUsageAccess(true)
+        authority.observeAccessibility("com.example.driver")
+        authority.observeVisualEvidence()
+
+        var previous: FarolRuntimeAuthorityStage36.WorkToken? = null
+        repeat(100) { i ->
+            assertTrue(
+                gate.shouldCollect(
+                    "com.example.driver",
+                    "com.example.driver",
+                    7,
+                    2048,
+                    "RecyclerView",
+                    1_000L + i,
+                    eventSemanticHash = i + 1,
+                ),
+            )
+            val current = authority.captureDestinationToken("Origem|Rua Destino " + (100 + i))!!
+            previous?.let { assertFalse(authority.isFresh(it)) }
+            previous = current
+        }
+        assertTrue(authority.isFresh(previous))
+    }
+
+    @Test
+    fun stale_result_is_rejected_at_every_expensive_stage() {
+        val authority = FarolRuntimeAuthorityStage36.Authority(0L)
+        authority.updateSelection(setOf("com.example.driver"))
+        authority.setUsageAccess(true)
+        authority.observeAccessibility("com.example.driver")
+        authority.observeVisualEvidence()
+        val stale = authority.captureDestinationToken("Origem|Rua A 10")!!
+        val current = authority.captureDestinationToken("Origem|Rua B 20")!!
+
+        listOf(
+            FarolRuntimeAuthorityStage36.ProcessingState.SNAPSHOT,
+            FarolRuntimeAuthorityStage36.ProcessingState.OCR,
+            FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE,
+            FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE,
+        ).forEach { stage ->
+            assertFalse(authority.markProcessing(stale, stage))
+            assertTrue(authority.markProcessing(current, stage))
+        }
+        assertFalse(authority.markPaint(stale, FarolRuntimeAuthorityStage36.PaintState.RED))
+        assertTrue(authority.markPaint(current, FarolRuntimeAuthorityStage36.PaintState.GREEN))
+    }
+
+    @Test
     fun local_math_benchmark_reports_p50_p95_p99() {
         val samples = LongArray(2_000)
         val a = Coordinate(-23.5505, -46.6333)
