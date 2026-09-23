@@ -63,7 +63,7 @@ class ReadingGeocodeResilience0547ContractTest {
     @Test
     fun version_is_0547() {
         val build = source("build.gradle.kts")
-        assertTrue(build.contains("releaseVersionCode = 5_927"))
-        assertTrue(build.contains("releaseVersionName = \"0.1.636\""))
+        assertTrue(build.contains("releaseVersionCode = 5_928"))
+        assertTrue(build.contains("releaseVersionName = \"0.1.637\""))
     }
 }
