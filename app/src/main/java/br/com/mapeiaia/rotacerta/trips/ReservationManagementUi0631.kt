@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 internal enum class ReservationFilter0631 {
     PENDING,
@@ -177,6 +179,7 @@ internal fun ReservationManagementScreen0631(
     onOpenTimeline: (tripId: String, bookingId: String) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val mutationCoordinator = remember(context, store) { TripMutationCoordinator0387(context, store) }
     val moneySpec = remember(context) { PassengerMoney.spec(context) }
     val pendingCount = bookings.count {
@@ -333,26 +336,28 @@ internal fun ReservationManagementScreen0631(
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 busyId = booking.id
-                                runCatching {
-                                    persistCanonicalPassengerMutation0582(
-                                        context = context,
-                                        trip = trip,
-                                        updated = passengerDecisionMutation0582(booking, "APPROVE"),
-                                        store = store,
-                                        mutationCoordinator = mutationCoordinator,
-                                        mutationType = "RESERVATION_APPROVED",
-                                        mutationSource = "RESERVATION_MANAGEMENT_0631",
-                                    )
-                                }.onSuccess {
-                                    UnifiedDebugEventStore.record(
-                                        "RESERVATION_MANAGEMENT_DECISION_0631",
-                                        context.packageName,
-                                        "action=APPROVE bookingId=${passengerCancellationHash(booking.id)}",
-                                    )
-                                    filterName = ReservationFilter0631.ACTIVE.name
-                                    onChanged("Reserva aprovada ✅")
-                                }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao aprovar"}") }
-                                busyId = null
+                                scope.launch {
+                                    runCatching {
+                                        persistCanonicalPassengerMutation0582(
+                                            context = context,
+                                            trip = trip,
+                                            updated = passengerDecisionMutation0582(booking, "APPROVE"),
+                                            store = store,
+                                            mutationCoordinator = mutationCoordinator,
+                                            mutationType = "RESERVATION_APPROVED",
+                                            mutationSource = "RESERVATION_MANAGEMENT_0631",
+                                        )
+                                    }.onSuccess {
+                                        UnifiedDebugEventStore.record(
+                                            "RESERVATION_MANAGEMENT_DECISION_0631",
+                                            context.packageName,
+                                            "action=APPROVE bookingId=${passengerCancellationHash(booking.id)} projectionAtomic=true",
+                                        )
+                                        filterName = ReservationFilter0631.ACTIVE.name
+                                        onChanged("Reserva aprovada e Agenda atualizada ✅")
+                                    }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao aprovar"}") }
+                                    busyId = null
+                                }
                             },
                         ) { Text(if (busyId == booking.id) "Aprovando…" else "Aceitar") }
                         OutlinedButton(
@@ -402,23 +407,25 @@ internal fun ReservationManagementScreen0631(
                                         onClick = {
                                             statusMenuId = null
                                             busyId = booking.id
-                                            runCatching {
-                                                persistCanonicalPassengerMutation0582(
-                                                    context = context,
-                                                    trip = trip,
-                                                    updated = passengerOperationalMutation0582(booking, value),
-                                                    store = store,
-                                                    mutationCoordinator = mutationCoordinator,
-                                                    mutationType = "PASSENGER_STATUS_$value",
-                                                    mutationSource = "RESERVATION_MANAGEMENT_0631",
-                                                )
-                                            }.onSuccess {
-                                                if (value == "COMPLETED") filterName = ReservationFilter0631.HISTORY.name
-                                                onChanged("Status atualizado no estado canônico.")
-                                            }.onFailure {
-                                                onChanged("Nada foi alterado: ${it.message ?: "falha ao alterar status"}")
+                                            scope.launch {
+                                                runCatching {
+                                                    persistCanonicalPassengerMutation0582(
+                                                        context = context,
+                                                        trip = trip,
+                                                        updated = passengerOperationalMutation0582(booking, value),
+                                                        store = store,
+                                                        mutationCoordinator = mutationCoordinator,
+                                                        mutationType = "PASSENGER_STATUS_$value",
+                                                        mutationSource = "RESERVATION_MANAGEMENT_0631",
+                                                    )
+                                                }.onSuccess {
+                                                    if (value == "COMPLETED") filterName = ReservationFilter0631.HISTORY.name
+                                                    onChanged("Status atualizado e refletido na Agenda.")
+                                                }.onFailure {
+                                                    onChanged("Nada foi alterado: ${it.message ?: "falha ao alterar status"}")
+                                                }
+                                                busyId = null
                                             }
-                                            busyId = null
                                         },
                                     )
                                 }
@@ -531,33 +538,35 @@ internal fun ReservationManagementScreen0631(
                     onClick = {
                         val seats = parsedSeats ?: return@TextButton
                         busyId = editing.id
-                        runCatching {
-                            val updated = reservationEditedBooking0631(
-                                trip = editingTrip,
-                                allBookings = bookings.filter { it.tripId == editingTrip.id },
-                                current = editing,
-                                boardingStopId = fromId,
-                                dropoffStopId = toId,
-                                seats = seats,
-                                fareMinorUnits = parsedFare,
-                                fareCurrencyCode = moneySpec.currencyCode,
-                            )
-                            persistCanonicalPassengerMutation0582(
-                                context = context,
-                                trip = editingTrip,
-                                updated = updated,
-                                store = store,
-                                mutationCoordinator = mutationCoordinator,
-                                mutationType = "RESERVATION_EDITED_0631",
-                                mutationSource = "RESERVATION_MANAGEMENT_0631",
-                            )
-                        }.onSuccess {
-                            editingId = null
-                            onChanged("Reserva atualizada; trecho, vagas e valor foram recalculados.")
-                        }.onFailure {
-                            onChanged("Nada foi alterado: ${it.message ?: "edição inválida"}")
+                        scope.launch {
+                            runCatching {
+                                val updated = reservationEditedBooking0631(
+                                    trip = editingTrip,
+                                    allBookings = bookings.filter { it.tripId == editingTrip.id },
+                                    current = editing,
+                                    boardingStopId = fromId,
+                                    dropoffStopId = toId,
+                                    seats = seats,
+                                    fareMinorUnits = parsedFare,
+                                    fareCurrencyCode = moneySpec.currencyCode,
+                                )
+                                persistCanonicalPassengerMutation0582(
+                                    context = context,
+                                    trip = editingTrip,
+                                    updated = updated,
+                                    store = store,
+                                    mutationCoordinator = mutationCoordinator,
+                                    mutationType = "RESERVATION_EDITED_0631",
+                                    mutationSource = "RESERVATION_MANAGEMENT_0631",
+                                )
+                            }.onSuccess {
+                                editingId = null
+                                onChanged("Reserva atualizada; Timeline e Agenda estão na mesma revisão.")
+                            }.onFailure {
+                                onChanged("Nada foi alterado: ${it.message ?: "edição inválida"}")
+                            }
+                            busyId = null
                         }
-                        busyId = null
                     },
                 ) { Text(if (busyId == editing.id) "Salvando…" else "Salvar") }
             },
@@ -579,22 +588,24 @@ internal fun ReservationManagementScreen0631(
                     enabled = busyId == null,
                     onClick = {
                         busyId = rejecting.id
-                        runCatching {
-                            persistCanonicalPassengerMutation0582(
-                                context = context,
-                                trip = rejectingTrip,
-                                updated = passengerDecisionMutation0582(rejecting, "REJECT"),
-                                store = store,
-                                mutationCoordinator = mutationCoordinator,
-                                mutationType = "RESERVATION_REJECTED",
-                                mutationSource = "RESERVATION_MANAGEMENT_0631",
-                            )
-                        }.onSuccess {
-                            rejectingId = null
-                            filterName = ReservationFilter0631.HISTORY.name
-                            onChanged("Solicitação recusada; histórico preservado.")
-                        }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao recusar"}") }
-                        busyId = null
+                        scope.launch {
+                            runCatching {
+                                persistCanonicalPassengerMutation0582(
+                                    context = context,
+                                    trip = rejectingTrip,
+                                    updated = passengerDecisionMutation0582(rejecting, "REJECT"),
+                                    store = store,
+                                    mutationCoordinator = mutationCoordinator,
+                                    mutationType = "RESERVATION_REJECTED",
+                                    mutationSource = "RESERVATION_MANAGEMENT_0631",
+                                )
+                            }.onSuccess {
+                                rejectingId = null
+                                filterName = ReservationFilter0631.HISTORY.name
+                                onChanged("Solicitação recusada; histórico e vagas atualizados na Agenda.")
+                            }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao recusar"}") }
+                            busyId = null
+                        }
                     },
                 ) { Text(if (busyId == rejecting.id) "Recusando…" else "Recusar") }
             },
@@ -616,22 +627,24 @@ internal fun ReservationManagementScreen0631(
                     enabled = busyId == null,
                     onClick = {
                         busyId = cancelling.id
-                        runCatching {
-                            persistCanonicalPassengerMutation0582(
-                                context = context,
-                                trip = cancellingTrip,
-                                updated = passengerOperationalMutation0582(cancelling, "CANCELLED"),
-                                store = store,
-                                mutationCoordinator = mutationCoordinator,
-                                mutationType = "BOOKING_CANCELLED_BY_DRIVER",
-                                mutationSource = "RESERVATION_MANAGEMENT_0631",
-                            )
-                        }.onSuccess {
-                            cancellingId = null
-                            filterName = ReservationFilter0631.HISTORY.name
-                            onChanged("Reserva cancelada; histórico preservado e vagas liberadas.")
-                        }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao cancelar"}") }
-                        busyId = null
+                        scope.launch {
+                            runCatching {
+                                persistCanonicalPassengerMutation0582(
+                                    context = context,
+                                    trip = cancellingTrip,
+                                    updated = passengerOperationalMutation0582(cancelling, "CANCELLED"),
+                                    store = store,
+                                    mutationCoordinator = mutationCoordinator,
+                                    mutationType = "BOOKING_CANCELLED_BY_DRIVER",
+                                    mutationSource = "RESERVATION_MANAGEMENT_0631",
+                                )
+                            }.onSuccess {
+                                cancellingId = null
+                                filterName = ReservationFilter0631.HISTORY.name
+                                onChanged("Reserva cancelada; histórico preservado e vagas liberadas na Agenda.")
+                            }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao cancelar"}") }
+                            busyId = null
+                        }
                     },
                 ) { Text(if (busyId == cancelling.id) "Cancelando…" else "Cancelar reserva") }
             },
