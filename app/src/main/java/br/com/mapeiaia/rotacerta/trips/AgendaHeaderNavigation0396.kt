@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
 
 internal enum class AgendaRootSection0396(val label: String) {
     CENTRAL_DAY("Central do Dia"),
-    ALL_TRIPS("Todas as viagens"),
+    ALL_TRIPS("Viagens"),
     ASSISTANT("Assistente Rota Certa"),
     AUTOMATIC_SYNC("BlaBlaCar"),
     SCRIPTS("Scripts"),
