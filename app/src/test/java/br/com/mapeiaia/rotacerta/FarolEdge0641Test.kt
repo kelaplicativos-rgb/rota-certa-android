@@ -143,11 +143,7 @@ class FarolEdge0641Test {
     }
 
     @Test
-    fun release_metadata_is_0641_5932() {
-        val gradle = File(root(), "app/build.gradle.kts").readText()
-        assertTrue(gradle.contains("releaseVersionName = \"0.1.641\""))
-        assertTrue(gradle.contains("releaseVersionCode = 5_932"))
-
+    fun release_history_preserves_0641_5932_contract() {
         val history = File(root(), "app/src/main/assets/release_history.json").readText()
         assertTrue(history.contains("\"version\": \"0.1.641\""))
         assertTrue(history.contains("\"build\": 5932"))
