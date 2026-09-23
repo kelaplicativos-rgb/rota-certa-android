@@ -57,6 +57,21 @@ import kotlinx.coroutines.delay
  * identity cannot be proven, the card is visible when appropriate but navigation
  * fails closed. Trips filtered from this surface receive an explicit sanitized reason.
  */
+internal enum class OperationalTripSourceFilter0633 {
+    ALL,
+    ROTA_CERTA,
+    BLABLACAR,
+}
+
+internal fun operationalTripMatchesSourceFilter0633(
+    nativeRotaCerta: Boolean,
+    filter: OperationalTripSourceFilter0633,
+): Boolean = when (filter) {
+    OperationalTripSourceFilter0633.ALL -> true
+    OperationalTripSourceFilter0633.ROTA_CERTA -> nativeRotaCerta
+    OperationalTripSourceFilter0633.BLABLACAR -> !nativeRotaCerta
+}
+
 @Composable
 internal fun OperationalAllTripsBrowserScreen0563(
     trips: List<Trip>,
@@ -153,6 +168,16 @@ internal fun OperationalAllTripsBrowserScreen0563(
         }
     }
 
+    var sourceFilter0633 by remember { mutableStateOf(OperationalTripSourceFilter0633.ALL) }
+    val filteredRows0633 = remember(rows, sourceFilter0633) {
+        rows.filter { row ->
+            operationalTripMatchesSourceFilter0633(
+                nativeRotaCerta = row.nativeRotaCerta0633,
+                filter = sourceFilter0633,
+            )
+        }
+    }
+
     LaunchedEffect(selection.decisions) {
         selection.decisions
             .filter { decision -> decision.reason != null }
@@ -186,8 +211,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
             }
     }
 
-    LaunchedEffect(rows.size) {
-        onFirstUsableFrame(rows.size)
+    LaunchedEffect(filteredRows0633.size) {
+        onFirstUsableFrame(filteredRows0633.size)
     }
 
     if (rows.isEmpty()) {
@@ -220,9 +245,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
         }
     }
 
-    val archiveSelection = remember(rows, nowMillis) {
+    val archiveSelection = remember(filteredRows0633, nowMillis) {
         operationalArchiveSelection0566(
-            items = rows,
+            items = filteredRows0633,
             nowMillis = nowMillis,
             departureAtMillis = { row -> row.entry.departureAtMillis },
             arrivalAtMillis = { row -> row.entry.arrivalAtMillis },
@@ -320,6 +345,31 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("+ Nova viagem")
+            }
+        }
+
+        item(key = "source-filter-0633") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                listOf(
+                    OperationalTripSourceFilter0633.ALL to "Todas",
+                    OperationalTripSourceFilter0633.ROTA_CERTA to "Rota Certa",
+                    OperationalTripSourceFilter0633.BLABLACAR to "BlaBlaCar",
+                ).forEach { (filter0633, label0633) ->
+                    if (sourceFilter0633 == filter0633) {
+                        Button(
+                            onClick = { sourceFilter0633 = filter0633 },
+                            modifier = Modifier.weight(1f),
+                        ) { Text(label0633) }
+                    } else {
+                        TextButton(
+                            onClick = { sourceFilter0633 = filter0633 },
+                            modifier = Modifier.weight(1f),
+                        ) { Text(label0633) }
+                    }
+                }
             }
         }
 
