@@ -152,6 +152,7 @@ object FarolMaximumForensicsStage38 {
         threadName: String = Thread.currentThread().name,
     ): Long {
         if (configuredMode == Mode.OFF) return -1L
+        if (configuredMode == Mode.FORENSIC_BASIC && !isBasicCheckpoint(stage)) return -1L
         val overheadStartNs = System.nanoTime()
         val seq: Long
         synchronized(lock) {
@@ -162,7 +163,7 @@ object FarolMaximumForensicsStage38 {
             val safeTrace = sanitize(traceId.orEmpty()).ifBlank { null }
             val safeOperation = sanitize(operationId.orEmpty()).ifBlank { null }
             val safeThread = sanitize(threadName).ifBlank { "unknown" }.take(100)
-            val safeDetails = sanitizeDetails(details).take(MAX_DETAILS)
+            val safeDetails = sanitizeDetails(details).take(if (configuredMode == Mode.FORENSIC_MAX) MAX_DETAILS else 320)
             val attemptId = resolveAttemptLocked(
                 safeStage,
                 safeDetails,
@@ -658,5 +659,17 @@ object FarolMaximumForensicsStage38 {
     private fun formatWall(wallMs: Long): String =
         SimpleDateFormat("dd/MM/yyyy HH:mm:ss.SSS", Locale("pt", "BR")).format(Date(wallMs))
 
-    private fun defaultMode(): Mode = if (BuildConfig.DEBUG) Mode.FORENSIC_MAX else Mode.FORENSIC_BASIC
+    private fun isBasicCheckpoint(stage: String): Boolean {
+        val s = stage.uppercase(Locale.ROOT)
+        return BASIC_CHECKPOINT_TOKENS.any(s::contains)
+    }
+
+    private val BASIC_CHECKPOINT_TOKENS = setOf(
+        "CARD_DETECTED", "LEASE", "SCREENSHOT_CALLBACK", "SCREENSHOT_FAILURE",
+        "OCR_EXTRACT_START", "OCR_EXTRACT_END", "OCR_EVALUATION_RESULT",
+        "CANDIDATE_SEMANTIC_VALIDATION", "CACHE_RESULT", "DISTANCE_CALCULATED",
+        "VISUAL_AUTHORITY_DECISION", "OVERLAY_RENDER_APPLIED", "STALE",
+    )
+
+    private fun defaultMode(): Mode = Mode.FORENSIC_BASIC
 }
