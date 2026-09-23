@@ -109,6 +109,11 @@ object DestinationAddressIdentityPolicy {
         ) {
             return false
         }
+        val previousStreetNumber = streetNumberAnchor(previous)
+        val currentStreetNumber = streetNumberAnchor(current)
+        if (previousStreetNumber != null && currentStreetNumber != null) {
+            return previousStreetNumber == currentStreetNumber
+        }
         val first = previous.streetNameTokens
         val second = current.streetNameTokens
         val minimum = minOf(first.size, second.size)
@@ -142,6 +147,19 @@ object DestinationAddressIdentityPolicy {
         )
     }
 
+    private fun streetNumberAnchor(identity: Identity): String? {
+        val streetType = identity.streetType ?: return null
+        identity.explicitNumber?.let { explicit ->
+            if (identity.streetNameTokens.size < MINIMUM_STREET_NAME_TOKENS) return null
+            return "$streetType|${identity.streetNameTokens.joinToString(" ")}|$explicit"
+        }
+        val numberIndex = identity.streetNameTokens.indexOfFirst { token ->
+            HOUSE_NUMBER_TOKEN.matches(token)
+        }
+        if (numberIndex < MINIMUM_STREET_NAME_TOKENS) return null
+        return "$streetType|${identity.streetNameTokens.take(numberIndex).joinToString(" ")}|${identity.streetNameTokens[numberIndex]}"
+    }
+
     private fun canonical(value: String): String = Normalizer
         .normalize(cleanDisplayAddress(value).lowercase(Locale.ROOT), Normalizer.Form.NFD)
         .replace(Regex("\\p{Mn}+"), "")
@@ -149,5 +167,6 @@ object DestinationAddressIdentityPolicy {
         .replace(Regex("\\s+"), " ")
         .trim()
 
+    private val HOUSE_NUMBER_TOKEN = Regex("^\\d{1,6}[a-z]?$", RegexOption.IGNORE_CASE)
     private const val MINIMUM_STREET_NAME_TOKENS = 2
 }
