@@ -78,6 +78,65 @@ class TimelineAgendaAtomicSync0632Test {
     }
 
     @Test
+    fun legacy631LocalEditIsRepublishedInsteadOfBeingOverwrittenByStaleRemote() {
+        val local = booking(BookingSource.ROTA_CERTA).copy(
+            seats = 2,
+            fareMinorUnits = 18600L,
+            fareCurrencyCode = "BRL",
+            lastDriverSelection = "APPROVE",
+            localMetadataTouched = true,
+            updatedAtMillis = 2000L,
+        )
+        val remote = RemoteBooking(
+            id = local.id,
+            passengerId = local.passengerId,
+            passengerName = local.passengerName,
+            passengerContact = local.passengerContact,
+            boardingStopId = local.boardingStopId,
+            dropoffStopId = local.dropoffStopId,
+            seats = 1,
+            status = BookingStatus.REQUESTED.name,
+            operationalStatus = PassengerOperationalStatus.PENDING,
+            source = BookingSource.ROTA_CERTA,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+            occupancyGroupId = local.occupancyGroupId,
+            updatedAtMillis = 1000L,
+        )
+
+        assertTrue(legacyTimelineAgendaRepairRequired0632(local, remote))
+        assertEquals(
+            "RESERVATION_APPROVED",
+            legacyTimelineAgendaRepairMutationType0632(local, remote),
+        )
+    }
+
+    @Test
+    fun newerRemoteStateIsNeverOverwrittenByLegacyRepair() {
+        val local = booking(BookingSource.ROTA_CERTA).copy(
+            seats = 2,
+            localMetadataTouched = true,
+            updatedAtMillis = 1000L,
+        )
+        val remote = RemoteBooking(
+            id = local.id,
+            passengerId = local.passengerId,
+            passengerName = local.passengerName,
+            passengerContact = local.passengerContact,
+            boardingStopId = local.boardingStopId,
+            dropoffStopId = local.dropoffStopId,
+            seats = 1,
+            status = BookingStatus.CONFIRMED.name,
+            operationalStatus = PassengerOperationalStatus.CONFIRMED,
+            source = BookingSource.ROTA_CERTA,
+            capacityClaimType = CapacityClaimType.PASSENGER,
+            occupancyGroupId = local.occupancyGroupId,
+            updatedAtMillis = 3000L,
+        )
+
+        assertTrue(!legacyTimelineAgendaRepairRequired0632(local, remote))
+    }
+
+    @Test
     fun androidCommitsPublishedMutationOnlyAfterRemoteAck() {
         val source = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt").readText()
         val start = source.indexOf("internal suspend fun persistCanonicalPassengerMutation0582(")
