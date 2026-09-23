@@ -1178,7 +1178,7 @@ internal fun passengerAccessLabel(access: DriverPassengerAccess?): String? = whe
     "AUTHORIZED", "ACTIVE" -> "🟢 Acesso automático"
     "SUSPENDED", "PENDING" -> "🟡 Sincronização pendente"
     "BLOCKED" -> "⛔ Não aceito no meu carro"
-    else -> "⚪ Estado online: " + access.status.lowercase()
+    else -> "⚪ Estado online: " + access?.status.orEmpty().lowercase()
 }
 
 internal fun parseCreditInput(raw: String): Long? = runCatching {
