@@ -4533,6 +4533,93 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
 
+    private fun matchesTrainedCardSignature638(packageName638: String): Boolean {
+        val root638 = captureRootHandle0187() ?: return false
+        if (normalizePackageName(root638.packageName) != normalizePackageName(packageName638)) return false
+        val models638 = farolCardSignatureStore638.modelsFor(packageName638)
+        if (models638.isEmpty()) return true
+        val nodes638 = collectSignatureProbeNodes638(root638.node)
+        val text638 = nodes638.asSequence()
+            .map { it.text }
+            .filter { it.isNotBlank() && it != "_" }
+            .distinct()
+            .joinToString("\n")
+        val match638 = FarolCardSignatureMatcher638.match(
+            packageName = packageName638,
+            text = text638,
+            nodes = nodes638,
+            models = models638,
+        )
+        val state638 = "${packageName638}|${match638.matched}|${match638.modelId.orEmpty()}|${String.format(Locale.US, "%.3f", match638.score)}"
+        if (state638 != lastSignatureMatchState638) {
+            lastSignatureMatchState638 = state638
+            FarolFlightRecorder0163.record(
+                stage = if (match638.matched) "S638_CARD_SIGNATURE_MATCH" else "S638_CARD_SIGNATURE_MISS",
+                packageName = packageName638,
+                details = "model=${match638.modelId.orEmpty()}; score=${String.format(Locale.US, "%.3f", match638.score)}; reason=${match638.reason}; nodes=${nodes638.size}; models=${models638.size}",
+            )
+        }
+        return match638.matched
+    }
+
+    private fun collectSignatureProbeNodes638(root638: AccessibilityNodeInfo): List<FailedCardNodeLine0161> {
+        val pending638 = java.util.ArrayDeque<AccessibilityNodeInfo>()
+        val output638 = ArrayList<FailedCardNodeLine0161>(64)
+        pending638.add(root638)
+        var visited638 = 0
+        while (pending638.isNotEmpty() && visited638 < 64) {
+            val node638 = pending638.removeLast()
+            visited638 += 1
+            val bounds638 = Rect()
+            runCatching { node638.getBoundsInScreen(bounds638) }
+            val text638 = sequenceOf(
+                runCatching { node638.text?.toString() }.getOrNull(),
+                runCatching { node638.contentDescription?.toString() }.getOrNull(),
+            ).mapNotNull { it?.trim()?.takeIf(String::isNotBlank) }.firstOrNull() ?: "_"
+            output638 += FailedCardNodeLine0161(
+                text = text638.take(240),
+                top = bounds638.top,
+                left = bounds638.left,
+                bottom = bounds638.bottom,
+                right = bounds638.right,
+                className = runCatching { node638.className?.toString() }.getOrNull().orEmpty().take(120),
+                viewId = runCatching { node638.viewIdResourceName }.getOrNull().orEmpty().take(160),
+            )
+            val childCount638 = runCatching { node638.childCount }.getOrDefault(0).coerceIn(0, 64 - visited638)
+            for (index638 in childCount638 - 1 downTo 0) {
+                runCatching { node638.getChild(index638) }.getOrNull()?.let(pending638::addLast)
+            }
+        }
+        return output638
+    }
+
+    private fun clearTrainedCardPublicState638(packageName638: String) {
+        val ownsCurrent638 = normalizePackageName(universalActiveRidePackageName) == normalizePackageName(packageName638)
+        val hasPublicState638 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red ||
+            currentDistanceKm != null || universalActiveAddressSignature != null
+        if (!ownsCurrent638 || !hasPublicState638) return
+        universalRouteJob?.cancel()
+        universalRouteJob = null
+        universalScreenGeneration += 1L
+        universalWindowGeneration += 1L
+        universalActiveAddressSignature = null
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        currentDistanceKm = null
+        stage19VisualVerificationPending = false
+        if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease("stage638_signature_miss")
+        rememberBubbleReason(
+            "stage638_signature_miss",
+            "O modelo treinado não está mais presente; resultado anterior removido sem leitura pesada.",
+        )
+        showOverlay(RadarColor.Default, distanceKm = null)
+        FarolFlightRecorder0163.record(
+            stage = "S638_SIGNATURE_MISS_PUBLIC_RESET",
+            packageName = packageName638,
+            details = "screenGeneration=$universalScreenGeneration; windowGeneration=$universalWindowGeneration; heavyCollect=false",
+        )
+    }
+
     private fun collectFailedCardNodeLines0161(): List<FailedCardNodeLine0161> {
         val rootHandle0187 = captureRootHandle0187() ?: return emptyList()
         val rootPackage0187 = rootHandle0187.packageName ?: return emptyList()
