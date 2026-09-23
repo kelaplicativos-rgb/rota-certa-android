@@ -1992,6 +1992,17 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
 
         val stablePresenceStage46R4 = observeTargetSurfaceStage46R3(stage46TargetSourcePackage)
+        val pendingSemanticLeaseStage635 =
+            !finalLeaseStage44.activeFinal &&
+                !universalActiveAddressSignature.isNullOrBlank() &&
+                stablePresenceStage46R4.active &&
+                (
+                    evaluationStage19 == null ||
+                        DestinationAddressIdentityPolicy.sameDestinationSignatures(
+                            universalActiveAddressSignature,
+                            evaluationStage19.addressSignature,
+                        )
+                    )
         val stableActionStage46R4 = FarolStableFinalLatchStage46R4.ambiguousAction(
             finalLeaseStage44.activeFinal,
             evaluationStage19 != null,
@@ -2001,7 +2012,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             packageName,
             stablePresenceStage46R4,
         )
-        if (stableActionStage46R4 == FarolStableFinalLatchStage46R4.AmbiguousAction.PRESERVE_NO_VERIFY) {
+        if (pendingSemanticLeaseStage635) {
+            stage19VisualVerificationPending = evaluationStage19 == null
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S635_INFLIGHT_SEMANTIC_LEASE_PRESERVED", eventPackageStage19, cycleId = cycleIdStage20,
+                details = "currentSignature=${universalActiveAddressSignature.orEmpty()}; candidateSignature=${evaluationStage19?.addressSignature.orEmpty()}; candidatePresent=${evaluationStage19 != null}; routeActive=${universalRouteJob?.isActive == true}; target=${stage46TargetSourcePackage.orEmpty()}; targetWindow=${stablePresenceStage46R4.windowId}; active=${stablePresenceStage46R4.active}; generationNotAdvanced=true",
+            )
+            FarolCausalLatencyStage28.Metrics.increment("stage635InflightSemanticLeasePreserved")
+        } else if (stableActionStage46R4 == FarolStableFinalLatchStage46R4.AmbiguousAction.PRESERVE_NO_VERIFY) {
             // Foreign/SystemUI/host churn has zero authority over a confirmed final that still owns
             // the visible surface. Keep the exact Green/Red+km physically unchanged and do no OCR.
             stage19VisualVerificationPending = false
@@ -3262,15 +3280,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                         universalActiveAddressSignature,
                                     )
                                     val transientPresenceStage44 = observeTargetSurfaceStage46R3(surfaceTokenStage46.packageName)
-                                    if (transientLeaseStage44.activeFinal && transientPresenceStage44.active) {
+                                    val transientSemanticLeaseStage635 =
+                                        !universalActiveAddressSignature.isNullOrBlank() && transientPresenceStage44.active
+                                    if ((transientLeaseStage44.activeFinal && transientPresenceStage44.active) || transientSemanticLeaseStage635) {
                                         FarolMaximumForensicsStage38.record(
-                                            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED", eventPackageStage19,
+                                            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(),
+                                            if (transientLeaseStage44.activeFinal) "S44_TRANSIENT_NO_CANDIDATE_FINAL_PRESERVED" else "S635_TRANSIENT_NO_CANDIDATE_INFLIGHT_PRESERVED",
+                                            eventPackageStage19,
                                             cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
-                                            details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${transientLeaseStage44.addressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}",
+                                            details = "color=${transientLeaseStage44.color}; distance=${transientLeaseStage44.distanceKm ?: -1.0}; signature=${universalActiveAddressSignature.orEmpty()}; surface=${surfaceTokenStage46.packageName.orEmpty()}; active=${transientPresenceStage44.active}; hardClear=false",
                                         )
                                     } else {
                                         hardClearUniversalTwoAddress(
-                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa.",
+                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease semântica ativa.",
                                             keepWaitingYellow = true,
                                         )
                                     }
@@ -3353,11 +3375,28 @@ class LiveRideAccessibilityService : AccessibilityService() {
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_CANDIDATE_SEMANTIC_VALIDATION", packageName = null, cycleId = cycleIdStage20,
             details = "source=$sourceStage19; accepted=${semanticStage21.accepted}; reason=${semanticStage21.reason}; pickup=${evaluationStage19.pickup.take(700)}; destination=${evaluationStage19.destination.take(700)}; addresses=${evaluationStage19.addresses.joinToString(" || ").take(1300)}; signature=${evaluationStage19.addressSignature}",
         )
-        stage36RuntimeAuthority.bindDestination(evaluationStage19.addressSignature)
-        stage32SemanticGate.observeCandidate(evaluationStage19.addressSignature)
-        FarolForensicCardBlackBoxStage32.recordCandidate(
-            SystemClock.elapsedRealtimeNanos(), sourceStage19, evaluationStage19.pickup, evaluationStage19.destination, evaluationStage19.addressSignature,
+        val previousAddressSignatureStage635 = universalActiveAddressSignature
+        val sameDestinationVariantStage635 = DestinationAddressIdentityPolicy.sameDestinationSignatures(
+            previousAddressSignatureStage635,
+            evaluationStage19.addressSignature,
         )
+        val stableAddressSignatureStage635 = if (sameDestinationVariantStage635) {
+            previousAddressSignatureStage635 ?: evaluationStage19.addressSignature
+        } else {
+            evaluationStage19.addressSignature
+        }
+        stage36RuntimeAuthority.bindDestination(stableAddressSignatureStage635)
+        stage32SemanticGate.observeCandidate(stableAddressSignatureStage635)
+        FarolForensicCardBlackBoxStage32.recordCandidate(
+            SystemClock.elapsedRealtimeNanos(), sourceStage19, evaluationStage19.pickup, evaluationStage19.destination, stableAddressSignatureStage635,
+        )
+        if (sameDestinationVariantStage635 && previousAddressSignatureStage635 != evaluationStage19.addressSignature) {
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S635_EQUIVALENT_ADDRESS_VARIANT_COALESCED", packageName = null, cycleId = cycleIdStage20,
+                details = "source=$sourceStage19; stable=$stableAddressSignatureStage635; candidate=${evaluationStage19.addressSignature}; destination=${evaluationStage19.destination.take(900)}",
+            )
+            FarolCausalLatencyStage28.Metrics.increment("stage635EquivalentAddressVariantCoalesced")
+        }
         if (!semanticStage21.accepted) {
             FarolForensicTraceStage20.note(
                 SystemClock.elapsedRealtimeNanos(), "S21_SEMANTIC_REJECT_BEFORE_CACHE_ROUTE", cycleIdStage20,
@@ -3382,7 +3421,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val previousBindingStage20 = currentStage20BindingSnapshot()
         val windowChangedStage19 = stage19ActiveWindowId != evaluationStage19.windowId ||
             stage19ActiveBlockId != evaluationStage19.blockId
-        val visualChangedStage19 = universalActiveAddressSignature != evaluationStage19.addressSignature
+        val visualChangedStage19 = universalActiveAddressSignature != stableAddressSignatureStage635
         if (windowChangedStage19) universalWindowGeneration += 1L
         if (visualChangedStage19) {
             universalScreenGeneration += 1L
@@ -3398,7 +3437,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         stage19ActiveWindowId = evaluationStage19.windowId
         stage19ActiveBlockId = evaluationStage19.blockId
         universalActiveRidePackageName = null
-        universalActiveAddressSignature = evaluationStage19.addressSignature
+        universalActiveAddressSignature = stableAddressSignatureStage635
         lastSnapshotHash = evaluationStage19.screenHash
         universalLastActiveReadAtElapsedMillis0187 = SystemClock.elapsedRealtime()
         stage19VisualVerificationPending = false
@@ -3440,7 +3479,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             screenGeneration = universalScreenGeneration,
             windowGeneration = universalWindowGeneration,
             screenHash = evaluationStage19.screenHash,
-            addressSignature = evaluationStage19.addressSignature,
+            addressSignature = stableAddressSignatureStage635,
         )
         bindReadingActivationStage26(bindingStage19, stage26CandidateActivationGeneration)
         FarolReadingActivationStage26.Metrics.sample(
