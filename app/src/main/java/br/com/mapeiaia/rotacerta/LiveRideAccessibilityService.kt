@@ -4552,8 +4552,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
     private fun matchesTrainedCardSignature638(
         packageName638: String,
-        root638: FarolRootHandle0187 = captureRootHandle0187() ?: return false,
+        rootHandle638: FarolRootHandle0187? = null,
     ): Boolean {
+        val root638 = rootHandle638 ?: captureRootHandle0187() ?: return false
         if (normalizePackageName(root638.packageName) != normalizePackageName(packageName638)) return false
         val models638 = farolCardSignatureStore638.modelsFor(packageName638)
         if (models638.isEmpty()) return true
