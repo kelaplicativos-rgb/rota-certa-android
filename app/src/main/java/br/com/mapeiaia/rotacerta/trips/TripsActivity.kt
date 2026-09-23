@@ -1109,6 +1109,11 @@ private fun TripApp(
                                     selectedId = if (opening) trip.id else null
                                 },
                                 onChanged = { text -> refresh(); message = text },
+                                onEditNativeTrip = {
+                                    editingTripId0633 = trip.id
+                                    parentRootScreen0396 = TripScreen.TIMELINE
+                                    screen = TripScreen.CREATE
+                                },
                                 onRequestBlaBlaSync = {},
                             )
                         }
@@ -1508,6 +1513,9 @@ private fun requestAgendaTripHtmlRefresh0607(
     return queued
 }
 
+private fun settingsConfiguredForNativeTrip0633(store: TripStore, trip: Trip): Boolean =
+    store.onlineSettings().configured && !trip.remoteId.isNullOrBlank()
+
 @Composable
 private fun TripCard(
     activity: ComponentActivity,
@@ -1516,11 +1524,16 @@ private fun TripCard(
     expanded: Boolean,
     onToggle: () -> Unit,
     onChanged: (String) -> Unit,
+    onEditNativeTrip: () -> Unit = {},
     onRequestBlaBlaSync: () -> Unit,
 ) {
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
     val scope = rememberCoroutineScope()
     val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
+    val nativeRotaCerta0633 =
+        resolvedTripRecordOrigin(trip) == TripRecordOrigin.LOCAL &&
+            trip.blablaProfileUuid.isNullOrBlank() &&
+            trip.blablaTripId.isNullOrBlank()
     val bookings = store.bookingsFor(trip.id)
     val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
     val availabilityText = if (seatRange.variesBySegment) {
@@ -1531,6 +1544,10 @@ private fun TripCard(
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(trip.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (nativeRotaCerta0633) "Origem: Rota Certa" else "Origem: BlaBlaCar",
+                style = MaterialTheme.typography.labelSmall,
+            )
             Text("${formatter.format(Instant.ofEpochMilli(trip.departureAtMillis).atZone(ZoneId.systemDefault()))} • ${trip.status} • $availabilityText")
             OutlinedButton(onClick = onToggle) { Text(if (expanded) "Fechar" else "Gerenciar") }
             if (expanded) {
@@ -1550,6 +1567,9 @@ private fun TripCard(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (nativeRotaCerta0633 && trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
+                        OutlinedButton(onClick = onEditNativeTrip) { Text("Editar viagem") }
+                    }
                     if (trip.status == TripStatus.DRAFT) {
                         Button(onClick = {
                             store.saveTrip(trip.copy(status = TripStatus.PUBLISHED))
@@ -1558,8 +1578,35 @@ private fun TripCard(
                     }
                     if (trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
                         OutlinedButton(onClick = {
-                            store.saveTrip(trip.copy(status = TripStatus.CANCELLED))
-                            onChanged("Viagem cancelada.")
+                            if (nativeRotaCerta0633 && settingsConfiguredForNativeTrip0633(store, trip)) {
+                                scope.launch {
+                                    runCatching {
+                                        val settings0633 = store.onlineSettings()
+                                        val mutation0633 = trip.copy(
+                                            status = TripStatus.CANCELLED,
+                                            publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        val ack0633 = TripRemoteApi(settings0633).update(mutation0633)
+                                        require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize antes de cancelar." }
+                                        mutation0633.copy(
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, ack0633.entityRevision),
+                                            publicUrl = ack0633.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                        )
+                                    }.onSuccess { saved0633 ->
+                                        store.saveTrip(saved0633)
+                                        BookingRealtimeEvents0356.notifyChanged()
+                                        onChanged("Viagem cancelada no estado canônico e removida da Agenda Pública.")
+                                    }.onFailure { error ->
+                                        onChanged("Nada foi alterado: ${error.message ?: "falha ao cancelar viagem"}")
+                                    }
+                                }
+                            } else if (nativeRotaCerta0633) {
+                                onChanged("Backend canônico indisponível. Nada foi alterado.")
+                            } else {
+                                store.saveTrip(trip.copy(status = TripStatus.CANCELLED))
+                                onChanged("Viagem externa marcada como cancelada no Rota Certa.")
+                            }
                         }) { Text("Cancelar viagem") }
                     }
                 }
@@ -1572,22 +1619,49 @@ private fun TripCard(
                 if (trip.status !in setOf(TripStatus.CANCELLED, TripStatus.COMPLETED)) {
                     OutlinedButton(onClick = {
                         val next = trip.copy(publicBookingEnabled = !trip.publicBookingEnabled)
-                        store.saveTrip(next)
-                        if (settings.configured && next.remoteId != null) {
-                            scope.launch {
-                                runCatching {
-                                    mutationCoordinator.recordLocalMutation(
-                                        canonicalTripId = next.id,
-                                        mutationType = "PUBLIC_BOOKING_TOGGLE",
-                                        source = "TIMELINE_CARD",
-                                    )
-                                    AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
+                        if (nativeRotaCerta0633) {
+                            if (!settings.configured || next.remoteId.isNullOrBlank()) {
+                                onChanged("Backend canônico indisponível. Nada foi alterado.")
+                            } else {
+                                scope.launch {
+                                    runCatching {
+                                        val mutation0633 = next.copy(
+                                            publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        val ack0633 = TripRemoteApi(settings).update(mutation0633)
+                                        require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize e tente novamente." }
+                                        mutation0633.copy(
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, ack0633.entityRevision),
+                                            publicUrl = ack0633.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                        )
+                                    }.onSuccess { saved0633 ->
+                                        store.saveTrip(saved0633)
+                                        BookingRealtimeEvents0356.notifyChanged()
+                                        onChanged(if (saved0633.publicBookingEnabled) "Reservas ativadas e Agenda Pública atualizada." else "Reservas desativadas e Agenda Pública atualizada.")
+                                    }.onFailure { error ->
+                                        onChanged("Nada foi alterado: ${error.message ?: "falha ao atualizar reservas"}")
+                                    }
                                 }
-                                    .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
-                                    .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
                             }
                         } else {
-                            onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente. A sincronização automática publicará a alteração quando a integração online estiver disponível." else "Reservas pelo link desativadas.")
+                            store.saveTrip(next)
+                            if (settings.configured && next.remoteId != null) {
+                                scope.launch {
+                                    runCatching {
+                                        mutationCoordinator.recordLocalMutation(
+                                            canonicalTripId = next.id,
+                                            mutationType = "PUBLIC_BOOKING_TOGGLE",
+                                            source = "TIMELINE_CARD",
+                                        )
+                                        AgendaBackgroundSync0392.enqueueImmediate(activity, "trip_mutation")
+                                    }
+                                        .onSuccess { onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas para esta viagem." else "Reservas pelo link desativadas para esta viagem.") }
+                                        .onFailure { onChanged("Estado salvo no Rota Certa; o delta desta viagem ficou pendente: ${it.message}") }
+                                }
+                            } else {
+                                onChanged(if (next.publicBookingEnabled) "Reservas pelo link ativadas localmente." else "Reservas pelo link desativadas.")
+                            }
                         }
                     }) { Text(if (trip.publicBookingEnabled) "Reservas pelo link: ATIVADAS" else "Reservas pelo link: DESATIVADAS") }
                     if (trip.publicBookingEnabled && !trip.publicUrl.isNullOrBlank()) {
@@ -1613,8 +1687,34 @@ private fun TripCard(
                     }
                 }
                 TextButton(onClick = {
-                    store.deleteTrip(trip.id)
-                    onChanged("Viagem excluída do aparelho.")
+                    if (nativeRotaCerta0633) {
+                        val settings0633 = store.onlineSettings()
+                        if (!settings0633.configured || trip.remoteId.isNullOrBlank()) {
+                            onChanged("Backend canônico indisponível. A viagem não foi excluída para evitar ficar publicada sem controle.")
+                        } else {
+                            scope.launch {
+                                runCatching {
+                                    val tombstone0633 = trip.copy(
+                                        status = TripStatus.CANCELLED,
+                                        publicationTombstone = true,
+                                        publicationRevision = trip.publicationRevision.coerceAtLeast(0L) + 1L,
+                                        publicationEventId = UUID.randomUUID().toString(),
+                                    )
+                                    val ack0633 = TripRemoteApi(settings0633).update(tombstone0633)
+                                    require(!ack0633.stale) { "A viagem mudou em outro dispositivo. Atualize antes de excluir." }
+                                }.onSuccess {
+                                    store.deleteTrip(trip.id)
+                                    BookingRealtimeEvents0356.notifyChanged()
+                                    onChanged("Viagem removida do backend público e deste aparelho.")
+                                }.onFailure { error ->
+                                    onChanged("Nada foi excluído: ${error.message ?: "falha ao remover viagem"}")
+                                }
+                            }
+                        }
+                    } else {
+                        store.deleteTrip(trip.id)
+                        onChanged("Viagem externa removida apenas do aparelho.")
+                    }
                 }) { Text("Excluir viagem") }
             }
         }
