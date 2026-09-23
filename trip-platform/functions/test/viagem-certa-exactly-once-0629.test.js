@@ -16,6 +16,10 @@ const bookingSync = fs.readFileSync(
   path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicBookingSync0296.kt"),
   "utf8",
 );
+const publicAgendaSync = fs.readFileSync(
+  path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"),
+  "utf8",
+);
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -85,7 +89,9 @@ test("0629 Android directory sync is bounded and diagnostics retain the remote c
   assert.match(androidApi, /normalized\.chunked\(PASSENGER_DIRECTORY_BATCH_SIZE_0629\)/);
   assert.match(androidApi, /PassengerDirectoryBatchException0629/);
   assert.match(androidApi, /totalPassengers=\$totalPassengers/);
-  assert.match(bookingSync, /PASSENGER_DIRECTORY_SYNC_FAILED_0629/);
-  assert.match(bookingSync, /AgendaFailureEvidence\.describe/);
-  assert.match(bookingSync, /component = "PublicBookingRemoteSync0296"/);
+  assert.match(bookingSync, /PASSENGER_DIRECTORY_DEFERRED_0629/);
+  assert.doesNotMatch(bookingSync, /api\.syncPassengerDirectory\(directoryProfiles0625\)/);
+  assert.match(publicAgendaSync, /api\.syncPassengerDirectory\(canonicalPassengerProfiles\)/);
+  assert.match(publicAgendaSync, /AgendaFailureEvidence\.describe/);
+  assert.match(publicAgendaSync, /component = "PublicAgendaAutoSync0300"/);
 });
