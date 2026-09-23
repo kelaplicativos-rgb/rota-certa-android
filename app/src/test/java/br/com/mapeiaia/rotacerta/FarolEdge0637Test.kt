@@ -100,6 +100,17 @@ class FarolEdge0637Test {
     }
 
     @Test
+    fun exact_road_km_never_redecides_the_local_radius_color() {
+        val live = src("LiveRideAccessibilityService.kt")
+        val start = live.indexOf("private fun attachExactRoadDistanceStage637")
+        val end = live.indexOf("private fun applyUniversalPreliminaryColorStage637", start)
+        assertTrue(start >= 0 && end > start)
+        val helper = live.substring(start, end)
+        assertTrue(helper.contains("recommendation = preliminaryStage637.recommendation"))
+        assertFalse(helper.contains("decisionEngine.decideWorkRegion"))
+    }
+
+    @Test
     fun release_metadata_is_0637_5928() {
         val gradle = File(root(), "app/build.gradle.kts").readText()
         assertTrue(gradle.contains("releaseVersionName = \"0.1.637\""))
