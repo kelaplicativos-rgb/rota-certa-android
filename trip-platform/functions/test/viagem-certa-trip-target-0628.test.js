@@ -42,5 +42,6 @@ test("0628 target failure remains explicit and is not a fake successful reservat
   const open = between(api, "async function openPassengerPasswordSession0625", "async function signupPassengerAccount");
   assert.match(open, /agenda_target_invalid/);
   assert.match(open, /A viagem informada não está disponível\./);
-  assert.match(publicJs, /if \(!response\.ok\)/);\n  assert.match(publicJs, /safeMessage0569\(body\?\.message\)/);
+  assert.match(publicJs, /if \(!response\.ok\)/);
+  assert.match(publicJs, /safeMessage0569\(body\?\.message\)/);
 });
