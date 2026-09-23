@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.631",
+      "build": 5922,
+      "commit": null,
+      "branch": "agent/reservation-management-0.1.631",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Adiciona a Central de Reservas como raiz operacional separada do cadastro de Passageiros.",
+        "Solicitações da Home, reservas da Central do Dia e notificações com bookingId passam a abrir diretamente a reserva administrável.",
+        "Reservas oferecem aprovação, recusa, WhatsApp, edição de trecho/lugares/valor, status operacional, cancelamento auditável e inclusão de passageiro."
+      ],
+      "fixed": [
+        "Elimina o desvio em que tocar uma solicitação de reserva levava apenas à lista de viagens sem controles da reserva.",
+        "Mantém cancelamentos como estado histórico em vez de apagar a ocorrência e libera a ocupação pelo mesmo motor canônico.",
+        "Edição de trecho e quantidade recalcula disponibilidade excluindo a própria reserva para evitar dupla contagem."
+      ],
+      "improved": [
+        "Todas as mutações da nova Central de Reservas reutilizam a outbox canônica de passageiros e emitem atualização em tempo real.",
+        "Menu lateral passa a expor Reservas imediatamente antes de Passageiros, separando gestão da ocorrência do CRM da pessoa.",
+        "Ações internas deixam explícito que não alteram silenciosamente o estado externo da BlaBlaCar."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.630: solicitação existente não tinha superfície administrativa direta para aceitar, recusar, conversar, editar ou cancelar.",
+        "0.1.630: notificações e Central do Dia encaminhavam reservas para superfícies genéricas em vez da ocorrência canônica."
+      ],
+      "modulesAffected": [
+        "Reservas",
+        "Agenda de Viagens",
+        "Central do Dia",
+        "Passageiros",
+        "Notificações",
+        "Outbox canônica",
+        "UI",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.630",
       "build": 5921,
       "commit": null,
