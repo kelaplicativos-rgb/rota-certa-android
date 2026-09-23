@@ -122,9 +122,10 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(timeline.contains("TripMutationCoordinator0387"))
         assertTrue(timeline.contains("canonicalTripId ="))
         assertTrue(timeline.contains("ResponsiveTripActions("))
-        assertTrue(activity.contains("listModifier = Modifier.weight(1f)"))
-        assertTrue(activity.contains("TimelineRefreshGestureSurface0388("))
-        assertTrue(activity.contains("networkSync=false automaticSyncOnly=true"))
+        assertTrue(activity.contains("TripScreen.TIMELINE -> OperationalAllTripsBrowserScreen0563("))
+        assertTrue(activity.contains("downloadTriggerToken0616 = operationalTimelineDownloadToken0616"))
+        assertTrue(activity.contains("onManageCanonicalTrip = { tripId ->"))
+        assertTrue(activity.contains("screen = TripScreen.LIST"))
     }
 
     @Test
@@ -137,8 +138,10 @@ class AgendaHeaderNavigation0396Test {
         assertTrue(activity.contains("passengerExternalBackToken0396 += 1"))
         assertTrue(activity.contains("onHierarchyChanged = { passengerSubscreenOpen0396 = it }"))
         assertTrue(activity.contains("screen = parentRootScreen0396"))
-        assertTrue(activity.contains("uiCommand0396 = timelineUiCommand0396"))
-        assertTrue(timeline.contains("LaunchedEffect(uiCommandToken0396, uiCommand0396)"))
+        assertTrue(activity.contains("onCreateTrip = {"))
+        assertTrue(activity.contains("editingTripId0633 = null"))
+        assertTrue(activity.contains("parentRootScreen0396 = TripScreen.TIMELINE"))
+        assertTrue(activity.contains("screen = TripScreen.CREATE"))
         assertTrue(passengers.contains("externalBackToken: Int = 0"))
         assertTrue(passengers.contains("onHierarchyChanged(historyProfileId != null)"))
     }
