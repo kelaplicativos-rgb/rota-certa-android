@@ -30,8 +30,21 @@ class PassengerAdmin0314Test {
     }
 
     @Test
-    fun accessLabelsTreatPendingAsSyncStateAndBlockedAsCanonicalDenial() {
+    fun accessLabelsOnlyDescribeRealRemoteStates() {
+        assertNull(passengerAccessLabel(null))
         assertEquals("🟡 Sincronização pendente", passengerAccessLabel(DriverPassengerAccess(status = "PENDING")))
         assertEquals("⛔ Não aceito no meu carro", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
+    }
+
+    @Test
+    fun passengerDirectorySelectionSkipsAmbiguousDuplicateContactsInsteadOfWaitingForever() {
+        val unique = PassengerProfile(id = "unique", displayName = "Ana", whatsapp = "11911112222")
+        val duplicateA = PassengerProfile(id = "a", displayName = "Kel", whatsapp = "11947434112")
+        val duplicateB = PassengerProfile(id = "b", displayName = "kel", whatsapp = "+5511947434112")
+
+        val selection = passengerDirectorySelection0630(listOf(unique, duplicateA, duplicateB))
+
+        assertEquals(listOf("unique"), selection.profiles.map { it.id })
+        assertEquals(setOf("11947434112"), selection.conflictedContactKeys)
     }
 }
