@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.635",
+      "build": 5926,
+      "commit": null,
+      "branch": "agent/farol-edge-stability-0.1.635",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Lease semântico em andamento passa a sobreviver a frames OCR/Accessibility incompletos enquanto a mesma superfície de corrida continua ativa.",
+        "Variantes progressivas do mesmo destino compartilham a mesma identidade antes do bind do runtime, impedindo cancelamento do cálculo atual.",
+        "Identidade de endereço passa a usar logradouro e número como âncora quando ambos estão presentes, tolerando corrupção apenas no sufixo de bairro/cidade."
+      ],
+      "fixed": [
+        "Corrige starvation observado no Samsung SM-S911B em que STAGE19_VISUAL_ROUTE_STARTED era seguido por novas gerações e nunca chegava a decisão/pintura.",
+        "Snapshot OCR sem dois endereços deixa de executar hard_clear quando já existe lease semântica ativa na superfície atual.",
+        "Rua idêntica com número diferente continua sendo mudança real e invalida corretamente o trabalho antigo."
+      ],
+      "improved": [
+        "Stage44 preserva decisão final também entre assinaturas semanticamente equivalentes, não apenas strings idênticas.",
+        "Latest-wins permanece ativo para destinos realmente diferentes, mas deixa de tratar variação textual do mesmo card como nova corrida.",
+        "Nova suíte 0.1.635 cobre os endereços e a sequência de falha reproduzidos no relatório físico 0.1.634."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.634: mutações transitórias e variações OCR do mesmo card podiam avançar gerações, invalidar o lease e descartar o resultado antes da pintura."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "Leitura ao vivo",
+        "OCR",
+        "Identidade de destino",
+        "Overlay",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.634",
       "build": 5925,
       "commit": null,
