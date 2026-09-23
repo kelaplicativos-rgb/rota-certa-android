@@ -45,7 +45,7 @@ test("0629 transport ambiguity can only become success after server evidence", (
   const reconcile = between(publicJs, "async function reconcileBookingIntent0629", "function showBookingSuccess0629");
   assert.match(reconcile, /\/v1\/passenger\/me\/booking-intents\//);
   assert.match(reconcile, /body\?\.found === true/);
-  assert.match(reconcile, /response\.status === 404/);
+  assert.match(reconcile, /response\.status !== 404/);
 
   const success = between(publicJs, "function showBookingSuccess0629", "async function confirmBooking0625");
   assert.match(success, /clearBookingIntent0629\(idempotencyKey\)/);
