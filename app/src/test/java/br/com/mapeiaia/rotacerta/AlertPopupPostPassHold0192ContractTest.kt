@@ -36,7 +36,7 @@ class AlertPopupPostPassHold0192ContractTest {
     fun `fechamentos explicitos continuam imediatos`() {
         assertTrue(overlay.contains("fun hide()"))
         assertTrue(overlay.contains("cancelPendingClose()"))
-        assertTrue(service.contains("if (!currentSettings.appEnabled || !currentSettings.proximityAlertsEnabled)"))
+        assertTrue(service.contains("if (!AlertRuntimePolicy0644.isEnabled(currentSettings))"))
         assertTrue(service.contains("directionalAlertOverlayChecklist5.hide()"))
     }
 
