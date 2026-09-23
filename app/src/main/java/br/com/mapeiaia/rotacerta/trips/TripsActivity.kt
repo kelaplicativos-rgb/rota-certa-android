@@ -317,6 +317,7 @@ private fun TripApp(
     var scriptsUiCommandToken0488 by remember { mutableStateOf(0) }
     var debugReportModule0507 by rememberSaveable { mutableStateOf(DiagnosticModule0507.ALL_TRIPS.name) }
     var selectedId by remember { mutableStateOf(initialTripId) }
+    var editingTripId0633 by remember { mutableStateOf<String?>(null) }
     var focusedTripId by remember { mutableStateOf(initialTripId.takeIf { openReservationRequests }) }
     var focusedRemoteTripId by remember { mutableStateOf(initialRemoteTripId) }
     var focusedBookingId by remember { mutableStateOf(initialBookingId) }
@@ -576,6 +577,7 @@ private fun TripApp(
         TripScreen.TIMELINE -> listOf(
             AgendaHeaderAction0396("Nova viagem") {
                 pendingCreateForPassengerId = ""
+                editingTripId0633 = null
                 parentRootScreen0396 = TripScreen.TIMELINE
                 screen = TripScreen.CREATE
             },
@@ -632,6 +634,7 @@ private fun TripApp(
     val headerLabel0396 = when {
         passengerSubscreenActive0396 -> "Histórico do passageiro"
         screen == TripScreen.DEBUG_REPORT -> "Relatório de depuração — ${activeDebugModule0507.label}"
+        screen == TripScreen.CREATE && editingTripId0633 != null -> "Editar viagem"
         else -> screen.agendaHeaderLabel0396()
     }
     val currentRootScreen0396 = if (screen.isAgendaRoot0396()) screen else parentRootScreen0396
@@ -815,6 +818,7 @@ private fun TripApp(
                     onMessage = { text -> message = text },
                     onCreateTrip = {
                         pendingCreateForPassengerId = ""
+                        editingTripId0633 = null
                         parentRootScreen0396 = TripScreen.TIMELINE
                         screen = TripScreen.CREATE
                     },
