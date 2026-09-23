@@ -1998,7 +1998,76 @@ private fun PassengerFareEditorDialog(
     )
 }
 
-internal fun persistCanonicalPassengerMutation0582(
+internal enum class PassengerMutationTransport0632 {
+    PROTECTED_DECISION_APPROVE,
+    PROTECTED_DECISION_REJECT,
+    PROTECTED_OPERATIONAL,
+    PROTECTED_CANCEL,
+    PROTECTED_UPDATE,
+    DRIVER_UPSERT,
+}
+
+internal fun passengerMutationTransport0632(
+    booking: Booking,
+    mutationTypeRaw: String,
+): PassengerMutationTransport0632 {
+    val mutationType = mutationTypeRaw.trim().uppercase()
+    if (booking.source == BookingSource.ROTA_CERTA) {
+        return when {
+            mutationType == "RESERVATION_APPROVED" -> PassengerMutationTransport0632.PROTECTED_DECISION_APPROVE
+            mutationType == "RESERVATION_REJECTED" -> PassengerMutationTransport0632.PROTECTED_DECISION_REJECT
+            mutationType == "BOOKING_CANCELLED_BY_DRIVER" ||
+                booking.status == BookingStatus.CANCELLED ||
+                booking.operationalStatus == PassengerOperationalStatus.CANCELLED ->
+                PassengerMutationTransport0632.PROTECTED_CANCEL
+            mutationType.startsWith("PASSENGER_STATUS_") -> PassengerMutationTransport0632.PROTECTED_OPERATIONAL
+            else -> PassengerMutationTransport0632.PROTECTED_UPDATE
+        }
+    }
+    return if (
+        mutationType.startsWith("PASSENGER_STATUS_") ||
+        mutationType == "BOOKING_CANCELLED_BY_DRIVER" ||
+        booking.status == BookingStatus.CANCELLED ||
+        booking.operationalStatus == PassengerOperationalStatus.CANCELLED
+    ) {
+        PassengerMutationTransport0632.PROTECTED_OPERATIONAL
+    } else {
+        PassengerMutationTransport0632.DRIVER_UPSERT
+    }
+}
+
+private suspend fun publishPassengerMutationRemote0632(
+    api: TripRemoteApi,
+    remoteTripId: String,
+    updated: Booking,
+    mutationType: String,
+): DriverBookingUpsertResponse {
+    return when (passengerMutationTransport0632(updated, mutationType)) {
+        PassengerMutationTransport0632.PROTECTED_DECISION_APPROVE ->
+            api.decideDriverBooking(remoteTripId, updated.id, "APPROVE")
+        PassengerMutationTransport0632.PROTECTED_DECISION_REJECT ->
+            api.decideDriverBooking(remoteTripId, updated.id, "REJECT")
+        PassengerMutationTransport0632.PROTECTED_CANCEL ->
+            api.cancelProtectedDriverBooking(remoteTripId, updated.id)
+        PassengerMutationTransport0632.PROTECTED_OPERATIONAL -> {
+            val selection = when {
+                mutationType.startsWith("PASSENGER_STATUS_") ->
+                    mutationType.removePrefix("PASSENGER_STATUS_").trim().uppercase()
+                updated.operationalStatus == PassengerOperationalStatus.CANCELLED ||
+                    updated.status == BookingStatus.CANCELLED -> "CANCELLED"
+                updated.paymentStatus == PassengerPaymentStatus.PAID -> "PAID"
+                else -> updated.operationalStatus.name
+            }
+            api.updateDriverPassengerOperationalStatus(remoteTripId, updated.id, selection)
+        }
+        PassengerMutationTransport0632.PROTECTED_UPDATE ->
+            api.updateProtectedDriverBooking(remoteTripId, updated)
+        PassengerMutationTransport0632.DRIVER_UPSERT ->
+            api.upsertDriverBooking(remoteTripId, updated)
+    }
+}
+
+internal suspend fun persistCanonicalPassengerMutation0582(
     context: Context,
     trip: Trip,
     updated: Booking,
@@ -2008,30 +2077,94 @@ internal fun persistCanonicalPassengerMutation0582(
     mutationSource: String = "TIMELINE_PASSENGER_UI",
 ): Booking {
     require(updated.tripId == trip.id) { "BOOKING_TRIP_ID_MISMATCH" }
+
+    val settings = store.onlineSettings()
+    val remoteTripId = trip.remoteId?.trim()?.takeIf(String::isNotEmpty)
+    val origin = resolvedTripRecordOrigin(trip)
+
+    if (settings.configured && remoteTripId != null) {
+        // 0.1.632: published trip mutations are remote-first. The backend transaction
+        // persists the booking + segment loads + public projection in one revision,
+        // and rejects overbooking before Android commits the local copy.
+        val ack = publishPassengerMutationRemote0632(
+            api = TripRemoteApi(settings),
+            remoteTripId = remoteTripId,
+            updated = updated,
+            mutationType = mutationType,
+        )
+        val saved = store.saveBooking(
+            ack.booking.toLocalBooking(
+                localTripId = trip.id,
+                existingLocal = updated.copy(localMetadataTouched = updated.localMetadataTouched),
+            ),
+        )
+        if (origin == TripRecordOrigin.LOCAL && ack.entityRevision > 0L) {
+            mutationCoordinator.recordRemoteAppliedLocal(
+                canonicalTripId = trip.id,
+                revision = ack.entityRevision,
+                mutationType = mutationType,
+                source = mutationSource,
+                reconcileBookingInventory = true,
+            )
+        } else {
+            store.reconcileBookingDerivedInventory(setOf(trip.id))
+        }
+        BookingRealtimeEvents0356.notifyChanged()
+        UnifiedDebugEventStore.record(
+            "TIMELINE_AGENDA_ATOMIC_MUTATION_0632",
+            context.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                " bookingId=" + passengerCancellationHash(saved.id) +
+                " mutationType=" + mutationType.take(64) +
+                " mutationSource=" + mutationSource.take(64) +
+                " transport=" + passengerMutationTransport0632(updated, mutationType).name +
+                " entityRevision=" + ack.entityRevision +
+                " remoteAck=true projectionAtomic=true localCommittedAfterAck=true blablaPlatformChanged=false",
+        )
+        return saved
+    }
+
+    if (settings.configured && origin == TripRecordOrigin.EXTERNAL_BACKING) {
+        // An external backing without a backend trip id cannot safely publish a booking
+        // mutation. Fail closed instead of letting Timeline and public Agenda diverge.
+        UnifiedDebugEventStore.record(
+            "TIMELINE_AGENDA_ATOMIC_MUTATION_BLOCKED_0632",
+            context.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
+                " bookingId=" + passengerCancellationHash(updated.id) +
+                " mutationType=" + mutationType.take(64) +
+                " reason=REMOTE_TRIP_ID_MISSING externalBacking=true localWrite=false",
+        )
+        error("Identidade da viagem pública indisponível. Nada foi alterado para evitar divergência de vagas.")
+    }
+
     val saved = store.saveBooking(
         updated.copy(updatedAtMillis = System.currentTimeMillis()),
     )
-    val queued = mutationCoordinator.recordLocalMutation(
-        canonicalTripId = trip.id,
-        mutationType = mutationType,
-        source = mutationSource,
-        reconcileBookingInventory = false,
-    )
-    // BlaBlaCar is never synchronized automatically after an internal mutation.
-    // The canonical Rota Certa outbox is the only remote publication path.
+    val queued = if (origin == TripRecordOrigin.LOCAL) {
+        mutationCoordinator.recordLocalMutation(
+            canonicalTripId = trip.id,
+            mutationType = mutationType,
+            source = mutationSource,
+            reconcileBookingInventory = true,
+        )
+    } else {
+        null
+    }
     if (queued != null) {
-        AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_local_mutation")
+        AgendaBackgroundSync0392.enqueueImmediate(context, "passenger_local_mutation_0632")
     }
     BookingRealtimeEvents0356.notifyChanged()
     UnifiedDebugEventStore.record(
-        "TIMELINE_CANONICAL_PASSENGER_LOCAL_FIRST_0582",
+        "TIMELINE_CANONICAL_PASSENGER_LOCAL_FALLBACK_0632",
         context.packageName,
         "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
             " bookingId=" + passengerCancellationHash(saved.id) +
             " mutationType=" + mutationType.take(64) +
             " mutationSource=" + mutationSource.take(64) +
+            " onlineConfigured=" + settings.configured +
             " outboxQueued=" + (queued != null) +
-            " directHttp=false blablaPlatformChanged=false",
+            " projectionAtomic=false directHttp=false blablaPlatformChanged=false",
     )
     return saved
 }
@@ -2132,7 +2265,7 @@ private fun savePassengerFareLegacy0494(
     return true
 }
 
-private fun persistCanonicalPassengerPrivateMetadata0513(
+private suspend fun persistCanonicalPassengerPrivateMetadata0513(
     context: Context,
     trip: Trip,
     previous: Booking,
@@ -2157,7 +2290,7 @@ private fun persistCanonicalPassengerPrivateMetadata0513(
                 previous.fareCurrencyCode != updated.fareCurrencyCode) +
             " boardingAddressChanged=" + (previous.boardingAddress != updated.boardingAddress) +
             " dropoffAddressChanged=" + (previous.dropoffAddress != updated.dropoffAddress) +
-            " source=LOCAL_CANONICAL_OUTBOX privateValuesLogged=false directHttp=false",
+            " source=CANONICAL_BACKEND_REMOTE_FIRST privateValuesLogged=false projectionAtomic=true",
     )
     return saved
 }
