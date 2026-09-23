@@ -2036,7 +2036,7 @@ internal fun passengerMutationTransport0632(
     }
 }
 
-private suspend fun publishPassengerMutationRemote0632(
+internal suspend fun publishPassengerMutationRemote0632(
     api: TripRemoteApi,
     remoteTripId: String,
     updated: Booking,
