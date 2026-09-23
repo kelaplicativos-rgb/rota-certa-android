@@ -23,7 +23,7 @@ function between(source, startMarker, endMarker) {
 test("0626 public agenda loads exactly one shell and always exposes Minha área at the top", () => {
   const scripts = publicHtml.match(/public-agenda-shell-0569\.js/g) || [];
   assert.equal(scripts.length, 1);
-  assert.match(publicHtml, /0\.1\.628-trip-target/);
+  assert.match(publicHtml, /0\\.1\\.629-exactly-once/);
   assert.doesNotMatch(publicHtml, /0\.1\.624-pin-booking|0\.1\.625-password-steps/);
   assert.match(publicHtml, /id="passengerNav0589" class="passengerNav0589"/);
   assert.match(publicHtml, /id="passengerAreaLink0589"[^>]*>Minha área<\/a>/);
