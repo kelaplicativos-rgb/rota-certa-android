@@ -61,5 +61,5 @@ test("private passenger data stays protected even after the public agenda is reo
 
 test("0.1.627 package metadata is explicit", () => {
   assert.match(gradle, /releaseVersionCode = 5_918/);
-  assert.match(gradle, /releaseVersionName = "0\.1\.626"/);
+  assert.match(gradle, /releaseVersionName = "0\.1\.627"/);
 });
