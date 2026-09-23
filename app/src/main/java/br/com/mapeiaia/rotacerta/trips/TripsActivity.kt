@@ -813,7 +813,7 @@ private fun TripApp(
                                             "A viagem mudou em outro dispositivo. Atualize antes de editar novamente."
                                         }
                                         mutation0633.copy(
-                                            remoteId = published0494.tripId.ifBlank { mutation0633.remoteId },
+                                            remoteId = published0494.tripId.takeIf(String::isNotBlank) ?: mutation0633.remoteId,
                                             publicToken = published0494.publicToken.ifBlank { mutation0633.publicToken },
                                             publicUrl = published0494.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
                                             publicationRevision = maxOf(mutation0633.publicationRevision, published0494.entityRevision),
@@ -1530,10 +1530,7 @@ private fun TripCard(
     val formatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm") }
     val scope = rememberCoroutineScope()
     val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
-    val nativeRotaCerta0633 =
-        resolvedTripRecordOrigin(trip) == TripRecordOrigin.LOCAL &&
-            trip.blablaProfileUuid.isNullOrBlank() &&
-            trip.blablaTripId.isNullOrBlank()
+    val nativeRotaCerta0633 = trip.isNativeRotaCertaTrip0633()
     val bookings = store.bookingsFor(trip.id)
     val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
     val availabilityText = if (seatRange.variesBySegment) {
