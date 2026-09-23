@@ -3194,6 +3194,7 @@ async function createTesterBooking(req, res, token) {
         sourceReference: `TESTER:${tester.testSessionId}:${bookingId}`,
         occupancyGroupId: bookingId,
         idempotencyFingerprint: fingerprint,
+        clientIntentId: idempotencyKey,
         farePerSeatCents,
         totalFareCents,
         creditAppliedCents: creditResult.appliedCents,
@@ -7623,6 +7624,48 @@ async function ensurePublicBookingPassengerAccess0626(driverUsername, session, r
   };
 }
 
+const PASSENGER_BOOKING_INACTIVE_STATUSES_0629 = new Set(["CANCELLED", "REJECTED", "EXPIRED"]);
+
+function equivalentActivePassengerBooking0629(records, session, boardingStopId, dropoffStopId, seats) {
+  return (Array.isArray(records) ? records : []).find((record) => {
+    const status = cleanText(record && record.status, 24).toUpperCase();
+    if (PASSENGER_BOOKING_INACTIVE_STATUSES_0629.has(status)) return false;
+    if (!passengerSessionOwnsBooking(session, record)) return false;
+    return cleanText(record && record.boardingStopId, 80) === boardingStopId &&
+      cleanText(record && record.dropoffStopId, 80) === dropoffStopId &&
+      Number(record && record.seats || 0) === seats;
+  }) || null;
+}
+
+async function getPassengerBookingIntent0629(req, res, token, intentIdRaw) {
+  const session = await requirePassengerSession(req, res);
+  if (!session) return;
+  const intentId = cleanText(intentIdRaw, 180).replace(/[^A-Za-z0-9_-]/g, "");
+  if (!intentId) return fail(res, 400, "booking_intent_required", "Identificação da tentativa de reserva inválida.");
+  let bookingId;
+  try {
+    bookingId = publicBookingId(token, intentId);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "booking_intent_invalid", error.message || "Identificação da tentativa de reserva inválida.");
+  }
+  const bookingSnap = await db.collection("trips").doc(token).collection("bookings").doc(bookingId).get();
+  if (!bookingSnap.exists) {
+    return fail(res, 404, "booking_intent_not_found", "A tentativa ainda não produziu uma reserva.");
+  }
+  const booking = { id: bookingSnap.id, ...bookingSnap.data() };
+  if (!passengerSessionOwnsBooking(session, booking)) {
+    return fail(res, 404, "booking_intent_not_found", "A tentativa ainda não produziu uma reserva.");
+  }
+  return json(res, 200, {
+    found: true,
+    bookingId: booking.id,
+    clientIntentId: cleanText(booking.clientIntentId, 180) || intentId,
+    status: cleanText(booking.status, 24) || "REQUESTED",
+    operationalStatus: cleanText(booking.operationalStatus, 32) || "PENDING",
+    seats: Math.max(0, Number(booking.seats || 0)),
+  });
+}
+
 async function createBooking(req, res, token) {
   if (await blockTesterFromRealPassengerMutation(req, res)) return;
   await enforceBookingRateLimit(req);
@@ -7661,18 +7704,9 @@ async function createBooking(req, res, token) {
   if (!authTrip.exists) return fail(res, 404, "trip_not_found", "Viagem não encontrada.");
   const authTripData = authTrip.data();
   debugDriverUsername = normalizeUsername(authTripData.driverUsername || "");
-  if (!tripPublicOnline0471(authTripData)) {
-    return fail(res, 409, "trip_offline", "Esta viagem está offline no momento.");
-  }
-  if (!PUBLIC_STATUSES.has(authTripData.status)) {
-    return fail(res, 409, "trip_closed", "Esta viagem não aceita reservas pelo link.");
-  }
-  if (authTripData.status === "FULL") {
-    return fail(res, 409, "trip_full", "Esta viagem está lotada.");
-  }
-  if (Number(authTripData.departureAtMillis || 0) <= Date.now()) {
-    return fail(res, 409, "trip_departed", "Esta viagem já saiu.");
-  }
+  // 0.1.629: mutable trip acceptance checks live inside the transaction, after
+  // idempotent/semantic replay detection. A retry must still recover a booking
+  // that made the trip FULL or whose departure time passed after the first commit.
   let authorized;
   try {
     authorized = await ensurePublicBookingPassengerAccess0626(debugDriverUsername, session, requestedPassengerName);
@@ -7702,18 +7736,6 @@ async function createBooking(req, res, token) {
       if (!tripSnap.exists) throw Object.assign(new Error("Viagem não encontrada."), { httpStatus: 404, code: "trip_not_found" });
       const trip = tripSnap.data();
       debugDriverUsername = normalizeUsername(trip.driverUsername || "");
-      if (!tripPublicOnline0471(trip)) {
-        throw Object.assign(new Error("Esta viagem está offline no momento."), { httpStatus: 409, code: "trip_offline" });
-      }
-      if (!PUBLIC_STATUSES.has(trip.status)) {
-        throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
-      }
-      if (trip.status === "FULL") {
-        throw Object.assign(new Error("Esta viagem está lotada."), { httpStatus: 409, code: "trip_full" });
-      }
-      if (Number(trip.departureAtMillis || 0) <= Date.now()) {
-        throw Object.assign(new Error("Esta viagem já saiu."), { httpStatus: 409, code: "trip_departed" });
-      }
 
       const existingAttempt = await tx.get(bookingRef);
       if (existingAttempt.exists) {
@@ -7725,6 +7747,8 @@ async function createBooking(req, res, token) {
         writePassengerBookingIdentityIndex0491(tx, cleanText(existingData.passengerId || session.passengerId, 120), token, bookingId, Date.now());
         return {
           replayed: true,
+          semanticReplay: false,
+          bookingId,
           availableSeats: null,
           farePerSeatCents: Number(existingData.farePerSeatCents || 0),
           totalFareCents: Number(existingData.totalFareCents || 0),
@@ -7742,6 +7766,56 @@ async function createBooking(req, res, token) {
         tx.get(ledgerRef),
       ]);
       const existing = bookingsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      const semanticExisting0629 = equivalentActivePassengerBooking0629(
+        existing,
+        session,
+        boardingStopId,
+        dropoffStopId,
+        seats,
+      );
+      if (semanticExisting0629) {
+        writePassengerBookingIndex(
+          tx,
+          semanticExisting0629.passengerContact || passengerContact,
+          token,
+          semanticExisting0629.id,
+          Date.now(),
+        );
+        writePassengerBookingIdentityIndex0491(
+          tx,
+          cleanText(semanticExisting0629.passengerId || session.passengerId, 120),
+          token,
+          semanticExisting0629.id,
+          Date.now(),
+        );
+        return {
+          replayed: true,
+          semanticReplay: true,
+          bookingId: semanticExisting0629.id,
+          availableSeats: null,
+          farePerSeatCents: Number(semanticExisting0629.farePerSeatCents || 0),
+          totalFareCents: Number(semanticExisting0629.totalFareCents || 0),
+          creditAppliedCents: Number(semanticExisting0629.creditAppliedCents || 0),
+          amountDueCents: Number(semanticExisting0629.amountDueCents ?? semanticExisting0629.totalFareCents ?? 0),
+          driverUsername: debugDriverUsername,
+          tripTitle: cleanText(trip.title, 180),
+          status: cleanText(semanticExisting0629.status, 24) || "REQUESTED",
+          operationalStatus: cleanText(semanticExisting0629.operationalStatus, 32) || "PENDING",
+        };
+      }
+
+      if (!tripPublicOnline0471(trip)) {
+        throw Object.assign(new Error("Esta viagem está offline no momento."), { httpStatus: 409, code: "trip_offline" });
+      }
+      if (!PUBLIC_STATUSES.has(trip.status)) {
+        throw Object.assign(new Error("Esta viagem não aceita reservas pelo link."), { httpStatus: 409, code: "trip_closed" });
+      }
+      if (trip.status === "FULL") {
+        throw Object.assign(new Error("Esta viagem está lotada."), { httpStatus: 409, code: "trip_full" });
+      }
+      if (Number(trip.departureAtMillis || 0) <= Date.now()) {
+        throw Object.assign(new Error("Esta viagem já saiu."), { httpStatus: 409, code: "trip_departed" });
+      }
       if (!capacityIsReliable(token, trip)) {
         throw Object.assign(new Error("A capacidade desta viagem ainda não foi confirmada."), { httpStatus: 409, code: "capacity_unconfirmed" });
       }
@@ -7855,6 +7929,8 @@ async function createBooking(req, res, token) {
       }, entityRevision, now));
       return {
         replayed: false,
+        semanticReplay: false,
+        bookingId,
         eventId,
         entityRevision,
         availableSeats: availableForBooking(trip, candidateRecords, reconciled, fromIndex, toIndex, now),
@@ -7899,8 +7975,10 @@ async function createBooking(req, res, token) {
       }).catch((error) => console.error("push reservation_created", error));
     }
     return json(res, statusCode, {
-      bookingId,
-      cancellationToken,
+      bookingId: result.bookingId || bookingId,
+      cancellationToken: result.semanticReplay ? null : cancellationToken,
+      clientIntentId: idempotencyKey,
+      semanticReplay: result.semanticReplay === true,
       availableSeats: result.availableSeats,
       farePerSeatCents: result.farePerSeatCents,
       totalFareCents: result.totalFareCents,
@@ -11016,6 +11094,9 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     }
     if (parts.length === 7 && parts[0] === "v1" && parts[1] === "public" && parts[2] === "trips" && parts[4] === "bookings" && parts[6] === "cancel" && req.method === "POST") {
       return await cancelPublicBooking(req, res, parts[3], parts[5]);
+    }
+    if (parts.length === 6 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "booking-intents" && req.method === "GET") {
+      return await getPassengerBookingIntent0629(req, res, parts[4], parts[5]);
     }
     if (parts.length === 6 && parts[0] === "v1" && parts[1] === "passenger" && parts[2] === "me" && parts[3] === "notifications" && parts[5] === "read" && req.method === "POST") {
       return await markPassengerNotificationRead(req, res, parts[4], false);
