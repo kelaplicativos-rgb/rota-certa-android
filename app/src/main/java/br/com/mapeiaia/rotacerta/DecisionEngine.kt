@@ -37,7 +37,7 @@ class DecisionEngine {
                 fields = fields,
                 fullText = fullText,
                 recommendation = Recommendation.InsufficientData,
-                reason = "Distancia real do Google Maps indisponivel; calculo em linha reta proibido.",
+                reason = "Coordenada do destino ainda indisponivel para calcular o raio geodesico local.",
             )
         }
 
@@ -50,10 +50,10 @@ class DecisionEngine {
         val recommendation = if (insideHome || insideAlternative) Recommendation.GoodRide else Recommendation.OutsideRadius
         val reason = when {
             insideHome && insideAlternative && distanceToHome!! <= distanceToAlternative!! ->
-                "Destino final dentro do raio da Casa por rota real do Google Maps."
-            insideAlternative -> "Destino final dentro do raio de $safeAlternativeLabel por rota real do Google Maps."
-            insideHome -> "Destino final dentro do raio da Casa por rota real do Google Maps."
-            else -> "Destino final fora dos raios configurados por rota real do Google Maps."
+                "Destino final dentro do raio da Casa por distancia geografica local."
+            insideAlternative -> "Destino final dentro do raio de $safeAlternativeLabel por distancia geografica local."
+            insideHome -> "Destino final dentro do raio da Casa por distancia geografica local."
+            else -> "Destino final fora dos raios configurados por distancia geografica local."
         }
 
         return result(
@@ -78,10 +78,8 @@ class DecisionEngine {
         if (destinationText.isBlank()) {
             return result(fields, fullText, Recommendation.InsufficientData, "Nao foi possivel identificar o destino final do passageiro.")
         }
-        if (hasAvoidedKeyword(destinationText, settings.avoidedKeywords)) {
-            return result(fields, fullText, Recommendation.OutsideRadius, "Destino final contem palavra ou bairro evitado.")
-        }
-
+        // FAROL Edge 0.1.634: green/red is exclusively the configured geographic radius.
+        // Avoided-keyword policy must not manufacture a distance decision.
         val activePins = if (settings.alternativeTargetEnabled) pinRoutes else emptyList()
         if (!homeTargetActive && activePins.isEmpty()) {
             return result(
@@ -111,9 +109,9 @@ class DecisionEngine {
                 fullText = fullText,
                 recommendation = Recommendation.GoodRide,
                 reason = if (winner.isHome) {
-                    "Destino final dentro do raio da Casa por rota real do Google Maps."
+                    "Destino final dentro do raio da Casa por distancia geografica local."
                 } else {
-                    "Destino final dentro do raio do alfinete ${winner.label} por rota real do Google Maps."
+                    "Destino final dentro do raio do alfinete ${winner.label} por distancia geografica local."
                 },
                 pickupToHomeKm = homeDistanceKm,
                 pickupToAlternativeKm = nearestPinDistance,
@@ -126,7 +124,7 @@ class DecisionEngine {
                 fields = fields,
                 fullText = fullText,
                 recommendation = Recommendation.InsufficientData,
-                reason = "Uma ou mais distancias exatas da regiao de trabalho ainda nao ficaram disponiveis.",
+                reason = "Uma ou mais coordenadas da regiao de trabalho ainda nao ficaram disponiveis.",
                 pickupToHomeKm = homeDistanceKm,
                 pickupToAlternativeKm = nearestPinDistance,
             )
@@ -136,7 +134,7 @@ class DecisionEngine {
             fields = fields,
             fullText = fullText,
             recommendation = Recommendation.OutsideRadius,
-            reason = "Destino final fora da Casa e de todos os alfinetes ligados por rota real do Google Maps.",
+            reason = "Destino final fora da Casa e de todos os alfinetes ligados por distancia geografica local.",
             pickupToHomeKm = homeDistanceKm,
             pickupToAlternativeKm = nearestPinDistance,
         )
