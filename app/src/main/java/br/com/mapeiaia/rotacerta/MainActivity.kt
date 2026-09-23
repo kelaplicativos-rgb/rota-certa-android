@@ -80,8 +80,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import br.com.mapeiaia.rotacerta.trips.BlaBlaNetworkDiagnosticStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -1773,6 +1775,8 @@ private fun AnalysisScreen(
         onSettingsChange = ::saveQuickSettings,
     ) // multi_address_work_region_ui_checklist_7
 
+    Spacer(Modifier.height(10.dp))
+    FarolCapturesCard0634()
 
     Spacer(Modifier.height(10.dp))
     // Leitura direta ativa; o gatilho e o ultimo endereco. // universal_models_removed_v2_0_1_95
@@ -1909,6 +1913,93 @@ private fun RadiusQuickCard(
                 onValueChange = { onSettingsChange(quickSettings.copy(alternativeRadiusKm = it)) },
                 onValueChangeFinished = { onSaveSettings(quickSettings) },
             )
+        }
+    }
+}
+
+@Composable
+private fun FarolCapturesCard0634() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var captures by remember { mutableStateOf<List<FarolCaptureRecord0161>>(emptyList()) }
+    var selectedId by remember { mutableStateOf<String?>(null) }
+
+    suspend fun refresh0634() {
+        captures = withContext(Dispatchers.IO) { FailedCardTechnicalCaptureStore0161.list(context) }
+        if (selectedId != null && captures.none { it.id == selectedId }) selectedId = null
+    }
+
+    LaunchedEffect(Unit) { refresh0634() }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Farol → Capturas", fontWeight = FontWeight.Bold)
+            Text(
+                "Snapshots automáticos privados. Expiram em 24 horas e não são enviados à galeria nem para a rede.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (captures.isEmpty()) {
+                Text("Nenhuma captura automática retida.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                captures.take(20).forEach { capture ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()).format(Date(capture.createdAtMillis)),
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                listOfNotNull(
+                                    capture.destination?.let { "Destino: \$it" },
+                                    capture.distanceKm?.let { "Distância: \${formatKm(it)}" },
+                                    capture.result?.let { "Estado: \$it" },
+                                    capture.cardLeaseId?.let { "Lease: \$it" },
+                                ).joinToString(" • ").ifBlank { capture.packageName },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (selectedId == capture.id) {
+                                val preview = remember(capture.id, capture.imagePath) {
+                                    capture.imagePath?.let { path0634 ->
+                                        val options0634 = BitmapFactory.Options().apply { inSampleSize = 4 }
+                                        BitmapFactory.decodeFile(path0634, options0634)
+                                    }
+                                }
+                                preview?.let {
+                                    Image(
+                                        bitmap = it.asImageBitmap(),
+                                        contentDescription = "Snapshot do Farol",
+                                        modifier = Modifier.fillMaxWidth().height(160.dp),
+                                        contentScale = ContentScale.Crop,
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (capture.imagePath != null) {
+                                    OutlinedButton(
+                                        onClick = { selectedId = if (selectedId == capture.id) null else capture.id },
+                                    ) { Text(if (selectedId == capture.id) "Fechar" else "Visualizar") }
+                                }
+                                OutlinedButton(onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            FailedCardTechnicalCaptureStore0161.remove(context, capture.id)
+                                        }
+                                        refresh0634()
+                                    }
+                                }) { Text("Excluir") }
+                            }
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { FailedCardTechnicalCaptureStore0161.clear(context) }
+                            refresh0634()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Limpar tudo") }
+            }
         }
     }
 }
