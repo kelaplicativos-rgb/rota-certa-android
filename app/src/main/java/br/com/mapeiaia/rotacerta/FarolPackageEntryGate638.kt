@@ -13,7 +13,7 @@ object FarolPackageEntryGate638 {
         val authorityPackage: String? = null,
     ) {
         val allowHeavyPipeline: Boolean
-            get() = outcome == Outcome.ALLOW_SELECTED || outcome == Outcome.ALLOW_SELECTED_ROOT_UNDER_TRANSIENT
+            get() = outcome == Outcome.ALLOW_SELECTED
     }
 
     fun decide(
@@ -28,7 +28,8 @@ object FarolPackageEntryGate638 {
         val own = SelectedRideAppStore.normalize(ownPackageName)
         val selected = selectedPackages.mapNotNull(SelectedRideAppStore::normalize).toSet()
         if (event != null && event in selected) return Decision(Outcome.ALLOW_SELECTED, event)
-        if (root != null && root in selected && (event == null || event == own || transientOverlay(event))) {
+        if (event == null && root != null && root in selected) return Decision(Outcome.ALLOW_SELECTED, root)
+        if (root != null && root in selected && (event == own || transientOverlay(event))) {
             return Decision(Outcome.ALLOW_SELECTED_ROOT_UNDER_TRANSIENT, root)
         }
         if (event == own || transientOverlay(event)) return Decision(Outcome.IGNORE_OWN_OR_TRANSIENT, root?.takeIf { it in selected })
