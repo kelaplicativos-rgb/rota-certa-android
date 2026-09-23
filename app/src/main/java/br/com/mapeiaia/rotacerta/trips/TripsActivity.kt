@@ -766,46 +766,85 @@ private fun TripApp(
                 TripScreen.CREATE -> TripEditor(
                     defaultOrigin = appSettings.tripDepartureAddress,
                     defaultRotaCertaSeatAllocation = appSettings.rotaCertaSeatAllocation,
+                    initialTrip0633 = editingTripId0633?.let { id -> trips.firstOrNull { it.id == id } },
                     onCancel = {
                         pendingCreateForPassengerId = ""
+                        editingTripId0633 = null
                         screen = parentRootScreen0396
                     },
                     onSave = { trip ->
                         val online0494 = store.onlineSettings()
                         if (!online0494.configured) {
-                            message = "Backend canônico indisponível. A viagem não foi criada localmente como fonte paralela."
+                            message = "Backend canônico indisponível. Nada foi alterado para evitar fonte paralela."
                         } else {
+                            val editingExisting0633 = editingTripId0633?.let { id -> trips.firstOrNull { it.id == id } }
                             shareScope.launch {
                                 runCatching {
-                                    val published0494 = TripRemoteApi(online0494).publish(trip)
-                                    trip.copy(
-                                        remoteId = published0494.tripId,
-                                        publicToken = published0494.publicToken,
-                                        publicUrl = published0494.publicUrl.takeIf(String::isNotBlank),
-                                        publicationRevision = maxOf(trip.publicationRevision, published0494.entityRevision),
-                                    ) to published0494
+                                    val api0633 = TripRemoteApi(online0494)
+                                    if (editingExisting0633 == null) {
+                                        val published0494 = api0633.publish(trip)
+                                        require(!published0494.stale) { "O backend rejeitou a criação como revisão obsoleta." }
+                                        trip.copy(
+                                            remoteId = published0494.tripId,
+                                            publicToken = published0494.publicToken,
+                                            publicUrl = published0494.publicUrl.takeIf(String::isNotBlank),
+                                            publicationRevision = maxOf(trip.publicationRevision, published0494.entityRevision),
+                                        ) to published0494
+                                    } else {
+                                        require(resolvedTripRecordOrigin(editingExisting0633) == TripRecordOrigin.LOCAL) {
+                                            "Viagens da BlaBlaCar devem ser alteradas na fonte externa."
+                                        }
+                                        val mutation0633 = trip.copy(
+                                            id = editingExisting0633.id,
+                                            remoteId = editingExisting0633.remoteId,
+                                            publicToken = editingExisting0633.publicToken,
+                                            publicUrl = editingExisting0633.publicUrl,
+                                            createdAtMillis = editingExisting0633.createdAtMillis,
+                                            canonicalRevision = editingExisting0633.canonicalRevision,
+                                            canonicalStateHash = editingExisting0633.canonicalStateHash,
+                                            publicationRevision = editingExisting0633.publicationRevision.coerceAtLeast(0L) + 1L,
+                                            publicationEventId = UUID.randomUUID().toString(),
+                                        ).withCanonicalAgendaVisibility0581()
+                                        require(!mutation0633.remoteId.isNullOrBlank()) {
+                                            "Identidade remota da viagem indisponível."
+                                        }
+                                        val published0494 = api0633.update(mutation0633)
+                                        require(!published0494.stale) {
+                                            "A viagem mudou em outro dispositivo. Atualize antes de editar novamente."
+                                        }
+                                        mutation0633.copy(
+                                            remoteId = published0494.tripId.ifBlank { mutation0633.remoteId },
+                                            publicToken = published0494.publicToken.ifBlank { mutation0633.publicToken },
+                                            publicUrl = published0494.publicUrl.takeIf(String::isNotBlank) ?: mutation0633.publicUrl,
+                                            publicationRevision = maxOf(mutation0633.publicationRevision, published0494.entityRevision),
+                                        ) to published0494
+                                    }
                                 }.onSuccess { (canonicalCache0494, published0494) ->
                                     store.saveTrip(canonicalCache0494)
                                     refresh()
                                     selectedId = canonicalCache0494.id
-                                    val resumePassengerId = pendingCreateForPassengerId.takeIf(String::isNotBlank)
+                                    val wasEdit0633 = editingExisting0633 != null
+                                    editingTripId0633 = null
+                                    val resumePassengerId = if (wasEdit0633) null else pendingCreateForPassengerId.takeIf(String::isNotBlank)
                                     pendingCreateForPassengerId = ""
                                     if (resumePassengerId != null) {
                                         addPassengerResumePassengerId = resumePassengerId
                                         addPassengerResumeTripId = canonicalCache0494.id
                                         addPassengerResumeToken++
                                         message = "Viagem criada no backend canônico. Continue a inclusão do passageiro já selecionado."
+                                    } else if (wasEdit0633) {
+                                        message = "Viagem atualizada no backend canônico e refletida na Agenda Pública."
                                     } else {
                                         message = "Viagem Rota Certa publicada no backend canônico e disponível na Agenda Pública."
                                     }
                                     UnifiedDebugEventStore.record(
-                                        "MANUAL_TRIP_CANONICAL_CREATED_0494",
+                                        if (wasEdit0633) "NATIVE_TRIP_CANONICAL_UPDATED_0633" else "MANUAL_TRIP_CANONICAL_CREATED_0494",
                                         activity.packageName,
-                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} publicBookingEnabled=${canonicalCache0494.publicBookingEnabled} status=${canonicalCache0494.status.name} authority=CANONICAL_BACKEND",
+                                        "canonicalTripId=${passengerDebugIdentityHash(canonicalCache0494.id)} remoteTripPresent=${published0494.tripId.isNotBlank()} blablaTripPresent=${!canonicalCache0494.blablaTripId.isNullOrBlank()} publicBookingEnabled=${canonicalCache0494.publicBookingEnabled} status=${canonicalCache0494.status.name} source=ROTA_CERTA_NATIVE authority=CANONICAL_BACKEND",
                                     )
                                     screen = parentRootScreen0396
                                 }.onFailure { error ->
-                                    message = "Nada foi criado localmente: ${error.message ?: "falha no backend canônico"}"
+                                    message = "Nada foi alterado: ${error.message ?: "falha no backend canônico"}"
                                 }
                             }
                         }
