@@ -3,7 +3,7 @@ name: FAROL Edge 0.1.635 APK
 on:
   push:
     branches:
-      - 'agent/farol-edge-0.1.635'
+      - 'agent/farol-edge-stability-0.1.635'
   workflow_dispatch:
 
 permissions:
