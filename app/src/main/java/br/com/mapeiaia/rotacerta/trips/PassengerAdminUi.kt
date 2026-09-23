@@ -53,6 +53,28 @@ internal data class PassengerAdminCandidate(
     val lastActivityMillis: Long = 0L,
 )
 
+internal data class PassengerDirectorySelection0630(
+    val profiles: List<PassengerProfile>,
+    val conflictedContactKeys: Set<String>,
+)
+
+internal fun passengerDirectorySelection0630(
+    profiles: List<PassengerProfile>,
+): PassengerDirectorySelection0630 {
+    val groups = profiles
+        .filter { !it.archived }
+        .groupBy { passengerAdminContactKey(it.agendaAccessContact()) }
+    val conflicted = groups
+        .filter { (contactKey, members) -> contactKey.isNotBlank() && members.size > 1 }
+        .keys
+    val syncable = groups
+        .filter { (contactKey, members) -> contactKey.isNotBlank() && members.size == 1 }
+        .values
+        .map { it.single() }
+    return PassengerDirectorySelection0630(syncable, conflicted)
+}
+
+
 @Composable
 fun PassengerAdminScreen(
     store: TripStore,
@@ -207,8 +229,34 @@ fun PassengerAdminScreen(
             AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_SKIPPED", "reason=integration_not_configured")
             return
         }
+        val api = TripRemoteApi(settings)
+        val directorySelection0630 = withContext(Dispatchers.IO) {
+            passengerDirectorySelection0630(passengerStore.profiles())
+        }
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_DIRECTORY_SYNC_START_0630",
+            "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
+        )
+        runCatching { api.syncPassengerDirectory(directorySelection0630.profiles) }
+            .onSuccess { response ->
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_END_0630",
+                    "synced=${response.synced} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
+                )
+            }
+            .onFailure { error ->
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_ERROR_0630",
+                    "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size} error=" +
+                        (error.message ?: error::class.java.simpleName).take(240),
+                )
+            }
+
         AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_START", "driver=" + settings.driverUsername)
-        val response = runCatching { TripRemoteApi(settings).listDriverPassengers() }
+        val response = runCatching { api.listDriverPassengers() }
             .getOrElse { error ->
                 AgendaTrace.event(
                     context,
@@ -547,7 +595,9 @@ fun PassengerAdminScreen(
                     )
                     if (profile.blocked) Text("⛔ NÃO ACEITO NO MEU CARRO", color = MaterialTheme.colorScheme.error)
                 }
-                Text(passengerAccessLabel(access), style = MaterialTheme.typography.bodySmall)
+                passengerAccessLabel(access)?.let { label ->
+                    Text(label, style = MaterialTheme.typography.bodySmall)
+                }
                 if (access?.agendaAdmin == true) {
                     Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
                 }
@@ -611,10 +661,20 @@ fun PassengerAdminScreen(
                         Text(if (access?.agendaAdmin == true) "Remover administrador" else "Definir como administrador")
                     }
                     when {
-                        access == null -> Text(
-                            "Este passageiro ainda não possui acesso online a Minhas Viagens. Libere/sincronize o acesso antes de torná-lo administrador.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                        access == null -> {
+                            val accessKey0630 = passengerAdminContactKey(activeAccessWhatsapp)
+                            val localConflictCount0630 = localProfiles.count {
+                                passengerAdminContactKey(it.agendaAccessContact()) == accessKey0630 && accessKey0630.isNotBlank()
+                            }
+                            Text(
+                                if (localConflictCount0630 > 1) {
+                                    "Existem $localConflictCount0630 cadastros locais usando este WhatsApp. O acesso online não é criado automaticamente até a identidade ser consolidada."
+                                } else {
+                                    "Acesso online ainda não encontrado. Esta tela tenta sincronizar o cadastro automaticamente ao abrir e atualizar."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         !accessAuthorized0419 -> Text(
                             "O acesso deste passageiro não está autorizado nesta Agenda.",
                             style = MaterialTheme.typography.bodySmall,
@@ -715,17 +775,27 @@ fun PassengerAdminScreen(
                     ) { Text("Salvar WhatsApp de acesso") }
 
                     val canonicalAccessProfile = candidate.localProfile
+                    val accessKey0630 = passengerAdminContactKey(activeAccessWhatsapp)
+                    val localConflictCount0630 = localProfiles.count {
+                        passengerAdminContactKey(it.agendaAccessContact()) == accessKey0630 && accessKey0630.isNotBlank()
+                    }
                     Text(
-                        if (canonicalAccessProfile?.blocked == true) {
-                            "🔴 Não aceito no meu carro • acesso negado"
-                        } else {
-                            "🟢 Acesso automático pela base unificada"
+                        when {
+                            canonicalAccessProfile?.blocked == true -> "🔴 Não aceito no meu carro • acesso negado"
+                            access?.status in setOf("AUTHORIZED", "ACTIVE") -> "🟢 Acesso online autorizado"
+                            access == null && localConflictCount0630 > 1 ->
+                                "Cadastro local • conflito de identidade no mesmo WhatsApp"
+                            else -> "Cadastro local na base unificada"
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (canonicalAccessProfile?.blocked != true && access == null) {
                         Text(
-                            "O WhatsApp será liberado automaticamente na próxima sincronização online.",
+                            if (localConflictCount0630 > 1) {
+                                "A sincronização automática foi pausada para este WhatsApp porque há mais de um passengerId local associado a ele."
+                            } else {
+                                "A tela sincroniza este cadastro ao abrir e ao atualizar; nenhum indicador permanente é exibido enquanto não houver estado remoto real."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
@@ -1103,11 +1173,12 @@ internal fun maskPassengerAdminContact(raw: String): String {
     else "(${digits.take(2)}) ${digits.substring(2, 6)}-${digits.takeLast(4)}"
 }
 
-internal fun passengerAccessLabel(access: DriverPassengerAccess?): String = when (access?.status) {
+internal fun passengerAccessLabel(access: DriverPassengerAccess?): String? = when (access?.status) {
+    null -> null
     "AUTHORIZED", "ACTIVE" -> "🟢 Acesso automático"
     "SUSPENDED", "PENDING" -> "🟡 Sincronização pendente"
     "BLOCKED" -> "⛔ Não aceito no meu carro"
-    else -> "🟠 Aguardando sincronização da Agenda de Viagens"
+    else -> "⚪ Estado online: " + access.status.lowercase()
 }
 
 internal fun parseCreditInput(raw: String): Long? = runCatching {
