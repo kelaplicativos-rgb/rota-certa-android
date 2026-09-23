@@ -2122,7 +2122,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
             stage21OcrGate.cancelBecauseAccessibilityWon()
             stage19OcrRerunRequested = false
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                processUniversalVisualStage19(evaluationStage19, "Accessibility", cycleIdStage20)
+                processUniversalVisualStage19(
+                    evaluationStage19,
+                    "Accessibility",
+                    cycleIdStage20,
+                    ownershipTextStage47 = ownershipTextStage47,
+                    ownershipPackageStage47 = ownershipPackageStage47,
+                )
             }
         } else {
             stage19VisualVerificationPending = true
@@ -3312,7 +3318,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     FarolForensicCardBlackBoxStage32.recordCandidate(
                                         SystemClock.elapsedRealtimeNanos(), "Ocr", evaluationStage19.pickup, evaluationStage19.destination, evaluationStage19.addressSignature,
                                     )
-                                    processUniversalVisualStage19(evaluationStage19, "Ocr", cycleIdStage20)
+                                    processUniversalVisualStage19(
+                                        evaluationStage19,
+                                        "Ocr",
+                                        cycleIdStage20,
+                                        ownershipTextStage47 = blocksStage19.joinToString("\n") { it.text }.take(6000),
+                                        ownershipPackageStage47 = eventPackageStage19,
+                                    )
                                 } else {
                                     FarolForensicCardBlackBoxStage32.markOcrNoCandidate(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis())
                                     FarolForensicCaseStoreStage32.persistIfIntensive(applicationContext)
@@ -4034,7 +4046,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 stage23OcrGate.cancelBecauseAccessibilityWon(visualDecisionStage23.generation, collectionStage23.snapshot.hash)
                 stage21OcrGate.cancelBecauseAccessibilityWon()
                 stage19OcrRerunRequested = false
-                processUniversalVisualStage19(evaluationStage19, "AccessibilityScheduled", cycleIdStage20)
+                processUniversalVisualStage19(
+                    evaluationStage19,
+                    "AccessibilityScheduled",
+                    cycleIdStage20,
+                    ownershipTextStage47 = collectionStage23.blocks.joinToString("\n") { it.text }.take(6000),
+                    ownershipPackageStage47 = observePackageForWindowIdStage46R3(evaluationStage19.windowId),
+                )
             } else {
                 stage19VisualVerificationPending = true
                 requestUniversalScreenshotStage19(null, cycleIdStage20)
