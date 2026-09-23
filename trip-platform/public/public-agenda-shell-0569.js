@@ -1137,7 +1137,7 @@ function renderTripCard0569(item) {
   const lastStop = stops[stops.length - 1];
   const from = String(firstStop?.name || "Origem").trim();
   const to = String(lastStop?.name || "Destino").trim();
-  const publicUrl = validatedBlaBlaPublicUrl0569(item?.blablaPublicUrl);
+  const blablaPublicUrl = validatedBlaBlaPublicUrl0569(item?.blablaPublicUrl);
   const card = document.createElement("article");
   card.className = "agendaTrip0569 agendaTripClickable0596";
   card.dataset.cardSurface = "public-shell-0569";
@@ -1171,21 +1171,26 @@ function renderTripCard0569(item) {
 
   const actions = document.createElement("div");
   actions.className = "agendaCardActions0584";
-  if (publicUrl) {
+  if (blablaPublicUrl) {
     const viewRide = document.createElement("a");
     viewRide.className = "agendaViewRide0584";
-    viewRide.href = publicUrl;
+    viewRide.href = blablaPublicUrl;
     viewRide.rel = "noopener noreferrer";
     viewRide.textContent = "Ver anúncio na BlaBlaCar";
     viewRide.setAttribute("aria-label", `Ver anúncio da viagem ${from} para ${to} na BlaBlaCar`);
     viewRide.addEventListener("click", armAgendaCardRefresh0596);
     actions.appendChild(viewRide);
   } else {
-    const unavailable = document.createElement("span");
-    unavailable.className = "agendaViewRide0584 agendaViewRideUnavailable0584";
-    unavailable.textContent = "Ver anúncio na BlaBlaCar";
-    unavailable.setAttribute("aria-disabled", "true");
-    actions.appendChild(unavailable);
+    const viewNativeTrip = document.createElement("button");
+    viewNativeTrip.type = "button";
+    viewNativeTrip.className = "agendaViewRide0584";
+    viewNativeTrip.textContent = "Ver viagem";
+    viewNativeTrip.setAttribute("aria-label", `Ver detalhes e reservar a viagem ${from} para ${to}`);
+    viewNativeTrip.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openFullTripBooking0623(item);
+    });
+    actions.appendChild(viewNativeTrip);
   }
   card.appendChild(actions);
   card.addEventListener("click", (event) => {
