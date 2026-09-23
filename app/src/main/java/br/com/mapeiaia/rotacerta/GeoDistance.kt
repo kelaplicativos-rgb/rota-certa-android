@@ -8,6 +8,8 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 object GeoDistance {
+    fun kilometers(from: Coordinate, to: Coordinate): Double = meters(from, to) / 1_000.0
+
     fun meters(from: Coordinate, to: Coordinate): Double {
         val latDelta = Math.toRadians(to.latitude - from.latitude)
         val lonDelta = Math.toRadians(to.longitude - from.longitude)
