@@ -1998,13 +1998,14 @@ private fun PassengerFareEditorDialog(
     )
 }
 
-private fun persistCanonicalPassengerMutation0582(
+internal fun persistCanonicalPassengerMutation0582(
     context: Context,
     trip: Trip,
     updated: Booking,
     store: TripStore,
     mutationCoordinator: TripMutationCoordinator0387,
     mutationType: String,
+    mutationSource: String = "TIMELINE_PASSENGER_UI",
 ): Booking {
     require(updated.tripId == trip.id) { "BOOKING_TRIP_ID_MISMATCH" }
     val saved = store.saveBooking(
@@ -2013,7 +2014,7 @@ private fun persistCanonicalPassengerMutation0582(
     val queued = mutationCoordinator.recordLocalMutation(
         canonicalTripId = trip.id,
         mutationType = mutationType,
-        source = "TIMELINE_PASSENGER_UI",
+        source = mutationSource,
         reconcileBookingInventory = false,
     )
     // BlaBlaCar is never synchronized automatically after an internal mutation.
@@ -2028,13 +2029,14 @@ private fun persistCanonicalPassengerMutation0582(
         "canonicalTripId=" + seatSyncDiagnosticKey(trip.id) +
             " bookingId=" + passengerCancellationHash(saved.id) +
             " mutationType=" + mutationType.take(64) +
+            " mutationSource=" + mutationSource.take(64) +
             " outboxQueued=" + (queued != null) +
             " directHttp=false blablaPlatformChanged=false",
     )
     return saved
 }
 
-private fun passengerOperationalMutation0582(
+internal fun passengerOperationalMutation0582(
     previous: Booking,
     selectionRaw: String,
 ): Booking {
@@ -2077,7 +2079,7 @@ private fun passengerOperationalMutation0582(
     )
 }
 
-private fun passengerDecisionMutation0582(
+internal fun passengerDecisionMutation0582(
     previous: Booking,
     actionRaw: String,
 ): Booking {
