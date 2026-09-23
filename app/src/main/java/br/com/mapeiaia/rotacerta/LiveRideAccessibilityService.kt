@@ -4052,6 +4052,19 @@ class LiveRideAccessibilityService : AccessibilityService() {
         @Suppress("UNUSED_VARIABLE") val ignoredDelayStage23 = delayMs
         @Suppress("UNUSED_VARIABLE") val ignoredPopupStage23 = allowPopupCandidate
         if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return
+        val scheduledRoot638 = captureRootHandle0187() ?: return
+        val scheduledPackage638 = normalizePackageName(scheduledRoot638.packageName) ?: return
+        if (scheduledPackage638 !in SelectedRideAppStore.read(applicationContext)) {
+            FarolReadingActivationStage26.Metrics.increment("stage638ScheduledForeignAvoided")
+            return
+        }
+        if (farolCardSignatureStore638.hasModels(scheduledPackage638) &&
+            !matchesTrainedCardSignature638(scheduledPackage638)
+        ) {
+            clearTrainedCardPublicState638(scheduledPackage638)
+            FarolReadingActivationStage26.Metrics.increment("stage638ScheduledSignatureMissAvoided")
+            return
+        }
         val demandStage23 = stage23ScheduleGate.create(
             stage23VisualGate.currentGeneration(),
             stage23VisualGate.currentHash(),
