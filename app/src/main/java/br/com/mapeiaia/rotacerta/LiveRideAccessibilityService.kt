@@ -117,7 +117,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val farolCardTrainingInProgress638 = AtomicBoolean(false)
     private var lastSignatureMatchState638: String? = null
     private var stage640AdmittedPackage: String? = null
-    private var stage640AdmittedWindowId: Int? = null
+    private var lastStage641IdleBlockKey: String? = null
     private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
     private var lastFailedCardSignature0161: String? = null
     private var lastFailedCardAccessibilityHash0161: Int? = null
@@ -4659,19 +4659,24 @@ class LiveRideAccessibilityService : AccessibilityService() {
         trigger639: String,
     ): Boolean {
         val hasModels640 = farolCardSignatureStore638.hasModels(packageName639)
-        val root640 = captureRootHandle0187()
         val normalizedPackage640 = normalizePackageName(packageName639)
-        val sameSurfaceLease640 = hasModels640 &&
-            universalActiveAddressSignature != null &&
-            normalizedPackage640 != null &&
-            normalizePackageName(stage640AdmittedPackage) == normalizedPackage640 &&
-            normalizePackageName(root640?.packageName) == normalizedPackage640 &&
-            root640?.windowId == stage640AdmittedWindowId
 
-        // Stage640 turns the trained signature into an ENTRY gate instead of a per-event kill switch.
-        // Once Stage19 owns a destination on the same admitted window, Stage46/Stage47 must receive
-        // subsequent mutations so they can preserve transient churn or prove a real card/feed exit.
+        // Stage641: windowId is deliberately NOT part of lease continuity. The selected ride app
+        // may rebuild its AccessibilityWindow during countdown/progress/map animation while the
+        // semantic destination remains the same. Package + active semantic lease is the authority.
+        val sameSurfaceLease640 = FarolSemanticLeaseContinuityStage641.activeLeaseForSameApp(
+            hasModels = hasModels640,
+            admittedPackage = stage640AdmittedPackage,
+            authorityPackage = normalizedPackage640,
+            activeAddressSignature = universalActiveAddressSignature,
+        )
         if (sameSurfaceLease640) {
+            // Notification events are not visual proof. When a valid card is already leased, ignore
+            // the notification rather than waking OCR or resetting live route work.
+            if (trigger639 == "notification") {
+                FarolReadingActivationStage26.Metrics.increment("stage641NotificationIgnoredDuringLease")
+                return false
+            }
             val leaseDecision640 = FarolInstantFirstPaintStage640.decide(
                 hasModels = true,
                 signatureMatched = false,
@@ -4679,11 +4684,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 hasFinalPublicDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
             )
             if (leaseDecision640.allowHeavyPipeline) {
-                FarolReadingActivationStage26.Metrics.increment("stage640SemanticLeaseAdmission")
+                lastStage641IdleBlockKey = null
+                FarolReadingActivationStage26.Metrics.increment("stage641SemanticLeaseAdmission")
                 return true
             }
         }
 
+        val root640 = captureRootHandle0187()
         val signatureMatched640 = hasModels640 && root640 != null &&
             matchesTrainedCardSignature638(packageName639, root640)
         val decision640 = FarolInstantFirstPaintStage640.decide(
@@ -4694,7 +4701,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (decision640.allowHeavyPipeline) {
             stage640AdmittedPackage = normalizedPackage640
-            stage640AdmittedWindowId = root640?.windowId
+            lastStage641IdleBlockKey = null
             if (decision640.paintWaitingImmediately &&
                 (currentRadarColor != RadarColor.Default || currentDistanceKm != null)
             ) {
@@ -4710,9 +4717,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 )
             }
             FarolFlightRecorder0163.record(
-                stage = "S640_EXACT_SIGNATURE_ADMITTED",
+                stage = "S641_EXACT_SIGNATURE_ADMITTED",
                 packageName = packageName639,
-                details = "trigger=$trigger639; window=${root640?.windowId ?: 0}; semanticLease=${universalActiveAddressSignature != null}",
+                details = "trigger=$trigger639; entryWindow=${root640?.windowId ?: 0}; continuity=semantic_package_lease",
             )
             return true
         }
@@ -4726,11 +4733,65 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolInstantFirstPaintStage640.Outcome.ALLOW_ACTIVE_SEMANTIC_LEASE ->
                 FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED
         }
-        masterResetCardAdmissionStage639(
-            packageName639 = packageName639,
-            outcome639 = legacyOutcome639,
-            trigger639 = "stage640:$trigger639",
-        )
+
+        val destructiveState641 =
+            universalActiveAddressSignature != null ||
+            universalRouteJob?.isActive == true ||
+            currentRadarColor == RadarColor.Green ||
+            currentRadarColor == RadarColor.Red ||
+            currentDistanceKm != null ||
+            lastSnapshotHash != null ||
+            analyzing ||
+            screenshotInProgress.get() ||
+            notificationWakeJob0169?.isActive == true
+        val alreadyWaitingYellow641 =
+            currentRadarColor == RadarColor.Default &&
+            currentDistanceKm == null &&
+            universalActiveAddressSignature == null
+        when (FarolSemanticLeaseContinuityStage641.blockAction(
+            hasDestructiveState = destructiveState641,
+            alreadyWaitingYellow = alreadyWaitingYellow641,
+        )) {
+            FarolSemanticLeaseContinuityStage641.BlockAction.HARD_RESET -> {
+                lastStage641IdleBlockKey = null
+                masterResetCardAdmissionStage639(
+                    packageName639 = packageName639,
+                    outcome639 = legacyOutcome639,
+                    trigger639 = "stage641:$trigger639",
+                )
+            }
+            FarolSemanticLeaseContinuityStage641.BlockAction.PAINT_WAITING_ONLY -> {
+                rememberBubbleReason(
+                    "stage641_waiting_signature",
+                    if (legacyOutcome639 == FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED)
+                        "Card ainda não memorizado; aguardando assinatura treinada."
+                    else
+                        "Aguardando assinatura do card treinado.",
+                )
+                showOverlay(RadarColor.Default, distanceKm = null)
+                val key641 = "${normalizedPackage640.orEmpty()}|${legacyOutcome639.name}|waiting"
+                if (lastStage641IdleBlockKey != key641) {
+                    lastStage641IdleBlockKey = key641
+                    FarolFlightRecorder0163.record(
+                        stage = "S641_IDLE_SIGNATURE_BLOCK_WAITING",
+                        packageName = packageName639,
+                        details = "trigger=$trigger639; outcome=${legacyOutcome639.name}; destructive=false; hardClear=false",
+                    )
+                }
+            }
+            FarolSemanticLeaseContinuityStage641.BlockAction.NOOP -> {
+                val key641 = "${normalizedPackage640.orEmpty()}|${legacyOutcome639.name}|noop"
+                if (lastStage641IdleBlockKey != key641) {
+                    lastStage641IdleBlockKey = key641
+                    FarolFlightRecorder0163.record(
+                        stage = "S641_IDLE_SIGNATURE_BLOCK_NOOP",
+                        packageName = packageName639,
+                        details = "trigger=$trigger639; outcome=${legacyOutcome639.name}; alreadyWaitingYellow=true; hardClear=false",
+                    )
+                }
+                FarolReadingActivationStage26.Metrics.increment("stage641IdleSignatureMissNoHardClear")
+            }
+        }
         return false
     }
 
