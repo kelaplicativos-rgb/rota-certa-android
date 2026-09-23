@@ -1,0 +1,194 @@
+name: Rota Certa 0.1.632 Timeline Agenda atomic sync
+
+on:
+  push:
+    branches:
+      - agent/timeline-agenda-atomic-sync-0.1.632
+    paths:
+      - '.github/workflows/timeline-agenda-atomic-sync-0.1.632.yml'
+      - 'app/**'
+      - 'trip-platform/functions/**'
+      - 'trip-platform/public/**'
+      - 'trip-platform/firebase.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: timeline-agenda-atomic-sync-0.1.632-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-deploy-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GOOGLE_MAPS_API_KEY: ci_dummy_key_0632
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      SOURCE_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Checkout exact final SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify 0.1.632 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/timeline-agenda-atomic-sync-0.1.632" >> "$GITHUB_ENV"
+          grep -Fq 'val releaseVersionCode = 5_923' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.632"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.632"' app/src/main/assets/release_history.json
+          grep -Fq 'internal suspend fun persistCanonicalPassengerMutation0582' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'TIMELINE_AGENDA_ATOMIC_MUTATION_0632' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'localCommittedAfterAck=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'TIMELINE_AGENDA_LEGACY_REPAIR_APPLIED_0632' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicBookingSync0296.kt
+          grep -Fq 'watchAgendaCanonicalChanges0632' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq 'projectionAdjusted0632' trip-platform/public/public-agenda-shell-0569.js
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.632-atomic-sync' trip-platform/public/index.html
+          git diff --exit-code c17638f4a5c8371384d31b322db7d3c25906dbdb HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate web and backend contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check trip-platform/functions/index.js
+          node --check trip-platform/public/public-agenda-shell-0569.js
+          node --test             trip-platform/functions/test/reservation-approval-0356.test.js             trip-platform/functions/test/public-booking-realtime-0304.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-segment-cards-0580.test.js
+          npm --prefix trip-platform/functions install --no-audit --no-fund
+
+      - name: Configure Firebase Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test atomic Timeline Agenda contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest             --tests '*TimelineAgendaAtomicSync0632Test'             --tests '*ReservationManagement0631Test'             --tests '*CentralPassengerControls0593Test'             --tests '*PassengerOperationalStatus0350Test'             --tests '*PassengerAdmin0314Test'             --tests '*PublicBookingRealtime0304Test'             --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Build exact SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5923'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.632'" /tmp/aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex.txt
+          mkdir -p /tmp/0632
+          SHORT_SHA="$(printf '%s' "$SOURCE_SHA" | cut -c1-12)"
+          cp "$APK" "/tmp/0632/RotaCerta-0.1.632-build5923-$SHORT_SHA-SM-S911B.apk"
+          sha256sum /tmp/0632/*.apk | tee /tmp/0632/apk.sha256
+          printf 'source_head=%s\nversion=0.1.632/5923\npackage=br.com.mapeiaia.rotacerta\ntarget=Samsung SM-S911B\n' "$SOURCE_SHA" > /tmp/0632/final-status.txt
+
+      - name: Authenticate Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy canonical backend exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          gcloud functions deploy tripApi             --gen2             --project="$PROJECT"             --region=southamerica-east1             --runtime=nodejs20             --source=trip-platform/functions             --entry-point=tripApi             --trigger-http             --allow-unauthenticated             --clear-secrets             --update-env-vars="ROTA_CERTA_BACKEND_GIT_SHA=$SOURCE_SHA"             --quiet
+
+      - name: Deploy Viagem Certa exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+          chmod 600 /tmp/firebase-sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          npx --yes firebase-tools@14.12.0 deploy --only hosting --project "$PROJECT" --config trip-platform/firebase.json --non-interactive
+
+      - name: Smoke live atomic synchronization surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://rota-certa-7ccc8.web.app
+          curl --retry 20 --retry-delay 3 --fail --silent --show-error "$BASE/v1/health" | tee /tmp/live-health.json
+          grep -Fq '"ok":true' /tmp/live-health.json
+          grep -Fq "\"backendGitSha\":\"$SOURCE_SHA\"" /tmp/live-health.json
+          curl --retry 12 --retry-delay 2 --fail --silent --show-error "$BASE/" | tee /tmp/live-index.html
+          grep -Fq '/public-agenda-shell-0569.js?v=0.1.632-atomic-sync' /tmp/live-index.html
+          curl --retry 12 --retry-delay 2 --fail --silent --show-error "$BASE/public-agenda-shell-0569.js?v=$SOURCE_SHA" | tee /tmp/live-shell.js
+          grep -Fq 'watchAgendaCanonicalChanges0632' /tmp/live-shell.js
+          grep -Fq '/changes?since=' /tmp/live-shell.js
+          grep -Fq 'projectionAdjusted0632' /tmp/live-shell.js
+          grep -Fq '15_000' /tmp/live-shell.js
+          curl --retry 12 --retry-delay 2 --fail --silent --show-error "$BASE/v1/public/agenda/ezequiel?sha=$SOURCE_SHA" > /tmp/live-agenda.json
+          node <<'NODE'
+          const fs = require('fs');
+          const body = JSON.parse(fs.readFileSync('/tmp/live-agenda.json','utf8'));
+          if (!Array.isArray(body.trips)) throw new Error('public agenda trips missing');
+          if (!Number.isFinite(Number(body.changeCursor0495 || 0))) throw new Error('change cursor missing');
+          console.log('LIVE_AGENDA_TRIPS=' + body.trips.length);
+          console.log('LIVE_CHANGE_CURSOR=' + Number(body.changeCursor0495 || 0));
+          NODE
+
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.632-5923-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0632
