@@ -31,7 +31,7 @@ class PassengerAdmin0314Test {
 
     @Test
     fun accessLabelsOnlyDescribeRealRemoteStates() {
-        assertNull(passengerAccessLabel(null))
+        assertEquals(null, passengerAccessLabel(null))
         assertEquals("🟡 Sincronização pendente", passengerAccessLabel(DriverPassengerAccess(status = "PENDING")))
         assertEquals("⛔ Não aceito no meu carro", passengerAccessLabel(DriverPassengerAccess(status = "BLOCKED")))
     }
