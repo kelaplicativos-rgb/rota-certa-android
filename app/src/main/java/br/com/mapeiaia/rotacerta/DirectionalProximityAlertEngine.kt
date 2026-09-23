@@ -33,7 +33,7 @@ class DirectionalProximityAlertEngine(
         runtimeById.keys.retainAll(activeIds)
         dismissGate0178.retainActive(activeIds)
 
-        if (!settings.appEnabled || !settings.proximityAlertsEnabled) {
+        if (!AlertRuntimePolicy0644.isEnabled(settings)) {
             clearVisual(onVisual)
             return
         }
