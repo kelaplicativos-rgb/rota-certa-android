@@ -203,9 +203,18 @@ fun PassengerAdminScreen(
     }
 
     suspend fun reloadRemote() {
-        if (!settings.configured) return
+        if (!settings.configured) {
+            AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_SKIPPED", "reason=integration_not_configured")
+            return
+        }
+        AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_START", "driver=" + settings.driverUsername)
         val response = runCatching { TripRemoteApi(settings).listDriverPassengers() }
             .getOrElse { error ->
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_REMOTE_LOAD_ERROR",
+                    "error=" + (error.message ?: error::class.java.simpleName).take(240),
+                )
                 onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
                 return
             }
@@ -237,6 +246,11 @@ fun PassengerAdminScreen(
         referralCreditCents = response.referralCreditCents
         creditValue = formatCreditInput(response.referralCreditCents)
         localProfiles = withContext(Dispatchers.IO) { passengerStore.profiles() }
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_REMOTE_LOAD_END",
+            "remotePassengers=" + response.passengers.size + " canonicalProfiles=" + localProfiles.size,
+        )
     }
 
     LaunchedEffect(settings.driverUsername, settings.driverToken, revision) {
