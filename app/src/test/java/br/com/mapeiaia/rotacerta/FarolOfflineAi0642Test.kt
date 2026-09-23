@@ -56,7 +56,7 @@ class FarolOfflineAi0642Test {
                 OcrTextBlock0188("noise", "Rua Qualquer, 99", 30, 1600, 1000, 1720),
             ),
         )
-        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340, null)
+        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340)
         assertTrue(result.recognizedRideCard)
         assertEquals("Avenida Mateo Bei, 1800 - São Paulo - SP", result.destination?.address)
         assertTrue(result.destination?.explicitDestination == true)
@@ -68,20 +68,21 @@ class FarolOfflineAi0642Test {
             text = "Endereço cadastrado\nRua das Acácias, 500",
             blocks = listOf(OcrTextBlock0188("a", "Rua das Acácias, 500", 10, 100, 900, 220)),
         )
-        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340, null)
+        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340)
         assertFalse(result.recognizedRideCard)
         assertNotNull(result.destination)
     }
 
     @Test
-    fun trained_visual_similarity_can_recover_transient_text_without_two_anchors() {
+    fun one_anchor_and_one_address_without_signature_model_is_rejected() {
         val structured = OcrStructuredText0188(
             text = "Rua Revoadas, 58\nAceitar",
             blocks = listOf(OcrTextBlock0188("a", "Rua Revoadas, 58", 20, 1200, 900, 1340)),
         )
-        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340, 0.84)
-        assertTrue(result.recognizedRideCard)
-        assertEquals("visual_local_match", result.reason)
+        val result = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340)
+        assertFalse(result.recognizedRideCard)
+        assertEquals("insufficient_local_card_evidence", result.reason)
+        assertEquals(null, result.visualSimilarity)
     }
 
     @Test
@@ -93,7 +94,7 @@ class FarolOfflineAi0642Test {
                 OcrTextBlock0188("d", "Rua Bertioga, 90", 100, 1200, 900, 1320),
             ),
         )
-        val recognition = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340, 0.80)
+        val recognition = FarolOfflineAiStage642.recognizeFromEvidence(structured, 2340)
         val augmented = FarolOfflineAiStage642.augmentForRoute(structured, recognition)
         assertTrue(augmented.text.contains("Destino: Rua Bertioga, 90"))
         val destination = augmented.blocks.first { it.id == "offline-ai-642-destination" }
@@ -102,19 +103,11 @@ class FarolOfflineAi0642Test {
     }
 
     @Test
-    fun hamming_similarity_primitive_is_deterministic() {
-        assertEquals(0, FarolOfflineAiStage642.hammingHex64("0000000000000000", "0000000000000000"))
-        assertEquals(64, FarolOfflineAiStage642.hammingHex64("0000000000000000", "ffffffffffffffff"))
-    }
-
-    @Test
-    fun service_runs_offline_ai_after_structural_signature_miss_and_before_giving_up() {
+    fun service_uses_offline_ai_after_semantic_text_miss_without_signature_gate() {
         val live = src("LiveRideAccessibilityService.kt")
-        val start = live.indexOf("private fun admitTrainedCardStage640")
-        val end = live.indexOf("private fun masterResetCardAdmissionStage639", start)
-        assertTrue(start >= 0 && end > start)
-        val block = live.substring(start, end)
-        assertTrue(block.contains("scheduleOfflineAiAdmission642(packageName639"))
+        assertFalse(live.contains("admitTrainedCardStage640("))
+        assertFalse(live.contains("matchesTrainedCardSignature638("))
+        assertTrue(live.contains("scheduleOfflineAiAdmission642(resolvedPackage, \"semantic_card_evidence_miss_643\")"))
         assertTrue(live.contains("S642_OFFLINE_AI_CARD_ADMITTED"))
         assertTrue(live.contains("ocrService.extractStructuredText(localBitmap642)"))
         assertTrue(live.contains("FarolOfflineAiStage642.augmentForRoute"))
@@ -128,6 +121,8 @@ class FarolOfflineAi0642Test {
         assertFalse(ai.contains("HttpURLConnection"))
         assertFalse(ai.contains("java.net.URL"))
         assertFalse(ai.contains("api.openai.com"))
+        assertFalse(ai.contains("FarolCardSignatureModel638"))
+        assertFalse(ai.contains("FarolCardVisualHash638"))
         val gradle = File(root(), "app/build.gradle.kts").readText()
         assertTrue(gradle.contains("com.google.mlkit:text-recognition:16.0.1"))
         assertFalse(gradle.contains("play-services-mlkit-text-recognition"))
@@ -148,14 +143,12 @@ class FarolOfflineAi0642Test {
     }
 
     @Test
-    fun release_metadata_is_0642_5933() {
-        val gradle = File(root(), "app/build.gradle.kts").readText()
-        assertTrue(gradle.contains("releaseVersionName = \"0.1.642\""))
-        assertTrue(gradle.contains("releaseVersionCode = 5_933"))
+    fun release_history_preserves_0642_5933_contract() {
         val history = File(root(), "app/src/main/assets/release_history.json").readText()
         assertTrue(history.contains("\"version\": \"0.1.642\""))
         assertTrue(history.contains("\"build\": 5933"))
         assertTrue(history.contains("offline"))
         assertTrue(history.contains("OpenAI"))
     }
+}
 }
