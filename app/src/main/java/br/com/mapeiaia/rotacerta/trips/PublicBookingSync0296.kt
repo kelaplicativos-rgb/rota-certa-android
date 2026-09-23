@@ -41,6 +41,47 @@ private data class BookingFetchBatch0373(
     val entityRevision: Long = 0L,
 )
 
+
+internal fun legacyTimelineAgendaRepairRequired0632(
+    local: Booking,
+    remote: RemoteBooking,
+): Boolean {
+    if (local.id != remote.id) return false
+    if (local.source != BookingSource.ROTA_CERTA || remote.source != BookingSource.ROTA_CERTA) return false
+    if (local.capacityClaimType != CapacityClaimType.PASSENGER || remote.capacityClaimType != CapacityClaimType.PASSENGER) return false
+    if (local.updatedAtMillis <= remote.updatedAtMillis) return false
+    if (!local.localMetadataTouched && local.lastDriverSelection.isBlank()) return false
+
+    return local.status.name != remote.status ||
+        local.operationalStatus != remote.operationalStatus ||
+        local.paymentStatus != remote.paymentStatus ||
+        local.lastDriverSelection != remote.lastDriverSelection ||
+        local.boardingStopId != remote.boardingStopId ||
+        local.dropoffStopId != remote.dropoffStopId ||
+        local.seats != remote.seats ||
+        local.fareMinorUnits != remote.fareMinorUnits ||
+        local.fareCurrencyCode != remote.fareCurrencyCode ||
+        local.boardingAddress != remote.boardingAddress ||
+        local.dropoffAddress != remote.dropoffAddress
+}
+
+internal fun legacyTimelineAgendaRepairMutationType0632(
+    local: Booking,
+    remote: RemoteBooking,
+): String = when {
+    local.status == BookingStatus.CANCELLED ||
+        local.operationalStatus == PassengerOperationalStatus.CANCELLED ->
+        "BOOKING_CANCELLED_BY_DRIVER"
+    remote.status == BookingStatus.REQUESTED.name &&
+        local.status == BookingStatus.REJECTED ->
+        "RESERVATION_REJECTED"
+    remote.status == BookingStatus.REQUESTED.name &&
+        local.status == BookingStatus.CONFIRMED &&
+        local.lastDriverSelection.equals("APPROVE", ignoreCase = true) ->
+        "RESERVATION_APPROVED"
+    else -> "LEGACY_TIMELINE_AGENDA_REPAIR_0632"
+}
+
 internal data class BookingSingleFlightResult0380<T>(
     val value: T,
     val coalesced: Boolean,
@@ -256,22 +297,76 @@ internal object PublicBookingRemoteSync0296 {
             reconcileOperation.operationId,
         )
         val pendingImports = mutableListOf<Booking>()
-        fetchedBatches.forEach { batch ->
-            batch.bookings.asSequence()
-                .filter { incoming ->
-                    !batch.target.publicOnly ||
-                        incoming.source == BookingSource.ROTA_CERTA ||
-                        incoming.sourceReference.startsWith("PUBLIC_LINK:")
+        var repairedLegacyDivergences0632 = 0
+        var deferredLegacyRepairs0632 = 0
+        for (batch in fetchedBatches) {
+            for (incoming in batch.bookings) {
+                if (
+                    batch.target.publicOnly &&
+                    incoming.source != BookingSource.ROTA_CERTA &&
+                    !incoming.sourceReference.startsWith("PUBLIC_LINK:")
+                ) {
+                    continue
                 }
-                .forEach { incoming ->
-                    val existing = bookingSnapshot[incoming.id]
-                    val mapped = incoming.toLocalBooking(batch.target.localTripId, existing)
-                    if (existing != mapped) {
-                        pendingImports += mapped
-                        bookingSnapshot[mapped.id] = mapped
+
+                val existing = bookingSnapshot[incoming.id]
+                var effectiveIncoming = incoming
+                if (existing != null && legacyTimelineAgendaRepairRequired0632(existing, incoming)) {
+                    val mutationType0632 = legacyTimelineAgendaRepairMutationType0632(existing, incoming)
+                    val repaired0632 = runCatching {
+                        publishPassengerMutationRemote0632(
+                            api = api,
+                            remoteTripId = batch.target.remoteTripId,
+                            updated = existing,
+                            mutationType = mutationType0632,
+                        )
+                    }
+                    if (repaired0632.isSuccess) {
+                        val ack = repaired0632.getOrThrow()
+                        effectiveIncoming = ack.booking
+                        repairedLegacyDivergences0632++
+                        UnifiedDebugEventStore.record(
+                            "TIMELINE_AGENDA_LEGACY_REPAIR_APPLIED_0632",
+                            context.packageName,
+                            "canonicalTripId=" + seatSyncDiagnosticKey(batch.target.localTripId) +
+                                " bookingId=" + seatSyncDiagnosticKey(existing.id) +
+                                " mutationType=" + mutationType0632 +
+                                " entityRevision=" + ack.entityRevision +
+                                " remoteAck=true projectionAtomic=true",
+                        )
+                    } else {
+                        deferredLegacyRepairs0632++
+                        UnifiedDebugEventStore.record(
+                            "TIMELINE_AGENDA_LEGACY_REPAIR_DEFERRED_0632",
+                            context.packageName,
+                            "canonicalTripId=" + seatSyncDiagnosticKey(batch.target.localTripId) +
+                                " bookingId=" + seatSyncDiagnosticKey(existing.id) +
+                                " reason=" + UnifiedDebugEventStore.sanitizeForExport(
+                                    repaired0632.exceptionOrNull()?.message ?: "remote_repair_failed",
+                                ).take(160) +
+                                " remoteImportSkipped=true localPreserved=true retry=next_reconcile",
+                        )
+                        // Do not overwrite the explicit local edit with a stale remote copy.
+                        // Public booking authority remains the backend, and this repair is retried
+                        // on the next reconcile until the remote transaction acknowledges it.
+                        continue
                     }
                 }
+
+                val mapped = effectiveIncoming.toLocalBooking(batch.target.localTripId, existing)
+                if (existing != mapped) {
+                    pendingImports += mapped
+                    bookingSnapshot[mapped.id] = mapped
+                }
+            }
         }
+        UnifiedDebugEventStore.record(
+            "TIMELINE_AGENDA_LEGACY_REPAIR_SUMMARY_0632",
+            context.packageName,
+            "repaired=" + repairedLegacyDivergences0632 +
+                " deferred=" + deferredLegacyRepairs0632 +
+                " fetched=" + remoteFetched,
+        )
         AgendaTrace.operationEnd(context, compareOperation, processedCount = remoteFetched)
 
         val importOperation = AgendaTrace.operationStart(
