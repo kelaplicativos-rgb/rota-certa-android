@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.627",
+      "build": 5918,
+      "commit": null,
+      "branch": "agent/passenger-identity-integrity-0.1.627",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Consolidação persistente e idempotente de identidades duplicadas de passageiros, com aliases dos passengerIds antigos para um único passengerId canônico.",
+        "Remapeamento conjunto de observações, ocorrências de viagem e metadados externos durante a consolidação, preservando histórico e referências legadas.",
+        "Separação explícita entre identidade de pessoa e identidade de reserva: URLs /booking/{id} deixam de produzir externalPassengerId.",
+        "Passageiros capturados por HTML podem ser associados por contato canônico mesmo quando a fonte não expõe um UUID pessoal confiável.",
+        "Diagnóstico do módulo Passageiros passa a registrar carga local, integridade, histórico e sincronização remota."
+      ],
+      "fixed": [
+        "Corrige fragmentação do mesmo passageiro em vários cartões quando reservas diferentes eram interpretadas como identidades pessoais diferentes.",
+        "Corrige efeito cascata em que mais de um cadastro com o mesmo contato tornava a resolução ambígua e permitia novas identidades redundantes.",
+        "Corrige históricos divididos entre passengerIds duplicados ao remapear ocorrências para o canônico.",
+        "Mantém bloqueios de segurança durante merge e impede merge automático quando existem identidades online conflitantes ou estados financeiros incompatíveis."
+      ],
+      "improved": [
+        "Caso sentinela Kel/+5511947434112 coberto por teste automatizado com múltiplos passengerIds e IDs legados de reserva.",
+        "Escritas críticas da identidade passam a usar commit síncrono antes da consolidação."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.626: /booking/{id} podia ser aceito como identidade externa da pessoa.",
+        "0.1.626: duplicidades seguras eram apenas escondidas em alguns pickers e não consolidadas fisicamente.",
+        "0.1.626: relatório de Passageiros não mostrava as principais etapas internas de carga e sincronização."
+      ],
+      "modulesAffected": [
+        "Passageiros",
+        "Identidade canônica",
+        "Timeline",
+        "BlaBlaCar HTML",
+        "Histórico",
+        "Diagnóstico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.626",
       "build": 5917,
       "commit": null,
@@ -73,7 +114,16 @@
         "0.1.624: formulário de reserva ainda mostrava todos os campos ao mesmo tempo e usava a palavra PIN.",
         "0.1.624: conta e área privada ainda estavam orientadas por Agenda em vez de uma identidade global de passageiro."
       ],
-      "modulesAffected": ["Viagem Certa","Passageiros","Reservas","Timeline do passageiro","Agenda Pública","Backend","Sincronização Android","Build"],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Passageiros",
+        "Reservas",
+        "Timeline do passageiro",
+        "Agenda Pública",
+        "Backend",
+        "Sincronização Android",
+        "Build"
+      ],
       "detailsComplete": true
     },
     {
