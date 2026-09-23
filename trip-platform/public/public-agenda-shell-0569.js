@@ -952,14 +952,28 @@ function publicSegmentRows0580(item, stops) {
     const from = String(segment?.from || "").trim();
     const to = String(segment?.to || "").trim();
     const availableSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.availableSeats || 0))));
-    const passengerSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.passengerSeats || 0))));
+    const rawPassengerSeats = Math.max(0, Math.min(capacity, Math.floor(Number(segment?.passengerSeats || 0))));
     if (
       !from ||
       !to ||
       !Number.isFinite(Number(segment?.availableSeats)) ||
       !Number.isFinite(Number(segment?.passengerSeats))
     ) return null;
-    return { from, to, availableSeats, passengerSeats, capacity };
+    // 0.1.632: a segment can never render "0/4" together with "LOTADO".
+    // Availability remains the booking authority; occupancy is normalized to the
+    // same capacity vector while the canonical change watcher fetches the new revision.
+    const derivedPassengerSeats = Math.max(0, capacity - availableSeats);
+    const passengerSeats = rawPassengerSeats + availableSeats === capacity
+      ? rawPassengerSeats
+      : derivedPassengerSeats;
+    return {
+      from,
+      to,
+      availableSeats,
+      passengerSeats,
+      capacity,
+      projectionAdjusted0632: passengerSeats !== rawPassengerSeats,
+    };
   }).filter(Boolean);
 }
 
@@ -1258,11 +1272,85 @@ function primaryEndpoint0569() {
   return "";
 }
 
+let agendaChangeCursor0632 = 0;
+let agendaChangeWatchRunning0632 = false;
+
 function applyAgendaBody0569(body) {
   publicDriverDisplayName0569 = String(body?.driver?.displayName || driverUsername0569 || "").trim();
   publicDriverWhatsapp0569 = String(body?.driver?.whatsapp || "").trim();
+  agendaChangeCursor0632 = Math.max(
+    agendaChangeCursor0632,
+    Math.max(0, Number(body?.changeCursor0495 || 0)),
+  );
   syncWhatsappFab0569();
   renderAgenda0569(body?.trips);
+}
+
+function agendaChangesEndpoint0632() {
+  if (publicSlug0569) {
+    return "/v1/public/agenda/" + encodeURIComponent(publicSlug0569) +
+      "/changes?since=" + encodeURIComponent(String(agendaChangeCursor0632));
+  }
+  if (driverUsername0569 && agendaToken0569.length >= 16) {
+    return "/v1/public/drivers/" + encodeURIComponent(driverUsername0569) + "/" +
+      encodeURIComponent(agendaToken0569) + "/agenda/changes?since=" +
+      encodeURIComponent(String(agendaChangeCursor0632));
+  }
+  return "";
+}
+
+async function fetchAgendaChange0632(endpoint) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(endpoint, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let body = null;
+    try { body = JSON.parse(raw); } catch (_) { body = null; }
+    if (!response.ok || !body || typeof body !== "object") {
+      throw new Error(safeMessage0569(body?.message) || "Falha no canal de atualização da Agenda.");
+    }
+    return body;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function watchAgendaCanonicalChanges0632() {
+  if (agendaChangeWatchRunning0632) return;
+  agendaChangeWatchRunning0632 = true;
+  try {
+    while (navigator.onLine !== false) {
+      if (document.visibilityState !== "visible") {
+        await delayBooking0629(700);
+        continue;
+      }
+      const endpoint = agendaChangesEndpoint0632();
+      if (!endpoint) return;
+      try {
+        const change = await fetchAgendaChange0632(endpoint);
+        agendaChangeCursor0632 = Math.max(
+          agendaChangeCursor0632,
+          Math.max(0, Number(change?.cursor || 0)),
+        );
+        if (change?.changed === true) {
+          await loadAgenda0569(true);
+        } else if (change?.degraded === true) {
+          await delayBooking0629(1200);
+        }
+      } catch (_) {
+        // Long-poll is the primary path; the slower periodic refresh below is the
+        // degradation path for temporary network/proxy failures.
+        await delayBooking0629(1500);
+      }
+    }
+  } finally {
+    agendaChangeWatchRunning0632 = false;
+  }
 }
 
 async function loadAgenda0569(silent = false) {
@@ -1283,10 +1371,14 @@ async function loadAgenda0569(silent = false) {
 }
 
 initSelfBooking0623();
+void watchAgendaCanonicalChanges0632();
 window.setInterval(() => {
   if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
-}, 2000);
-window.addEventListener("online", () => loadAgenda0569(true));
+}, 15_000);
+window.addEventListener("online", () => {
+  loadAgenda0569(true);
+  void watchAgendaCanonicalChanges0632();
+});
 window.addEventListener("pageshow", () => {
   if (navigator.onLine !== false) {
     consumeAgendaCardRefresh0596();
