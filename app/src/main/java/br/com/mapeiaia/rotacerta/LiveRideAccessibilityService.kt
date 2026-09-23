@@ -112,12 +112,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private val externalPackageEventGate0187 = FarolExternalPackageEventGate0187()
     private val failedCardAutoCaptureGate0161 = FailedCardAutoCaptureGate0161()
     private lateinit var failedCardLayoutModelStore0161: FailedCardLayoutModelStore0161
-    private lateinit var farolCardSignatureStore638: FarolCardSignatureStore638
-    private lateinit var farolCardTrainingModule638: FarolCardTrainingModule638
-    private val farolCardTrainingInProgress638 = AtomicBoolean(false)
-    private var lastSignatureMatchState638: String? = null
-    private var stage640AdmittedPackage: String? = null
-    private var lastStage641IdleBlockKey: String? = null
     private val offlineAiRecoveryInProgress642 = AtomicBoolean(false)
     @Volatile private var lastOfflineAiRecoveryAtElapsed642: Long = 0L
     @Volatile private var lastOfflineAiRecoveryFingerprint642: String? = null
@@ -335,8 +329,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         }
         repository = SettingsRepository(applicationContext)
         failedCardLayoutModelStore0161 = FailedCardLayoutModelStore0161(applicationContext)
-        farolCardSignatureStore638 = FarolCardSignatureStore638(applicationContext)
-        farolCardTrainingModule638 = FarolCardTrainingModule638(applicationContext, farolCardSignatureStore638)
         DiagnosticRuntimeGate.setEnabled(DebugLogPreferenceStore.isEnabled(applicationContext))
         UnifiedDebugEventStore.record("SERVICE_CREATE", packageName, "serviço de acessibilidade criado")
         geocodingService = GeocodingService(applicationContext)
@@ -509,10 +501,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (eventType0187 == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             if (eventPackage !in selectedPackages156) return
             val notificationPackage639 = eventPackage ?: return
-            if (!admitTrainedCardStage640(notificationPackage639, "notification")) {
-                FarolReadingActivationStage26.Metrics.increment("stage640NotificationSignatureGateRejected")
-                return
-            }
+            FarolFlightRecorder0163.record(
+                stage = "S643_SIGNATURE_FREE_NOTIFICATION_ADMISSION",
+                packageName = notificationPackage639,
+                details = "selectedPackage=true; cardSignatureRequired=false",
+            )
             val now0170 = SystemClock.elapsedRealtime()
             if (!notificationFailureCircuit0170.canAttempt(now0170)) return
             try {
@@ -535,12 +528,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         val authorityPackage638 = entryGate638.authorityPackage ?: return
-        if (!admitTrainedCardStage640(authorityPackage638, "accessibility_event")) {
-            FarolReadingActivationStage26.Metrics.increment("stage640EventSignatureGateRejected")
-            return
-        }
+        FarolFlightRecorder0163.record(
+            stage = "S643_SIGNATURE_FREE_PACKAGE_ADMISSION",
+            packageName = authorityPackage638,
+            details = "trigger=accessibility_event; selectedPackage=true; cardSignatureRequired=false",
+        )
 
-        // Maximum forensics now runs only after package/signature admission, never for random phone UI.
+        // Maximum forensics runs after strict selected-package admission, never for random phone UI.
         val stage38EventText = runCatching { event.text.joinToString(" || ") }.getOrDefault("")
         val stage38Source = runCatching { event.source }.getOrNull()
         FarolMaximumForensicsStage38.record(
@@ -788,7 +782,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             UnifiedDebugEventStore.record(
                 "BUBBLE_UNCONFIRMED_CARD_REJECTED_0185",
                 resolvedPackage,
-                "motivo=${cardEvidence0185.reason}; tamanho=${immediateTextChecklist13.length}; hash=${FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)}",
+                "motivo=${cardEvidence0185.reason}; tamanho=${immediateTextChecklist13.length}; hash=${FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)}; signatureGate=false; localOcrFallback=true",
             )
             lastImmediateScreenPackageChecklist13 = resolvedPackage
             lastImmediateScreenFingerprintChecklist13 = FarolUnifiedVisual0168.semanticHash(immediateTextChecklist13)
@@ -796,6 +790,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 reason = cardEvidence0185.reason,
                 keepWaitingYellow = true,
             )
+            scheduleOfflineAiAdmission642(resolvedPackage, "semantic_card_evidence_miss_643")
             return
         }
         val immediateAnalysisText0185 = cardEvidence0185.analysisText
@@ -4068,10 +4063,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolReadingActivationStage26.Metrics.increment("stage638ScheduledForeignAvoided")
             return
         }
-        if (!admitTrainedCardStage640(scheduledPackage638, "scheduled_analysis")) {
-            FarolReadingActivationStage26.Metrics.increment("stage640ScheduledSignatureGateRejected")
-            return
-        }
+        FarolFlightRecorder0163.record(
+            stage = "S643_SIGNATURE_FREE_SCHEDULED_ADMISSION",
+            packageName = scheduledPackage638,
+            details = "selectedPackage=true; cardSignatureRequired=false",
+        )
         val demandStage23 = stage23ScheduleGate.create(
             stage23VisualGate.currentGeneration(),
             stage23VisualGate.currentHash(),
@@ -4553,38 +4549,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
 
-    private fun matchesTrainedCardSignature638(
-        packageName638: String,
-        rootHandle638: FarolRootHandle0187? = null,
-    ): Boolean {
-        val root638 = rootHandle638 ?: captureRootHandle0187() ?: return false
-        if (normalizePackageName(root638.packageName) != normalizePackageName(packageName638)) return false
-        val models638 = farolCardSignatureStore638.modelsFor(packageName638)
-        if (models638.isEmpty()) return true
-        val nodes638 = collectSignatureProbeNodes638(root638.node)
-        val text638 = nodes638.asSequence()
-            .map { it.text }
-            .filter { it.isNotBlank() && it != "_" }
-            .distinct()
-            .joinToString("\n")
-        val match638 = FarolCardSignatureMatcher638.match(
-            packageName = packageName638,
-            text = text638,
-            nodes = nodes638,
-            models = models638,
-        )
-        val state638 = "${packageName638}|${match638.matched}|${match638.modelId.orEmpty()}|${String.format(Locale.US, "%.3f", match638.score)}"
-        if (state638 != lastSignatureMatchState638) {
-            lastSignatureMatchState638 = state638
-            FarolFlightRecorder0163.record(
-                stage = if (match638.matched) "S638_CARD_SIGNATURE_MATCH" else "S638_CARD_SIGNATURE_MISS",
-                packageName = packageName638,
-                details = "model=${match638.modelId.orEmpty()}; score=${String.format(Locale.US, "%.3f", match638.score)}; reason=${match638.reason}; nodes=${nodes638.size}; models=${models638.size}",
-            )
-        }
-        return match638.matched
-    }
-
     private fun collectSignatureProbeNodes638(root638: AccessibilityNodeInfo): List<FailedCardNodeLine0161> {
         val pending638 = java.util.ArrayDeque<AccessibilityNodeInfo>()
         val output638 = ArrayList<FailedCardNodeLine0161>(64)
@@ -4649,163 +4613,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun clearTrainedCardPublicState638(packageName638: String) {
-        masterResetCardAdmissionStage639(
-            packageName639 = packageName638,
-            outcome639 = FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS,
-            trigger639 = "legacy_stage638_signature_miss",
-        )
-    }
-
-    private fun admitTrainedCardStage640(
-        packageName639: String,
-        trigger639: String,
-    ): Boolean {
-        val hasModels640 = farolCardSignatureStore638.hasModels(packageName639)
-        val normalizedPackage640 = normalizePackageName(packageName639)
-
-        // Stage641: windowId is deliberately NOT part of lease continuity. The selected ride app
-        // may rebuild its AccessibilityWindow during countdown/progress/map animation while the
-        // semantic destination remains the same. Package + active semantic lease is the authority.
-        val sameSurfaceLease640 = FarolSemanticLeaseContinuityStage641.activeLeaseForSameApp(
-            hasModels = hasModels640,
-            admittedPackage = stage640AdmittedPackage,
-            authorityPackage = normalizedPackage640,
-            activeAddressSignature = universalActiveAddressSignature,
-        )
-        if (sameSurfaceLease640) {
-            // Notification events are not visual proof. When a valid card is already leased, ignore
-            // the notification rather than waking OCR or resetting live route work.
-            if (trigger639 == "notification") {
-                FarolReadingActivationStage26.Metrics.increment("stage641NotificationIgnoredDuringLease")
-                return false
-            }
-            val leaseDecision640 = FarolInstantFirstPaintStage640.decide(
-                hasModels = true,
-                signatureMatched = false,
-                activeSemanticLeaseSameSurface = true,
-                hasFinalPublicDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
-            )
-            if (leaseDecision640.allowHeavyPipeline) {
-                lastStage641IdleBlockKey = null
-                FarolReadingActivationStage26.Metrics.increment("stage641SemanticLeaseAdmission")
-                return true
-            }
-        }
-
-        val root640 = captureRootHandle0187()
-        val signatureMatched640 = hasModels640 && root640 != null &&
-            matchesTrainedCardSignature638(packageName639, root640)
-        val decision640 = FarolInstantFirstPaintStage640.decide(
-            hasModels = hasModels640,
-            signatureMatched = signatureMatched640,
-            activeSemanticLeaseSameSurface = false,
-            hasFinalPublicDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
-        )
-        if (decision640.allowHeavyPipeline) {
-            stage640AdmittedPackage = normalizedPackage640
-            lastStage641IdleBlockKey = null
-            if (decision640.paintWaitingImmediately &&
-                (currentRadarColor != RadarColor.Default || currentDistanceKm != null)
-            ) {
-                rememberBubbleReason(
-                    "stage640_signature_admitted",
-                    "Card treinado confirmado; iniciando decisão local imediatamente.",
-                )
-                showOverlay(RadarColor.Default, distanceKm = null)
-                FarolFlightRecorder0163.record(
-                    stage = "S640_SIGNATURE_FIRST_FEEDBACK_PAINTED",
-                    packageName = packageName639,
-                    details = "trigger=$trigger639; window=${root640?.windowId ?: 0}; heavyPipelineStartsAfterPaint=true",
-                )
-            }
-            FarolFlightRecorder0163.record(
-                stage = "S641_EXACT_SIGNATURE_ADMITTED",
-                packageName = packageName639,
-                details = "trigger=$trigger639; entryWindow=${root640?.windowId ?: 0}; continuity=semantic_package_lease",
-            )
-            return true
-        }
-
-        val legacyOutcome639 = when (decision640.outcome) {
-            FarolInstantFirstPaintStage640.Outcome.BLOCK_UNTRAINED ->
-                FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED
-            FarolInstantFirstPaintStage640.Outcome.BLOCK_SIGNATURE_MISS ->
-                FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS
-            FarolInstantFirstPaintStage640.Outcome.ALLOW_EXACT_SIGNATURE,
-            FarolInstantFirstPaintStage640.Outcome.ALLOW_ACTIVE_SEMANTIC_LEASE ->
-                FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED
-        }
-
-        // Stage642: structural signature is no longer the last chance. If Accessibility sees the
-        // selected ride app but the tree is transient/incomplete, one local screenshot is sent to
-        // the bundled ML Kit neural OCR. A strict local semantic classifier may admit the card and
-        // resume the route with no OpenAI and no remote AI call.
-        if (trigger639 == "accessibility_event") {
-            scheduleOfflineAiAdmission642(packageName639, legacyOutcome639.name)
-        }
-
-        val destructiveState641 =
-            universalActiveAddressSignature != null ||
-            universalRouteJob?.isActive == true ||
-            currentRadarColor == RadarColor.Green ||
-            currentRadarColor == RadarColor.Red ||
-            currentDistanceKm != null ||
-            lastSnapshotHash != null ||
-            analyzing ||
-            screenshotInProgress.get() ||
-            notificationWakeJob0169?.isActive == true
-        val alreadyWaitingYellow641 =
-            currentRadarColor == RadarColor.Default &&
-            currentDistanceKm == null &&
-            universalActiveAddressSignature == null
-        when (FarolSemanticLeaseContinuityStage641.blockAction(
-            hasDestructiveState = destructiveState641,
-            alreadyWaitingYellow = alreadyWaitingYellow641,
-        )) {
-            FarolSemanticLeaseContinuityStage641.BlockAction.HARD_RESET -> {
-                lastStage641IdleBlockKey = null
-                masterResetCardAdmissionStage639(
-                    packageName639 = packageName639,
-                    outcome639 = legacyOutcome639,
-                    trigger639 = "stage641:$trigger639",
-                )
-            }
-            FarolSemanticLeaseContinuityStage641.BlockAction.PAINT_WAITING_ONLY -> {
-                rememberBubbleReason(
-                    "stage641_waiting_signature",
-                    if (legacyOutcome639 == FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED)
-                        "Card ainda não memorizado; aguardando assinatura treinada."
-                    else
-                        "Aguardando assinatura do card treinado.",
-                )
-                showOverlay(RadarColor.Default, distanceKm = null)
-                val key641 = "${normalizedPackage640.orEmpty()}|${legacyOutcome639.name}|waiting"
-                if (lastStage641IdleBlockKey != key641) {
-                    lastStage641IdleBlockKey = key641
-                    FarolFlightRecorder0163.record(
-                        stage = "S641_IDLE_SIGNATURE_BLOCK_WAITING",
-                        packageName = packageName639,
-                        details = "trigger=$trigger639; outcome=${legacyOutcome639.name}; destructive=false; hardClear=false",
-                    )
-                }
-            }
-            FarolSemanticLeaseContinuityStage641.BlockAction.NOOP -> {
-                val key641 = "${normalizedPackage640.orEmpty()}|${legacyOutcome639.name}|noop"
-                if (lastStage641IdleBlockKey != key641) {
-                    lastStage641IdleBlockKey = key641
-                    FarolFlightRecorder0163.record(
-                        stage = "S641_IDLE_SIGNATURE_BLOCK_NOOP",
-                        packageName = packageName639,
-                        details = "trigger=$trigger639; outcome=${legacyOutcome639.name}; alreadyWaitingYellow=true; hardClear=false",
-                    )
-                }
-                FarolReadingActivationStage26.Metrics.increment("stage641IdleSignatureMissNoHardClear")
-            }
-        }
-        return false
-    }
-
     private fun scheduleOfflineAiAdmission642(
         packageName642: String,
         triggerReason642: String,
@@ -4828,7 +4635,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val nowElapsed642 = SystemClock.elapsedRealtime()
         if (
             lastOfflineAiRecoveryFingerprint642 == fingerprint642 &&
-            nowElapsed642 - lastOfflineAiRecoveryAtElapsed642 < 220L
+            nowElapsed642 - lastOfflineAiRecoveryAtElapsed642 < 600L
         ) return false
         if (!offlineAiRecoveryInProgress642.compareAndSet(false, true)) return false
         if (!screenshotInProgress.compareAndSet(false, true)) {
@@ -4865,7 +4672,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     FarolOfflineAiStage642.recognize(
                                         bitmap = localBitmap642,
                                         structured = structured642,
-                                        models = farolCardSignatureStore638.modelsFor(normalizedPackage642),
                                     )
                                 }
                                 FarolFlightRecorder0163.record(
@@ -4880,8 +4686,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
                                 val effectiveWindow642 = verifiedRoot642.windowId ?: rootWindow642
                                 driverCardSessionGate0162.begin(normalizedPackage642, effectiveWindow642)
-                                stage640AdmittedPackage = normalizedPackage642
-                                lastStage641IdleBlockKey = null
                                 universalForegroundPackageName = normalizedPackage642
                                 activePackageName = normalizedPackage642
                                 lastExternalWindowPackageName = normalizedPackage642
@@ -4931,38 +4735,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             offlineAiRecoveryInProgress642.set(false)
         }
         return started642
-    }
-
-    private fun masterResetCardAdmissionStage639(
-        packageName639: String,
-        outcome639: FarolCardAdmissionStage639.Outcome,
-        trigger639: String,
-    ) {
-        notificationWakeGate0169.invalidate()
-        notificationWakeJob0169?.cancel()
-        notificationWakeJob0169 = null
-
-        val reason639 = when (outcome639) {
-            FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED ->
-                "Card ainda não memorizado. Abra um card limpo e use 🧠 Memorizar card."
-            FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS ->
-                "Assinatura do card ausente nesta tela; leitura bloqueada."
-            FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED ->
-                "Assinatura confirmada."
-        }
-        hardClearUniversalTwoAddress(
-            reason = reason639,
-            keepWaitingYellow = true,
-        )
-        FarolFlightRecorder0163.record(
-            stage = when (outcome639) {
-                FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED -> "S639_UNTRAINED_MASTER_RESET"
-                FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS -> "S639_SIGNATURE_MISS_MASTER_RESET"
-                FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED -> "S639_SIGNATURE_MATCH"
-            },
-            packageName = packageName639,
-            details = "trigger=$trigger639; heavyCollect=false; notificationWakeCancelled=true; screenGeneration=$universalScreenGeneration; windowGeneration=$universalWindowGeneration",
-        )
     }
 
     private fun collectFailedCardNodeLines0161(): List<FailedCardNodeLine0161> {
@@ -7581,7 +7353,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
             BubbleShortcutAction.StopApplication -> stopApplicationFromBubble()
             BubbleShortcutAction.CaptureCurrentAppAndScreen -> captureCurrentAppAndScreen138()
             BubbleShortcutAction.SaveScreenPrint -> saveScreenPrintStage32()
-            BubbleShortcutAction.MemorizeFarolCard -> memorizeFarolCard638()
             BubbleShortcutAction.OpenAuthorizedAppsAndCards -> openAuthorizedAppsAndCards146()
             BubbleShortcutAction.CreateAlert -> saveCurrentPlaceFromBubble(SavedPlaceType.ProximityAlert, requireNotNull(spec.defaultName))
             BubbleShortcutAction.CreateSavedPlace -> saveCurrentPlaceFromBubble(SavedPlaceType.Place, requireNotNull(spec.defaultName))
@@ -7604,136 +7375,6 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP),
             failureMessage = "Não consegui abrir os aplicativos autorizados.",
         )
-    }
-
-    private fun memorizeFarolCard638() {
-        shortcutOverlayController.hideAll()
-        persistResourceShortcutState()
-        if (!farolCardTrainingInProgress638.compareAndSet(false, true)) {
-            toast("A memorização de card já está em andamento.")
-            return
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            farolCardTrainingInProgress638.set(false)
-            toast("Memorização visual indisponível nesta versão do Android.")
-            return
-        }
-        scope.launch {
-            delay(96L)
-            val root638 = captureRootHandle0187()
-            val package638 = root638?.packageName?.takeIf {
-                DriverAppPackagePolicy0162.isEligible(it, packageName)
-            }
-            if (root638 == null || package638 == null) {
-                farolCardTrainingInProgress638.set(false)
-                toast("Deixe o card de corrida aberto e toque em Memorizar novamente.")
-                return@launch
-            }
-            val nodes638 = collectSignatureProbeNodes638(root638.node)
-            val text638 = collectImmediateVisibleTextChecklist13(root638.node)
-            if (nodes638.size < 4 || text638.isBlank()) {
-                farolCardTrainingInProgress638.set(false)
-                toast("Não encontrei estrutura suficiente neste card.")
-                return@launch
-            }
-            if (!screenshotInProgress.compareAndSet(false, true)) {
-                farolCardTrainingInProgress638.set(false)
-                toast("A captura de tela está ocupada. Tente Memorizar novamente.")
-                return@launch
-            }
-            FarolFlightRecorder0163.record(
-                stage = "S638_CARD_TRAINING_REQUESTED",
-                packageName = package638,
-                details = "window=${root638.windowId ?: -1}; nodes=${nodes638.size}; explicitUser=true; runtimeScreenshot=false",
-            )
-            runCatching {
-                takeScreenshot(
-                    Display.DEFAULT_DISPLAY,
-                    mainExecutor,
-                    object : TakeScreenshotCallback {
-                        override fun onSuccess(screenshot: ScreenshotResult) {
-                            var bitmap638: Bitmap? = null
-                            try {
-                                bitmap638 = screenshot.toSoftwareBitmap()
-                                if (bitmap638 == null) error("bitmap indisponível")
-                                val bitmapForTraining638 = bitmap638
-                                scope.launch(Dispatchers.IO) {
-                                    try {
-                                        val result638 = farolCardTrainingModule638.train(
-                                            packageName = package638,
-                                            text = text638,
-                                            nodes = nodes638,
-                                            bitmap = bitmapForTraining638,
-                                        )
-                                        SelectedRideAppStore.add(applicationContext, package638)
-                                        FarolFlightRecorder0163.record(
-                                            stage = "S638_CARD_SIGNATURE_TRAINED",
-                                            packageName = package638,
-                                            details = "model=${result638.model.id}; samples=${result638.model.sampleCount}; confidence=${result638.model.confidence}; anchors=${result638.model.anchorTokens.sorted().joinToString(",")}; structures=${result638.model.structureTokens.size}; visualHash=${result638.model.visualHash.orEmpty()}; evidence=${result638.evidencePath.orEmpty()}",
-                                        )
-                                        withContext(Dispatchers.Main.immediate) {
-                                            toast("Assinatura do card memorizada")
-                                            showSaveConfirmationNotification(
-                                                "Card memorizado",
-                                                "$package638 • ${result638.model.sampleCount} amostra(s)",
-                                            )
-                                            FarolFlightRecorder0163.record(
-                                                stage = "S639_POST_TRAINING_IMMEDIATE_ANALYSIS",
-                                                packageName = package638,
-                                                details = "model=${result638.model.id}; samples=${result638.model.sampleCount}",
-                                            )
-                                            scheduleVisibleTextAnalysis(0L, allowPopupCandidate = true)
-                                        }
-                                    } catch (error638: Throwable) {
-                                        FarolFlightRecorder0163.record(
-                                            stage = "S638_CARD_TRAINING_FAILED",
-                                            packageName = package638,
-                                            details = "type=${error638::class.java.simpleName}; message=${error638.message.orEmpty().take(180)}",
-                                        )
-                                        withContext(Dispatchers.Main.immediate) { toast("Não foi possível memorizar este card.") }
-                                    } finally {
-                                        bitmapForTraining638.takeUnless(Bitmap::isRecycled)?.recycle()
-                                        screenshotInProgress.set(false)
-                                        farolCardTrainingInProgress638.set(false)
-                                    }
-                                }
-                                bitmap638 = null
-                            } catch (error638: Throwable) {
-                                bitmap638?.takeUnless(Bitmap::isRecycled)?.recycle()
-                                screenshotInProgress.set(false)
-                                farolCardTrainingInProgress638.set(false)
-                                FarolFlightRecorder0163.record(
-                                    stage = "S638_CARD_TRAINING_FAILED",
-                                    packageName = package638,
-                                    details = "type=${error638::class.java.simpleName}; phase=screenshot_decode",
-                                )
-                                toast("Não foi possível memorizar este card.")
-                            }
-                        }
-
-                        override fun onFailure(errorCode: Int) {
-                            screenshotInProgress.set(false)
-                            farolCardTrainingInProgress638.set(false)
-                            FarolFlightRecorder0163.record(
-                                stage = "S638_CARD_TRAINING_FAILED",
-                                packageName = package638,
-                                details = "phase=screenshot; errorCode=$errorCode",
-                            )
-                            toast("O Android não permitiu capturar este card.")
-                        }
-                    },
-                )
-            }.onFailure { error638 ->
-                screenshotInProgress.set(false)
-                farolCardTrainingInProgress638.set(false)
-                FarolFlightRecorder0163.record(
-                    stage = "S638_CARD_TRAINING_FAILED",
-                    packageName = package638,
-                    details = "phase=request; type=${error638::class.java.simpleName}",
-                )
-                toast("Não consegui iniciar a memorização do card.")
-            }
-        }
     }
 
     private fun saveScreenPrintStage32() {
