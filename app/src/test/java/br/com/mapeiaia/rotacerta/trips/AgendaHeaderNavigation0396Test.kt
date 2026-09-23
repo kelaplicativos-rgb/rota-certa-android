@@ -14,7 +14,7 @@ class AgendaHeaderNavigation0396Test {
 
     @Test
     fun rootDrawerContainsOnlyRealAgendaDestinationsAndHighlightsSelection() {
-        assertTrue(header.contains("ALL_TRIPS(\"Todas as viagens\")"))
+        assertTrue(header.contains("ALL_TRIPS(\"Viagens\")"))
         val drawer = header.substringAfter("ModalDrawerSheet").substringBefore("@Composable\ninternal fun AgendaModuleHeader0396")
         assertTrue(drawer.contains("AgendaRootSection0396.ALL_TRIPS"))
         assertFalse(drawer.contains("AgendaRootSection0396.ASSISTANT"))
