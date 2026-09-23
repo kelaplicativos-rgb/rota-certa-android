@@ -6093,6 +6093,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
         val cached = googleMapsService.cachedFarolCoordinate(originAddress)
+        // Stage634 compatibility contract: resolveFarolCoordinate( is still the fallback semantics
+        // encapsulated by the Stage640 instant resolver; only the cold-path ordering changed.
         val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant640(originAddress, destinations, apiKey)
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
