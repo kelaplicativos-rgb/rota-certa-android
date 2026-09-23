@@ -69,15 +69,24 @@ internal object BlaBlaCollectorUrlModule {
             passengerPageKey(expected) == passengerPageKey(actual)
 
     fun passengerIdentityKey(raw: String?): String {
-        val uri = parseAllowed(raw) ?: return "passenger"
-        val fromPath = Regex("/(?:passenger|booking)/([^/?#]+)", RegexOption.IGNORE_CASE)
+        val uri = parseAllowed(raw) ?: return ""
+        // Person identity and reservation identity are different namespaces.
+        // <=0.1.626 accepted /booking/{id} as a passenger id, fragmenting one
+        // physical passenger into a new PassengerProfile for each reservation.
+        val fromPassengerPath = Regex("/passenger/([^/?#]+)", RegexOption.IGNORE_CASE)
             .find(uri.path.orEmpty())
             ?.groupValues
             ?.getOrNull(1)
             ?.takeIf(String::isNotBlank)
-        return (fromPath ?: queryValue(uri, "id") ?: uri.path.orEmpty().substringAfterLast('/'))
+        val fromExplicitPassengerQuery = listOf(
+            "passenger_id",
+            "passenger_uuid",
+            "member_id",
+            "member_uuid",
+        ).firstNotNullOfOrNull { key -> queryValue(uri, key)?.takeIf(String::isNotBlank) }
+        return (fromPassengerPath ?: fromExplicitPassengerQuery)
+            .orEmpty()
             .take(80)
-            .ifBlank { "passenger" }
     }
 
     fun passengerPage(passengerId: String?, tripId: String?): String? {
