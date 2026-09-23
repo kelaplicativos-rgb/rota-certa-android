@@ -1943,7 +1943,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val evaluateStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
         FarolForensicTraceStage20.accessibilityEvaluateStarted(cycleIdStage20, evaluateStartedNsStage26)
-        val evaluationStage19 = FarolLatencyProbeStage9.measureValue(
+        val rawEvaluationStage19 = FarolLatencyProbeStage9.measureValue(
             stage = "STAGE26_UNIVERSAL_VISUAL_ACCESSIBILITY",
             source = "Accessibility",
         ) {
@@ -1953,6 +1953,33 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 cheapSignalStage26.sourceText,
                 eventWindowIdStage20,
                 FarolUniversalVisualPipelineStage19.Source.Accessibility,
+            )
+        }
+        val ownershipPackageStage47 = rawEvaluationStage19
+            ?.let { observePackageForWindowIdStage46R3(it.windowId) }
+            ?: eventPackageStage19
+        val ownershipTextStage47 = buildString {
+            collectionStage26.blocks.asSequence()
+                .filter { rawEvaluationStage19 == null || it.windowId == rawEvaluationStage19.windowId }
+                .take(24)
+                .forEach { block -> append(block.text.take(700)).append('\n') }
+            append(cheapSignalStage26.sourceText.take(1200))
+        }.take(6000)
+        val ownershipStage47 = rawEvaluationStage19?.let { candidate ->
+            FarolRideCardOwnershipStage47.evaluate(
+                packageName = ownershipPackageStage47,
+                selectedPackages = activationStage26.selectedPackages,
+                text = ownershipTextStage47,
+                locationCount = candidate.addresses.size,
+                structuralSignature = cheapSignalStage26.structuralSignature,
+            )
+        }
+        val evaluationStage19 = rawEvaluationStage19?.takeIf { ownershipStage47?.owned == true }
+        if (rawEvaluationStage19 != null && evaluationStage19 == null) {
+            FarolMaximumForensicsStage38.record(
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S47_RIDE_CARD_OWNERSHIP_REJECTED",
+                ownershipPackageStage47, cycleId = cycleIdStage20,
+                details = "reason=${ownershipStage47?.reason.orEmpty()}; locations=${rawEvaluationStage19.addresses.size}; candidate=${rawEvaluationStage19.destination.take(700)}",
             )
         }
         val evaluateEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
