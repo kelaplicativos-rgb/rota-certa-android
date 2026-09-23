@@ -1,9 +1,9 @@
-name: FAROL Edge 0.1.635 APK
+name: FAROL Edge 0.1.634 APK
 
 on:
   push:
     branches:
-      - 'agent/farol-edge-stability-0.1.635'
+      - 'agent/farol-edge-0.1.634'
   workflow_dispatch:
 
 permissions:
@@ -77,8 +77,6 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:testDebugUnitTest \
             --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
-            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0635Test' \
-            --tests 'br.com.mapeiaia.rotacerta.DestinationAddressIdentityPolicy16Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolRealtimeEventGate0167Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage36Test' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage36FreshnessTest' \
@@ -104,16 +102,16 @@ jobs:
           APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
           test -s "$APK"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'releaseVersionName = "0.1.635"' app/build.gradle.kts
-          grep -Fq 'releaseVersionCode = 5_926' app/build.gradle.kts
+          grep -Fq 'releaseVersionName = "0.1.634"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_925' app/build.gradle.kts
           APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
           echo "apk=$APK" >> "$GITHUB_OUTPUT"
           echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
           {
             echo "branch=$GITHUB_REF_NAME"
             echo "commit=$GITHUB_SHA"
-            echo "versionName=0.1.635"
-            echo "versionCode=5926"
+            echo "versionName=0.1.634"
+            echo "versionCode=5925"
             echo "variant=debug"
             echo "package=br.com.mapeiaia.rotacerta"
             echo "apk=$APK"
@@ -122,7 +120,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-farol-edge-0.1.635-${{ github.sha }}
+          name: rota-certa-farol-edge-0.1.634-${{ github.sha }}
           path: |
             ${{ steps.proof.outputs.apk }}
             farol-edge-proof.txt
