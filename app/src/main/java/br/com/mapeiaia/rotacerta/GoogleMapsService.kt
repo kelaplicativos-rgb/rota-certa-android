@@ -23,6 +23,7 @@ class GoogleMapsService(context: Context? = null) {
     private val geocodeCache = ConcurrentHashMap<String, Coordinate>()
     private val routeCache = ConcurrentHashMap<String, Double>()
     private val addressRouteCache = ConcurrentHashMap<String, Double>()
+    private val trafficAddressRouteCache = ConcurrentHashMap<String, Double>()
     private val cachePrefs: SharedPreferences? = context
         ?.applicationContext
         ?.getSharedPreferences(PERSISTENT_CACHE_PREFS, Context.MODE_PRIVATE)
@@ -232,6 +233,86 @@ class GoogleMapsService(context: Context? = null) {
         }
         return result
     } // simple_cached_route_peek_checklist_13
+
+
+    /**
+     * Stage637: exact road distance authority after the local instant color.
+     * Google Route Matrix is attempted first with TRAFFIC_AWARE. OSM/OSRM is only
+     * a contingency when Google is unavailable; neither provider blocks bubble input.
+     */
+    fun cachedTrafficAwareDrivingDistancesFromAddressKm(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val result = MutableList<Double?>(destinations.size) { null }
+        destinations.forEachIndexed { index, destination ->
+            val cacheKey = addressRouteKey(normalizedOrigin, destination)
+            val cached = trafficAddressRouteCache[cacheKey]
+                ?: readPersistentDistance(PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX, cacheKey, ROUTE_CACHE_TTL_MS)
+                ?: return null
+            trafficAddressRouteCache[cacheKey] = cached
+            result[index] = cached
+        }
+        return result
+    }
+
+    suspend fun trafficAwareDrivingDistancesFromAddressKm(
+        originAddress: String,
+        destinations: List<Coordinate>,
+        apiKey: String,
+    ): List<Double?> = withContext(Dispatchers.IO) {
+        if (originAddress.isBlank() || destinations.isEmpty()) {
+            return@withContext List(destinations.size) { null }
+        }
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val result = MutableList<Double?>(destinations.size) { null }
+        val missingIndexes = mutableListOf<Int>()
+        destinations.forEachIndexed { index, destination ->
+            val cacheKey = addressRouteKey(normalizedOrigin, destination)
+            val cached = trafficAddressRouteCache[cacheKey]
+                ?: readPersistentDistance(PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX, cacheKey, ROUTE_CACHE_TTL_MS)
+            if (cached != null) {
+                trafficAddressRouteCache[cacheKey] = cached
+                result[index] = cached
+            } else {
+                missingIndexes += index
+            }
+        }
+        if (missingIndexes.isEmpty()) return@withContext result
+
+        val missingDestinations = missingIndexes.map(destinations::get)
+        val googleFetched = if (apiKey.isNotBlank()) {
+            val body = trafficAwareAddressRouteMatrixBody(originAddress, missingDestinations)
+            requestWithRetry(ROUTE_REQUEST_ATTEMPTS) {
+                requestAddressRouteMatrix(body, apiKey, missingDestinations.size)
+            }
+        } else null
+
+        val unresolved = missingDestinations.indices.filter { googleFetched?.getOrNull(it) == null }
+        val fallback = if (unresolved.isNotEmpty()) {
+            requestOpenStreetMapAddressRoutes(originAddress, unresolved.map(missingDestinations::get))
+        } else null
+        var fallbackIndex = 0
+        missingDestinations.indices.forEach { localIndex ->
+            val exact = googleFetched?.getOrNull(localIndex)
+                ?: if (localIndex in unresolved) fallback?.getOrNull(fallbackIndex++) else null
+            if (exact != null) {
+                val originalIndex = missingIndexes[localIndex]
+                val key = addressRouteKey(normalizedOrigin, destinations[originalIndex])
+                result[originalIndex] = exact
+                trafficAddressRouteCache[key] = exact
+                persistDistance(PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX, key, exact)
+            }
+        }
+        FarolFlightRecorder0163.record(
+            stage = "TRAFFIC_AWARE_ROUTE_RESULT_STAGE637",
+            packageName = null,
+            details = "googleResolved=${googleFetched?.count { it != null } ?: 0}; fallbackResolved=${fallback?.count { it != null } ?: 0}; destinations=${destinations.size}",
+        )
+        result
+    }
 
     private fun requestDrivingDistance(body: String, apiKey: String): Double? {
         val connection = (URL(ROUTES_COMPUTE_URL).openConnection() as HttpURLConnection).apply {
@@ -761,6 +842,27 @@ class GoogleMapsService(context: Context? = null) {
         """.trimIndent()
     }
 
+
+    private fun trafficAwareAddressRouteMatrixBody(originAddress: String, destinations: List<Coordinate>): String {
+        val destinationJson = destinations.joinToString(",") { destination ->
+            String.format(
+                Locale.US,
+                """{"waypoint":{"location":{"latLng":{"latitude":%.7f,"longitude":%.7f}}}}""",
+                destination.latitude,
+                destination.longitude,
+            )
+        }
+        return """
+            {
+              "origins": [{"waypoint": {"address": "${jsonEscape(originAddress)}"}}],
+              "destinations": [$destinationJson],
+              "travelMode": "DRIVE",
+              "routingPreference": "TRAFFIC_AWARE",
+              "languageCode": "pt-BR"
+            }
+        """.trimIndent()
+    }
+
     private fun normalizeAddress(value: String): String =
         value.lowercase(Locale.ROOT).replace(Regex("""\s+"""), " ").trim()
 
@@ -878,6 +980,7 @@ class GoogleMapsService(context: Context? = null) {
         const val PERSISTENT_GEOCODE_PREFIX = "geocode_"
         const val PERSISTENT_COORD_ROUTE_PREFIX = "coord_route_"
         const val PERSISTENT_ADDRESS_ROUTE_PREFIX = "address_route_"
+        const val PERSISTENT_TRAFFIC_ADDRESS_ROUTE_PREFIX = "traffic_address_route_"
         const val MAX_PERSISTENT_ENTRIES = 500
         const val PRUNE_EVERY_WRITES = 20
         const val ROUTE_CACHE_TTL_MS = 30L * 24L * 60L * 60L * 1_000L
