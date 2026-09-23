@@ -3295,7 +3295,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                         )
                                     } else {
                                         hardClearUniversalTwoAddress(
-                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease semântica ativa.",
+                                            reason = "Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa nem lease semântica em andamento.",
                                             keepWaitingYellow = true,
                                         )
                                     }
