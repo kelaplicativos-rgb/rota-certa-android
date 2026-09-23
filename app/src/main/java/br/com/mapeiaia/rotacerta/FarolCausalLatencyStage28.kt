@@ -287,9 +287,9 @@ object FarolCausalLatencyStage28 {
         fun gauge(name: String): Long = synchronized(lock) { gauges[name] ?: 0L }
         fun stats(name: String): String = synchronized(lock) {
             val values = samples[name]?.toList()?.sorted().orEmpty()
-            if (values.isEmpty()) return@synchronized "count=0; median_us=-1; p95_us=-1; max_us=-1"
+            if (values.isEmpty()) return@synchronized "count=0; p50_us=-1; p95_us=-1; p99_us=-1; max_us=-1"
             fun p(v: Double): Long = values[(ceil(values.size * v).toInt() - 1).coerceIn(0, values.lastIndex)]
-            "count=${values.size}; median_us=${p(.50)/1000}; p95_us=${p(.95)/1000}; max_us=${values.last()/1000}"
+            "count=${values.size}; p50_us=${p(.50)/1000}; p95_us=${p(.95)/1000}; p99_us=${p(.99)/1000}; max_us=${values.last()/1000}"
         }
         fun exportReport(): String = synchronized(lock) {
             buildString {
@@ -300,7 +300,7 @@ object FarolCausalLatencyStage28 {
                     "eventsCoalesced","ownOverlayEventsIgnored","visualIdentityChanged","visualIdentityRepeated","oldPaintInvalidated",
                     "heavyCollectionsStarted","heavyCollectionsAvoided","nodesVisited","blocksEmitted","addressParserInvocations",
                     "duplicateSubtreesAvoided","ocrRequests","ocrStarts","ocrCancelled","ocrStale","ocrCoalesced",
-                    "routeRequests","routeCacheHits","routeDeduplicated","routeCancelledStale","workCancelledOnReadingOff",
+                    "routeRequests","routeCacheHits","geoCacheHits","geoCacheMisses","staleResultsDropped","routeDeduplicated","routeCancelledStale","workCancelledOnReadingOff",
                     "stalePaintBlockedAfterReadingOff",
                 )
                 names.forEach { appendLine("$it=${counters[it] ?: 0L}") }
@@ -308,7 +308,7 @@ object FarolCausalLatencyStage28 {
                 appendLine("activationGeneration=${gauges["activationGeneration"] ?: 0L}")
                 listOf(
                     "eventToActivationState","eventToMutationDetected","eventToOldPaintInvalidated","collect","evaluate",
-                    "eventToCandidate","candidateToRouteStart","route","routeResponseToPaint","eventToFinalGreenRedKm",
+                    "eventToCandidate","candidateToRouteStart","route","fastPathLocal","ocrPathLocal","coldGeoPath","routeResponseToPaint","eventToFinalGreenRedKm",
                 ).forEach { appendLine("$it | ${stats(it)}") }
             }.trimEnd()
         }
