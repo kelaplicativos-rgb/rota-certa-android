@@ -28,6 +28,7 @@ enum class BubbleShortcutAction {
     OpenAuthorizedAppsAndCards,
     OpenTextCorrection,
     SaveScreenPrint,
+    MemorizeFarolCard,
 }
 
 enum class BubbleShortcutQuickAction {
@@ -239,6 +240,19 @@ object PrintBubbleShortcutModuleStage32 : BubbleShortcutModule {
     )
 }
 
+
+object FarolCardTrainingBubbleShortcutModule638 : BubbleShortcutModule {
+    const val CONTRACT_MARKER = "FAROL_CARD_TRAINING_SHORTCUT_0638"
+
+    override val spec = BubbleShortcutSpec(
+        id = "farol_card_training",
+        emoji = "🧠",
+        label = "Memorizar card",
+        displayLabel = "Memorizar",
+        action = BubbleShortcutAction.MemorizeFarolCard,
+    )
+}
+
 object ReportsBubbleShortcutModule0184 : BubbleShortcutModule {
     override val spec = BubbleShortcutSpec(
         id = "reports",
@@ -306,6 +320,7 @@ object BubbleShortcutCatalog {
         QuickLinksBubbleShortcutModule,
         TextCorrectionBubbleShortcutModule0186,
         CaptureCurrentAppScreenBubbleShortcutModule,
+        FarolCardTrainingBubbleShortcutModule638,
         PrintBubbleShortcutModuleStage32,
         ReportsBubbleShortcutModule0184,
         MessageTemplatesBubbleShortcutModule0184,
