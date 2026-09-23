@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.633",
+      "build": 5924,
+      "commit": null,
+      "branch": "agent/unified-own-trips-public-agenda-0.1.633",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Transforma Todas as viagens em Viagens, uma central canônica única para viagens BlaBlaCar e viagens próprias do Rota Certa.",
+        "Adiciona + Nova viagem visível e publica viagens próprias diretamente como PUBLISHED, com reservas públicas habilitadas e capacidade própria por viagem.",
+        "Permite editar viagens próprias no Rota Certa com rota, data, horário, vagas, valores por trecho e observações, sempre com ACK remoto antes da gravação local.",
+        "Agenda Pública usa o mesmo card, vagas por trecho, compartilhamento e fluxo Reserve já; viagens próprias exibem Ver viagem no lugar do anúncio BlaBlaCar."
+      ],
+      "fixed": [
+        "Viagens próprias deixam de desaparecer da central quando não existe conta BlaBlaCar conectada.",
+        "Vagas extra globais da BlaBlaCar deixam de sobrescrever a capacidade de uma viagem própria.",
+        "Cancelar, alternar reservas públicas e excluir viagem própria passam a ser remote-first para impedir que o aparelho diverja da Agenda Pública."
+      ],
+      "improved": [
+        "A origem da viagem define apenas a integração: BLABLACAR usa identidade externa; ROTA_CERTA permanece uma viagem canônica de primeira classe.",
+        "Exclusão de viagem própria envia tombstone público antes de apagar a cópia local.",
+        "Edições estruturais continuam protegidas pelo backend contra overbooking e contra mudança de rota/data enquanto existirem solicitações pendentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.632: central Todas as viagens ainda era dependente de perfis BlaBlaCar e não oferecia gestão equivalente para viagens criadas no Rota Certa."
+      ],
+      "modulesAffected": [
+        "Viagens",
+        "Nova viagem",
+        "Agenda Pública",
+        "Viagem Certa",
+        "Reservas",
+        "Capacidade por trecho",
+        "Backend canônico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.632",
       "build": 5923,
       "commit": null,
