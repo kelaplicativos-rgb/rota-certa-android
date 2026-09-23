@@ -118,31 +118,14 @@ internal object PublicBookingRemoteSync0296 {
             return PublicBookingPullResult(0, emptySet(), 0)
         }
         val api = TripRemoteApi(settings)
-        val directoryProfiles0625 = PassengerIdentityStore(context).profiles()
-        if (directoryProfiles0625.isNotEmpty()) {
-            runCatching { api.syncPassengerDirectory(directoryProfiles0625) }
-                .onSuccess { response ->
-                    UnifiedDebugEventStore.record(
-                        "PASSENGER_DIRECTORY_SYNC_0625",
-                        context.packageName,
-                        "synced=" + response.synced + " local=" + directoryProfiles0625.size + " authority=passengerId",
-                    )
-                }
-                .onFailure { error ->
-                    if (error is kotlinx.coroutines.CancellationException) throw error
-                    UnifiedDebugEventStore.record(
-                        "PASSENGER_DIRECTORY_SYNC_FAILED_0629",
-                        context.packageName,
-                        "local=" + directoryProfiles0625.size + " " +
-                            AgendaFailureEvidence.describe(
-                                error = error,
-                                operation = "PASSENGER_DIRECTORY_SYNC",
-                                component = "PublicBookingRemoteSync0296",
-                                method = "syncPassengerDirectory",
-                            ),
-                    )
-                }
-        }
+        // 0.1.629: passenger-directory synchronization is maintenance work.
+        // Never place it in the reservation push/pull hot path; PublicAgendaAutoSync0300
+        // owns the batched directory convergence independently.
+        UnifiedDebugEventStore.record(
+            "PASSENGER_DIRECTORY_DEFERRED_0629",
+            context.packageName,
+            "reason=booking_hot_path owner=PublicAgendaAutoSync0300",
+        )
         pullPublicLinkDebugTrace(context, api)
 
         val localReadOperation = AgendaTrace.operationStart(
