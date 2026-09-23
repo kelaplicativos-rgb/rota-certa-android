@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -40,8 +41,8 @@ import kotlinx.coroutines.delay
 /**
  * 0.1.566 — operational replacement for the old Timeline surface.
  *
- * This screen remains an INDEX, not a second BlaBlaCar implementation:
- * - it shows trips from every currently connected/verified BlaBlaCar account;
+ * 0.1.633 — unified canonical trip center.
+ * - it shows every canonical trip, whether originated in BlaBlaCar or directly in Rota Certa;
  * - ordering is global by the canonical departure timestamp;
  * - trips stay in the active sequence for the full canonical operational lifecycle
  *   (arrival + grace, or safe retention when arrival is unknown) and only then move
@@ -63,6 +64,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
     modifier: Modifier = Modifier,
     onMessage: (String) -> Unit = {},
     onFirstUsableFrame: (Int) -> Unit = {},
+    onCreateTrip: () -> Unit = {},
+    onManageCanonicalTrip: (String) -> Unit = {},
     downloadTriggerToken0616: Int = 0,
 ) {
     val context = LocalContext.current
@@ -86,7 +89,15 @@ internal fun OperationalAllTripsBrowserScreen0563(
             accounts = accounts,
         )
     }
-    val entries = selection.includedEntries
+    // 0.1.633: visibility belongs to the canonical trip domain, not to the
+    // availability of a BlaBlaCar account. External navigation can still fail closed,
+    // but native Rota Certa trips must remain fully manageable.
+    val entries = remember(projectedEntries) {
+        projectedEntries.sortedWith(
+            compareBy<TripTimelineEntry> { it.departureAtMillis }
+                .thenBy { it.tripId },
+        )
+    }
 
     AgendaTimelineDownloadAction0399(
         entries = entries,
@@ -116,11 +127,20 @@ internal fun OperationalAllTripsBrowserScreen0563(
                         candidate.profileUuid?.trim()?.lowercase() == profileUuid
                     }
                 }
-            val reason = decisionByEntry[entry]?.reason
-                ?: if (target == null) OperationalTripDecisionReason0564.TARGET_UNRESOLVED else null
             val canonicalTrip0602 = entry.localTripId
                 ?.let(projectedTripsById0602::get)
                 ?: projectedTripsById0602[entry.tripId]
+            val nativeRotaCerta0633 = canonicalTrip0602?.let { trip ->
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.LOCAL &&
+                    trip.blablaProfileUuid.isNullOrBlank() &&
+                    trip.blablaTripId.isNullOrBlank()
+            } == true
+            val reason = if (nativeRotaCerta0633) {
+                null
+            } else {
+                decisionByEntry[entry]?.reason
+                    ?: if (target == null) OperationalTripDecisionReason0564.TARGET_UNRESOLVED else null
+            }
             val liveSegmentLoads0602 = operationalTimelineSegmentLoads0602(
                 entry = entry,
                 trip = canonicalTrip0602,
@@ -129,6 +149,8 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 entry = entry,
                 account = account,
                 target = target,
+                canonicalTrip0633 = canonicalTrip0602,
+                nativeRotaCerta0633 = nativeRotaCerta0633,
                 decisionReason = reason,
                 segmentLoads0602 = liveSegmentLoads0602,
             )
@@ -172,24 +194,13 @@ internal fun OperationalAllTripsBrowserScreen0563(
         onFirstUsableFrame(rows.size)
     }
 
-    if (accounts.isEmpty()) {
-        Column(
-            modifier = modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text("Nenhuma conta BlaBlaCar conectada.")
-        }
-        return
-    }
-
     if (rows.isEmpty()) {
         Column(
             modifier = modifier.fillMaxSize(),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("Nenhuma viagem das contas conectadas disponível no estado canônico.")
+            Text("Nenhuma viagem disponível no estado canônico.")
         }
         return
     }
@@ -230,6 +241,17 @@ internal fun OperationalAllTripsBrowserScreen0563(
     }
 
     val openRow: (OperationalTripBrowserRow0563) -> Unit = openRow@{ row ->
+        if (row.nativeRotaCerta0633) {
+            val canonicalId = row.canonicalTrip0633?.id
+                ?: row.entry.localTripId
+                ?: row.entry.tripId
+            if (canonicalId.isBlank()) {
+                onMessage("Não foi possível identificar a viagem do Rota Certa.")
+            } else {
+                onManageCanonicalTrip(canonicalId)
+            }
+            return@openRow
+        }
         val target = row.target
         val account = row.account
         if (target == null || account == null) {
@@ -296,6 +318,15 @@ internal fun OperationalAllTripsBrowserScreen0563(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item(key = "create-native-trip-0633") {
+            Button(
+                onClick = onCreateTrip,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("+ Nova viagem")
+            }
+        }
+
         if (activeRows.isEmpty()) {
             item(key = "no-active-trips-0566") {
                 Text(
@@ -358,6 +389,8 @@ internal data class OperationalTripBrowserRow0563(
     val entry: TripTimelineEntry,
     val account: BlaBlaDynamicAccount?,
     val target: BlaBlaTripTarget0407?,
+    val canonicalTrip0633: Trip? = null,
+    val nativeRotaCerta0633: Boolean = false,
     val decisionReason: OperationalTripDecisionReason0564? = null,
     val segmentLoads0602: List<SegmentLoad> = emptyList(),
 )
@@ -387,6 +420,7 @@ private fun OperationalTripBrowserCard0563(
 ) {
     val entry = row.entry
     val targetConfirmed = row.target != null && row.account != null
+    val manageable0633 = row.nativeRotaCerta0633 || targetConfirmed
     val date = operationalDepartureDate0563(entry, zoneId)
     val departureTime = operationalDepartureTime0563(entry, zoneId)
     val arrivalTime = operationalArrivalTime0568(entry, zoneId)
@@ -396,7 +430,7 @@ private fun OperationalTripBrowserCard0563(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = targetConfirmed, onClick = onOpen),
+            .clickable(enabled = manageable0633, onClick = onOpen),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
@@ -423,7 +457,11 @@ private fun OperationalTripBrowserCard0563(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = row.account?.displayLabel ?: "Conta não confirmada",
+                    text = if (row.nativeRotaCerta0633) {
+                        "Rota Certa"
+                    } else {
+                        row.account?.displayLabel ?: "BlaBlaCar • conta não confirmada"
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -558,9 +596,15 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
-            if (!targetConfirmed) {
+            if (row.nativeRotaCerta0633) {
                 Text(
-                    text = "Identidade externa incompleta — abertura bloqueada",
+                    text = if (archived) "Rota Certa • viagem arquivada" else "Rota Certa • toque para gerenciar",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!targetConfirmed) {
+                Text(
+                    text = "BlaBlaCar • identidade externa incompleta — abertura bloqueada",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
