@@ -88,9 +88,9 @@ class FarolEdge0634Test {
     @Test
     fun meaningful_event_mutation_is_not_coalesced_as_duplicate() {
         val gate = FarolRealtimeEventGate0167(duplicateWindowMillis = 100L)
-        assertTrue(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 100, 1_000L))
-        assertFalse(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 100, 1_020L))
-        assertTrue(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 101, 1_021L))
+        assertTrue(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 1_000L, eventSemanticHash = 100))
+        assertFalse(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 1_020L, eventSemanticHash = 100))
+        assertTrue(gate.shouldCollect("com.example.driver", "com.example.driver", 7, 16, "View", 1_021L, eventSemanticHash = 101))
     }
 
     @Test
