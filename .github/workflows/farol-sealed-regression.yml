@@ -91,7 +91,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Run permanent FAROL regression contracts
