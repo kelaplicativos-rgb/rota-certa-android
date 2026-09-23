@@ -129,11 +129,12 @@ class TripsActivity : ComponentActivity() {
     }
 }
 
-private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
+private enum class TripScreen { LIST, CENTRAL_DAY, TIMELINE, RESERVATIONS, ASSISTANT, NOTIFICATIONS, PUBLIC_SEARCH, CREATE, SETTINGS, APP_SETTINGS, EXTRA_SEATS, PASSENGERS, AUTO_SYNC, SCRIPTS, DEBUG_REPORT }
 
 private fun TripScreen.isAgendaRoot0396(): Boolean =
     this == TripScreen.CENTRAL_DAY ||
         this == TripScreen.TIMELINE ||
+        this == TripScreen.RESERVATIONS ||
         this == TripScreen.ASSISTANT ||
         this == TripScreen.PUBLIC_SEARCH ||
         this == TripScreen.PASSENGERS ||
@@ -148,6 +149,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
     TripScreen.AUTO_SYNC -> AgendaRootSection0396.AUTOMATIC_SYNC
     TripScreen.SCRIPTS -> AgendaRootSection0396.SCRIPTS
     TripScreen.PUBLIC_SEARCH -> AgendaRootSection0396.PUBLIC_SEARCH
+    TripScreen.RESERVATIONS -> AgendaRootSection0396.RESERVATIONS
     TripScreen.PASSENGERS -> AgendaRootSection0396.PASSENGERS
     TripScreen.SETTINGS -> AgendaRootSection0396.INTEGRATIONS
     TripScreen.APP_SETTINGS -> AgendaRootSection0396.APP_SETTINGS
@@ -157,6 +159,7 @@ private fun TripScreen.agendaRootSection0396(): AgendaRootSection0396 = when (th
 private fun TripScreen.diagnosticModule0507(): DiagnosticModule0507 = when (this) {
     TripScreen.CENTRAL_DAY -> DiagnosticModule0507.CENTRAL_DAY
     TripScreen.TIMELINE -> DiagnosticModule0507.ALL_TRIPS
+    TripScreen.RESERVATIONS -> DiagnosticModule0507.PASSENGERS
     TripScreen.ASSISTANT -> DiagnosticModule0507.ASSISTANT
     TripScreen.AUTO_SYNC -> DiagnosticModule0507.BLABLACAR
     TripScreen.SCRIPTS -> DiagnosticModule0507.SCRIPTS
@@ -198,6 +201,7 @@ private fun recordModuleObservation0507(
 private fun TripScreen.agendaHeaderLabel0396(): String = when (this) {
     TripScreen.CENTRAL_DAY -> "Central do Dia"
     TripScreen.TIMELINE -> "Todas as viagens"
+    TripScreen.RESERVATIONS -> "Reservas"
     TripScreen.ASSISTANT -> "Assistente Rota Certa"
     TripScreen.NOTIFICATIONS -> "Notificações"
     TripScreen.AUTO_SYNC -> "BlaBlaCar"
@@ -298,7 +302,7 @@ private fun TripApp(
     var addPassengerResumeToken by remember { mutableStateOf(0) }
     val initialScreen0396 = when {
         startCreating -> TripScreen.CREATE
-        openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.TIMELINE
+        openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.RESERVATIONS
         initialTripId != null -> TripScreen.LIST
         else -> TripScreen.TIMELINE
     }
@@ -672,6 +676,13 @@ private fun TripApp(
                     passengerSubscreenOpen0396 = false
                     screen = TripScreen.PUBLIC_SEARCH
                 }
+                AgendaRootSection0396.RESERVATIONS -> {
+                    parentRootScreen0396 = TripScreen.RESERVATIONS
+                    passengerSubscreenOpen0396 = false
+                    focusedBookingId = null
+                    reservationPendingOnly = false
+                    screen = TripScreen.RESERVATIONS
+                }
                 AgendaRootSection0396.PASSENGERS -> {
                     parentRootScreen0396 = TripScreen.PASSENGERS
                     passengerSubscreenOpen0396 = false
@@ -743,8 +754,8 @@ private fun TripApp(
                         focusedTripId = tripId
                         focusedBookingId = bookingId
                         reservationPendingOnly = false
-                        parentRootScreen0396 = TripScreen.TIMELINE
-                        screen = TripScreen.TIMELINE
+                        parentRootScreen0396 = TripScreen.RESERVATIONS
+                        screen = TripScreen.RESERVATIONS
                     },
                     onMessage = { message = it },
                 )
@@ -820,6 +831,25 @@ private fun TripApp(
                         }
                     },
                 )
+                TripScreen.RESERVATIONS -> ReservationManagementScreen0631(
+                    trips = trips,
+                    bookings = bookings,
+                    store = store,
+                    initialBookingId = focusedBookingId,
+                    initialPendingOnly = reservationPendingOnly,
+                    onChanged = { text ->
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "RESERVATION_MANAGEMENT_UPDATE_0631")
+                        refresh()
+                        message = text
+                    },
+                    onOpenTimeline = { tripId, bookingId ->
+                        selectedId = tripId
+                        focusedTripId = tripId
+                        focusedBookingId = bookingId
+                        parentRootScreen0396 = TripScreen.RESERVATIONS
+                        screen = TripScreen.LIST
+                    },
+                )
                 TripScreen.ASSISTANT -> RotaCertaAssistantPanel0410(
                     trips = trips,
                     bookings = bookings,
@@ -865,8 +895,13 @@ private fun TripApp(
                                             focusedRemoteTripId = item.tripId
                                             focusedBookingId = item.bookingId.takeIf(String::isNotBlank)
                                             reservationPendingOnly = false
-                                            parentRootScreen0396 = TripScreen.TIMELINE
-                                            screen = TripScreen.TIMELINE
+                                            if (focusedBookingId != null) {
+                                                parentRootScreen0396 = TripScreen.RESERVATIONS
+                                                screen = TripScreen.RESERVATIONS
+                                            } else {
+                                                parentRootScreen0396 = TripScreen.TIMELINE
+                                                screen = TripScreen.TIMELINE
+                                            }
                                         }
                                         refreshDriverNotifications()
                                     }
