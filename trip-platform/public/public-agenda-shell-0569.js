@@ -352,9 +352,11 @@ async function ensurePassengerSession0625() {
       displayName: bookingName0625,
       password,
       passwordConfirmation: bookingPasswordCreated0625 ? undefined : confirmation,
-      publicSlug: publicSlug0569,
-      driverUsername: driverUsername0569,
-      agendaToken: agendaToken0569,
+      // 0.1.628: a trip-specific login must bind to the concrete trip token.
+      // Sending a public slug at the same time can be stale after an alias change.
+      publicSlug: bookingSelection0623.tripToken ? undefined : publicSlug0569,
+      driverUsername: bookingSelection0623.tripToken ? undefined : driverUsername0569,
+      agendaToken: bookingSelection0623.tripToken ? undefined : agendaToken0569,
       tripToken: bookingSelection0623.tripToken,
       sessionContextId: passengerSessionContext0623(),
     }),
