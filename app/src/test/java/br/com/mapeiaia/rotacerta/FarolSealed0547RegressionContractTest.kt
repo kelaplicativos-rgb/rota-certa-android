@@ -96,6 +96,8 @@ class FarolSealed0547RegressionContractTest {
         val live = source("LiveRideAccessibilityService.kt")
         assertFalse(live.contains("if (apiKeyStage19.isBlank()) return"))
         assertFalse(live.contains("google_maps_api_required"))
-        assertTrue(live.contains("googleMapsService.drivingDistancesFromAddressKm("))
+        assertFalse(live.contains("googleMapsService.drivingDistancesFromAddressKm("))
+        assertTrue(live.contains("localDistancesFromAddressKm("))
+        assertTrue(live.contains("GeoDistance.kilometers("))
     }
 }
