@@ -116,6 +116,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var farolCardTrainingModule638: FarolCardTrainingModule638
     private val farolCardTrainingInProgress638 = AtomicBoolean(false)
     private var lastSignatureMatchState638: String? = null
+    private var stage640AdmittedPackage: String? = null
+    private var stage640AdmittedWindowId: Int? = null
     private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
     private var lastFailedCardSignature0161: String? = null
     private var lastFailedCardAccessibilityHash0161: Int? = null
@@ -504,8 +506,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (eventType0187 == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             if (eventPackage !in selectedPackages156) return
             val notificationPackage639 = eventPackage ?: return
-            if (!admitTrainedCardStage639(notificationPackage639, "notification")) {
-                FarolReadingActivationStage26.Metrics.increment("stage639NotificationSignatureGateRejected")
+            if (!admitTrainedCardStage640(notificationPackage639, "notification")) {
+                FarolReadingActivationStage26.Metrics.increment("stage640NotificationSignatureGateRejected")
                 return
             }
             val now0170 = SystemClock.elapsedRealtime()
@@ -530,8 +532,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         val authorityPackage638 = entryGate638.authorityPackage ?: return
-        if (!admitTrainedCardStage639(authorityPackage638, "accessibility_event")) {
-            FarolReadingActivationStage26.Metrics.increment("stage639EventSignatureGateRejected")
+        if (!admitTrainedCardStage640(authorityPackage638, "accessibility_event")) {
+            FarolReadingActivationStage26.Metrics.increment("stage640EventSignatureGateRejected")
             return
         }
 
@@ -4063,8 +4065,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolReadingActivationStage26.Metrics.increment("stage638ScheduledForeignAvoided")
             return
         }
-        if (!admitTrainedCardStage639(scheduledPackage638, "scheduled_analysis")) {
-            FarolReadingActivationStage26.Metrics.increment("stage639ScheduledSignatureGateRejected")
+        if (!admitTrainedCardStage640(scheduledPackage638, "scheduled_analysis")) {
+            FarolReadingActivationStage26.Metrics.increment("stage640ScheduledSignatureGateRejected")
             return
         }
         val demandStage23 = stage23ScheduleGate.create(
@@ -4548,8 +4550,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
 
-    private fun matchesTrainedCardSignature638(packageName638: String): Boolean {
-        val root638 = captureRootHandle0187() ?: return false
+    private fun matchesTrainedCardSignature638(
+        packageName638: String,
+        root638: FarolRootHandle0187 = captureRootHandle0187() ?: return false,
+    ): Boolean {
         if (normalizePackageName(root638.packageName) != normalizePackageName(packageName638)) return false
         val models638 = farolCardSignatureStore638.modelsFor(packageName638)
         if (models638.isEmpty()) return true
@@ -4649,22 +4653,82 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun admitTrainedCardStage639(
+    private fun admitTrainedCardStage640(
         packageName639: String,
         trigger639: String,
     ): Boolean {
-        val hasModels639 = farolCardSignatureStore638.hasModels(packageName639)
-        val signatureMatched639 = hasModels639 && matchesTrainedCardSignature638(packageName639)
-        val decision639 = FarolCardAdmissionStage639.decide(
-            hasModels = hasModels639,
-            signatureMatched = signatureMatched639,
-        )
-        if (decision639.allowHeavyPipeline) return true
+        val hasModels640 = farolCardSignatureStore638.hasModels(packageName639)
+        val root640 = captureRootHandle0187()
+        val normalizedPackage640 = normalizePackageName(packageName639)
+        val sameSurfaceLease640 = hasModels640 &&
+            universalActiveAddressSignature != null &&
+            normalizedPackage640 != null &&
+            normalizePackageName(stage640AdmittedPackage) == normalizedPackage640 &&
+            normalizePackageName(root640?.packageName) == normalizedPackage640 &&
+            root640?.windowId == stage640AdmittedWindowId
 
+        // Stage640 turns the trained signature into an ENTRY gate instead of a per-event kill switch.
+        // Once Stage19 owns a destination on the same admitted window, Stage46/Stage47 must receive
+        // subsequent mutations so they can preserve transient churn or prove a real card/feed exit.
+        if (sameSurfaceLease640) {
+            val leaseDecision640 = FarolInstantFirstPaintStage640.decide(
+                hasModels = true,
+                signatureMatched = false,
+                activeSemanticLeaseSameSurface = true,
+                hasFinalPublicDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
+            )
+            if (leaseDecision640.allowHeavyPipeline) {
+                FarolReadingActivationStage26.Metrics.increment("stage640SemanticLeaseAdmission")
+                return true
+            }
+        }
+
+        val signatureMatched640 = hasModels640 && root640 != null &&
+            matchesTrainedCardSignature638(packageName639, root640)
+        val decision640 = FarolInstantFirstPaintStage640.decide(
+            hasModels = hasModels640,
+            signatureMatched = signatureMatched640,
+            activeSemanticLeaseSameSurface = false,
+            hasFinalPublicDecision = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red,
+        )
+        if (decision640.allowHeavyPipeline) {
+            stage640AdmittedPackage = normalizedPackage640
+            stage640AdmittedWindowId = root640?.windowId
+            if (decision640.paintWaitingImmediately &&
+                (currentRadarColor != RadarColor.Default || currentDistanceKm != null)
+            ) {
+                rememberBubbleReason(
+                    "stage640_signature_admitted",
+                    "Card treinado confirmado; iniciando decisão local imediatamente.",
+                )
+                showOverlay(RadarColor.Default, distanceKm = null)
+                FarolFlightRecorder0163.record(
+                    stage = "S640_SIGNATURE_FIRST_FEEDBACK_PAINTED",
+                    packageName = packageName639,
+                    details = "trigger=$trigger639; window=${root640?.windowId ?: 0}; heavyPipelineStartsAfterPaint=true",
+                )
+            }
+            FarolFlightRecorder0163.record(
+                stage = "S640_EXACT_SIGNATURE_ADMITTED",
+                packageName = packageName639,
+                details = "trigger=$trigger639; window=${root640?.windowId ?: 0}; semanticLease=${universalActiveAddressSignature != null}",
+            )
+            return true
+        }
+
+        val legacyOutcome639 = when (decision640.outcome) {
+            FarolInstantFirstPaintStage640.Outcome.BLOCK_UNTRAINED ->
+                FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED
+            FarolInstantFirstPaintStage640.Outcome.BLOCK_SIGNATURE_MISS ->
+                FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS
+            FarolInstantFirstPaintStage640.Outcome.ALLOW_EXACT_SIGNATURE,
+            FarolInstantFirstPaintStage640.Outcome.ALLOW_ACTIVE_SEMANTIC_LEASE ->
+                FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED
+        }
         masterResetCardAdmissionStage639(
             packageName639 = packageName639,
-            outcome639 = decision639.outcome,
-            trigger639 = trigger639,
+            outcome639 = legacyOutcome639,
+            trigger639 = "stage640:$trigger639",
         )
         return false
     }
@@ -6028,7 +6092,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val runtimeToken0634 = stage36RuntimeAuthority.captureWorkToken()
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.COORDINATE)
         val cached = googleMapsService.cachedFarolCoordinate(originAddress)
-        val origin = cached ?: googleMapsService.resolveFarolCoordinate(originAddress, destinations, apiKey)
+        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant640(originAddress, destinations, apiKey)
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
