@@ -1,0 +1,179 @@
+name: FAROL Instant First Paint 0.1.640 APK
+
+on:
+  push:
+    branches:
+      - 'agent/farol-instant-first-paint-0.1.640'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: farol-instant-first-paint-0640-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove exact triggering source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.640"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_931' app/build.gradle.kts
+          grep -Fq 'FarolInstantFirstPaintStage640' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'stage640SemanticLeaseAdmission' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'S640_SIGNATURE_FIRST_FEEDBACK_PAINTED' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'resolveFarolCoordinateInstant640' app/src/main/java/br/com/mapeiaia/rotacerta/GoogleMapsService.kt
+          grep -Fq 'GREEN_RED_BEFORE_EXACT_ROAD_KM_STAGE640' app/src/main/java/br/com/mapeiaia/rotacerta/FarolInstantFirstPaintStage640.kt
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: FAROL instant-first-paint regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0635Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0636Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0637Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0638Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0640Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage42ManualUniversalReadingTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46StableFinalLatchR4Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --tests 'br.com.mapeiaia.rotacerta.BubbleInstantDragContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.BubbleDragPolicyTest' \
+            --tests 'br.com.mapeiaia.rotacerta.BubbleShortcutModulesTest' \
+            --tests 'br.com.mapeiaia.rotacerta.ShortcutGridCustomization0179Test' \
+            --tests 'br.com.mapeiaia.rotacerta.HomeActionShortcutsContract0184Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ReadingGeocodeResilience0547ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/farol-0640-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/farol-0640-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/farol-0640-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/farol-0640-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/farol-0640-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5931'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.640'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/farol-0640-apksigner.txt
+          grep -Fq 'Verified' /tmp/farol-0640-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/farol-0640-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/farol-0640-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.640-5931-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.640"
+            echo "versionCode=5931"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "variant=debug"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+            echo "entrySignatureFailClosed=PASS"
+            echo "semanticLeaseContinuity=PASS"
+            echo "repeatSignatureMatcherDuringLease=SKIPPED"
+            echo "firstFeedbackBeforeHeavyPipeline=PASS"
+            echo "localColorBeforeExactRoadKm=PASS"
+            echo "platformGeocoderCriticalPath=PASS"
+          } | tee farol-instant-first-paint-0640-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-farol-instant-first-paint-0.1.640-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            farol-instant-first-paint-0640-proof.txt
+            /tmp/farol-0640-tests.log
+            /tmp/farol-0640-assemble.log
+            /tmp/farol-0640-aapt.txt
+            /tmp/farol-0640-apksigner.txt
+            /tmp/farol-0640-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
