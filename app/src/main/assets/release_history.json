@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.632",
+      "build": 5923,
+      "commit": null,
+      "branch": "agent/timeline-agenda-atomic-sync-0.1.632",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Mutações de passageiro/reserva em viagens publicadas passam a ser remote-first: a cópia local só é confirmada depois do ACK canônico do backend.",
+        "Agenda pública passa a observar o canal de mudanças canônicas e recarrega assim que a revisão da viagem muda, mantendo polling lento apenas como contingência.",
+        "Renderização de vagas por trecho normaliza ocupação e disponibilidade para nunca exibir combinações impossíveis como 0/4 junto de LOTADO."
+      ],
+      "fixed": [
+        "Corrige o caso observado na 0.1.631 em que RESERVATION_EDITED_0631 e RESERVATION_APPROVED eram gravados localmente com outboxQueued=false e directHttp=false em viagens EXTERNAL_BACKING.",
+        "Edição de trecho, lugares, status, aprovação, recusa e cancelamento agora recalculam capacidade no backend na mesma transação que atualiza a projeção pública.",
+        "Se uma viagem externa publicada não tiver identidade remota segura, a alteração é bloqueada antes da escrita local para impedir divergência de vagas."
+      ],
+      "improved": [
+        "Backend continua sendo a barreira de overbooking por segmento antes de o Android mostrar sucesso.",
+        "Eventos 0.1.632 registram transporte, entityRevision, ACK remoto e projectionAtomic para auditoria.",
+        "FAROL/LiveRideAccessibilityService permanece fora do escopo desta correção."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.631: Timeline podia divergir da Agenda pública após editar ou aprovar uma reserva em viagem derivada da BlaBlaCar."
+      ],
+      "modulesAffected": [
+        "Timeline",
+        "Reservas",
+        "Agenda pública",
+        "Viagem Certa",
+        "Passageiros",
+        "Capacidade por trecho",
+        "Backend canônico",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.631",
       "build": 5922,
       "commit": null,
