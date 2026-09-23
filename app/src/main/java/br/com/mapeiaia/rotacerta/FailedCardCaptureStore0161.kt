@@ -82,12 +82,32 @@ data class FailedCardTechnicalSnapshot0161(
     val nodes: List<FailedCardNodeLine0161>,
     val recovered: Boolean,
     val recoveryStrategy: String?,
+    val cardLeaseId: Long? = null,
+    val destination: String? = null,
+    val confidence: Int? = null,
+    val distanceKm: Double? = null,
+    val result: String? = null,
+)
+
+data class FarolCaptureRecord0161(
+    val id: String,
+    val createdAtMillis: Long,
+    val expiresAtMillis: Long,
+    val packageName: String,
+    val cardLeaseId: Long?,
+    val destination: String?,
+    val confidence: Int?,
+    val distanceKm: Double?,
+    val result: String?,
+    val recovered: Boolean,
+    val imagePath: String?,
+    val textPath: String,
 )
 
 /** Private, bounded diagnostic storage. No permission, server, database or background worker. */
 object FailedCardTechnicalCaptureStore0161 {
     private const val DIRECTORY = "failed-card-captures-0161"
-    private const val MAX_CAPTURES = 6
+    private const val MAX_CAPTURES = 80
     private const val MAX_AGE_MILLIS = 24L * 60L * 60L * 1_000L
 
     fun save(
@@ -125,6 +145,12 @@ object FailedCardTechnicalCaptureStore0161 {
         appendLine("createdAt=${snapshot.createdAtMillis}")
         appendLine("recovered=${snapshot.recovered}")
         appendLine("strategy=${snapshot.recoveryStrategy.orEmpty()}")
+        appendLine("cardLeaseId=${snapshot.cardLeaseId ?: -1L}")
+        appendLine("destination=${sanitize(snapshot.destination.orEmpty())}")
+        appendLine("confidence=${snapshot.confidence ?: -1}")
+        appendLine("distanceKm=${snapshot.distanceKm ?: -1.0}")
+        appendLine("result=${sanitize(snapshot.result.orEmpty())}")
+        appendLine("expiresAt=${snapshot.createdAtMillis + MAX_AGE_MILLIS}")
         appendLine("--- ACCESSIBILITY ---")
         appendLine(redactPhone(snapshot.accessibilityText).take(12_000))
         appendLine("--- OCR ---")
@@ -143,6 +169,58 @@ object FailedCardTechnicalCaptureStore0161 {
                 ).joinToString("\t"),
             )
         }
+    }
+
+    fun list(context: Context, nowMillis: Long = System.currentTimeMillis()): List<FarolCaptureRecord0161> {
+        val directory = File(context.filesDir, DIRECTORY)
+        if (!directory.exists()) return emptyList()
+        trim(directory, nowMillis)
+        return directory.listFiles().orEmpty()
+            .filter { it.extension == "txt" }
+            .mapNotNull { textFile ->
+                runCatching {
+                    val header = textFile.useLines { lines ->
+                        lines.takeWhile { !it.startsWith("--- ") }
+                            .mapNotNull { line ->
+                                val idx = line.indexOf('=')
+                                if (idx <= 0) null else line.substring(0, idx) to line.substring(idx + 1)
+                            }.toMap()
+                    }
+                    val created = header["createdAt"]?.toLongOrNull() ?: textFile.lastModified()
+                    val base = textFile.nameWithoutExtension
+                    FarolCaptureRecord0161(
+                        id = base,
+                        createdAtMillis = created,
+                        expiresAtMillis = header["expiresAt"]?.toLongOrNull() ?: (created + MAX_AGE_MILLIS),
+                        packageName = header["package"].orEmpty(),
+                        cardLeaseId = header["cardLeaseId"]?.toLongOrNull()?.takeIf { it >= 0L },
+                        destination = header["destination"]?.takeIf(String::isNotBlank),
+                        confidence = header["confidence"]?.toIntOrNull()?.takeIf { it >= 0 },
+                        distanceKm = header["distanceKm"]?.toDoubleOrNull()?.takeIf { it >= 0.0 },
+                        result = header["result"]?.takeIf(String::isNotBlank),
+                        recovered = header["recovered"].toBoolean(),
+                        imagePath = File(directory, "${base}.jpg").takeIf(File::isFile)?.absolutePath,
+                        textPath = textFile.absolutePath,
+                    )
+                }.getOrNull()
+            }
+            .sortedByDescending(FarolCaptureRecord0161::createdAtMillis)
+            .take(MAX_CAPTURES)
+    }
+
+    fun remove(context: Context, id: String) {
+        val safe = id.substringAfterLast('/').substringAfterLast('\\')
+        val directory = File(context.filesDir, DIRECTORY)
+        listOf("txt", "jpg").forEach { ext -> runCatching { File(directory, "${safe}.${ext}").delete() } }
+    }
+
+    fun clear(context: Context) {
+        File(context.filesDir, DIRECTORY).listFiles().orEmpty().forEach { runCatching { it.delete() } }
+    }
+
+    fun cleanup(context: Context, nowMillis: Long = System.currentTimeMillis()) {
+        val directory = File(context.filesDir, DIRECTORY)
+        if (directory.exists()) trim(directory, nowMillis)
     }
 
     private fun sanitize(value: String): String = value
