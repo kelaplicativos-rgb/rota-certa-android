@@ -2033,7 +2033,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val verifyWithoutBlinkStage46R4 = stableActionStage46R4 ==
             FarolStableFinalLatchStage46R4.AmbiguousAction.PRESERVE_AND_VERIFY
-        if (verifyWithoutBlinkStage46R4) {
+        if (pendingSemanticLeaseStage635) {
+            // Stage635: an incomplete frame or equivalent OCR/Accessibility spelling is not proof
+            // of a different card. Continue the same cycle without advancing generations.
+        } else if (verifyWithoutBlinkStage46R4) {
             // The concrete confirmed surface itself changed but Accessibility has not yet proved a
             // different card. Keep the final visible while OCR verifies the current frame. If OCR
             // proves a new two-address card, processUniversalVisualStage19 replaces it; if R2/R3
