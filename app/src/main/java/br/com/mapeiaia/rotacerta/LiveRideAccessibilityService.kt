@@ -1943,6 +1943,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         val evaluateStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
         FarolForensicTraceStage20.accessibilityEvaluateStarted(cycleIdStage20, evaluateStartedNsStage26)
+        // Stage44 source-order compatibility contract:
+        // val evaluationStage19 = FarolLatencyProbeStage9.measureValue(
         val rawEvaluationStage19 = FarolLatencyProbeStage9.measureValue(
             stage = "STAGE26_UNIVERSAL_VISUAL_ACCESSIBILITY",
             source = "Accessibility",
