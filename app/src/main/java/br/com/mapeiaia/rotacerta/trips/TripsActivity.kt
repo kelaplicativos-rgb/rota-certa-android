@@ -1247,18 +1247,33 @@ internal fun tripEditorDepartureMillis(
 private fun TripEditor(
     defaultOrigin: String,
     defaultRotaCertaSeatAllocation: Int,
+    initialTrip0633: Trip? = null,
     onCancel: () -> Unit,
     onSave: (Trip) -> Unit,
 ) {
-    val initialDeparture = remember {
-        val tomorrow = LocalDate.now().plusDays(1)
-        val hour = LocalTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0)
-        tomorrow to hour
+    val initialStops0633 = remember(initialTrip0633) {
+        initialTrip0633?.stops?.sortedBy(TripStop::order).orEmpty()
     }
-    var origin by remember(defaultOrigin) { mutableStateOf(defaultOrigin.trim()) }
-    var destination by remember { mutableStateOf("") }
-    var intermediate by remember { mutableStateOf("") }
-    var departureDate by remember {
+    val initialDeparture = remember(initialTrip0633) {
+        if (initialTrip0633 != null) {
+            val zoned = Instant.ofEpochMilli(initialTrip0633.departureAtMillis).atZone(ZoneId.systemDefault())
+            zoned.toLocalDate() to zoned.toLocalTime().withSecond(0).withNano(0)
+        } else {
+            val tomorrow = LocalDate.now().plusDays(1)
+            val hour = LocalTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0)
+            tomorrow to hour
+        }
+    }
+    var origin by remember(defaultOrigin, initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.firstOrNull()?.name ?: defaultOrigin.trim())
+    }
+    var destination by remember(initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.lastOrNull()?.name.orEmpty())
+    }
+    var intermediate by remember(initialTrip0633?.id) {
+        mutableStateOf(initialStops0633.drop(1).dropLast(1).joinToString("\n", transform = TripStop::name))
+    }
+    var departureDate by remember(initialTrip0633?.id) {
         mutableStateOf(
             RotaCertaDateSelection(
                 mode = RotaCertaDateSelectionMode.SINGLE,
@@ -1266,17 +1281,34 @@ private fun TripEditor(
             ),
         )
     }
-    var departureTime by remember { mutableStateOf(initialDeparture.second.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+    var departureTime by remember(initialTrip0633?.id) {
+        mutableStateOf(initialDeparture.second.format(DateTimeFormatter.ofPattern("HH:mm")))
+    }
     var showDepartureDatePicker by remember { mutableStateOf(false) }
-    var notes by remember { mutableStateOf("") }
-    var segmentPrices by remember { mutableStateOf("") }
-    var passengerSeats by remember(defaultRotaCertaSeatAllocation) {
-        mutableStateOf(defaultRotaCertaSeatAllocation.takeIf { it in 1..99 }?.toString() ?: "3")
+    var notes by remember(initialTrip0633?.id) { mutableStateOf(initialTrip0633?.notes.orEmpty()) }
+    var segmentPrices by remember(initialTrip0633?.id) {
+        mutableStateOf(
+            initialStops0633.dropLast(1).joinToString("\n") { stop ->
+                if (stop.priceToNextCents > 0L) {
+                    String.format(Locale("pt", "BR"), "%.2f", stop.priceToNextCents / 100.0)
+                } else {
+                    "0,00"
+                }
+            },
+        )
+    }
+    var passengerSeats by remember(defaultRotaCertaSeatAllocation, initialTrip0633?.id) {
+        val initialSeats = initialTrip0633?.rotaCertaSeatAllocation
+            ?.takeIf { it in 1..99 }
+            ?: initialTrip0633?.capacity?.takeIf { it in 1..99 }
+            ?: defaultRotaCertaSeatAllocation.takeIf { it in 1..99 }
+            ?: 3
+        mutableStateOf(initialSeats.toString())
     }
     var error by remember { mutableStateOf<String?>(null) }
     var routePlan by remember { mutableStateOf<TripRoutePlan?>(null) }
 
-    Text("Criar viagem", style = MaterialTheme.typography.titleLarge)
+    Text(if (initialTrip0633 == null) "Criar viagem" else "Editar viagem", style = MaterialTheme.typography.titleLarge)
     OutlinedTextField(origin, { origin = it }, label = { Text("Origem") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(destination, { destination = it }, label = { Text("Destino") }, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
@@ -1356,18 +1388,49 @@ private fun TripEditor(
                     plan.stops.map(TripStop::name) == names &&
                         plan.stops.firstOrNull()?.plannedDepartureMillis == departureMillis
                 }
-                val stops = (planned?.stops ?: names.mapIndexed { index, name ->
-                    TripStop(
-                        order = index,
-                        name = name,
-                        address = name,
-                        plannedDepartureMillis = if (index == 0) departureMillis else null,
-                        plannedArrivalMillis = if (index == 0) departureMillis else null,
-                    )
-                }).mapIndexed { index, stop ->
+                val existingNames0633 = initialStops0633.map(TripStop::name)
+                val baseStops0633 = when {
+                    planned != null && existingNames0633 == names -> planned.stops.mapIndexed { index, stop ->
+                        stop.copy(id = initialStops0633[index].id, order = index)
+                    }
+                    planned != null -> planned.stops
+                    initialTrip0633 != null && existingNames0633 == names -> {
+                        val shift = departureMillis - initialTrip0633.departureAtMillis
+                        initialStops0633.mapIndexed { index, stop ->
+                            stop.copy(
+                                order = index,
+                                plannedArrivalMillis = stop.plannedArrivalMillis?.plus(shift),
+                                plannedDepartureMillis = stop.plannedDepartureMillis?.plus(shift),
+                            )
+                        }
+                    }
+                    else -> names.mapIndexed { index, name ->
+                        TripStop(
+                            order = index,
+                            name = name,
+                            address = name,
+                            plannedDepartureMillis = if (index == 0) departureMillis else null,
+                            plannedArrivalMillis = if (index == 0) departureMillis else null,
+                        )
+                    }
+                }
+                val stops = baseStops0633.mapIndexed { index, stop ->
                     stop.copy(priceToNextCents = prices.getOrElse(index) { 0L })
                 }
-                Trip(
+                val existing0633 = initialTrip0633
+                (existing0633?.copy(
+                    title = "${origin.trim()} → ${destination.trim()}",
+                    departureAtMillis = departureMillis,
+                    capacity = allocatedSeats,
+                    status = TripStatus.PUBLISHED,
+                    rotaCertaSeatAllocation = allocatedSeats,
+                    stops = stops,
+                    notes = notes.trim(),
+                    publicBookingEnabled = existing0633.publicBookingEnabled,
+                    capacityReliable = true,
+                    itineraryAuthoritative = true,
+                    recordOrigin = TripRecordOrigin.LOCAL,
+                ) ?: Trip(
                     title = "${origin.trim()} → ${destination.trim()}",
                     departureAtMillis = departureMillis,
                     capacity = allocatedSeats,
@@ -1379,9 +1442,11 @@ private fun TripEditor(
                     capacityReliable = true,
                     itineraryAuthoritative = true,
                     recordOrigin = TripRecordOrigin.LOCAL,
-                ).withCanonicalAgendaVisibility0581()
-            }.onSuccess(onSave).onFailure { error = it.message ?: "Não foi possível criar a viagem." }
-        }) { Text("Publicar viagem") }
+                )).withCanonicalAgendaVisibility0581()
+            }.onSuccess(onSave).onFailure {
+                error = it.message ?: if (initialTrip0633 == null) "Não foi possível criar a viagem." else "Não foi possível editar a viagem."
+            }
+        }) { Text(if (initialTrip0633 == null) "Publicar viagem" else "Salvar alterações") }
         TextButton(onClick = onCancel) { Text("Cancelar") }
     }
 
