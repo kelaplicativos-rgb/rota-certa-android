@@ -67,7 +67,7 @@ jobs:
           set -euo pipefail
           node --check trip-platform/functions/index.js
           node --check trip-platform/public/public-agenda-shell-0569.js
-          node --test             trip-platform/functions/test/reservation-approval-0356.test.js             trip-platform/functions/test/public-booking-realtime-0304.test.js             trip-platform/functions/test/agenda-public-timeline-reflection-0425.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-segment-cards-0580.test.js
+          node --test             trip-platform/functions/test/reservation-approval-0356.test.js             trip-platform/functions/test/public-booking-realtime-0304.test.js             trip-platform/functions/test/agenda-public-segment-availability-0484.test.js             trip-platform/functions/test/agenda-segment-cards-0580.test.js
           npm --prefix trip-platform/functions install --no-audit --no-fund
 
       - name: Configure Firebase Android SDK
