@@ -656,6 +656,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 windowId = realtimeWindowId0167,
                 eventType = eventType0187,
                 eventClassName = eventClassName0187,
+                eventSemanticHash = (event.text.joinToString("|") { it?.toString().orEmpty() } + "|" + event.contentDescription.orEmpty()).hashCode(),
                 nowElapsedMillis = SystemClock.elapsedRealtime(),
             )
         ) return
@@ -1072,6 +1073,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         liveAnalysisJob?.cancel() // latest_card_wins_destroy_0_1_91
         removeOverlay()
         radarDetectionCue.release()
+        if (::ocrService.isInitialized) runCatching { ocrService.close() }
         textToSpeech?.stop()
         textToSpeech?.shutdown()
         textToSpeech = null
@@ -2082,16 +2084,22 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         // Stage42: no SelectedRideAppStore, UsageEvents, running processes or selected-window scan
         // is allowed to participate in functional ON/OFF. Stage30/40 presence remains shadow only.
-        if (::stage36RuntimeAuthority.isInitialized) {
+        val runtimeStage36 = if (::stage36RuntimeAuthority.isInitialized) {
+            stage36RuntimeAuthority.updateSelection(SelectedRideAppStore.read(applicationContext))
             stage36RuntimeAuthority.setManualAuthority(manualEnabledStage42)
-        }
+            stage36RuntimeAuthority.observeWindowBoundary(currentRootPackageName() ?: eventPackageStage26)
+            if (manualEnabledStage42) stage36RuntimeAuthority.observeAccessibility(eventPackageStage26)
+            stage36RuntimeAuthority.snapshot()
+        } else null
         val snapshotStage42 = stage26ReadingActivation.setManualAuthority(manualEnabledStage42)
 
         if (snapshotStage42.enabled != stage28LastActivationEnabled) {
             FarolCausalLatencyStage28.Metrics.increment(if (snapshotStage42.enabled) "activationOn" else "activationOff")
             stage28LastActivationEnabled = snapshotStage42.enabled
         }
-        FarolCausalLatencyStage28.Metrics.setGauge("selectedAppsActiveCount", 0L)
+        FarolCausalLatencyStage28.Metrics.setGauge("selectedAppsActiveCount", runtimeStage36?.authoritativeActivePackages?.size?.toLong() ?: 0L)
+        FarolCausalLatencyStage28.Metrics.setGauge("selectedAppsConfiguredCount", runtimeStage36?.selectedPackages?.size?.toLong() ?: 0L)
+        FarolCausalLatencyStage28.Metrics.setGauge("runtimeReadingEnabled", if (runtimeStage36?.enabled == true) 1L else 0L)
         FarolCausalLatencyStage28.Metrics.setGauge("activationGeneration", snapshotStage42.generation)
         FarolCausalLatencyStage28.Metrics.sample(
             "eventToActivationState",
@@ -2852,7 +2860,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val semanticStage32 = stage32SemanticGate.snapshot()
         if (screenshotInProgress.get()) {
             stage32ScreenshotRateGate.queue(semanticStage32.generation)
-            FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), false, "single_flight_busy_queued")
+            FarolForensicCardBlackBoxStage32.recordOcrRequest(SystemClock.elapsedRealtimeNanos(), false, "single_flight_busy_latest_replaced")
             return
         }
         val rateStage32 = stage32ScreenshotRateGate.request(SystemClock.uptimeMillis(), semanticStage32.generation)
@@ -2966,11 +2974,25 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 FarolForensicTraceStage20.note(SystemClock.elapsedRealtimeNanos(), "S32_OCR_RERUN_DROPPED_REAL_SEMANTIC_STALE", rerunStage23.cycleId)
                 return
             }
-            // Do not recursively call takeScreenshot. Android enforces >333 ms between requests.
-            // Queue exactly one demand and let the next qualifying Accessibility event drain it.
+            // Latest-wins: keep exactly one newest demand and resume it without waiting for
+            // another Accessibility event. The only delay is Android's screenshot interval.
             stage32ScreenshotRateGate.queue(currentSemanticStage32.generation)
-            FarolForensicCardBlackBoxStage32.recordOcrRetry(SystemClock.elapsedRealtimeNanos(), "queued_for_next_event_after_single_flight")
+            FarolForensicCardBlackBoxStage32.recordOcrRetry(SystemClock.elapsedRealtimeNanos(), "latest_only_auto_resume")
             FarolVisualIdentityStage23.Metrics.increment("ocrReruns")
+            val eligibleAt0634 = stage32ScreenshotRateGate.lastRequestUptimeMs() +
+                FarolSemanticCardStage32.ANDROID_SCREENSHOT_MIN_INTERVAL_MS + 1L
+            val waitMs0634 = (eligibleAt0634 - SystemClock.uptimeMillis()).coerceAtLeast(0L)
+            screenshotFallbackJob127?.cancel()
+            screenshotFallbackJob127 = scope.launch {
+                if (waitMs0634 > 0L) delay(waitMs0634)
+                val latestSemantic0634 = stage32SemanticGate.snapshot()
+                if (latestSemantic0634.generation == rerunStage23.visualGeneration &&
+                    latestSemantic0634.fingerprint == rerunStage23.snapshotHash &&
+                    stage36RuntimeAuthority.snapshot().enabled
+                ) {
+                    requestUniversalScreenshotStage19(rerunStage23.packageHint, rerunStage23.cycleId, rerunStage23)
+                }
+            }
         }
 
         runCatching {
@@ -3011,6 +3033,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     return@launch
                                 }
                                 val screenshotHashStage32 = FarolPrintStoreStage32.sampleHash(bitmapStage19!!)
+                                stage36RuntimeAuthority.markSnapshot(workTokenStage36)
                                 FarolMaximumForensicsStage38.record(
                                     SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_SCREENSHOT_BITMAP_READY", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
                                     details = "hash=$screenshotHashStage32; width=${bitmapStage19!!.width}; height=${bitmapStage19!!.height}; config=${bitmapStage19!!.config}",
@@ -3028,6 +3051,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                     return@launch
                                 }
 
+                                stage36RuntimeAuthority.markProcessing(workTokenStage36, FarolRuntimeAuthorityStage36.ProcessingState.OCR)
                                 val ocrStartedNsStage20 = SystemClock.elapsedRealtimeNanos()
                                 FarolMaximumForensicsStage38.record(
                                     ocrStartedNsStage20, System.currentTimeMillis(), "S38_OCR_EXTRACT_START", eventPackageStage19, cycleId = cycleIdStage20, operationId = "ocr-$serialStage19",
@@ -3406,7 +3430,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             if (singleImmediateAddressStage46R7) "Primeiro endereço válido atual detectado; calculando rota real imediatamente."
             else "Múltiplos endereços atuais detectados; o último endereço visual é o destino da rota.",
         )
-        if (currentRadarColor != RadarColor.Orange || currentDistanceKm != null) {
+        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         }
         if (targetsStage19.destinations.isEmpty()) return
@@ -3423,7 +3447,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             (SystemClock.elapsedRealtimeNanos() - stage26CandidateEventStartedNs).coerceAtLeast(0L),
         )
         FarolForensicTraceStage20.cacheLookupStarted(traceIdStage20, SystemClock.elapsedRealtimeNanos())
-        val cachedStage19 = googleMapsService.cachedDrivingDistancesFromAddressKm(
+        val cachedStage19 = cachedLocalDistancesFromAddressKm(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
         )
@@ -3564,7 +3588,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "candidateToRouteStart",
             (routeStartedNsStage26 - stage26CandidateEventStartedNs).coerceAtLeast(0L),
         )
-        val distancesStage19 = googleMapsService.drivingDistancesFromAddressKm(
+        val distancesStage19 = localDistancesFromAddressKm(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
             apiKey = apiKeyStage19,
@@ -3607,7 +3631,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val colorStage19 = when (resultStage19.recommendation) {
             Recommendation.GoodRide -> RadarColor.Green
             Recommendation.OutsideRadius -> RadarColor.Red
-            Recommendation.InsufficientData -> RadarColor.Orange
+            Recommendation.InsufficientData -> RadarColor.Default
         }
         val distanceStage19 = resultStage19.nearestConfiguredDistanceKm()
         FarolForensicCardBlackBoxStage32.recordPaintRequested(SystemClock.elapsedRealtimeNanos(), colorStage19.toString(), distanceStage19)
@@ -4942,14 +4966,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
 
         rememberBubbleReason(
             "destination_confirmed_0189",
-            "Último endereço do bloco superior confirmado; preparando rota real.",
+            "Último endereço do bloco superior confirmado; preparando distância local.",
         )
         UnifiedDebugEventStore.record(
             "BUBBLE_DESTINATION_CONFIRMED_ORANGE_0189",
             selectedPackageChecklist13,
             "destination=${fieldsChecklist13.destination.orEmpty()}; screenHash=${evaluationChecklist13.screenHash}",
         )
-        if (currentRadarColor != RadarColor.Orange || currentDistanceKm != null) {
+        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         }
 
@@ -4961,7 +4985,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        val cachedDistancesChecklist13 = googleMapsService.cachedDrivingDistancesFromAddressKm(
+        val cachedDistancesChecklist13 = cachedLocalDistancesFromAddressKm(
             originAddress = fieldsChecklist13.destination.orEmpty(),
             destinations = targetsChecklist13.destinations,
         )
@@ -4993,11 +5017,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         lastAccessibilityAcceptedAtMillis127 = System.currentTimeMillis()
         // accessibility_card_cancels_ocr_0_1_157
         UnifiedDebugEventStore.record("BUBBLE_ROUTE_REQUESTED", selectedPackageChecklist13, "destino=${fieldsChecklist13.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBindingChecklist13.screenGeneration}; windowGeneration=${decisionBindingChecklist13.windowGeneration}")
-        rememberBubbleReason("universal_waiting", "Destino final confirmado; rota real em cálculo.")
-        if (currentRadarColor != RadarColor.Orange || currentDistanceKm != null) {
+        rememberBubbleReason("universal_waiting", "Destino final confirmado; distância local em cálculo.")
+        if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         } // destination_confirmed_orange_0_1_189
-        bubblePrefs.edit().putString("fast_farol_last_path", "rota_google").apply()
+        bubblePrefs.edit().putString("fast_farol_last_path", "edge_geo_local").apply()
         universalRouteJob = scope.launch {
             if (!driverCardSessionGate0162.isCurrent(sessionToken0162)) return@launch
             analyzeUniversalTwoAddress(
@@ -5150,7 +5174,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        val cachedDistances0161 = googleMapsService.cachedDrivingDistancesFromAddressKm(
+        val cachedDistances0161 = cachedLocalDistancesFromAddressKm(
             originAddress = destination0161,
             destinations = targets0161.destinations,
         )
@@ -5185,7 +5209,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (currentRadarColor != RadarColor.Default || currentDistanceKm != null) {
             showOverlay(RadarColor.Default, distanceKm = null)
         }
-        bubblePrefs.edit().putString("fast_farol_last_path", "rota_google_recuperada_0161").apply()
+        bubblePrefs.edit().putString("fast_farol_last_path", "edge_geo_local_recuperada_0161").apply()
         universalRouteJob = scope.launch {
             if (!driverCardSessionGate0162.isCurrent(recoverySession0162)) return@launch
             analyzeUniversalTwoAddress(
@@ -5267,7 +5291,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         UnifiedDebugEventStore.record("BUBBLE_ROUTE_CALL_START", universalActiveRidePackageName, "destino=${fields.destination.orEmpty()}; alvos=${targetsChecklist13.destinations.size}; generation=${decisionBinding0187Phase4.screenGeneration}; windowGeneration=${decisionBinding0187Phase4.windowGeneration}")
-        val routeDistancesChecklist13 = googleMapsService.drivingDistancesFromAddressKm(
+        val routeDistancesChecklist13 = localDistancesFromAddressKm(
             originAddress = fields.destination.orEmpty(),
             destinations = targetsChecklist13.destinations,
             apiKey = apiKeyChecklist13,
@@ -5301,7 +5325,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val colorChecklist13 = when (result.recommendation) {
             Recommendation.GoodRide -> RadarColor.Green
             Recommendation.OutsideRadius -> RadarColor.Red
-            Recommendation.InsufficientData -> RadarColor.Orange
+            Recommendation.InsufficientData -> RadarColor.Default
         }
         val distanceChecklist13 = result.nearestConfiguredDistanceKm()
         lastAnalyzedHash = decisionBinding0187Phase4.screenHash
@@ -5524,29 +5548,67 @@ class LiveRideAccessibilityService : AccessibilityService() {
         return googleMapsService.geocode(query, region, apiKey) ?: geocodingService.geocode(query, region)
     } // universal_two_address_geocode_0_1_98
 
+    private fun cachedLocalDistancesFromAddressKm(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val started = SystemClock.elapsedRealtimeNanos()
+        val origin = googleMapsService.cachedFarolCoordinate(originAddress) ?: run {
+            FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
+            return null
+        }
+        FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
+        val values = destinations.map { GeoDistance.kilometers(origin, it) }
+        FarolCausalLatencyStage28.Metrics.sample("fastPathLocal", SystemClock.elapsedRealtimeNanos() - started)
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_DISTANCE_CALCULATED", currentRootPackageName(),
+            details = "path=FAST_PATH; destinations=\${destinations.size}; values=\$values",
+        )
+        return values
+    }
+
+    private suspend fun localDistancesFromAddressKm(
+        originAddress: String,
+        destinations: List<Coordinate>,
+        apiKey: String,
+    ): List<Double?> {
+        if (originAddress.isBlank() || destinations.isEmpty()) return List(destinations.size) { null }
+        val started = SystemClock.elapsedRealtimeNanos()
+        val cached = googleMapsService.cachedFarolCoordinate(originAddress)
+        val origin = cached ?: googleMapsService.resolveFarolCoordinate(originAddress, destinations, apiKey)
+        if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
+        else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
+        val values = origin?.let { coordinate -> destinations.map { GeoDistance.kilometers(coordinate, it) } }
+            ?: List(destinations.size) { null }
+        FarolCausalLatencyStage28.Metrics.sample(
+            if (cached != null) "fastPathLocal" else "coldGeoPath",
+            SystemClock.elapsedRealtimeNanos() - started,
+        )
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_DISTANCE_CALCULATED", currentRootPackageName(),
+            details = "path=\${if (cached != null) "FAST_PATH" else "COLD_GEO_PATH"}; resolved=\${origin != null}; destinations=\${destinations.size}; values=\$values",
+        )
+        return values
+    }
+
     private suspend fun routeDistancesFromAddressKm(
         originAddress: String,
         destinations: List<Coordinate>,
         settings: AppSettings,
     ): List<Double?> {
         val apiKey = settings.googleMapsApiKey.ifBlank { BuildConfig.GOOGLE_MAPS_API_KEY }
-        return if (originAddress.isNotBlank() && destinations.isNotEmpty()) {
-            googleMapsService.drivingDistancesFromAddressKm(originAddress, destinations, apiKey)
-        } else {
-            List(destinations.size) { null }
-        }
-    } // direct_address_route_helper_0_1_128
+        return localDistancesFromAddressKm(originAddress, destinations, apiKey)
+    } // FAROL Edge local-radius helper 0.1.634
 
     private suspend fun routeDistanceKm(
         origin: Coordinate?,
         destination: Coordinate?,
         settings: AppSettings,
     ): Double? {
-        val apiKey = settings.googleMapsApiKey.ifBlank { BuildConfig.GOOGLE_MAPS_API_KEY }
-        return if (origin != null && destination != null && apiKey.isNotBlank()) {
-            googleMapsService.drivingDistanceKm(origin, destination, apiKey)
-        } else null
-    } // universal_two_address_route_0_1_98
+        @Suppress("UNUSED_VARIABLE") val retainedSettings0634 = settings
+        return if (origin != null && destination != null) GeoDistance.kilometers(origin, destination) else null
+    } // local geodesic compatibility helper 0.1.634
 
     private fun AnalysisResult.nearestConfiguredDistanceKm(): Double? =
         listOfNotNull(pickupToHomeKm, pickupToAlternativeKm).minOrNull()
