@@ -90,10 +90,11 @@ jobs:
           chmod +x ./gradlew
           ./gradlew :app:testDebugUnitTest \
             --tests '*ReservationManagement0631Test' \
-            --tests '*AgendaHeaderNavigation0396Test' \
             --tests '*CentralPassengerControls0593Test' \
             --tests '*PassengerOperationalStatus0350Test' \
-            --tests '*PassengerTripActions0351Test' \
+            --tests '*PassengerAdmin0314Test' \
+            --tests '*PassengerIdentityIntegrity0627Test' \
+            --tests '*PassengerPickerCanonical0352Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
 
       - name: Build exact SHA APK
