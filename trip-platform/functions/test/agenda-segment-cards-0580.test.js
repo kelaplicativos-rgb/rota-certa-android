@@ -121,16 +121,18 @@ test("0596 public Agenda keeps segment occupancy anonymous and server-resolved",
   );
 });
 
-test("0596 card navigation arms refresh and return paths immediately reload canonical Agenda", () => {
+test("0632 card return and canonical change channel immediately reload Agenda", () => {
   const navigation = between(shell, "const AGENDA_CARD_REFRESH_KEY_0596", "function appendJourney0569");
   assert.match(navigation, /sessionStorage\.setItem/);
-  assert.match(navigation, /bindTripCardNavigation0596/);
   assert.match(navigation, /loadAgenda0569\(true\)/);
 
   const card = between(shell, "function renderTripCard0569", "function renderAgenda0569");
   assert.match(card, /viewRide\.addEventListener\("click", armAgendaCardRefresh0596\)/);
   assert.match(card, /bindTripCardNavigation0596\(card, publicUrl\)/);
 
+  assert.match(shell, /watchAgendaCanonicalChanges0632/);
+  assert.match(shell, /\/changes\?since=/);
+  assert.match(shell, /changeCursor0495/);
   assert.match(shell, /addEventListener\("pageshow"/);
   assert.match(shell, /addEventListener\("focus"/);
   assert.match(shell, /visibilitychange/);
