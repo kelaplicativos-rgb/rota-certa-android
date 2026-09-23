@@ -176,7 +176,7 @@ class LiveRideRouteCache(
     companion object {
         const val ROUTE_CACHE_TTL_DAYS: Long = 14L
         const val ROUTE_CACHE_TTL_MILLIS: Long = ROUTE_CACHE_TTL_DAYS * 24L * 60L * 60L * 1000L
-        private const val SNAPSHOT_VERSION = "RC_ROUTE_CACHE_V1"
+        private const val SNAPSHOT_VERSION = "RC_EDGE_DISTANCE_CACHE_V2"
         private const val FIELD_SEPARATOR = "\t"
         private const val SNAPSHOT_FIELD_COUNT = 16
 
