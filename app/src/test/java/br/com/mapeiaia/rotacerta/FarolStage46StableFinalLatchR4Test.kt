@@ -137,13 +137,13 @@ class FarolStage46StableFinalLatchR4Test {
         assertFalse(FarolStableFinalLatchStage46R4.sameRenderedDecision("Default", null, "Red", 6.319))
     }
 
-    @Test fun service_integrates_foreign_preserve_and_verify_without_blink() {
+    @Test fun service_preserves_foreign_churn_but_resets_public_final_before_target_verify() {
         val s = source("LiveRideAccessibilityService.kt")
         assertTrue(s.contains("FarolStableFinalLatchStage46R4.ambiguousAction("))
         assertTrue(s.contains("S46_R4_FINAL_LATCH_PRESERVED_FOREIGN"))
-        assertTrue(s.contains("S46_R4_FINAL_LATCH_VERIFY_WITHOUT_BLINK"))
         assertTrue(s.contains("noYellow=true; noOcr=true"))
-        assertTrue(s.contains("noYellow=true; ocrMayVerify=true"))
+        assertTrue(s.contains("S636_FINAL_PUBLIC_RESET_BEFORE_VERIFY"))
+        assertTrue(s.contains("yellowCommitted=true; internalSemanticLeasePreserved=true; ocrMayVerify=true"))
     }
 
     @Test fun foreign_preserve_returns_before_stage44_destructive_invalidation() {
@@ -154,14 +154,17 @@ class FarolStage46StableFinalLatchR4Test {
         assertTrue(action >= 0 && returned > action && invalidate > returned)
     }
 
-    @Test fun same_surface_verify_does_not_call_yellow_before_ocr_branch() {
+    @Test fun same_surface_verify_resets_old_public_final_before_ocr() {
         val s = source("LiveRideAccessibilityService.kt")
-        val verify = s.indexOf("S46_R4_FINAL_LATCH_VERIFY_WITHOUT_BLINK")
-        val destructive = s.indexOf("invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration", verify)
-        val guard = s.lastIndexOf("if (verifyWithoutBlinkStage46R4)", destructive)
-        assertTrue(guard >= 0 && verify > guard && destructive > verify)
-        assertTrue(s.substring(guard, destructive).contains("stage19VisualVerificationPending = true"))
-        assertFalse(s.substring(guard, destructive).contains("showOverlay(RadarColor.Default"))
+        val guard = s.indexOf("} else if (verifyWithoutBlinkStage46R4) {")
+        val destructive = s.indexOf("invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration", guard)
+        val marker = s.indexOf("S636_FINAL_PUBLIC_RESET_BEFORE_VERIFY", destructive)
+        assertTrue(guard >= 0 && destructive > guard && marker > destructive)
+        assertTrue(s.substring(guard, marker).contains("stage19VisualVerificationPending = true"))
+        val invalidator = s.indexOf("private fun invalidateOldVisualBeforeCollectStage26")
+        val invalidatorEnd = s.indexOf("private fun collectUniversalAccessibilityBlocksStage19", invalidator)
+        assertTrue(invalidator >= 0 && invalidatorEnd > invalidator)
+        assertTrue(s.substring(invalidator, invalidatorEnd).contains("showOverlay(RadarColor.Default, distanceKm = null)"))
     }
 
     @Test fun r4_preserves_r3_immediate_handoff_and_r2_target_empty_clear() {
