@@ -3560,33 +3560,48 @@ class LiveRideAccessibilityService : AccessibilityService() {
             "candidateToRouteStart",
             (SystemClock.elapsedRealtimeNanos() - stage26CandidateEventStartedNs).coerceAtLeast(0L),
         )
-        FarolForensicTraceStage20.cacheLookupStarted(traceIdStage20, SystemClock.elapsedRealtimeNanos())
-        val cachedStage19 = cachedLocalDistancesFromAddressKm(
+        // Stage637 two-phase response:
+        // 1) cached coordinate => local geodesic color immediately, no km text;
+        // 2) cached/network traffic-aware road route => final color + real km.
+        val preliminaryDistancesStage637 = cachedLocalDistancesFastStage637(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
         )
-        FarolForensicTraceStage20.cacheLookupFinished(traceIdStage20, SystemClock.elapsedRealtimeNanos(), cachedStage19 != null)
-        FarolMaximumForensicsStage38.record(
-            SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_CACHE_RESULT", packageName = null, cycleId = cycleIdStage20, traceId = traceIdStage20, operationId = "CACHE",
-            details = "hit=${cachedStage19 != null}; destination=${fieldsStage19.destination.orEmpty().take(900)}; targets=${targetsStage19.destinations.size}",
-        )
-        if (cachedStage19 != null) {
-            FarolCausalLatencyStage28.Metrics.increment("routeCacheHits")
-            FarolForensicCardBlackBoxStage32.recordCacheHit(SystemClock.elapsedRealtimeNanos())
-            val cacheFreshStage20 = isStage19BindingFresh(bindingStage19)
-            FarolForensicTraceStage20.bindingCheck(traceIdStage20, "CACHE", SystemClock.elapsedRealtimeNanos(), "CACHE_RESULT", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), cacheFreshStage20, stage19VisualVerificationPending)
-            if (!cacheFreshStage20) return
-            FarolForensicTraceStage20.decisionStarted(traceIdStage20, "CACHE", SystemClock.elapsedRealtimeNanos())
-            val resultStage19 = decideFastWorkRegionChecklist13(
+        if (preliminaryDistancesStage637 != null) {
+            val preliminaryResultStage637 = decideFastWorkRegionChecklist13(
                 snapshotText = evaluationStage19.analysisText,
                 fields = fieldsStage19,
                 settings = settingsStage19,
                 targets = targetsStage19,
-                routeDistances = cachedStage19,
+                routeDistances = preliminaryDistancesStage637,
             )
-            FarolForensicTraceStage20.decisionFinished(traceIdStage20, "CACHE", SystemClock.elapsedRealtimeNanos(), resultStage19.recommendation.name, resultStage19.nearestConfiguredDistanceKm())
-            bubblePrefs.edit().putString("fast_farol_last_path", "stage19_cache_exato").apply()
-            applyUniversalTwoAddressResultStage19(resultStage19, bindingStage19, traceIdStage20, "CACHE")
+            applyUniversalPreliminaryColorStage637(
+                preliminaryResultStage637,
+                bindingStage19,
+                traceIdStage20,
+                "LOCAL_CACHE_STAGE637",
+            )
+        }
+
+        val cachedExactStage637 = googleMapsService.cachedTrafficAwareDrivingDistancesFromAddressKm(
+            originAddress = fieldsStage19.destination.orEmpty(),
+            destinations = targetsStage19.destinations,
+        )
+        if (cachedExactStage637 != null) {
+            val exactResultStage637 = decideFastWorkRegionChecklist13(
+                snapshotText = evaluationStage19.analysisText,
+                fields = fieldsStage19,
+                settings = settingsStage19,
+                targets = targetsStage19,
+                routeDistances = cachedExactStage637,
+            )
+            bubblePrefs.edit().putString("fast_farol_last_path", "stage637_traffic_cache").apply()
+            applyUniversalTwoAddressResultStage19(
+                exactResultStage637,
+                bindingStage19,
+                traceIdStage20,
+                "TRAFFIC_CACHE_STAGE637",
+            )
             return
         }
 
