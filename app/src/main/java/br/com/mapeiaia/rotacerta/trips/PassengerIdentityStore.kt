@@ -164,6 +164,16 @@ internal data class PassengerPickerSnapshot(
     val resolvedDuplicateCount: Int,
 )
 
+internal data class PassengerIdentityRepair0627Result(
+    val rawProfiles: Int,
+    val canonicalProfiles: Int,
+    val aliasesCreated: Int,
+    val observationsRemapped: Int,
+    val ridesRemapped: Int,
+    val metadataRemapped: Int,
+    val unresolvedContactConflicts: Int,
+)
+
 class PassengerIdentityStore(context: Context) {
     private val appContext = context.applicationContext
     private val tenantScope = RotaCertaTenantRegistry(appContext).activeScope()
@@ -172,11 +182,174 @@ class PassengerIdentityStore(context: Context) {
     private val externalMetadataKey = tenantScope.key(KEY_EXTERNAL_METADATA)
     private val observationsKey = tenantScope.key(KEY_OBSERVATIONS)
     private val rideRecordsKey = tenantScope.key(KEY_RIDE_RECORDS)
+    private val aliasesKey0627 = tenantScope.key(KEY_ALIASES_0627)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    @Volatile private var integrityChecked0627 = false
+    @Volatile private var integrityRepairing0627 = false
 
-    fun profiles(): List<PassengerProfile> = decode<List<PassengerProfile>>(prefs.getString(profilesKey, null))
-        .orEmpty()
-        .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+    private fun rawProfiles0627(): List<PassengerProfile> =
+        decode<List<PassengerProfile>>(prefs.getString(profilesKey, null)).orEmpty()
+
+    private fun identityAliases0627(): Map<String, String> =
+        decode<Map<String, String>>(prefs.getString(aliasesKey0627, null)).orEmpty()
+
+    internal fun canonicalPassengerId0627(raw: String?): String? {
+        var current = raw?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val aliases = identityAliases0627()
+        val seen = mutableSetOf<String>()
+        repeat(32) {
+            if (!seen.add(current)) return current
+            val next = aliases[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+            current = next
+        }
+        return current
+    }
+
+    @Synchronized
+    internal fun ensureCanonicalIntegrity0627(): PassengerIdentityRepair0627Result {
+        if (integrityRepairing0627) {
+            val count = rawProfiles0627().size
+            return PassengerIdentityRepair0627Result(count, count, 0, 0, 0, 0, 0)
+        }
+        integrityRepairing0627 = true
+        try {
+            val raw = rawProfiles0627()
+            val proposedAliases = buildPassengerMergeAliases0627(raw)
+            val existingAliases = identityAliases0627()
+            val combinedAliases = LinkedHashMap<String, String>().apply {
+                putAll(existingAliases)
+                putAll(proposedAliases)
+            }
+
+            fun resolve(idRaw: String): String {
+                var current = idRaw.trim()
+                val seen = mutableSetOf<String>()
+                repeat(32) {
+                    if (!seen.add(current)) return current
+                    val next = combinedAliases[current]?.trim()?.takeIf(String::isNotEmpty) ?: return current
+                    current = next
+                }
+                return current
+            }
+
+            val flattenedAliases = combinedAliases
+                .mapValues { (alias, target) -> resolve(target).takeIf { it != alias }.orEmpty() }
+                .filterValues(String::isNotBlank)
+
+            val grouped = raw.groupBy { profile -> resolve(profile.id) }
+            val canonicalProfiles = grouped.map { (canonicalId, members) ->
+                mergePassengerProfiles0627(canonicalId, members)
+            }
+
+            val unresolvedContactConflicts = raw
+                .groupBy { profile ->
+                    val contact = passengerContactKey(profile.agendaAccessContact())
+                    val name = normalizePassengerSearch(profile.displayName)
+                    if (contact.isBlank() || name.isBlank()) "" else "$contact|$name"
+                }
+                .filterKeys(String::isNotBlank)
+                .values
+                .count { it.size > 1 && !safeCanonicalContactGroup0627(it) }
+
+            val originalObservations = decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null)).orEmpty()
+            var observationsRemapped = 0
+            val observations = originalObservations.map { item ->
+                val canonicalId = resolve(item.passengerId)
+                if (canonicalId != item.passengerId) {
+                    observationsRemapped++
+                    item.copy(passengerId = canonicalId)
+                } else item
+            }
+
+            val originalRides = decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null)).orEmpty()
+            var ridesRemapped = 0
+            val rideByKey = linkedMapOf<String, PassengerRideRecord>()
+            originalRides.sortedBy(PassengerRideRecord::observedAtMillis).forEach { original ->
+                val canonicalId = resolve(original.passengerId)
+                val incoming = if (canonicalId != original.passengerId) {
+                    ridesRemapped++
+                    original.copy(passengerId = canonicalId)
+                } else original
+                val key = canonicalId + "|" + incoming.rideKey
+                val previous = rideByKey[key]
+                if (previous == null) {
+                    rideByKey[key] = incoming
+                } else {
+                    val latest = if (incoming.updatedAtMillis >= previous.updatedAtMillis) incoming else previous
+                    val mergedStatus = mergePassengerOccurrenceStatus(previous.status, incoming.status)
+                    rideByKey[key] = latest.copy(
+                        passengerId = canonicalId,
+                        status = mergedStatus,
+                        seats = maxOf(previous.seats, incoming.seats),
+                        observedAtMillis = minOf(previous.observedAtMillis, incoming.observedAtMillis),
+                        completedAtMillis = listOfNotNull(previous.completedAtMillis, incoming.completedAtMillis).maxOrNull(),
+                        updatedAtMillis = maxOf(previous.updatedAtMillis, incoming.updatedAtMillis),
+                    )
+                }
+            }
+
+            val originalMetadata = externalMetadata()
+            var metadataRemapped = 0
+            val metadata = originalMetadata.map { item ->
+                val current = item.passengerId.trim()
+                if (current.isBlank()) item else {
+                    val canonicalId = resolve(current)
+                    if (canonicalId != current) {
+                        metadataRemapped++
+                        item.copy(passengerId = canonicalId)
+                    } else item
+                }
+            }
+
+            val changed = proposedAliases.isNotEmpty() ||
+                observationsRemapped > 0 ||
+                ridesRemapped > 0 ||
+                metadataRemapped > 0 ||
+                canonicalProfiles.size != raw.size ||
+                flattenedAliases != existingAliases
+
+            if (changed) {
+                val committed = prefs.edit()
+                    .putString(profilesKey, json.encodeToString(canonicalProfiles))
+                    .putString(observationsKey, json.encodeToString(observations))
+                    .putString(rideRecordsKey, json.encodeToString(rideByKey.values.toList()))
+                    .putString(externalMetadataKey, json.encodeToString(metadata))
+                    .putString(aliasesKey0627, json.encodeToString(flattenedAliases))
+                    .commit()
+                check(committed) { "Falha ao consolidar identidades canônicas de passageiros." }
+            }
+
+            val repair = PassengerIdentityRepair0627Result(
+                rawProfiles = raw.size,
+                canonicalProfiles = canonicalProfiles.size,
+                aliasesCreated = proposedAliases.size,
+                observationsRemapped = observationsRemapped,
+                ridesRemapped = ridesRemapped,
+                metadataRemapped = metadataRemapped,
+                unresolvedContactConflicts = unresolvedContactConflicts,
+            )
+            UnifiedDebugEventStore.recordAlways(
+                "PASSENGER_IDENTITY_INTEGRITY_0627",
+                appContext.packageName,
+                "rawProfiles=" + repair.rawProfiles +
+                    " canonicalProfiles=" + repair.canonicalProfiles +
+                    " aliasesCreated=" + repair.aliasesCreated +
+                    " observationsRemapped=" + repair.observationsRemapped +
+                    " ridesRemapped=" + repair.ridesRemapped +
+                    " metadataRemapped=" + repair.metadataRemapped +
+                    " unresolvedContactConflicts=" + repair.unresolvedContactConflicts,
+            )
+            integrityChecked0627 = true
+            return repair
+        } finally {
+            integrityRepairing0627 = false
+        }
+    }
+
+    fun profiles(): List<PassengerProfile> {
+        if (!integrityChecked0627 && !integrityRepairing0627) ensureCanonicalIntegrity0627()
+        return rawProfiles0627().sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
+    }
 
     internal fun pickerSnapshot(includeArchived: Boolean = false): PassengerPickerSnapshot {
         val raw = profiles().filter { includeArchived || !it.archived }
@@ -185,7 +358,7 @@ class PassengerIdentityStore(context: Context) {
     }
 
     fun profile(id: String?): PassengerProfile? {
-        val canonical = id?.trim()?.takeIf(String::isNotEmpty) ?: return null
+        val canonical = canonicalPassengerId0627(id) ?: return null
         return profiles().firstOrNull { it.id == canonical }
     }
 
@@ -215,7 +388,7 @@ class PassengerIdentityStore(context: Context) {
         return selectCanonicalPassenger(
             profiles = allProfiles,
             historicalContactsByProfile = historicalContacts,
-            passengerId = passengerId,
+            passengerId = canonicalPassengerId0627(passengerId),
             externalPassengerId = externalPassengerId,
             onlineIdentityId = onlineIdentityId,
             whatsapp = whatsapp,
@@ -224,7 +397,9 @@ class PassengerIdentityStore(context: Context) {
 
     fun saveProfile(profile: PassengerProfile): PassengerProfile {
         val now = System.currentTimeMillis()
+        val canonicalId = canonicalPassengerId0627(profile.id) ?: profile.id
         val normalized = profile.copy(
+            id = canonicalId,
             displayName = profile.displayName.trim().take(120),
             whatsapp = profile.whatsapp.trim().take(40),
             agendaAccessWhatsapp = profile.agendaAccessWhatsapp.trim().take(40),
@@ -239,9 +414,13 @@ class PassengerIdentityStore(context: Context) {
             updatedAtMillis = now,
         )
         require(normalized.displayName.isNotBlank()) { "Informe o nome do passageiro." }
-        val current = profiles().filterNot { it.id == normalized.id }
-        prefs.edit().putString(profilesKey, json.encodeToString(listOf(normalized) + current)).apply()
-        return normalized
+        val current = rawProfiles0627().filterNot { it.id == normalized.id }
+        val committed = prefs.edit().putString(profilesKey, json.encodeToString(listOf(normalized) + current)).commit()
+        check(committed) { "Falha ao salvar identidade de passageiro." }
+        integrityChecked0627 = false
+        ensureCanonicalIntegrity0627()
+        val resolvedId = canonicalPassengerId0627(normalized.id) ?: normalized.id
+        return rawProfiles0627().firstOrNull { it.id == resolvedId } ?: normalized
     }
 
     fun createProfile(name: String, whatsapp: String): PassengerProfile = saveProfile(
@@ -300,7 +479,7 @@ class PassengerIdentityStore(context: Context) {
         val name = booking.passengerName.trim().take(120)
         if (name.isBlank()) return null
         val phone = booking.passengerContact.trim().take(40)
-        val explicitPassengerId = booking.passengerId.trim()
+        val explicitPassengerId = canonicalPassengerId0627(booking.passengerId)?.trim().orEmpty()
         val exactContacts = if (explicitPassengerId.isBlank() && passengerContactKey(phone).isNotBlank()) {
             exactContactMatches(phone)
         } else {
@@ -397,7 +576,7 @@ class PassengerIdentityStore(context: Context) {
         val resolved = LinkedHashMap<String, String>()
 
         eligible.forEach { booking ->
-            val explicitPassengerId = booking.passengerId.trim()
+            val explicitPassengerId = canonicalPassengerId0627(booking.passengerId)?.trim().orEmpty()
             val name = booking.passengerName.trim().take(120)
             val phone = booking.passengerContact.trim().take(40)
             val contactKey = passengerContactKey(phone)
@@ -519,8 +698,10 @@ class PassengerIdentityStore(context: Context) {
             .putString(profilesKey, json.encodeToString(profileById.values.toList()))
             .putString(observationsKey, json.encodeToString(observationList))
             .putString(rideRecordsKey, json.encodeToString(rideByKey.values.toList()))
-            .apply()
-        return resolved
+            .commit()
+        integrityChecked0627 = false
+        ensureCanonicalIntegrity0627()
+        return resolved.mapValues { (_, passengerId) -> canonicalPassengerId0627(passengerId) ?: passengerId }
     }
 
     /**
@@ -537,9 +718,10 @@ class PassengerIdentityStore(context: Context) {
         driverProfileUuid: String?,
         photoUrl: String? = null,
     ): PassengerProfile? {
-        val externalId = stableExternalPassengerId(externalPassengerId) ?: return null
+        val externalId = stableExternalPassengerId(externalPassengerId).orEmpty()
         val name = displayName.trim().take(120).ifBlank { "Passageiro" }
         val phone = whatsapp.orEmpty().trim().take(40)
+        if (externalId.isBlank() && passengerContactKey(phone).isBlank()) return null
         val contactMatches = exactContactMatches(phone)
         val safeContactMatch = when {
             contactMatches.size <= 1 -> contactMatches.singleOrNull()
@@ -548,7 +730,7 @@ class PassengerIdentityStore(context: Context) {
                 buildPassengerPickerSnapshot(contactMatches, observations).profiles.singleOrNull()
             }
         }
-        val existing = profileByExternalPassengerId(externalId) ?: safeContactMatch
+        val existing = externalId.takeIf(String::isNotBlank)?.let(::profileByExternalPassengerId) ?: safeContactMatch
         if (safeContactMatch != null && contactMatches.size > 1) {
             AgendaTrace.event(
                 appContext,
@@ -559,13 +741,13 @@ class PassengerIdentityStore(context: Context) {
         val base = existing ?: PassengerProfile(
             displayName = name,
             whatsapp = phone,
-            externalPassengerIds = setOf(externalId),
+            externalPassengerIds = setOfNotNull(externalId.takeIf(String::isNotBlank)),
         )
         val saved = saveProfile(
             base.copy(
                 displayName = name,
                 whatsapp = phone.ifBlank { base.whatsapp },
-                externalPassengerIds = base.externalPassengerIds + externalId,
+                externalPassengerIds = if (externalId.isBlank()) base.externalPassengerIds else base.externalPassengerIds + externalId,
             ),
         )
         observeIdentity(
@@ -607,18 +789,22 @@ class PassengerIdentityStore(context: Context) {
         return saved
     }
 
-    fun observations(profileId: String): List<PassengerIdentityObservation> =
-        decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
+    fun observations(profileId: String): List<PassengerIdentityObservation> {
+        val canonicalId = canonicalPassengerId0627(profileId) ?: return emptyList()
+        return decode<List<PassengerIdentityObservation>>(prefs.getString(observationsKey, null))
             .orEmpty()
-            .filter { it.passengerId == profileId }
+            .filter { canonicalPassengerId0627(it.passengerId) == canonicalId }
             .sortedByDescending(PassengerIdentityObservation::observedAtMillis)
+    }
 
-    fun rideRecords(profileId: String): List<PassengerRideRecord> =
-        decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
+    fun rideRecords(profileId: String): List<PassengerRideRecord> {
+        val canonicalId = canonicalPassengerId0627(profileId) ?: return emptyList()
+        return decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null))
             .orEmpty()
-            .filter { it.passengerId == profileId }
+            .filter { canonicalPassengerId0627(it.passengerId) == canonicalId }
             .distinctBy(PassengerRideRecord::rideKey)
             .sortedByDescending(PassengerRideRecord::observedAtMillis)
+    }
 
     /**
      * Batch history snapshot for UI rendering. Decodes each backing collection once,
@@ -723,7 +909,7 @@ class PassengerIdentityStore(context: Context) {
         seats: Int = 1,
         completedAtMillis: Long? = null,
     ): PassengerRideRecord? {
-        val canonicalPassengerId = passengerId.trim().takeIf(String::isNotEmpty) ?: return null
+        val canonicalPassengerId = canonicalPassengerId0627(passengerId)?.trim()?.takeIf(String::isNotEmpty) ?: return null
         val key = rideKey.trim().takeIf(String::isNotEmpty) ?: return null
         val all = decode<List<PassengerRideRecord>>(prefs.getString(rideRecordsKey, null)).orEmpty()
         val existing = all.firstOrNull { it.passengerId == canonicalPassengerId && it.rideKey == key }
@@ -818,7 +1004,7 @@ class PassengerIdentityStore(context: Context) {
         val dropoffLongitude = validLongitude(metadata.dropoffLongitude)
         val hasDropoffCoordinatePair = dropoffLatitude != null && dropoffLongitude != null
         val requested = metadata.copy(
-            passengerId = metadata.passengerId.trim(),
+            passengerId = canonicalPassengerId0627(metadata.passengerId).orEmpty(),
             externalPassengerId = stableExternalPassengerId(metadata.externalPassengerId).orEmpty(),
             externalTripId = stableExternalPassengerId(metadata.externalTripId).orEmpty(),
             externalProfileUuid = metadata.externalProfileUuid.trim().lowercase().take(80),
@@ -886,6 +1072,7 @@ class PassengerIdentityStore(context: Context) {
         private const val KEY_EXTERNAL_METADATA = "external_passenger_metadata"
         private const val KEY_OBSERVATIONS = "passenger_identity_observations_v1"
         private const val KEY_RIDE_RECORDS = "passenger_ride_records_v1"
+        private const val KEY_ALIASES_0627 = "passenger_identity_aliases_0627"
     }
 }
 
@@ -921,6 +1108,137 @@ internal fun passengerDebugIdentityHash(raw: String?): String {
         .digest(value.toByteArray(Charsets.UTF_8))
         .take(8)
         .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+}
+
+
+internal fun safeCanonicalContactGroup0627(members: List<PassengerProfile>): Boolean {
+    if (members.size < 2) return false
+    val contacts = members.map { passengerContactKey(it.agendaAccessContact()) }.filter(String::isNotBlank).distinct()
+    val names = members.map { normalizePassengerSearch(it.displayName) }.filter(String::isNotBlank).distinct()
+    if (contacts.size != 1 || names.size != 1) return false
+
+    val onlineIds = members.map(PassengerProfile::onlineIdentityIds).filter(Set<String>::isNotEmpty)
+    if (onlineIds.size > 1 && onlineIds.indices.any { left ->
+            (left + 1 until onlineIds.size).any { right -> onlineIds[left].intersect(onlineIds[right]).isEmpty() }
+        }) return false
+
+    val referralKeys = members.mapNotNull {
+        passengerContactKey(it.referredByContact).takeIf(String::isNotBlank)
+    }.distinct()
+    if (referralKeys.size > 1) return false
+
+    val financialStates = members
+        .map { Triple(it.creditBalanceCents, it.creditEarnedCents, it.creditSpentCents) }
+        .distinct()
+    if (financialStates.size > 1 && financialStates.any { state ->
+            state.first != 0L || state.second != 0L || state.third != 0L
+        }) return false
+
+    // IDs externos capturados até 0.1.626 não bloqueiam o merge: /booking/{id}
+    // podia ser interpretado como se fosse a identidade da pessoa.
+    return true
+}
+
+internal fun buildPassengerMergeAliases0627(
+    profiles: List<PassengerProfile>,
+): Map<String, String> {
+    if (profiles.size < 2) return emptyMap()
+    val parent = IntArray(profiles.size) { it }
+    fun find(index: Int): Int {
+        var cursor = index
+        while (parent[cursor] != cursor) {
+            parent[cursor] = parent[parent[cursor]]
+            cursor = parent[cursor]
+        }
+        return cursor
+    }
+    fun union(left: Int, right: Int) {
+        val a = find(left)
+        val b = find(right)
+        if (a != b) parent[b] = a
+    }
+
+    val byExternal = mutableMapOf<String, Int>()
+    val byOnline = mutableMapOf<String, Int>()
+    profiles.forEachIndexed { index, profile ->
+        profile.externalPassengerIds.forEach { raw ->
+            stableExternalPassengerId(raw)?.let { id ->
+                byExternal.putIfAbsent(id, index)?.let { union(index, it) }
+            }
+        }
+        profile.onlineIdentityIds.forEach { raw ->
+            stableExternalPassengerId(raw)?.let { id ->
+                byOnline.putIfAbsent(id, index)?.let { union(index, it) }
+            }
+        }
+    }
+
+    profiles.indices
+        .groupBy { index ->
+            val profile = profiles[index]
+            val contact = passengerContactKey(profile.agendaAccessContact())
+            val name = normalizePassengerSearch(profile.displayName)
+            if (contact.isBlank() || name.isBlank()) "" else "$contact|$name"
+        }
+        .filterKeys(String::isNotBlank)
+        .values
+        .forEach { indices ->
+            if (indices.size < 2) return@forEach
+            val members = indices.map(profiles::get)
+            if (!safeCanonicalContactGroup0627(members)) return@forEach
+            val first = indices.first()
+            indices.drop(1).forEach { union(first, it) }
+        }
+
+    val aliases = linkedMapOf<String, String>()
+    profiles.indices.groupBy(::find).values.forEach { indices ->
+        if (indices.size < 2) return@forEach
+        val members = indices.map(profiles::get)
+        val canonical = members.minWithOrNull(
+            compareBy<PassengerProfile> { it.createdAtMillis }.thenBy { it.id },
+        ) ?: return@forEach
+        members.filter { it.id != canonical.id }.forEach { aliases[it.id] = canonical.id }
+    }
+    return aliases
+}
+
+internal fun mergePassengerProfiles0627(
+    canonicalId: String,
+    members: List<PassengerProfile>,
+): PassengerProfile {
+    require(members.isNotEmpty())
+    val oldest = members.minWithOrNull(compareBy<PassengerProfile> { it.createdAtMillis }.thenBy { it.id })!!
+    val newest = members.maxWithOrNull(compareBy<PassengerProfile> { it.updatedAtMillis }.thenBy { it.createdAtMillis })!!
+    val access = members.sortedByDescending(PassengerProfile::updatedAtMillis)
+        .map(PassengerProfile::agendaAccessWhatsapp)
+        .firstOrNull(String::isNotBlank)
+        .orEmpty()
+    val phone = members.sortedByDescending(PassengerProfile::updatedAtMillis)
+        .map(PassengerProfile::whatsapp)
+        .firstOrNull(String::isNotBlank)
+        .orEmpty()
+    val blockedMember = members.filter(PassengerProfile::blocked).maxByOrNull(PassengerProfile::updatedAtMillis)
+    return oldest.copy(
+        id = canonicalId,
+        displayName = newest.displayName.trim().ifBlank { oldest.displayName },
+        whatsapp = phone,
+        agendaAccessWhatsapp = access,
+        externalPassengerIds = members.flatMap(PassengerProfile::externalPassengerIds).toSet(),
+        onlineIdentityIds = members.flatMap(PassengerProfile::onlineIdentityIds).toSet(),
+        publicAccessStatus = members.sortedByDescending(PassengerProfile::updatedAtMillis)
+            .map(PassengerProfile::publicAccessStatus)
+            .firstOrNull(String::isNotBlank)
+            .orEmpty(),
+        referredByContact = members.map(PassengerProfile::referredByContact).firstOrNull(String::isNotBlank).orEmpty(),
+        creditBalanceCents = members.maxOf(PassengerProfile::creditBalanceCents),
+        creditEarnedCents = members.maxOf(PassengerProfile::creditEarnedCents),
+        creditSpentCents = members.maxOf(PassengerProfile::creditSpentCents),
+        blocked = blockedMember != null,
+        blockedReason = blockedMember?.blockedReason.orEmpty(),
+        archived = members.all(PassengerProfile::archived),
+        createdAtMillis = members.minOf(PassengerProfile::createdAtMillis),
+        updatedAtMillis = members.maxOf(PassengerProfile::updatedAtMillis),
+    )
 }
 
 private fun safeLegacyPassengerPickerGroup(members: List<PassengerProfile>): Boolean {
