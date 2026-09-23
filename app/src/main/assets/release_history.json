@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.630",
+      "build": 5921,
+      "commit": null,
+      "branch": "agent/passenger-sync-indicator-0.1.630",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Tela Passageiros passa a sincronizar o diretório canônico ao abrir/atualizar antes de consultar os acessos remotos.",
+        "Contatos locais ambíguos são detectados explicitamente e ficam fora da sincronização automática até consolidação segura."
+      ],
+      "fixed": [
+        "Remove a bolinha laranja permanente 'Aguardando sincronização da Agenda de Viagens' quando não existe nenhum estado remoto real.",
+        "Impede que ausência de remoteAccess seja apresentada como se fosse uma sincronização em andamento.",
+        "Remove a contradição visual entre 'aguardando sincronização' e 'acesso automático pela base unificada' no mesmo passageiro."
+      ],
+      "improved": [
+        "Estados visuais agora representam somente estados remotos reais: verde para autorizado/ativo, amarelo para pendente/suspenso e bloqueio explícito para BLOCKED.",
+        "Conflitos de múltiplos passengerIds usando o mesmo WhatsApp aparecem apenas dentro das opções do passageiro, com explicação objetiva.",
+        "A falha de sincronização do diretório não impede a tela de carregar os acessos remotos existentes."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.629: cartões sem remoteAccess exibiam indefinidamente 'Aguardando sincronização da Agenda de Viagens', mesmo com captura HTML completa.",
+        "0.1.629: a tela Passageiros consultava acessos remotos, mas não disparava a própria sincronização do diretório."
+      ],
+      "modulesAffected": [
+        "Passageiros",
+        "Agenda de Viagens",
+        "Identidade canônica",
+        "Sincronização online",
+        "UI",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.629",
       "build": 5920,
       "commit": null,
