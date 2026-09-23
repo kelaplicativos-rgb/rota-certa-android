@@ -15,6 +15,10 @@ const androidSync = fs.readFileSync(
   path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicBookingSync0296.kt"),
   "utf8",
 );
+const publicAgendaSync = fs.readFileSync(
+  path.join(root, "app", "src", "main", "java", "br", "com", "mapeiaia", "rotacerta", "trips", "PublicAgendaAutoSync0300.kt"),
+  "utf8",
+);
 
 function between(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -40,10 +44,12 @@ test("0625 keeps one canonical passenger directory keyed by permanent passengerI
   assert.match(whatsapp, /batch\.delete\(passengerContactIndexRef0625\(previousPassengerContact\)\)/);
 });
 
-test("0625 Android reconciliation automatically pushes local passenger identities to the canonical directory", () => {
-  assert.match(androidSync, /PassengerIdentityStore\(context\)\.profiles\(\)/);
-  assert.match(androidSync, /api\.syncPassengerDirectory\(directoryProfiles0625\)/);
-  assert.match(androidSync, /PASSENGER_DIRECTORY_SYNC_0625/);
+test("0625 canonical passenger identities still converge remotely outside the booking hot path", () => {
+  assert.match(androidSync, /PASSENGER_DIRECTORY_DEFERRED_0629/);
+  assert.doesNotMatch(androidSync, /api\.syncPassengerDirectory\(directoryProfiles0625\)/);
+  assert.match(publicAgendaSync, /PassengerIdentityStore\(context\)\.profiles\(\)/);
+  assert.match(publicAgendaSync, /api\.syncPassengerDirectory\(canonicalPassengerProfiles\)/);
+  assert.match(publicAgendaSync, /PUBLIC_AGENDA_PASSENGER_DIRECTORY_SYNCED/);
 });
 
 test("0625 known passenger creates a four-digit password on first access and reuses it later", () => {
