@@ -105,17 +105,37 @@ fun PassengerAdminScreen(
         settingsState = withContext(Dispatchers.IO) { store.onlineSettings() }
     }
     LaunchedEffect(revision) {
+        AgendaTrace.event(context, "PASSENGERS_LOCAL_LOAD_START", "revision=$revision")
+        val repair = withContext(Dispatchers.IO) { passengerStore.ensureCanonicalIntegrity0627() }
         val snapshot = withContext(Dispatchers.IO) {
             passengerStore.profiles() to collectorStore.lastResponseRecoveringDynamicSessions()?.trips.orEmpty()
         }
         localProfiles = snapshot.first
         collectedTrips = snapshot.second
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_LOCAL_LOAD_END",
+            "rawProfiles=" + repair.rawProfiles +
+                " canonicalProfiles=" + repair.canonicalProfiles +
+                " aliasesCreated=" + repair.aliasesCreated +
+                " unresolvedContactConflicts=" + repair.unresolvedContactConflicts +
+                " htmlTrips=" + snapshot.second.size +
+                " htmlPassengers=" + snapshot.second.sumOf { it.passengers.size },
+        )
     }
     LaunchedEffect(localProfiles) {
         val ids = localProfiles.map(PassengerProfile::id).toSet()
+        AgendaTrace.event(context, "PASSENGERS_HISTORY_LOAD_START", "profiles=" + ids.size)
         passengerHistories = withContext(Dispatchers.IO) {
             passengerStore.persistentHistorySnapshot(ids)
         }
+        AgendaTrace.event(
+            context,
+            "PASSENGERS_HISTORY_LOAD_END",
+            "profiles=" + passengerHistories.size +
+                " occurrences=" + passengerHistories.values.sumOf { it.totalOccurrences } +
+                " completed=" + passengerHistories.values.sumOf { it.totalRides },
+        )
     }
     val collectedPassengers = remember(collectedTrips) {
         collectedTrips.flatMap { trip -> trip.passengers }.filter { it.name.isNotBlank() }
