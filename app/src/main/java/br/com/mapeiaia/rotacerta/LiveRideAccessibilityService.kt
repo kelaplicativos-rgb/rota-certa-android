@@ -1200,11 +1200,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         universalActiveAddressSignature = null
         lastSnapshotHash = null
         lastAnalyzedHash = null
-        shortcutOverlayController.hideAll()
+        shortcutOverlayController.hideFarolUiKeepAlerts0644()
 
-        // Reading OFF is intentionally NOT master work-mode OFF. In particular, do not stop
-        // preciseNavigationTrackerChecklist5, do not hide directionalAlertOverlayChecklist5 and
-        // do not change workModeRuntimeActive0162. Radar/user proximity keep their existing owner.
+        // Reading OFF is intentionally NOT owner of alerts/radars. The alert runtime remains
+        // governed only by proximityAlertsEnabled and target availability.
         val offRenderBeforeStage43 = stage43OffRenderAppliedSerial
         showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)
         val offRenderAppliedStage43 = stage43OffRenderAppliedSerial > offRenderBeforeStage43 &&
@@ -1266,9 +1265,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         // Stage36 work-mode OFF is distinct from visual-card disappearance.
         lastSnapshotHash = null
         lastAnalyzedHash = null
-        shortcutOverlayController.hideAll()
-        if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
-        if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
+        shortcutOverlayController.hideFarolUiKeepAlerts0644()
+        val alertTargetsPresent0644 =
+            currentSavedPlaces.any { it.type == SavedPlaceType.ProximityAlert } || currentImportedRadars.isNotEmpty()
+        if (!AlertRuntimePolicy0644.shouldTrack(currentSettings, alertTargetsPresent0644)) {
+            if (::preciseNavigationTrackerChecklist5.isInitialized) preciseNavigationTrackerChecklist5.stop()
+            if (::directionalAlertOverlayChecklist5.isInitialized) directionalAlertOverlayChecklist5.hide()
+        }
         val offRenderBeforeStage43 = stage43OffRenderAppliedSerial
         showOverlay(RadarColor.Idle, null, forcePhysicalCommitStage43 = true)
         val offRenderAppliedStage43 = stage43OffRenderAppliedSerial > offRenderBeforeStage43 &&
@@ -3966,9 +3969,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 val alerts = currentSavedPlaces.filter { it.type == SavedPlaceType.ProximityAlert }
                 val radars = currentImportedRadars
                 val hasTargets = alerts.isNotEmpty() || radars.isNotEmpty()
-                val enabled = currentSettings.appEnabled && currentSettings.proximityAlertsEnabled
+                val enabled = AlertRuntimePolicy0644.shouldTrack(currentSettings, hasTargets)
 
-                if (!enabled || !hasTargets) {
+                if (!enabled) {
                     preciseNavigationTrackerChecklist5.stop()
                     directionalAlertOverlayChecklist5.hide()
                     missingPreciseFixSinceChecklist5 = 0L
@@ -3988,7 +3991,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         alerts: List<SavedPlace>,
         radars: List<ImportedRadar>,
     ) {
-        if (!currentSettings.appEnabled || !currentSettings.proximityAlertsEnabled) {
+        if (!AlertRuntimePolicy0644.isEnabled(currentSettings)) {
             directionalAlertOverlayChecklist5.hide()
             return
         }
@@ -8058,7 +8061,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private fun stopApplicationFromBubble() {
         val updated0162 = WorkModePolicy0162.setEnabled(currentSettings, false)
         currentSettings = updated0162
-        shortcutOverlayController.hideAll()
+        shortcutOverlayController.hideFarolUiKeepAlerts0644()
         persistResourceShortcutState()
         applyWorkModeRuntime0162(false)
         scope.launch { runCatching { repository.saveSettings(updated0162) } }
