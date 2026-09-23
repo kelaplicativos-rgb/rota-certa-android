@@ -7146,6 +7146,130 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun memorizeFarolCard638() {
+        shortcutOverlayController.hideAll()
+        persistResourceShortcutState()
+        if (!farolCardTrainingInProgress638.compareAndSet(false, true)) {
+            toast("A memorização de card já está em andamento.")
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            farolCardTrainingInProgress638.set(false)
+            toast("Memorização visual indisponível nesta versão do Android.")
+            return
+        }
+        scope.launch {
+            delay(96L)
+            val root638 = captureRootHandle0187()
+            val package638 = root638?.packageName?.takeIf {
+                DriverAppPackagePolicy0162.isEligible(it, packageName)
+            }
+            if (root638 == null || package638 == null) {
+                farolCardTrainingInProgress638.set(false)
+                toast("Deixe o card de corrida aberto e toque em Memorizar novamente.")
+                return@launch
+            }
+            val nodes638 = collectFailedCardNodeLines0161(root638.node)
+            val text638 = collectImmediateVisibleTextChecklist13(root638.node)
+            if (nodes638.size < 4 || text638.isBlank()) {
+                farolCardTrainingInProgress638.set(false)
+                toast("Não encontrei estrutura suficiente neste card.")
+                return@launch
+            }
+            if (!screenshotInProgress.compareAndSet(false, true)) {
+                farolCardTrainingInProgress638.set(false)
+                toast("A captura de tela está ocupada. Tente Memorizar novamente.")
+                return@launch
+            }
+            FarolFlightRecorder0163.record(
+                stage = "S638_CARD_TRAINING_REQUESTED",
+                packageName = package638,
+                details = "window=${root638.windowId ?: -1}; nodes=${nodes638.size}; explicitUser=true; runtimeScreenshot=false",
+            )
+            runCatching {
+                takeScreenshot(
+                    Display.DEFAULT_DISPLAY,
+                    mainExecutor,
+                    object : TakeScreenshotCallback {
+                        override fun onSuccess(screenshot: ScreenshotResult) {
+                            var bitmap638: Bitmap? = null
+                            try {
+                                bitmap638 = screenshot.toSoftwareBitmap()
+                                if (bitmap638 == null) error("bitmap indisponível")
+                                val bitmapForTraining638 = bitmap638
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val result638 = farolCardTrainingModule638.train(
+                                            packageName = package638,
+                                            text = text638,
+                                            nodes = nodes638,
+                                            bitmap = bitmapForTraining638,
+                                        )
+                                        SelectedRideAppStore.add(applicationContext, package638)
+                                        FarolFlightRecorder0163.record(
+                                            stage = "S638_CARD_SIGNATURE_TRAINED",
+                                            packageName = package638,
+                                            details = "model=${result638.model.id}; samples=${result638.model.sampleCount}; confidence=${result638.model.confidence}; anchors=${result638.model.anchorTokens.sorted().joinToString(",")}; structures=${result638.model.structureTokens.size}; visualHash=${result638.model.visualHash.orEmpty()}; evidence=${result638.evidencePath.orEmpty()}",
+                                        )
+                                        withContext(Dispatchers.Main.immediate) {
+                                            toast("Assinatura do card memorizada")
+                                            showSaveConfirmationNotification(
+                                                "Card memorizado",
+                                                "$package638 • ${result638.model.sampleCount} amostra(s)",
+                                            )
+                                        }
+                                    } catch (error638: Throwable) {
+                                        FarolFlightRecorder0163.record(
+                                            stage = "S638_CARD_TRAINING_FAILED",
+                                            packageName = package638,
+                                            details = "type=${error638::class.java.simpleName}; message=${error638.message.orEmpty().take(180)}",
+                                        )
+                                        withContext(Dispatchers.Main.immediate) { toast("Não foi possível memorizar este card.") }
+                                    } finally {
+                                        bitmapForTraining638.takeUnless(Bitmap::isRecycled)?.recycle()
+                                        screenshotInProgress.set(false)
+                                        farolCardTrainingInProgress638.set(false)
+                                    }
+                                }
+                                bitmap638 = null
+                            } catch (error638: Throwable) {
+                                bitmap638?.takeUnless(Bitmap::isRecycled)?.recycle()
+                                screenshotInProgress.set(false)
+                                farolCardTrainingInProgress638.set(false)
+                                FarolFlightRecorder0163.record(
+                                    stage = "S638_CARD_TRAINING_FAILED",
+                                    packageName = package638,
+                                    details = "type=${error638::class.java.simpleName}; phase=screenshot_decode",
+                                )
+                                toast("Não foi possível memorizar este card.")
+                            }
+                        }
+
+                        override fun onFailure(errorCode: Int) {
+                            screenshotInProgress.set(false)
+                            farolCardTrainingInProgress638.set(false)
+                            FarolFlightRecorder0163.record(
+                                stage = "S638_CARD_TRAINING_FAILED",
+                                packageName = package638,
+                                details = "phase=screenshot; errorCode=$errorCode",
+                            )
+                            toast("O Android não permitiu capturar este card.")
+                        }
+                    },
+                )
+            }.onFailure { error638 ->
+                screenshotInProgress.set(false)
+                farolCardTrainingInProgress638.set(false)
+                FarolFlightRecorder0163.record(
+                    stage = "S638_CARD_TRAINING_FAILED",
+                    packageName = package638,
+                    details = "phase=request; type=${error638::class.java.simpleName}",
+                )
+                toast("Não consegui iniciar a memorização do card.")
+            }
+        }
+    }
+
     private fun saveScreenPrintStage32() {
         shortcutOverlayController.hideAll()
         persistResourceShortcutState()
