@@ -50,6 +50,26 @@ class FarolStage44SemanticFinalLeaseTest {
         assertTrue(FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(lease, signature))
     }
 
+    @Test fun equivalentOcrAddressVariantsPreserveExistingFinalLease() {
+        val lease = FarolSemanticFinalLeaseStage44.capture(
+            "Red",
+            18.4,
+            "visual|rua leopoldo delisle 555 jardim sao vicente sao paulo sp",
+        )
+        assertTrue(
+            FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(
+                lease,
+                "visual|rua leopoldo delisle 555",
+            ),
+        )
+        assertTrue(
+            FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(
+                lease,
+                "visual|rua leopoldo delisle 555 jardim sao vicente sao pedidos de viagem",
+            ),
+        )
+    }
+
     @Test fun differentAddressSignatureRevokesLease() {
         val lease = FarolSemanticFinalLeaseStage44.capture("Red", 45.865, "visual|old")
         assertFalse(FarolSemanticFinalLeaseStage44.preservesSameSemanticCard(lease, "visual|new"))
