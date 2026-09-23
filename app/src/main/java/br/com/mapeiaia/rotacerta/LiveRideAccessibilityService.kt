@@ -478,19 +478,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun handleAccessibilityEvent0172(event: AccessibilityEvent) {
-        val stage38EventNs = SystemClock.elapsedRealtimeNanos()
-        val stage38EventPackage = normalizePackageName(runCatching { event.packageName?.toString() }.getOrNull())
-        val stage38EventText = runCatching { event.text.joinToString(" || ") }.getOrDefault("")
-        val stage38Source = runCatching { event.source }.getOrNull()
-        FarolMaximumForensicsStage38.record(
-            atNs = stage38EventNs, wallMs = System.currentTimeMillis(),
-            stage = "S38_ACCESSIBILITY_EVENT_RECEIVED", packageName = stage38EventPackage,
-            details = "type=${runCatching { event.eventType }.getOrDefault(0)}; window=${runCatching { event.windowId }.getOrDefault(0)}; contentChangeTypes=${runCatching { event.contentChangeTypes }.getOrDefault(0)}; action=${runCatching { event.action }.getOrDefault(0)}; eventTimeMs=${runCatching { event.eventTime }.getOrDefault(0L)}; class=${runCatching { event.className?.toString() }.getOrNull().orEmpty()}; sourcePackage=${runCatching { stage38Source?.packageName?.toString() }.getOrNull().orEmpty()}; sourceViewId=${runCatching { stage38Source?.viewIdResourceName }.getOrNull().orEmpty()}; eventText=${stage38EventText.take(900)}",
-        )
-        if (!serviceReady) {
-            FarolMaximumForensicsStage38.record(SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_EVENT_REJECT", stage38EventPackage, details = "reason=service_not_ready")
-            return
-        }
+        val eventStartedNs638 = SystemClock.elapsedRealtimeNanos()
+        if (!serviceReady) return
         if (!WorkModePolicy0162.isEnabled(currentSettings)) {
             applyWorkModeRuntime0162(false)
             return
@@ -498,13 +487,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val eventType0187 = runCatching { event.eventType }.getOrDefault(0)
         if (!AccessibilityEventFloodGate.isRelevantEventType(eventType0187)) return
         val eventPackage = normalizePackageName(runCatching { event.packageName?.toString() }.getOrNull())
-        // Stage19 owns the visual critical path before package/root/model gates.
-        val eventWindowIdStage20 = runCatching { event.windowId }.getOrNull() ?: 0
-        if (handleUniversalVisualEventStage19(eventPackage, eventType0187, eventWindowIdStage20, event)) return
-        val eventClassName0187 = runCatching { event.className?.toString() }.getOrNull()
         val eventWindowId0187 = runCatching { event.windowId }.getOrDefault(0)
         val selectedPackages156 = SelectedRideAppStore.read(applicationContext)
+
+        // Stage638: foreign packages are rejected before event text, node traversal, Stage38 SHA,
+        // Stage19, Stage47, OCR, route work or any hard-clear. A transient overlay over a selected
+        // driver window is also ignored: the proven card underneath keeps its state.
+        val entryGate638 = FarolPackageEntryGate638.decide(
+            eventPackageName = eventPackage,
+            rootPackageName = currentRootPackageName(),
+            selectedPackages = selectedPackages156,
+            ownPackageName = packageName,
+            transientOverlay = { candidate638 -> DriverAppPackagePolicy0162.isTransientOverlay(candidate638, packageName) },
+        )
         if (eventType0187 == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            if (eventPackage !in selectedPackages156) return
             val now0170 = SystemClock.elapsedRealtime()
             if (!notificationFailureCircuit0170.canAttempt(now0170)) return
             try {
@@ -519,6 +516,31 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
             return
         }
+        if (!entryGate638.allowHeavyPipeline) {
+            FarolReadingActivationStage26.Metrics.increment("stage638ForeignEventsAvoided")
+            return
+        }
+        val authorityPackage638 = entryGate638.authorityPackage ?: return
+        if (farolCardSignatureStore638.hasModels(authorityPackage638) &&
+            !matchesTrainedCardSignature638(authorityPackage638)
+        ) {
+            clearTrainedCardPublicState638(authorityPackage638)
+            FarolReadingActivationStage26.Metrics.increment("stage638SignatureMissHeavyAvoided")
+            return
+        }
+
+        // Maximum forensics now runs only after package/signature admission, never for random phone UI.
+        val stage38EventText = runCatching { event.text.joinToString(" || ") }.getOrDefault("")
+        val stage38Source = runCatching { event.source }.getOrNull()
+        FarolMaximumForensicsStage38.record(
+            atNs = eventStartedNs638, wallMs = System.currentTimeMillis(),
+            stage = "S38_ACCESSIBILITY_EVENT_RECEIVED", packageName = authorityPackage638,
+            details = "type=${eventType0187}; window=${eventWindowId0187}; contentChangeTypes=${runCatching { event.contentChangeTypes }.getOrDefault(0)}; action=${runCatching { event.action }.getOrDefault(0)}; eventTimeMs=${runCatching { event.eventTime }.getOrDefault(0L)}; class=${runCatching { event.className?.toString() }.getOrNull().orEmpty()}; sourcePackage=${runCatching { stage38Source?.packageName?.toString() }.getOrNull().orEmpty()}; sourceViewId=${runCatching { stage38Source?.viewIdResourceName }.getOrNull().orEmpty()}; eventText=${stage38EventText.take(900)}",
+        )
+        val eventWindowIdStage20 = eventWindowId0187
+        if (handleUniversalVisualEventStage19(authorityPackage638, eventType0187, eventWindowIdStage20, event)) return
+        val eventClassName0187 = runCatching { event.className?.toString() }.getOrNull()
+
         val visibleRootResolutionStage16 = resolveVisibleAuthorizedRootStage16(selectedPackages156)
         val visibleSelectedRootStage16 = visibleRootResolutionStage16.rootHandle
         val activeSessionBeforeIdentityStage18 = driverCardSessionGate0162.current()
