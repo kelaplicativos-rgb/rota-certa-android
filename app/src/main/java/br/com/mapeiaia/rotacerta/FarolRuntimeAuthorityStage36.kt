@@ -22,9 +22,12 @@ object FarolRuntimeAuthorityStage36 {
     const val OCR_MARKER = "OCR_SURVIVES_RAW_WINDOW_SERIAL_CHURN_STAGE36"
     const val ROUTE_MARKER = "ROUTE_SURVIVES_RAW_WINDOW_CHURN_STAGE36"
     const val PAINT_MARKER = "PAINT_REQUIRES_CURRENT_LEASE_STAGE36"
-    const val GOOGLE_MARKER = "REAL_GOOGLE_DRIVING_ROUTE_STAGE36"
+    const val GOOGLE_MARKER = "LOCAL_GEODESIC_RADIUS_STAGE36"
     const val NO_TIMER_MARKER = "NO_TIMER_NO_SLEEP_NO_POLLING_STAGE36"
     const val STAGE40_PRESENCE_MARKER = "CURRENT_WINDOW_OR_RESUMED_ACTIVITY_PRESENCE_STAGE40"
+
+    enum class ProcessingState { IDLE, WAITING_DESTINATION, SNAPSHOT, OCR, COORDINATE, DISTANCE, READY_TO_PAINT }
+    enum class PaintState { OFF, YELLOW, GREEN, RED }
 
     data class Snapshot(
         val enabled: Boolean,
@@ -35,6 +38,12 @@ object FarolRuntimeAuthorityStage36 {
         val leaseId: Long,
         val destinationKey: String?,
         val reason: String,
+        val currentWindowPackage: String? = null,
+        val snapshotId: Long = 0L,
+        val processingState: ProcessingState = ProcessingState.IDLE,
+        val driverDestination: String? = null,
+        val radiusKm: Double? = null,
+        val paintState: PaintState = PaintState.OFF,
     )
 
     data class WorkToken(
@@ -57,6 +66,13 @@ object FarolRuntimeAuthorityStage36 {
         private var leaseSerial = 0L
         private var leaseId = 0L
         private var destinationKey: String? = null
+        private var currentWindowPackage: String? = null
+        private var snapshotSerial = 0L
+        private var snapshotId = 0L
+        private var processingState = ProcessingState.IDLE
+        private var driverDestination: String? = null
+        private var radiusKm: Double? = null
+        private var paintState = PaintState.OFF
         private var reason = "initial"
 
         @Synchronized
@@ -83,13 +99,14 @@ object FarolRuntimeAuthorityStage36 {
         /** Stage42 functional authority: explicit user ON/OFF, no package-presence prerequisite. */
         @Synchronized
         fun setManualAuthority(enabledNow: Boolean): Snapshot {
-            selected = emptySet()
-            armed.clear()
-            resumed.clear()
-            foregroundServices.clear()
-            seenForegroundServicePositive.clear()
-            activityStoppedAfterPositive.clear()
-            foregroundServiceStoppedAfterPositive.clear()
+            if (!enabledNow) {
+                armed.clear()
+                resumed.clear()
+                foregroundServices.clear()
+                seenForegroundServicePositive.clear()
+                activityStoppedAfterPositive.clear()
+                foregroundServiceStoppedAfterPositive.clear()
+            }
             usageAccessGranted = enabledNow
             if (enabledNow) {
                 if (!enabled) {
@@ -122,6 +139,7 @@ object FarolRuntimeAuthorityStage36 {
         @Synchronized
         fun observeWindowBoundary(packageName: String?): Snapshot {
             val pkg = normalizePackage(packageName)
+            currentWindowPackage = pkg
             Metrics.increment("windowBoundariesObserved")
             if (pkg == null || pkg !in selected) Metrics.increment("nonSelectedWindowBoundariesPreserved")
             return snapshotLocked()
@@ -178,8 +196,42 @@ object FarolRuntimeAuthorityStage36 {
         fun observeVisualEvidence(): Snapshot {
             if (!enabled) return snapshotLocked()
             ensureLeaseLocked()
+            processingState = ProcessingState.WAITING_DESTINATION
+            paintState = PaintState.YELLOW
             Metrics.increment("rawVisualPreserved")
             return snapshotLocked()
+        }
+
+        @Synchronized
+        fun configureDriverTarget(address: String?, radius: Double?): Snapshot {
+            driverDestination = address?.let(::canonicalDestination)?.takeIf(String::isNotBlank)
+            radiusKm = radius?.takeIf { it.isFinite() && it >= 0.0 }
+            return snapshotLocked()
+        }
+
+        @Synchronized
+        fun markSnapshot(token: WorkToken?): Long? {
+            if (!isFresh(token)) return null
+            snapshotId = ++snapshotSerial
+            processingState = ProcessingState.SNAPSHOT
+            Metrics.increment("snapshotsBoundToLease")
+            return snapshotId
+        }
+
+        @Synchronized
+        fun markProcessing(token: WorkToken?, state: ProcessingState): Boolean {
+            if (!isFresh(token)) return false
+            processingState = state
+            return true
+        }
+
+        @Synchronized
+        fun markPaint(token: WorkToken?, state: PaintState): Boolean {
+            if ((state == PaintState.GREEN || state == PaintState.RED) && !isFresh(token)) return false
+            if (!enabled && state != PaintState.OFF) return false
+            paintState = state
+            if (state == PaintState.GREEN || state == PaintState.RED) processingState = ProcessingState.READY_TO_PAINT
+            return true
         }
 
         /** Final address is the logical card identity. First bind stays on the acquiring lease. */
@@ -211,6 +263,9 @@ object FarolRuntimeAuthorityStage36 {
             if (leaseId != 0L || destinationKey != null) Metrics.increment("visualLeaseClears")
             leaseId = 0L
             destinationKey = null
+            snapshotId = 0L
+            processingState = if (enabled) ProcessingState.WAITING_DESTINATION else ProcessingState.IDLE
+            paintState = if (enabled) PaintState.YELLOW else PaintState.OFF
             reason = "visual_clear:${reasonText.take(80)}"
             return snapshotLocked()
         }
@@ -305,6 +360,10 @@ object FarolRuntimeAuthorityStage36 {
             foregroundServiceStoppedAfterPositive.clear()
             leaseId = 0L
             destinationKey = null
+            snapshotId = 0L
+            processingState = ProcessingState.IDLE
+            paintState = PaintState.OFF
+            currentWindowPackage = null
             reason = nextReason
         }
 
@@ -325,6 +384,12 @@ object FarolRuntimeAuthorityStage36 {
             leaseId = leaseId,
             destinationKey = destinationKey,
             reason = reason,
+            currentWindowPackage = currentWindowPackage,
+            snapshotId = snapshotId,
+            processingState = processingState,
+            driverDestination = driverDestination,
+            radiusKm = radiusKm,
+            paintState = paintState,
         )
     }
 
