@@ -28,7 +28,6 @@ enum class BubbleShortcutAction {
     OpenAuthorizedAppsAndCards,
     OpenTextCorrection,
     SaveScreenPrint,
-    MemorizeFarolCard,
 }
 
 enum class BubbleShortcutQuickAction {
