@@ -248,7 +248,7 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             val initial = ShortcutGridCustomizationPolicy0179.initialEntries(isUpgrade)
             persist(initial)
             return if (isUpgrade) {
-                applyStage638SignatureShortcutMigration(applyStage47TripShortcutMigration(initial))
+                applyStage47TripShortcutMigration(initial)
             } else {
                 initial
             }
@@ -284,7 +284,6 @@ class ShortcutGridPreferenceStore0179(context: Context) {
             ShortcutGridCustomizationPolicy0179.normalize(entries)
         }.getOrElse { emptyList() }
             .let(::applyStage47TripShortcutMigration)
-            .let(::applyStage638SignatureShortcutMigration)
     }
 
     private fun applyStage47TripShortcutMigration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
@@ -306,42 +305,6 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         return migrated
     }
 
-
-    private fun applyStage638SignatureShortcutMigration(entries: List<ShortcutGridEntry0179>): List<ShortcutGridEntry0179> {
-        if (prefs.getBoolean(KEY_STAGE638_SIGNATURE_SHORTCUT_MIGRATED, false)) return entries
-        val normalized = ShortcutGridCustomizationPolicy0179.normalize(entries)
-        val migrated = if (
-            !ShortcutGridCustomizationPolicy0179.contains(normalized, "farol_card_training") &&
-            normalized.size < ShortcutGesturePolicy0179.MAX_GRID_ITEMS
-        ) {
-            val spec = requireNotNull(BubbleShortcutCatalog.findSpec("farol_card_training"))
-            val insertionIndex = normalized.indexOfFirst { it.shortcutId == "print" }
-                .takeIf { it >= 0 }
-                ?: (normalized.indexOfFirst { it.shortcutId == "manual_capture" }
-                    .takeIf { it >= 0 }?.plus(1))
-                ?: normalized.size
-            ShortcutGridCustomizationPolicy0179.normalize(
-                normalized.toMutableList().apply {
-                    add(
-                        insertionIndex.coerceIn(0, size),
-                        ShortcutGridEntry0179(
-                            entryId = "migration:farol_card_training:0638",
-                            shortcutId = spec.id,
-                            label = spec.displayLabel,
-                            emoji = spec.emoji,
-                            enabled = true,
-                            holdActionType0186 = ShortcutGridCustomizationPolicy0179.defaultHoldActionType(spec.id),
-                        ),
-                    )
-                },
-            )
-        } else {
-            normalized
-        }
-        if (migrated != entries) persist(migrated)
-        prefs.edit().putBoolean(KEY_STAGE638_SIGNATURE_SHORTCUT_MIGRATED, true).apply()
-        return migrated
-    }
 
     fun readResolved(): List<ResolvedShortcutGridEntry0179> =
         ShortcutGridCustomizationPolicy0179.resolve(read())
@@ -393,7 +356,6 @@ class ShortcutGridPreferenceStore0179(context: Context) {
         const val KEY_GRID = "grid_json_v1"
         const val KEY_INITIALIZED_0184 = "initialized_action_grid_0184"
         const val KEY_STAGE47_TRIP_SHORTCUT_MIGRATED = "stage47_trip_agenda_shortcut_migrated"
-        const val KEY_STAGE638_SIGNATURE_SHORTCUT_MIGRATED = "stage638_signature_shortcut_migrated"
     }
 }
 
