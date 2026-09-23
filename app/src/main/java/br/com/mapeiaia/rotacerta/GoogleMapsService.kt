@@ -86,6 +86,26 @@ class GoogleMapsService(context: Context? = null) {
         geocode(originAddress, DeviceRegion(), apiKey)
     }
 
+    /**
+     * Stage640 critical path: the first Green/Red must not wait for the public Nominatim round-trip.
+     *
+     * Cache remains the first authority. On a cold address, Android's platform geocoder is tried
+     * before the existing free/network chain only for the Farol's local-radius decision. The old
+     * 0547 resolver remains intact as the fallback and continues to own general routing behavior.
+     * Exact road km is still resolved later by the traffic-aware route phase.
+     */
+    suspend fun resolveFarolCoordinateInstant640(
+        originAddress: String,
+        targetHints: List<Coordinate>,
+        apiKey: String,
+    ): Coordinate? = withContext(Dispatchers.IO) {
+        cachedFarolCoordinate(originAddress)?.let { return@withContext it }
+        resolvePlatformFirstOrigin640(originAddress)?.let { return@withContext it }
+        resolveFreePrimaryOrigin0547(originAddress, targetHints)?.let { return@withContext it }
+        if (apiKey.isBlank()) return@withContext null
+        geocode(originAddress, DeviceRegion(), apiKey)
+    }
+
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? =
         withContext(Dispatchers.IO) {
             if (apiKey.isBlank()) return@withContext null
@@ -430,6 +450,36 @@ class GoogleMapsService(context: Context? = null) {
             details = "resolved=${values.count { it != null }}; destinations=${destinations.size}; geocodeResolver=0547",
         )
         return values.takeIf { list -> list.any { it != null } }
+    }
+
+    private suspend fun resolvePlatformFirstOrigin640(originAddress: String): Coordinate? {
+        val platformGeocoder = platformGeocodingService0547 ?: return null
+        val normalizedOrigin = normalizeAddress(originAddress)
+        val originCacheKey = "osm_origin|$normalizedOrigin"
+        val queries = geocodeQueries0547(originAddress)
+        queries.forEachIndexed { index, query ->
+            val selected = platformGeocoder.geocode(
+                query = query,
+                region = DeviceRegion(city = "", country = ""),
+            )
+            FarolFlightRecorder0163.record(
+                stage = "GEOCODE_PLATFORM_FIRST_0640",
+                packageName = null,
+                details = "index=$index; selected=${selected != null}; query=${query.take(160)}",
+            )
+            if (selected != null) {
+                geocodeCache[originCacheKey] = selected
+                persistCoordinate(originCacheKey, selected)
+                // Populate the query aliases too so every subsequent card mutation is an O(1) hit.
+                queries.forEach { alias ->
+                    val key = alias.lowercase(Locale.ROOT)
+                    geocodeCache[key] = selected
+                    persistCoordinate(key, selected)
+                }
+                return selected
+            }
+        }
+        return null
     }
 
     private suspend fun resolveFreePrimaryOrigin0547(
