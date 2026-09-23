@@ -129,10 +129,17 @@ internal object PublicBookingRemoteSync0296 {
                     )
                 }
                 .onFailure { error ->
+                    if (error is kotlinx.coroutines.CancellationException) throw error
                     UnifiedDebugEventStore.record(
-                        "PASSENGER_DIRECTORY_SYNC_FAILED_0625",
+                        "PASSENGER_DIRECTORY_SYNC_FAILED_0629",
                         context.packageName,
-                        "local=" + directoryProfiles0625.size + " error=" + error::class.java.simpleName,
+                        "local=" + directoryProfiles0625.size + " " +
+                            AgendaFailureEvidence.describe(
+                                error = error,
+                                operation = "PASSENGER_DIRECTORY_SYNC",
+                                component = "PublicBookingRemoteSync0296",
+                                method = "syncPassengerDirectory",
+                            ),
                     )
                 }
         }
