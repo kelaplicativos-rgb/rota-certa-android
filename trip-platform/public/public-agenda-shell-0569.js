@@ -372,37 +372,168 @@ async function ensurePassengerSession0625() {
   return true;
 }
 
+const bookingIntentStorageKey0629 = "viagemCertaBookingIntent0629";
+
+function bookingIntentFingerprint0629() {
+  if (!bookingSelection0623) return "";
+  return [
+    bookingSelection0623.tripToken,
+    bookingSelection0623.boardingStopId,
+    bookingSelection0623.dropoffStopId,
+    String(bookingSeats0623),
+  ].join("|");
+}
+
+function bookingIdempotencyKey0623() {
+  const fingerprint = bookingIntentFingerprint0629();
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(bookingIntentStorageKey0629) || "null");
+    if (
+      saved &&
+      saved.fingerprint === fingerprint &&
+      /^[A-Za-z0-9_-]{16,180}$/.test(String(saved.intentId || ""))
+    ) return String(saved.intentId);
+  } catch (_) {}
+  const intentId = "vc0629_" +
+    (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "_" + Math.random().toString(36).slice(2)))
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+  try {
+    sessionStorage.setItem(bookingIntentStorageKey0629, JSON.stringify({
+      intentId,
+      fingerprint,
+      createdAtMillis: Date.now(),
+    }));
+  } catch (_) {}
+  return intentId;
+}
+
+function clearBookingIntent0629(intentId) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(bookingIntentStorageKey0629) || "null");
+    if (!saved || !intentId || String(saved.intentId || "") === intentId) {
+      sessionStorage.removeItem(bookingIntentStorageKey0629);
+    }
+  } catch (_) {
+    sessionStorage.removeItem(bookingIntentStorageKey0629);
+  }
+}
+
+function delayBooking0629(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function submitBookingIntent0629(idempotencyKey) {
+  const response = await fetch(
+    "/v1/public/trips/" + encodeURIComponent(bookingSelection0623.tripToken) + "/bookings",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+        ...passengerAuthHeaders0626(),
+      },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({
+        boardingStopId: bookingSelection0623.boardingStopId,
+        dropoffStopId: bookingSelection0623.dropoffStopId,
+        seats: bookingSeats0623,
+        creditToUseCents: 0,
+        idempotencyKey,
+        clientIntentId: idempotencyKey,
+        passengerName: bookingName0625,
+      }),
+    },
+  );
+  return { response, body: await response.json().catch(() => ({})) };
+}
+
+async function reconcileBookingIntent0629(idempotencyKey) {
+  const delays = [0, 350, 900];
+  let lastError = null;
+  for (const delay of delays) {
+    if (delay) await delayBooking0629(delay);
+    try {
+      const response = await fetch(
+        "/v1/passenger/me/booking-intents/" +
+          encodeURIComponent(bookingSelection0623.tripToken) + "/" +
+          encodeURIComponent(idempotencyKey),
+        {
+          method: "GET",
+          headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
+          credentials: "same-origin",
+          cache: "no-store",
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (response.ok && body?.found === true) return { found: true, body };
+      if (response.status === 401) return { found: false, authExpired: true, body };
+      if (response.status !== 404) lastError = new Error(safeMessage0569(body?.message) || "Falha ao conferir a reserva.");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return { found: false, error: lastError };
+}
+
+function showBookingSuccess0629(idempotencyKey) {
+  Object.values(BOOKING_STEP_IDS_0625).forEach((id) => setVisible0569(id, false));
+  setBookingStatus0623(
+    "✓ Pedido enviado. " + (bookingSeats0623 === 1 ? "Sua vaga está guardada" : "Suas vagas estão guardadas") +
+    " enquanto o motorista confirma.",
+    "success",
+  );
+  if ($0569("bookingPassword0625")) $0569("bookingPassword0625").value = "";
+  if ($0569("bookingPasswordConfirm0625")) $0569("bookingPasswordConfirm0625").value = "";
+  clearBookingIntent0629(idempotencyKey);
+  // 0.1.629: visual refresh is best-effort and cannot turn a committed booking into an error.
+  void loadAgenda0569(true);
+}
+
 async function confirmBooking0625() {
   if (bookingBusy0623 || !bookingSelection0623) return;
   setBookingBusy0623(true);
   setBookingStatus0623("Guardando sua vaga…");
+  let idempotencyKey = "";
+  let transportAmbiguous = false;
   try {
     await ensurePassengerSession0625();
-    const idempotencyKey = bookingIdempotencyKey0623();
-    const response = await fetch(
-      "/v1/public/trips/" + encodeURIComponent(bookingSelection0623.tripToken) + "/bookings",
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "Idempotency-Key": idempotencyKey,
-          ...passengerAuthHeaders0626(),
-        },
-        credentials: "same-origin",
-        cache: "no-store",
-        body: JSON.stringify({
-          boardingStopId: bookingSelection0623.boardingStopId,
-          dropoffStopId: bookingSelection0623.dropoffStopId,
-          seats: bookingSeats0623,
-          creditToUseCents: 0,
-          idempotencyKey,
-          passengerName: bookingName0625,
-        }),
-      },
-    );
-    const body = await response.json().catch(() => ({}));
+    idempotencyKey = bookingIdempotencyKey0623();
+
+    let result;
+    try {
+      result = await submitBookingIntent0629(idempotencyKey);
+    } catch (_) {
+      transportAmbiguous = true;
+      setBookingStatus0623("Confirmando sua reserva…");
+      await delayBooking0629(350);
+      try {
+        // Same intent key: a retry can only converge to the original booking.
+        result = await submitBookingIntent0629(idempotencyKey);
+      } catch (_) {
+        const reconciled = await reconcileBookingIntent0629(idempotencyKey);
+        if (reconciled.found) {
+          showBookingSuccess0629(idempotencyKey);
+          return;
+        }
+        setBookingStatus0623(
+          "Não foi possível confirmar o resultado agora. Tente novamente: a próxima tentativa continuará a mesma reserva, sem criar outra.",
+          "error",
+        );
+        return;
+      }
+    }
+
+    const { response, body } = result;
     if (!response.ok) {
+      if (transportAmbiguous) {
+        const reconciled = await reconcileBookingIntent0629(idempotencyKey);
+        if (reconciled.found) {
+          showBookingSuccess0629(idempotencyKey);
+          return;
+        }
+      }
       if (response.status === 401) {
         passengerAuthenticated0626 = false;
         passengerSessionToken0623 = "";
@@ -411,30 +542,23 @@ async function confirmBooking0625() {
         syncPassengerNav0623();
         resetBookingIdentity0625();
         showBookingStep0625("contact");
-        setBookingStatus0623("Sua identificação expirou. Entre novamente para continuar; nenhuma reserva foi enviada.", "error");
+        setBookingStatus0623(
+          transportAmbiguous
+            ? "Sua identificação expirou. Verifique Minha área antes de tentar novamente; a tentativa anterior será preservada."
+            : "Sua identificação expirou. Entre novamente para continuar; nenhuma reserva foi enviada.",
+          "error",
+        );
         return;
       }
       throw new Error(safeMessage0569(body?.message) || "Não foi possível solicitar a reserva.");
     }
-    Object.values(BOOKING_STEP_IDS_0625).forEach((id) => setVisible0569(id, false));
-    setBookingStatus0623(
-      "✓ Pedido enviado. " + (bookingSeats0623 === 1 ? "Sua vaga está guardada" : "Suas vagas estão guardadas") +
-      " enquanto o motorista confirma.",
-      "success",
-    );
-    if ($0569("bookingPassword0625")) $0569("bookingPassword0625").value = "";
-    if ($0569("bookingPasswordConfirm0625")) $0569("bookingPasswordConfirm0625").value = "";
-    await loadAgenda0569(true);
+
+    showBookingSuccess0629(idempotencyKey);
   } catch (error) {
-    setBookingStatus0623(error?.message || "Não foi possível concluir a reserva.", "error");
+    setBookingStatus0623(error?.message || "Não foi possível confirmar a reserva.", "error");
   } finally {
     setBookingBusy0623(false);
   }
-}
-
-function bookingIdempotencyKey0623() {
-  return "vc0623_" + (crypto.randomUUID ? crypto.randomUUID() : (Date.now() + "_" + Math.random().toString(36).slice(2)))
-    .replace(/[^A-Za-z0-9_-]/g, "_");
 }
 
 function shareTripUrl0623(item) {
