@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.634",
+      "build": 5925,
+      "commit": null,
+      "branch": "agent/farol-edge-0.1.634",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Farol Edge orientado a eventos, card lease e snapshot: o card mais recente possui autoridade e trabalho obsoleto e descartado antes da pintura.",
+        "Decisao verde/vermelha passa a comparar localmente a coordenada do destino do passageiro com o destino pre-resolvido do motorista usando distancia geodesica.",
+        "OCR permanece aquecido durante a vida do servico e o single-flight mantem somente a demanda mais recente.",
+        "Farol Capturas reutiliza o armazenamento privado existente com retencao de 24 horas e limite fisico defensivo."
+      ],
+      "fixed": [
+        "Remove chamadas de rota viaria remota do caminho critico do Farol; rede fica restrita a geocodificacao de endereco ainda desconhecido.",
+        "Falha ou destino inconclusivo permanece amarelo e nunca vira vermelho por erro tecnico.",
+        "Eventos do mesmo card sao coalescidos sem ocultar mudanca real de conteudo; resultados de leases antigos nao podem pintar o card atual.",
+        "Modo forense normal deixa de registrar cada detalhe e passa a aceitar somente checkpoints compactos."
+      ],
+      "improved": [
+        "Cache de coordenadas existente e consultado antes de qualquer geocodificacao; o destino do motorista continua pre-resolvido ao salvar.",
+        "P50/P95/P99 passam a ser exportados nas metricas de latencia Stage28.",
+        "Capturas automaticas ficam em armazenamento privado, sem galeria e sem upload automatico.",
+        "Alertas de proximidade e radares permanecem em monitor independente do Farol e do Modo Leitura."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.633: rota remota, espera do proximo evento para OCR pendente e telemetria maxima podiam atrasar o Farol."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "Leitura ao vivo",
+        "OCR",
+        "Geocodificacao",
+        "Overlay",
+        "Capturas",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.633",
       "build": 5924,
       "commit": null,
