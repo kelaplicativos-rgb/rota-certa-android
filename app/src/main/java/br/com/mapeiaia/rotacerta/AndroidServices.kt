@@ -42,6 +42,8 @@ data class DeviceLocationFix(
 )
 
 class OcrService(private val context: Context) {
+    // FAROL Edge 0.1.634: keep one warm ML Kit recognizer for the service lifetime.
+    private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
     suspend fun extractText(uri: Uri): String = withContext(Dispatchers.Default) {
         recognize0188(InputImage.fromFilePath(context, uri)).text
     }
@@ -53,28 +55,27 @@ class OcrService(private val context: Context) {
     }
 
     private suspend fun recognize0188(image: InputImage): OcrStructuredText0188 {
-        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-        return try {
-            val result = recognizer.process(image).await()
-            OcrStructuredText0188(
-                text = FarolUnifiedVisual0168.fromVisionText(result),
-                blocks = result.textBlocks.mapIndexedNotNull { index, block ->
-                    val value = block.text.trim()
-                    if (value.isBlank()) return@mapIndexedNotNull null
-                    val bounds = block.boundingBox
-                    OcrTextBlock0188(
-                        id = "ocr-block-$index",
-                        text = value,
-                        left = bounds?.left ?: 0,
-                        top = bounds?.top ?: 0,
-                        right = bounds?.right ?: 0,
-                        bottom = bounds?.bottom ?: 0,
-                    )
-                }.take(80),
-            )
-        } finally {
-            recognizer.close()
-        }
+        val result = recognizer.process(image).await()
+        return OcrStructuredText0188(
+            text = FarolUnifiedVisual0168.fromVisionText(result),
+            blocks = result.textBlocks.mapIndexedNotNull { index, block ->
+                val value = block.text.trim()
+                if (value.isBlank()) return@mapIndexedNotNull null
+                val bounds = block.boundingBox
+                OcrTextBlock0188(
+                    id = "ocr-block-$index",
+                    text = value,
+                    left = bounds?.left ?: 0,
+                    top = bounds?.top ?: 0,
+                    right = bounds?.right ?: 0,
+                    bottom = bounds?.bottom ?: 0,
+                )
+            }.take(80),
+        )
+    }
+
+    fun close() {
+        recognizer.close()
     }
 }
 
