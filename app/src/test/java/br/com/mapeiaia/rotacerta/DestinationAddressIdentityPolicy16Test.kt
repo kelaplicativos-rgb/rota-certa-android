@@ -44,6 +44,34 @@ class DestinationAddressIdentityPolicy16Test {
         assertFalse(DestinationAddressIdentityPolicy.areCompatible(first, second))
     }
 
+
+    @Test
+    fun sameStreetAndNumberSurviveCorruptedOcrSuffix() {
+        val complete = DestinationAddressIdentityPolicy.signature(
+            "visual",
+            "Rua Leopoldo Delisle, 555 (Jardim Sao Vicente, São Paulo - SP)",
+        )
+        val short = DestinationAddressIdentityPolicy.signature(
+            "visual",
+            "Rua Leopoldo Delisle, 555",
+        )
+        val contaminated = DestinationAddressIdentityPolicy.signature(
+            "visual",
+            "Rua Leopoldo Delisle, 555 (Jardim Sao Vicente, São Pedidos de viagem",
+        )
+
+        assertTrue(DestinationAddressIdentityPolicy.sameDestinationSignatures(complete, short))
+        assertTrue(DestinationAddressIdentityPolicy.sameDestinationSignatures(complete, contaminated))
+        assertTrue(DestinationAddressIdentityPolicy.sameDestinationSignatures(short, contaminated))
+    }
+
+    @Test
+    fun sameStreetWithDifferentConfirmedNumberNeverCoalesces() {
+        val first = DestinationAddressIdentityPolicy.signature("visual", "Rua Leopoldo Delisle, 555")
+        val second = DestinationAddressIdentityPolicy.signature("visual", "Rua Leopoldo Delisle, 556")
+        assertFalse(DestinationAddressIdentityPolicy.sameDestinationSignatures(first, second))
+    }
+
     @Test
     fun pickupChangesDoNotChangeDestinationSignature() {
         val first = SimpleSavedAppFarolPolicy.evaluate(
