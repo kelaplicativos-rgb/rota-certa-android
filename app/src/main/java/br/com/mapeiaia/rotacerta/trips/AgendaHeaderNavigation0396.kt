@@ -47,6 +47,7 @@ internal enum class AgendaRootSection0396(val label: String) {
     AUTOMATIC_SYNC("BlaBlaCar"),
     SCRIPTS("Scripts"),
     PUBLIC_SEARCH("Consulta pública"),
+    RESERVATIONS("Reservas"),
     PASSENGERS("Passageiros"),
     INTEGRATIONS("Integrações"),
     APP_SETTINGS("Configurações"),
@@ -124,6 +125,7 @@ internal fun AgendaModuleDrawer0396(
                 )
                 listOf(
                     AgendaRootSection0396.PUBLIC_SEARCH,
+                    AgendaRootSection0396.RESERVATIONS,
                     AgendaRootSection0396.PASSENGERS,
                     AgendaRootSection0396.INTEGRATIONS,
                     AgendaRootSection0396.APP_SETTINGS,
