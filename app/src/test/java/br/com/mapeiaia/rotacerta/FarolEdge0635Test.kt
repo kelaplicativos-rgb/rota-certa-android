@@ -78,10 +78,11 @@ class FarolEdge0635Test {
     }
 
     @Test
-    fun release_metadata_is_0635_5926() {
-        val gradle = File(root(), "app/build.gradle.kts").readText()
-        assertTrue(gradle.contains("releaseVersionName = \"0.1.635\""))
-        assertTrue(gradle.contains("releaseVersionCode = 5_926"))
+    fun release_history_retains_0635_5926_baseline() {
+        val history = File(root(), "app/src/main/assets/release_history.json").readText()
+        assertTrue(history.contains("\"version\": \"0.1.635\""))
+        assertTrue(history.contains("\"build\": 5926"))
+        assertTrue(history.contains("\"branch\": \"agent/farol-edge-stability-0.1.635\""))
     }
 
     @Test
