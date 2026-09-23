@@ -78,6 +78,13 @@ class FarolEdge0635Test {
     }
 
     @Test
+    fun release_metadata_is_0635_5926() {
+        val gradle = File(root(), "app/build.gradle.kts").readText()
+        assertTrue(gradle.contains("releaseVersionName = \"0.1.635\""))
+        assertTrue(gradle.contains("releaseVersionCode = 5_926"))
+    }
+
+    @Test
     fun final_lease_uses_semantic_destination_compatibility_not_raw_string_equality() {
         val stage44 = src("FarolSemanticFinalLeaseStage44.kt")
         assertTrue(stage44.contains("DestinationAddressIdentityPolicy.sameDestinationSignatures(current, candidate)"))
