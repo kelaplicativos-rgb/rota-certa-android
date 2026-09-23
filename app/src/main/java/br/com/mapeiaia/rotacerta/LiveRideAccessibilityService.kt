@@ -3692,9 +3692,10 @@ class LiveRideAccessibilityService : AccessibilityService() {
         routeJobIdStage20: String,
     ) {
         val initialFreshStage20 = isStage19BindingFresh(bindingStage19)
-        if (!initialFreshStage20) FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
-        FarolForensicTraceStage20.bindingCheck(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), "ROUTE_ENTER", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), initialFreshStage20, stage19VisualVerificationPending)
-        if (!initialFreshStage20) return
+        if (!initialFreshStage20) {
+            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            return
+        }
         val settingsStage19 = currentSettings
         val apiKeyStage19 = GoogleMapsApiKeyPolicy.effective(
             settingsStage19.googleMapsApiKey,
@@ -3702,7 +3703,13 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         val targetsStage19 = fastWorkRegionTargetsChecklist13(settingsStage19)
         if (targetsStage19.destinations.isEmpty()) return
-        FarolForensicTraceStage20.routeCallStarted(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), fieldsStage19.destination.orEmpty())
+
+        FarolForensicTraceStage20.routeCallStarted(
+            traceIdStage20,
+            routeJobIdStage20,
+            SystemClock.elapsedRealtimeNanos(),
+            fieldsStage19.destination.orEmpty(),
+        )
         val routeKeyStage28 = FarolCausalLatencyStage28.RouteKey(
             stage26CandidateActivationGeneration,
             stage26CurrentVisualGeneration,
@@ -3710,44 +3717,114 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (!stage28RouteGate.begin(routeKeyStage28)) return
         val routeStartedNsStage26 = SystemClock.elapsedRealtimeNanos()
-        FarolMaximumForensicsStage38.record(
-            routeStartedNsStage26, System.currentTimeMillis(), "S38_DISTANCE_RESOLUTION_START", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
-            details = "destination=${fieldsStage19.destination.orEmpty().take(900)}; targets=${targetsStage19.destinations.joinToString(" || ").take(1200)}",
-        )
-        FarolCausalLatencyStage28.Metrics.sample(
-            "candidateToRouteStart",
-            (routeStartedNsStage26 - stage26CandidateEventStartedNs).coerceAtLeast(0L),
-        )
-        val distancesStage19 = localDistancesFromAddressKm(
+
+        // Phase A: resolve/cached coordinate and paint only the recommendation color.
+        val preliminaryDistancesStage637 = localDistancesFromAddressKm(
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
             apiKey = apiKeyStage19,
         )
-        FarolForensicTraceStage20.routeCallFinished(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), distancesStage19.toString())
-        val routeEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
-        FarolMaximumForensicsStage38.record(
-            routeEndedNsStage26, System.currentTimeMillis(), "S38_DISTANCE_RESOLUTION_END", packageName = null, traceId = traceIdStage20, operationId = routeJobIdStage20,
-            details = "duration_ns=${(routeEndedNsStage26 - routeStartedNsStage26).coerceAtLeast(0L)}; response=${distancesStage19.toString().take(1200)}",
+        if (isStage19BindingFresh(bindingStage19)) {
+            val preliminaryResultStage637 = decideFastWorkRegionChecklist13(
+                snapshotText = snapshotTextStage19,
+                fields = fieldsStage19,
+                settings = settingsStage19,
+                targets = targetsStage19,
+                routeDistances = preliminaryDistancesStage637,
+            )
+            applyUniversalPreliminaryColorStage637(
+                preliminaryResultStage637,
+                bindingStage19,
+                traceIdStage20,
+                "LOCAL_RESOLVE_STAGE637",
+            )
+        }
+
+        // Phase B: road-network authority. Google traffic-aware first; OSRM only contingency.
+        val exactRoadDistancesStage637 = googleMapsService.trafficAwareDrivingDistancesFromAddressKm(
+            originAddress = fieldsStage19.destination.orEmpty(),
+            destinations = targetsStage19.destinations,
+            apiKey = apiKeyStage19,
         )
-        FarolForensicCardBlackBoxStage32.recordRouteResponse(routeEndedNsStage26, distancesStage19 != null, routeEndedNsStage26 - routeStartedNsStage26)
-        FarolReadingActivationStage26.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
-        stage26RouteResponseNs = routeEndedNsStage26
+        val routeEndedNsStage26 = SystemClock.elapsedRealtimeNanos()
         stage28RouteGate.finish(routeKeyStage28)
+        stage26RouteResponseNs = routeEndedNsStage26
+        FarolReadingActivationStage26.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
         FarolCausalLatencyStage28.Metrics.sample("route", routeEndedNsStage26 - routeStartedNsStage26)
-        val routeFreshStage20 = isStage19BindingFresh(bindingStage19)
-        if (!routeFreshStage20) FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
-        FarolForensicTraceStage20.bindingCheck(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), "AFTER_ROUTE", stage20BindingSnapshot(bindingStage19), currentStage20BindingSnapshot(), routeFreshStage20, stage19VisualVerificationPending)
-        if (!routeFreshStage20) return
-        FarolForensicTraceStage20.decisionStarted(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos())
-        val resultStage19 = decideFastWorkRegionChecklist13(
+        FarolForensicTraceStage20.routeCallFinished(
+            traceIdStage20,
+            routeJobIdStage20,
+            routeEndedNsStage26,
+            exactRoadDistancesStage637.toString(),
+        )
+        FarolForensicCardBlackBoxStage32.recordRouteResponse(
+            routeEndedNsStage26,
+            exactRoadDistancesStage637.any { it != null },
+            routeEndedNsStage26 - routeStartedNsStage26,
+        )
+
+        if (!isStage19BindingFresh(bindingStage19)) {
+            FarolCausalLatencyStage28.Metrics.increment("staleResultsDropped")
+            return
+        }
+        if (exactRoadDistancesStage637.all { it == null }) {
+            rememberBubbleReason(
+                "stage637_local_color_exact_route_pending",
+                "Cor local calculada; rota rodoviaria exata indisponivel nesta tentativa.",
+            )
+            return
+        }
+
+        val resultStage637 = decideFastWorkRegionChecklist13(
             snapshotText = snapshotTextStage19,
             fields = fieldsStage19,
             settings = settingsStage19,
             targets = targetsStage19,
-            routeDistances = distancesStage19,
+            routeDistances = exactRoadDistancesStage637,
         )
-        FarolForensicTraceStage20.decisionFinished(traceIdStage20, routeJobIdStage20, SystemClock.elapsedRealtimeNanos(), resultStage19.recommendation.name, resultStage19.nearestConfiguredDistanceKm())
-        applyUniversalTwoAddressResultStage19(resultStage19, bindingStage19, traceIdStage20, routeJobIdStage20)
+        bubblePrefs.edit().putString("fast_farol_last_path", "stage637_google_traffic_aware").apply()
+        applyUniversalTwoAddressResultStage19(
+            resultStage637,
+            bindingStage19,
+            traceIdStage20,
+            routeJobIdStage20,
+        )
+    }
+
+    private fun applyUniversalPreliminaryColorStage637(
+        resultStage637: AnalysisResult,
+        bindingStage19: FarolUniversalVisualPipelineStage19.Binding,
+        traceIdStage20: String,
+        operationIdStage637: String,
+    ) {
+        if (!isStage19BindingFresh(bindingStage19) || stage19VisualVerificationPending) return
+        val colorStage637 = when (resultStage637.recommendation) {
+            Recommendation.GoodRide -> RadarColor.Green
+            Recommendation.OutsideRadius -> RadarColor.Red
+            Recommendation.InsufficientData -> return
+        }
+        rememberBubbleReason(
+            "stage637_local_color",
+            "Card confirmado; cor local imediata aplicada enquanto a rota rodoviaria e refinada.",
+        )
+        showOverlay(colorStage637, null)
+        FarolCausalLatencyStage28.Metrics.increment("stage637LocalColorPaint")
+        if (stage26CandidateEventStartedNs > 0L) {
+            FarolCausalLatencyStage28.Metrics.sample(
+                "eventToStage637LocalColor",
+                SystemClock.elapsedRealtimeNanos() - stage26CandidateEventStartedNs,
+            )
+        }
+        // Diagnostic is deliberately off the input path: this function is never called by MotionEvent.
+        FarolMaximumForensicsStage38.record(
+            SystemClock.elapsedRealtimeNanos(),
+            System.currentTimeMillis(),
+            "S637_LOCAL_COLOR_APPLIED",
+            packageName = null,
+            traceId = traceIdStage20,
+            operationId = operationIdStage637,
+            details = "color=$colorStage637; kmHidden=true; binding=${bindingStage19.addressSignature}",
+        )
     }
 
     private suspend fun applyUniversalTwoAddressResultStage19(
