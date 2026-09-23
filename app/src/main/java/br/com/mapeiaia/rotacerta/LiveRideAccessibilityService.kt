@@ -503,6 +503,11 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         if (eventType0187 == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             if (eventPackage !in selectedPackages156) return
+            val notificationPackage639 = eventPackage ?: return
+            if (!admitTrainedCardStage639(notificationPackage639, "notification")) {
+                FarolReadingActivationStage26.Metrics.increment("stage639NotificationSignatureGateRejected")
+                return
+            }
             val now0170 = SystemClock.elapsedRealtime()
             if (!notificationFailureCircuit0170.canAttempt(now0170)) return
             try {
@@ -525,11 +530,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         val authorityPackage638 = entryGate638.authorityPackage ?: return
-        if (farolCardSignatureStore638.hasModels(authorityPackage638) &&
-            !matchesTrainedCardSignature638(authorityPackage638)
-        ) {
-            clearTrainedCardPublicState638(authorityPackage638)
-            FarolReadingActivationStage26.Metrics.increment("stage638SignatureMissHeavyAvoided")
+        if (!admitTrainedCardStage639(authorityPackage638, "accessibility_event")) {
+            FarolReadingActivationStage26.Metrics.increment("stage639EventSignatureGateRejected")
             return
         }
 
@@ -4061,11 +4063,8 @@ class LiveRideAccessibilityService : AccessibilityService() {
             FarolReadingActivationStage26.Metrics.increment("stage638ScheduledForeignAvoided")
             return
         }
-        if (farolCardSignatureStore638.hasModels(scheduledPackage638) &&
-            !matchesTrainedCardSignature638(scheduledPackage638)
-        ) {
-            clearTrainedCardPublicState638(scheduledPackage638)
-            FarolReadingActivationStage26.Metrics.increment("stage638ScheduledSignatureMissAvoided")
+        if (!admitTrainedCardStage639(scheduledPackage638, "scheduled_analysis")) {
+            FarolReadingActivationStage26.Metrics.increment("stage639ScheduledSignatureGateRejected")
             return
         }
         val demandStage23 = stage23ScheduleGate.create(
@@ -4643,29 +4642,62 @@ class LiveRideAccessibilityService : AccessibilityService() {
     }
 
     private fun clearTrainedCardPublicState638(packageName638: String) {
-        val ownsCurrent638 = normalizePackageName(universalActiveRidePackageName) == normalizePackageName(packageName638)
-        val hasPublicState638 = currentRadarColor == RadarColor.Green || currentRadarColor == RadarColor.Red ||
-            currentDistanceKm != null || universalActiveAddressSignature != null
-        if (!ownsCurrent638 || !hasPublicState638) return
-        universalRouteJob?.cancel()
-        universalRouteJob = null
-        universalScreenGeneration += 1L
-        universalWindowGeneration += 1L
-        universalActiveAddressSignature = null
-        lastSnapshotHash = null
-        lastAnalyzedHash = null
-        currentDistanceKm = null
-        stage19VisualVerificationPending = false
-        if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease("stage638_signature_miss")
-        rememberBubbleReason(
-            "stage638_signature_miss",
-            "O modelo treinado não está mais presente; resultado anterior removido sem leitura pesada.",
+        masterResetCardAdmissionStage639(
+            packageName639 = packageName638,
+            outcome639 = FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS,
+            trigger639 = "legacy_stage638_signature_miss",
         )
-        showOverlay(RadarColor.Default, distanceKm = null)
+    }
+
+    private fun admitTrainedCardStage639(
+        packageName639: String,
+        trigger639: String,
+    ): Boolean {
+        val hasModels639 = farolCardSignatureStore638.hasModels(packageName639)
+        val signatureMatched639 = hasModels639 && matchesTrainedCardSignature638(packageName639)
+        val decision639 = FarolCardAdmissionStage639.decide(
+            hasModels = hasModels639,
+            signatureMatched = signatureMatched639,
+        )
+        if (decision639.allowHeavyPipeline) return true
+
+        masterResetCardAdmissionStage639(
+            packageName639 = packageName639,
+            outcome639 = decision639.outcome,
+            trigger639 = trigger639,
+        )
+        return false
+    }
+
+    private fun masterResetCardAdmissionStage639(
+        packageName639: String,
+        outcome639: FarolCardAdmissionStage639.Outcome,
+        trigger639: String,
+    ) {
+        notificationWakeGate0169.invalidate()
+        notificationWakeJob0169?.cancel()
+        notificationWakeJob0169 = null
+
+        val reason639 = when (outcome639) {
+            FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED ->
+                "Card ainda não memorizado. Abra um card limpo e use 🧠 Memorizar card."
+            FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS ->
+                "Assinatura do card ausente nesta tela; leitura bloqueada."
+            FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED ->
+                "Assinatura confirmada."
+        }
+        hardClearUniversalTwoAddress(
+            reason = reason639,
+            keepWaitingYellow = true,
+        )
         FarolFlightRecorder0163.record(
-            stage = "S638_SIGNATURE_MISS_PUBLIC_RESET",
-            packageName = packageName638,
-            details = "screenGeneration=$universalScreenGeneration; windowGeneration=$universalWindowGeneration; heavyCollect=false",
+            stage = when (outcome639) {
+                FarolCardAdmissionStage639.Outcome.BLOCK_UNTRAINED -> "S639_UNTRAINED_MASTER_RESET"
+                FarolCardAdmissionStage639.Outcome.BLOCK_SIGNATURE_MISS -> "S639_SIGNATURE_MISS_MASTER_RESET"
+                FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED -> "S639_SIGNATURE_MATCH"
+            },
+            packageName = packageName639,
+            details = "trigger=$trigger639; heavyCollect=false; notificationWakeCancelled=true; screenGeneration=$universalScreenGeneration; windowGeneration=$universalWindowGeneration",
         )
     }
 
@@ -7379,6 +7411,12 @@ class LiveRideAccessibilityService : AccessibilityService() {
                                                 "Card memorizado",
                                                 "$package638 • ${result638.model.sampleCount} amostra(s)",
                                             )
+                                            FarolFlightRecorder0163.record(
+                                                stage = "S639_POST_TRAINING_IMMEDIATE_ANALYSIS",
+                                                packageName = package638,
+                                                details = "model=${result638.model.id}; samples=${result638.model.sampleCount}",
+                                            )
+                                            scheduleVisibleTextAnalysis(0L, allowPopupCandidate = true)
                                         }
                                     } catch (error638: Throwable) {
                                         FarolFlightRecorder0163.record(
