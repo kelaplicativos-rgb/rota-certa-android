@@ -48,7 +48,8 @@ class ReadingGeocodeResilience0547ContractTest {
         assertTrue(text.contains("GEOCODE_RESOLUTION_START_0547"))
         assertTrue(text.contains("GEOCODE_ANDROID_FALLBACK_0547"))
         assertTrue(text.contains("GEOCODE_RESOLUTION_FAILED_0547"))
-        assertTrue(text.contains("limit=5&countrycodes=br"))
+        assertTrue(text.contains("format=jsonv2&limit=5&accept-language="))
+        assertFalse(text.contains("countrycodes=br"))
     }
 
     @Test
@@ -62,7 +63,7 @@ class ReadingGeocodeResilience0547ContractTest {
     @Test
     fun version_is_0547() {
         val build = source("build.gradle.kts")
-        assertTrue(build.contains("versionCode = 5839"))
-        assertTrue(build.contains("versionName = \"0.1.547\""))
+        assertTrue(build.contains("releaseVersionCode = 5_925"))
+        assertTrue(build.contains("releaseVersionName = \"0.1.634\""))
     }
 }
