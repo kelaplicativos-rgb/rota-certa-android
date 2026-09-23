@@ -46,6 +46,34 @@ class UnifiedNativeTrips0633Test {
     }
 
     @Test
+    fun sourceFiltersDoNotCreateSeparateTripDomains() {
+        assertTrue(
+            operationalTripMatchesSourceFilter0633(
+                nativeRotaCerta = true,
+                filter = OperationalTripSourceFilter0633.ALL,
+            ),
+        )
+        assertTrue(
+            operationalTripMatchesSourceFilter0633(
+                nativeRotaCerta = true,
+                filter = OperationalTripSourceFilter0633.ROTA_CERTA,
+            ),
+        )
+        assertFalse(
+            operationalTripMatchesSourceFilter0633(
+                nativeRotaCerta = true,
+                filter = OperationalTripSourceFilter0633.BLABLACAR,
+            ),
+        )
+        assertTrue(
+            operationalTripMatchesSourceFilter0633(
+                nativeRotaCerta = false,
+                filter = OperationalTripSourceFilter0633.BLABLACAR,
+            ),
+        )
+    }
+
+    @Test
     fun tripCenterIsUnifiedAndExposesVisibleCreateAction() {
         val header = File("src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt").readText()
         val browser = File("src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt").readText()
