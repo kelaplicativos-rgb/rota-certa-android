@@ -5773,6 +5773,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
         return googleMapsService.geocode(query, region, apiKey) ?: geocodingService.geocode(query, region)
     } // universal_two_address_geocode_0_1_98
 
+    private fun cachedLocalDistancesFastStage637(
+        originAddress: String,
+        destinations: List<Coordinate>,
+    ): List<Double?>? {
+        if (originAddress.isBlank() || destinations.isEmpty()) return null
+        val origin = googleMapsService.cachedFarolCoordinate(originAddress) ?: return null
+        return destinations.map { GeoDistance.kilometers(origin, it) }
+    }
+
     private fun cachedLocalDistancesFromAddressKm(
         originAddress: String,
         destinations: List<Coordinate>,
