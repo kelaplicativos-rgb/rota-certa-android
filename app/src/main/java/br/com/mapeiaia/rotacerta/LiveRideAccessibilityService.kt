@@ -656,7 +656,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 windowId = realtimeWindowId0167,
                 eventType = eventType0187,
                 eventClassName = eventClassName0187,
-                eventSemanticHash = (event.text.joinToString("|") { it?.toString().orEmpty() } + "|" + event.contentDescription.orEmpty()).hashCode(),
+                eventSemanticHash = (event.text.joinToString("|") { it?.toString().orEmpty() } + "|" + event.contentDescription?.toString().orEmpty()).hashCode(),
                 nowElapsedMillis = SystemClock.elapsedRealtime(),
             )
         ) return
@@ -5577,7 +5577,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         FarolCausalLatencyStage28.Metrics.sample("fastPathLocal", SystemClock.elapsedRealtimeNanos() - started)
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_DISTANCE_CALCULATED", currentRootPackageName(),
-            details = "path=FAST_PATH; destinations=\${destinations.size}; values=\$values",
+            details = "path=FAST_PATH; destinations=${destinations.size}; values=$values",
         )
         return values
     }
@@ -5604,7 +5604,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         )
         FarolMaximumForensicsStage38.record(
             SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S38_DISTANCE_CALCULATED", currentRootPackageName(),
-            details = "path=\${if (cached != null) "FAST_PATH" else "COLD_GEO_PATH"}; resolved=\${origin != null}; destinations=\${destinations.size}; values=\$values",
+            details = "path=${if (cached != null) "FAST_PATH" else "COLD_GEO_PATH"}; resolved=${origin != null}; destinations=${destinations.size}; values=$values",
         )
         return values
     }
