@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.644",
+      "build": 5935,
+      "commit": null,
+      "branch": "agent/alerts-independent-runtime-0.1.644",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage644 cria autoridade de runtime própria para Alertas: alertas de proximidade e radares deixam de depender do estado appEnabled/liveReadingEnabled do Farol.",
+        "O monitor GPS continua ativo com a leitura da bolinha desligada sempre que proximityAlertsEnabled estiver ligado e houver alerta ou radar cadastrado.",
+        "A limpeza visual do Farol passa a preservar o popup ativo de alerta/radar, fechando somente atalhos e UI transitória pertencentes à leitura."
+      ],
+      "fixed": [
+        "Corrige a falha em que eventos de acessibilidade com a leitura desligada chamavam applyWorkModeRuntime0162(false), interrompiam o PreciseNavigationTracker e ocultavam o painel direcional.",
+        "Remove appEnabled do gate do monitor e do DirectionalProximityAlertEngine, impedindo que o botão de leitura silencie alertas e avisos de radar.",
+        "O desligamento da leitura deixa de executar hideAll sobre a superfície de alerta, evitando apagar um aviso de proximidade em andamento."
+      ],
+      "improved": [
+        "proximityAlertsEnabled passa a ser a única chave funcional do módulo de Alertas; a presença de alvos decide apenas se o GPS precisa trabalhar.",
+        "Contratos unitários verificam independência da leitura, persistência do tracker, preservação da superfície visual e cobertura conjunta de alertas salvos e radares importados."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.643: alertas e radares podiam parar imediatamente quando a leitura da bolinha era desligada."
+      ],
+      "modulesAffected": [
+        "Alertas",
+        "Radares",
+        "GPS",
+        "Acessibilidade",
+        "Bolinha flutuante",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.643",
       "build": 5934,
       "commit": null,
