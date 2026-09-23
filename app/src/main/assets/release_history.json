@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.639",
+      "build": 5930,
+      "commit": null,
+      "branch": "agent/farol-master-reset-0.1.639",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Farol Master Reset Stage639 passa a ser fail-closed: sem assinatura treinada ou sem correspondência do card atual, nenhuma leitura pesada, OCR, Stage19 ou rota é autorizada.",
+        "Notificações do aplicativo selecionado e análises agendadas passam pelo mesmo gate de assinatura antes de qualquer captura ou processamento pesado.",
+        "A memorização manual do card dispara uma análise imediata do snapshot recém-treinado, sem depender de outro evento de acessibilidade."
+      ],
+      "fixed": [
+        "Corrige a regressão física da 0.1.638 em que o reset apagava verde/vermelho e km, mas o pipeline legado podia reentrar segundos depois e reconstruir uma decisão a partir de endereços do feed.",
+        "Remove a compatibilidade fail-open da 0.1.638 para aplicativos selecionados ainda sem modelo local.",
+        "Ao bloquear por ausência/mismatch de assinatura, o Master Reset invalida o wake de notificação e cancela o job correspondente antes de limpar o estado público."
+      ],
+      "improved": [
+        "O atalho 🧠 Memorizar card torna-se a única porta para habilitar leitura pesada de um aplicativo selecionado ainda não treinado.",
+        "Telemetria Stage639 diferencia bloqueio por pacote não treinado, mismatch de assinatura e análise imediata pós-treinamento.",
+        "A decisão pública permanece neutra enquanto o card memorizado não estiver comprovadamente presente."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.638: apps selecionados sem modelo continuavam no pipeline legado e podiam reacender o Farol depois do reset."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Master Reset",
+        "Assinaturas de card",
+        "Notificações",
+        "OCR",
+        "Bolinha flutuante",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.638",
       "build": 5929,
       "commit": null,
