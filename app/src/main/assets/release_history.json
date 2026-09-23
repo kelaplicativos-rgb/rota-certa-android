@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.636",
+      "build": 5927,
+      "commit": null,
+      "branch": "agent/farol-edge-instant-reset-0.1.636",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Separação explícita entre lease semântico interno e estado público do Farol durante mutações ambíguas da superfície alvo.",
+        "Barreira Stage636 invalida imediatamente a pintura pública antiga antes da verificação OCR, avançando as gerações visual e de janela.",
+        "OCR e trabalho semântico em andamento podem sobreviver à transição enquanto resultados pertencentes à geração antiga ficam impedidos de repintar o botão."
+      ],
+      "fixed": [
+        "Corrige o botão do Farol que podia permanecer verde/vermelho com quilômetros da corrida anterior após a tela já ter mudado.",
+        "Corrige o ramo PRESERVE_AND_VERIFY da 0.1.635, que preservava corretamente o lease interno, mas também preservava indevidamente a pintura pública antiga.",
+        "Ao detectar mutação ambígua na própria superfície confirmada, o estado público volta imediatamente para amarelo sem quilômetros antes de OCR/rota confirmar o snapshot atual."
+      ],
+      "improved": [
+        "Uma variante semanticamente comprovada do mesmo destino continua preservando a decisão final sem reset desnecessário.",
+        "Eventos estrangeiros, SystemUI e overlays sem autoridade continuam incapazes de apagar uma decisão final válida.",
+        "A suíte 0.1.636 valida ordem de invalidação, avanço de geração, limpeza de quilômetros e preservação do trabalho semântico interno."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.635: o lease de estabilidade podia manter Green/Red+km visível durante uma mudança real ainda ambígua do mesmo window, causando aparência de botão travado."
+      ],
+      "modulesAffected": [
+        "Farol",
+        "Leitura ao vivo",
+        "OCR",
+        "Overlay",
+        "Lease semântico",
+        "Geração visual",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.635",
       "build": 5926,
       "commit": null,
