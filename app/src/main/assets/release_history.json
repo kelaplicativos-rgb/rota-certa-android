@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.628",
+      "build": 5919,
+      "commit": null,
+      "branch": "agent/viagem-certa-trip-target-0.1.628",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Reserva pública passa a resolver o motorista solicitado pela identidade canônica antes de validar o vínculo com a viagem.",
+        "Quando existe tripToken concreto, ele passa a ser a autoridade primária do alvo da sessão do passageiro.",
+        "O navegador deixa de enviar slug público/username/agenda redundantes em autenticação vinculada a uma viagem específica.",
+        "Cache do shell público é invalidado para garantir carregamento imediato da correção de reserva."
+      ],
+      "fixed": [
+        "Corrige falha 'A viagem informada não está disponível.' quando a Agenda exibia a viagem normalmente e o slug público era um alias diferente do username canônico do motorista.",
+        "Corrige links de viagem que poderiam parar de autenticar o passageiro após alteração ou diferença de alias público do motorista.",
+        "Evita rejeição falsa no passo final da reserva por comparação textual entre alias e owner canônico."
+      ],
+      "improved": [
+        "Novo contrato automatizado 0.1.628 cobre a precedência do tripToken e a resolução canônica do alias.",
+        "Fluxo mantém falha explícita quando o tripToken realmente não existe; não cria reserva falsa."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.626/0.1.627: resolvePassengerTarget0625 comparava trip.driverUsername canônico diretamente com publicSlug/driverUsername possivelmente alias."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Reserva pública",
+        "Autenticação do passageiro",
+        "Backend",
+        "Hosting",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.627",
       "build": 5918,
       "commit": null,
