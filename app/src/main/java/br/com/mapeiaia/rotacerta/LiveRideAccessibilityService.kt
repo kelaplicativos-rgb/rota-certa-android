@@ -115,6 +115,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private lateinit var farolCardSignatureStore638: FarolCardSignatureStore638
     private lateinit var farolCardTrainingModule638: FarolCardTrainingModule638
     private val farolCardTrainingInProgress638 = AtomicBoolean(false)
+    private var lastSignatureMatchState638: String? = null
     private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
     private var lastFailedCardSignature0161: String? = null
     private var lastFailedCardAccessibilityHash0161: Int? = null
