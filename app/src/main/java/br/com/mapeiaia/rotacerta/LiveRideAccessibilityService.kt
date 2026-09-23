@@ -501,10 +501,20 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (eventType0187 == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
             if (eventPackage !in selectedPackages156) return
             val notificationPackage639 = eventPackage ?: return
+            val activeVisualSession643 = driverCardSessionGate0162.current()
+            if (activeVisualSession643?.packageName != notificationPackage639) {
+                FarolReadingActivationStage26.Metrics.increment("stage643NotificationIgnoredWithoutVisualSession")
+                FarolFlightRecorder0163.record(
+                    stage = "S643_NOTIFICATION_PASSIVE_WITHOUT_VISUAL_SESSION",
+                    packageName = notificationPackage639,
+                    details = "selectedPackage=true; activeVisualSession=false; ocrWake=false",
+                )
+                return
+            }
             FarolFlightRecorder0163.record(
                 stage = "S643_SIGNATURE_FREE_NOTIFICATION_ADMISSION",
                 packageName = notificationPackage639,
-                details = "selectedPackage=true; cardSignatureRequired=false",
+                details = "selectedPackage=true; activeVisualSession=true; cardSignatureRequired=false",
             )
             val now0170 = SystemClock.elapsedRealtime()
             if (!notificationFailureCircuit0170.canAttempt(now0170)) return
