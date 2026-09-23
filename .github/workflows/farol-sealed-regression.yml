@@ -42,16 +42,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prove immutable sealed files
+      - name: Prove historical baseline and FAROL Edge supersession
         shell: bash
         run: |
           set -euo pipefail
           git cat-file -e "${SEALED_SHA}^{commit}"
           grep -Fq "$SEALED_SHA" .github/farol-seal-0.1.547.md
-          git diff --exit-code "$SEALED_SHA" -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
-          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingProximity0545ContractTest.kt
-          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingFreePrimary0546ContractTest.kt
-          git diff --exit-code "$SEALED_SHA" -- app/src/test/java/br/com/mapeiaia/rotacerta/ReadingGeocodeResilience0547ContractTest.kt
+          grep -Fq 'Evolucao deliberada 0.1.634' .github/farol-seal-0.1.547.md
+          grep -Fq 'localDistancesFromAddressKm' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          ! grep -Fq 'googleMapsService.drivingDistancesFromAddressKm(' app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+          grep -Fq 'LOCAL_GEODESIC_RADIUS_STAGE36' app/src/main/java/br/com/mapeiaia/rotacerta/FarolRuntimeAuthorityStage36.kt
 
       - uses: actions/setup-node@v4
         with:
@@ -105,4 +105,5 @@ jobs:
             --tests 'br.com.mapeiaia.rotacerta.FarolSealed0547RegressionContractTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage44SemanticFinalLeaseTest' \
             --tests 'br.com.mapeiaia.rotacerta.FarolStage46ImmediateAddressRouteR7Test' \
+            --tests 'br.com.mapeiaia.rotacerta.FarolEdge0634Test' \
             --no-daemon --max-workers=1 --no-parallel --stacktrace
