@@ -3567,14 +3567,16 @@ class LiveRideAccessibilityService : AccessibilityService() {
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
         )
-        if (preliminaryDistancesStage637 != null) {
-            val preliminaryResultStage637 = decideFastWorkRegionChecklist13(
+        val preliminaryResultStage637 = preliminaryDistancesStage637?.let { localDistancesStage637 ->
+            decideFastWorkRegionChecklist13(
                 snapshotText = evaluationStage19.analysisText,
                 fields = fieldsStage19,
                 settings = settingsStage19,
                 targets = targetsStage19,
-                routeDistances = preliminaryDistancesStage637,
+                routeDistances = localDistancesStage637,
             )
+        }
+        if (preliminaryResultStage637 != null) {
             applyUniversalPreliminaryColorStage637(
                 preliminaryResultStage637,
                 bindingStage19,
@@ -3587,17 +3589,15 @@ class LiveRideAccessibilityService : AccessibilityService() {
             originAddress = fieldsStage19.destination.orEmpty(),
             destinations = targetsStage19.destinations,
         )
-        if (cachedExactStage637 != null) {
-            val exactResultStage637 = decideFastWorkRegionChecklist13(
-                snapshotText = evaluationStage19.analysisText,
-                fields = fieldsStage19,
-                settings = settingsStage19,
-                targets = targetsStage19,
-                routeDistances = cachedExactStage637,
+        if (cachedExactStage637 != null && preliminaryResultStage637 != null) {
+            val exactDisplayResultStage637 = attachExactRoadDistanceStage637(
+                preliminaryResultStage637,
+                targetsStage19,
+                cachedExactStage637,
             )
             bubblePrefs.edit().putString("fast_farol_last_path", "stage637_traffic_cache").apply()
             applyUniversalTwoAddressResultStage19(
-                exactResultStage637,
+                exactDisplayResultStage637,
                 bindingStage19,
                 traceIdStage20,
                 "TRAFFIC_CACHE_STAGE637",
@@ -3724,14 +3724,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
             destinations = targetsStage19.destinations,
             apiKey = apiKeyStage19,
         )
+        val preliminaryResultStage637 = decideFastWorkRegionChecklist13(
+            snapshotText = snapshotTextStage19,
+            fields = fieldsStage19,
+            settings = settingsStage19,
+            targets = targetsStage19,
+            routeDistances = preliminaryDistancesStage637,
+        )
         if (isStage19BindingFresh(bindingStage19)) {
-            val preliminaryResultStage637 = decideFastWorkRegionChecklist13(
-                snapshotText = snapshotTextStage19,
-                fields = fieldsStage19,
-                settings = settingsStage19,
-                targets = targetsStage19,
-                routeDistances = preliminaryDistancesStage637,
-            )
             applyUniversalPreliminaryColorStage637(
                 preliminaryResultStage637,
                 bindingStage19,
@@ -3775,19 +3775,37 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
 
-        val resultStage637 = decideFastWorkRegionChecklist13(
-            snapshotText = snapshotTextStage19,
-            fields = fieldsStage19,
-            settings = settingsStage19,
-            targets = targetsStage19,
-            routeDistances = exactRoadDistancesStage637,
+        val exactDisplayResultStage637 = attachExactRoadDistanceStage637(
+            preliminaryResultStage637,
+            targetsStage19,
+            exactRoadDistancesStage637,
         )
         bubblePrefs.edit().putString("fast_farol_last_path", "stage637_google_traffic_aware").apply()
         applyUniversalTwoAddressResultStage19(
-            resultStage637,
+            exactDisplayResultStage637,
             bindingStage19,
             traceIdStage20,
             routeJobIdStage20,
+        )
+    }
+
+    private fun attachExactRoadDistanceStage637(
+        preliminaryStage637: AnalysisResult,
+        targetsStage637: FastWorkRegionTargetsChecklist13,
+        exactRoadDistancesStage637: List<Double?>,
+    ): AnalysisResult {
+        var routeIndexStage637 = 0
+        val exactHomeStage637 = if (targetsStage637.homeCoordinate != null) {
+            exactRoadDistancesStage637.getOrNull(routeIndexStage637++)
+        } else null
+        val exactPinStage637 = targetsStage637.pins.map {
+            exactRoadDistancesStage637.getOrNull(routeIndexStage637++)
+        }.filterNotNull().minOrNull()
+        return preliminaryStage637.copy(
+            recommendation = preliminaryStage637.recommendation,
+            reason = preliminaryStage637.reason + " Quilometragem exibida refinada pela rota rodoviaria.",
+            pickupToHomeKm = exactHomeStage637,
+            pickupToAlternativeKm = exactPinStage637,
         )
     }
 
