@@ -63,10 +63,19 @@ object FarolOfflineAiStage642 {
         bitmap: Bitmap,
         structured: OcrStructuredText0188,
         models: List<FarolCardSignatureModel638>,
+    ): Recognition = recognizeFromEvidence(
+        structured = structured,
+        screenHeight = bitmap.height,
+        visualSimilarity = bestVisualSimilarity(bitmap, models),
+    )
+
+    internal fun recognizeFromEvidence(
+        structured: OcrStructuredText0188,
+        screenHeight: Int,
+        visualSimilarity: Double?,
     ): Recognition {
         val anchors = rideAnchorPatterns.count { it.containsMatchIn(structured.text) }
-        val visualSimilarity = bestVisualSimilarity(bitmap, models)
-        val candidates = collectCandidates(structured, bitmap.height)
+        val candidates = collectCandidates(structured, screenHeight)
         val destination = candidates.maxWithOrNull(
             compareBy<Candidate> { it.score }
                 .thenBy { it.bottom }
