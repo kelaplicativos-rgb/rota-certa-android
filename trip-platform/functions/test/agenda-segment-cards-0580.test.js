@@ -128,7 +128,7 @@ test("0632 card return and canonical change channel immediately reload Agenda", 
 
   const card = between(shell, "function renderTripCard0569", "function renderAgenda0569");
   assert.match(card, /viewRide\.addEventListener\("click", armAgendaCardRefresh0596\)/);
-  assert.match(card, /bindTripCardNavigation0596\(card, publicUrl\)/);
+  assert.match(card, /openFullTripBooking0623\(item\)/);
 
   assert.match(shell, /watchAgendaCanonicalChanges0632/);
   assert.match(shell, /\/changes\?since=/);
