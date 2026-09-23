@@ -6,8 +6,8 @@ import java.util.Locale
 import kotlin.math.max
 
 /**
- * Stage642 — inteligência visual/semântica 100% local para recuperar cards quando a árvore de
- * Accessibility/assinatura estrutural não consegue admiti-los.
+ * Stage642 — inteligência visual/semântica 100% local para recuperar destino quando a árvore de
+ * Accessibility não entrega texto suficiente.
  *
  * A rede neural usada para ler a imagem é o ML Kit Text Recognition já embarcado no APK pelo
  * OcrService. Este estágio nunca chama OpenAI, Google Maps, Nominatim ou qualquer serviço remoto:
@@ -18,7 +18,7 @@ object FarolOfflineAiStage642 {
     const val CONTRACT_MARKER = "FAROL_OFFLINE_AI_STAGE642"
     const val NO_OPENAI_MARKER = "NO_OPENAI_NO_REMOTE_AI_STAGE642"
     const val LOCAL_NEURAL_OCR_MARKER = "BUNDLED_MLKIT_NEURAL_OCR_STAGE642"
-    const val VISUAL_RECOVERY_MARKER = "STRUCTURAL_SIGNATURE_MISS_RECOVERED_BY_LOCAL_VISION_STAGE642"
+    const val VISUAL_RECOVERY_MARKER = "LOCAL_SEMANTIC_OCR_RECOVERY_STAGE642"
     const val LAST_DESTINATION_MARKER = "LAST_ADDRESS_LOCAL_SEMANTIC_CLASSIFIER_STAGE642"
 
     data class Candidate(
@@ -62,17 +62,14 @@ object FarolOfflineAiStage642 {
     fun recognize(
         bitmap: Bitmap,
         structured: OcrStructuredText0188,
-        models: List<FarolCardSignatureModel638>,
     ): Recognition = recognizeFromEvidence(
         structured = structured,
         screenHeight = bitmap.height,
-        visualSimilarity = bestVisualSimilarity(bitmap, models),
     )
 
     internal fun recognizeFromEvidence(
         structured: OcrStructuredText0188,
         screenHeight: Int,
-        visualSimilarity: Double?,
     ): Recognition {
         val anchors = rideAnchorPatterns.count { it.containsMatchIn(structured.text) }
         val candidates = collectCandidates(structured, screenHeight)
@@ -92,15 +89,13 @@ object FarolOfflineAiStage642 {
                 (anchors >= 1 && candidates.size >= 2) ||
                 (destination.explicitDestination && anchors >= 1)
             )
-        val visualStrong = destination != null && (visualSimilarity ?: 0.0) >= 0.68
-        val recognized = semanticStrong || visualStrong
+        val recognized = semanticStrong
 
         val confidence = (
             35 +
                 anchors * 9 +
                 candidates.size.coerceAtMost(3) * 7 +
-                if (destination?.explicitDestination == true) 12 else 0 +
-                (((visualSimilarity ?: 0.0) * 20.0).toInt())
+                if (destination?.explicitDestination == true) 12 else 0
             ).coerceIn(0, 99)
 
         return Recognition(
@@ -110,12 +105,10 @@ object FarolOfflineAiStage642 {
             pickup = pickup,
             addressCount = candidates.size,
             rideAnchorCount = anchors,
-            visualSimilarity = visualSimilarity,
+            visualSimilarity = null,
             reason = when {
                 destination == null -> "no_local_destination"
-                recognized && semanticStrong && visualStrong -> "semantic_and_visual_local_match"
-                recognized && semanticStrong -> "semantic_local_match"
-                recognized -> "visual_local_match"
+                recognized -> "semantic_local_match"
                 else -> "insufficient_local_card_evidence"
             },
         )
@@ -204,29 +197,6 @@ object FarolOfflineAiStage642 {
         return output
             .groupBy { canonical(it.address) }
             .mapNotNull { (_, same) -> same.maxByOrNull(Candidate::score) }
-    }
-
-    private fun bestVisualSimilarity(
-        bitmap: Bitmap,
-        models: List<FarolCardSignatureModel638>,
-    ): Double? {
-        val hashes = models.mapNotNull { model ->
-            model.visualHash
-                ?.trim()
-                ?.takeIf { it.length == 16 && it.all { ch -> ch.isDigit() || ch.lowercaseChar() in 'a'..'f' } }
-        }
-        if (hashes.isEmpty()) return null
-        val current = FarolCardVisualHash638.averageHash(bitmap)
-        return hashes.maxOfOrNull { trained ->
-            val distance = hammingHex64(current, trained)
-            1.0 - distance.toDouble() / 64.0
-        }
-    }
-
-    internal fun hammingHex64(a: String, b: String): Int {
-        val av = java.lang.Long.parseUnsignedLong(a, 16)
-        val bv = java.lang.Long.parseUnsignedLong(b, 16)
-        return java.lang.Long.bitCount(av xor bv)
     }
 
     private fun canonical(value: String): String = Normalizer
