@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.641",
+      "build": 5932,
+      "commit": null,
+      "branch": "agent/farol-semantic-lease-continuity-0.1.641",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage641 torna o lease semântico independente do windowId bruto: depois de uma assinatura estrutural válida e de um destino ativo, a continuidade passa a ser sustentada pelo mesmo pacote selecionado e pelo endereço semântico atual.",
+        "Signature miss em estado já amarelo e sem trabalho/resultado ativo vira no-op idempotente, eliminando a tempestade de hard-clears registrada no Samsung SM-S911B.",
+        "Notificações recebidas durante um lease visual válido deixam de acordar OCR ou resetar a rota corrente."
+      ],
+      "fixed": [
+        "Corrige a 0.1.640, em que a igualdade de stage640AdmittedWindowId podia quebrar durante animações/recomposição do inDrive e derrubar o lease válido.",
+        "Impede que um frame estrutural transitório execute Master Reset depois de STAGE19_VISUAL_ROUTE_STARTED para o mesmo card.",
+        "Remove BUBBLE_CLEAR_REQUEST repetitivo quando não existe estado destrutivo para limpar; o primeiro bloqueio apenas mantém a bolinha amarela."
+      ],
+      "improved": [
+        "A assinatura treinada volta a ser somente porta de entrada; Stage46/Stage47 recebem as mutações seguintes do mesmo app para provar troca real, feed ou desaparecimento.",
+        "O caminho de continuidade não depende de root/window estáveis a cada evento de acessibilidade.",
+        "Telemetria Stage641 distingue lease semântico, notificação ignorada durante lease e signature miss ocioso sem hard-clear."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.640: rota iniciada podia ser invalidada por signature miss após churn de windowId.",
+        "0.1.640: centenas de BUBBLE_CLEAR_REQUEST podiam ser gerados em sequência mesmo com a bolinha já amarela e sem estado ativo."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Assinaturas de card",
+        "Lease semântico",
+        "Acessibilidade",
+        "Bolinha flutuante",
+        "Stage46",
+        "Stage47",
+        "Notificações",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.640",
       "build": 5931,
       "commit": null,
