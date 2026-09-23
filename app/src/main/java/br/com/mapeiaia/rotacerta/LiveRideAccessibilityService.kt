@@ -118,6 +118,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
     private var lastSignatureMatchState638: String? = null
     private var stage640AdmittedPackage: String? = null
     private var lastStage641IdleBlockKey: String? = null
+    private val offlineAiRecoveryInProgress642 = AtomicBoolean(false)
+    @Volatile private var lastOfflineAiRecoveryAtElapsed642: Long = 0L
+    @Volatile private var lastOfflineAiRecoveryFingerprint642: String? = null
     private var lastFailedCardNodes0161 = emptyList<FailedCardNodeLine0161>()
     private var lastFailedCardSignature0161: String? = null
     private var lastFailedCardAccessibilityHash0161: Int? = null
@@ -4734,6 +4737,14 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 FarolCardAdmissionStage639.Outcome.ALLOW_MATCHED
         }
 
+        // Stage642: structural signature is no longer the last chance. If Accessibility sees the
+        // selected ride app but the tree is transient/incomplete, one local screenshot is sent to
+        // the bundled ML Kit neural OCR. A strict local semantic classifier may admit the card and
+        // resume the route with no OpenAI and no remote AI call.
+        if (trigger639 == "accessibility_event") {
+            scheduleOfflineAiAdmission642(packageName639, legacyOutcome639.name)
+        }
+
         val destructiveState641 =
             universalActiveAddressSignature != null ||
             universalRouteJob?.isActive == true ||
@@ -4793,6 +4804,133 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
         }
         return false
+    }
+
+    private fun scheduleOfflineAiAdmission642(
+        packageName642: String,
+        triggerReason642: String,
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return false
+        if (!serviceReady || !WorkModePolicy0162.isEnabled(currentSettings) || bubbleGestureActive) return false
+
+        val normalizedPackage642 = normalizePackageName(packageName642) ?: return false
+        val selected642 = SelectedRideAppStore.read(applicationContext)
+        if (normalizedPackage642 !in selected642 || !shouldScanPackage(normalizedPackage642)) return false
+
+        val root642 = captureRootHandle0187() ?: return false
+        if (normalizePackageName(root642.packageName) != normalizedPackage642) return false
+        val rootWindow642 = root642.windowId ?: 0
+        val fingerprint642 = listOf(
+            normalizedPackage642,
+            rootWindow642.toString(),
+            collectImmediateVisibleTextChecklist13(root642.node).hashCode().toString(),
+        ).joinToString("|")
+        val nowElapsed642 = SystemClock.elapsedRealtime()
+        if (
+            lastOfflineAiRecoveryFingerprint642 == fingerprint642 &&
+            nowElapsed642 - lastOfflineAiRecoveryAtElapsed642 < 220L
+        ) return false
+        if (!offlineAiRecoveryInProgress642.compareAndSet(false, true)) return false
+        if (!screenshotInProgress.compareAndSet(false, true)) {
+            offlineAiRecoveryInProgress642.set(false)
+            return false
+        }
+
+        lastOfflineAiRecoveryFingerprint642 = fingerprint642
+        lastOfflineAiRecoveryAtElapsed642 = nowElapsed642
+        FarolFlightRecorder0163.record(
+            stage = "S642_OFFLINE_AI_CAPTURE_REQUESTED",
+            packageName = normalizedPackage642,
+            details = "trigger=$triggerReason642; window=$rootWindow642; mlkitLocal=true; remoteAi=false",
+        )
+
+        val started642 = runCatching {
+            takeScreenshot(
+                Display.DEFAULT_DISPLAY,
+                mainExecutor,
+                object : TakeScreenshotCallback {
+                    override fun onSuccess(screenshot: ScreenshotResult) {
+                        scope.launch {
+                            var bitmap642: Bitmap? = null
+                            try {
+                                val currentRoot642 = captureRootHandle0187() ?: return@launch
+                                if (normalizePackageName(currentRoot642.packageName) != normalizedPackage642) return@launch
+
+                                bitmap642 = screenshot.toSoftwareBitmap() ?: return@launch
+                                val localBitmap642 = bitmap642 ?: return@launch
+                                val structured642 = withContext(Dispatchers.Default) {
+                                    ocrService.extractStructuredText(localBitmap642)
+                                }
+                                val recognition642 = withContext(Dispatchers.Default) {
+                                    FarolOfflineAiStage642.recognize(
+                                        bitmap = localBitmap642,
+                                        structured = structured642,
+                                        models = farolCardSignatureStore638.modelsFor(normalizedPackage642),
+                                    )
+                                }
+                                FarolFlightRecorder0163.record(
+                                    stage = "S642_OFFLINE_AI_CLASSIFIED",
+                                    packageName = normalizedPackage642,
+                                    details = "recognized=${recognition642.recognizedRideCard}; confidence=${recognition642.confidence}; addresses=${recognition642.addressCount}; anchors=${recognition642.rideAnchorCount}; visual=${recognition642.visualSimilarity ?: -1.0}; reason=${recognition642.reason}; destination=${recognition642.destination?.address.orEmpty()}; remoteAi=false",
+                                )
+                                if (!recognition642.recognizedRideCard || recognition642.destination == null) return@launch
+
+                                val verifiedRoot642 = captureRootHandle0187() ?: return@launch
+                                if (normalizePackageName(verifiedRoot642.packageName) != normalizedPackage642) return@launch
+
+                                val effectiveWindow642 = verifiedRoot642.windowId ?: rootWindow642
+                                driverCardSessionGate0162.begin(normalizedPackage642, effectiveWindow642)
+                                stage640AdmittedPackage = normalizedPackage642
+                                lastStage641IdleBlockKey = null
+                                universalForegroundPackageName = normalizedPackage642
+                                activePackageName = normalizedPackage642
+                                lastExternalWindowPackageName = normalizedPackage642
+
+                                val augmented642 = FarolOfflineAiStage642.augmentForRoute(structured642, recognition642)
+                                rememberSourceText(normalizedPackage642, TextSource.Ocr, augmented642.text)
+                                FarolFlightRecorder0163.record(
+                                    stage = "S642_OFFLINE_AI_CARD_ADMITTED",
+                                    packageName = normalizedPackage642,
+                                    details = "window=$effectiveWindow642; confidence=${recognition642.confidence}; destination=${recognition642.destination.address}; routeResume=true; remoteAi=false",
+                                )
+                                processRideText(
+                                    textRaw0168 = augmented642.text,
+                                    source = TextSource.Ocr,
+                                    allowPopupCandidate = true,
+                                    packageHint152 = normalizedPackage642,
+                                    ocrBlocks0188 = augmented642.blocks,
+                                )
+                            } catch (error642: Throwable) {
+                                FarolFlightRecorder0163.record(
+                                    stage = "S642_OFFLINE_AI_FAILED",
+                                    packageName = normalizedPackage642,
+                                    details = "type=${error642::class.java.simpleName}; message=${error642.message.orEmpty().take(180)}",
+                                )
+                            } finally {
+                                bitmap642?.takeUnless(Bitmap::isRecycled)?.recycle()
+                                screenshotInProgress.set(false)
+                                offlineAiRecoveryInProgress642.set(false)
+                            }
+                        }
+                    }
+
+                    override fun onFailure(errorCode: Int) {
+                        screenshotInProgress.set(false)
+                        offlineAiRecoveryInProgress642.set(false)
+                        FarolFlightRecorder0163.record(
+                            stage = "S642_OFFLINE_AI_SCREENSHOT_FAILED",
+                            packageName = normalizedPackage642,
+                            details = "code=$errorCode",
+                        )
+                    }
+                },
+            )
+        }.isSuccess
+        if (!started642) {
+            screenshotInProgress.set(false)
+            offlineAiRecoveryInProgress642.set(false)
+        }
+        return started642
     }
 
     private fun masterResetCardAdmissionStage639(
@@ -6156,7 +6294,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         val cached = googleMapsService.cachedFarolCoordinate(originAddress)
         // Stage634 compatibility contract: resolveFarolCoordinate( is still the fallback semantics
         // encapsulated by the Stage640 instant resolver; only the cold-path ordering changed.
-        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant640(originAddress, destinations, apiKey)
+        val origin = cached ?: googleMapsService.resolveFarolCoordinateInstant642(originAddress, destinations, apiKey)
         stage36RuntimeAuthority.markProcessing(runtimeToken0634, FarolRuntimeAuthorityStage36.ProcessingState.DISTANCE)
         if (cached != null) FarolCausalLatencyStage28.Metrics.increment("geoCacheHits")
         else FarolCausalLatencyStage28.Metrics.increment("geoCacheMisses")
