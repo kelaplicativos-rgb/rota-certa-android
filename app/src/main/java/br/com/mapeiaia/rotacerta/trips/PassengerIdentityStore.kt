@@ -2,6 +2,7 @@ package br.com.mapeiaia.rotacerta.trips
 
 import android.content.Context
 import br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry
+import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.security.MessageDigest
 import java.text.Normalizer
 import java.util.UUID
