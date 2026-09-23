@@ -1102,7 +1102,12 @@ class TripStore(context: Context) {
         val bookingsByTrip = bookings().groupBy(Booking::tripId)
         val changedTripIds = linkedSetOf<String>()
         val reconciledTrips = trips().map { trip ->
-            val shouldApply = trip.status in activeStatuses &&
+            val externalSeatChannel0633 =
+                resolvedTripRecordOrigin(trip) == TripRecordOrigin.EXTERNAL_BACKING ||
+                    !trip.blablaProfileUuid.isNullOrBlank() ||
+                    !trip.blablaTripId.isNullOrBlank()
+            val shouldApply = externalSeatChannel0633 &&
+                trip.status in activeStatuses &&
                 (trip.departureAtMillis >= nowMillis || trip.status in setOf(TripStatus.STARTING, TripStatus.ACTIVE))
             if (!shouldApply) {
                 trip
