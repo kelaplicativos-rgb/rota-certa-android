@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.643",
+      "build": 5934,
+      "commit": null,
+      "branch": "agent/farol-signature-free-0.1.643",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage643 remove a assinatura de cards da autoridade de entrada do Farol: qualquer evento do aplicativo de corrida selecionado entra diretamente no pipeline de leitura.",
+        "O atalho Memorizar card e sua migração automática foram removidos do catálogo ativo; grades persistidas antigas descartam o item durante a normalização.",
+        "A recuperação OCR local Stage642 deixa de consultar modelos visuais memorizados e passa a usar somente texto, geometria e evidência semântica do card.",
+        "Quando a acessibilidade não entrega evidência suficiente, o fallback OCR local é acionado sem exigir treinamento prévio e com deduplicação de 600 ms para a mesma tela."
+      ],
+      "fixed": [
+        "Elimina o bloqueio amarelo por assinatura ausente que impedia Stage19 de iniciar em cards reais.",
+        "Elimina master reset por signature miss e as invalidações decorrentes desse gate.",
+        "Remove dependência operacional de Card treinado confirmado e de modelos salvos para iniciar a decisão."
+      ],
+      "improved": [
+        "A única porta de entrada permanece o pacote de corrida explicitamente autorizado/selecionado; dentro dele, a validação é semântica e orientada ao destino.",
+        "Menos trabalho no caminho crítico: sem matcher estrutural, sem leitura de store de assinaturas e sem treinamento/captura manual de modelo.",
+        "O Farol preserva proteção contra falsos positivos exigindo destino reconhecível e evidência semântica de corrida antes de publicar verde/vermelho."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.642: o pipeline ainda podia ser bloqueado antes da leitura principal quando a assinatura estrutural falhava.",
+        "0.1.642: o usuário ainda precisava conviver com o recurso Memorizar apesar do OCR semântico já existir."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Acessibilidade",
+        "ML Kit OCR",
+        "Classificador semântico local",
+        "Bolinha flutuante",
+        "Grade de atalhos",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.642",
       "build": 5933,
       "commit": null,
