@@ -20,6 +20,7 @@ class FarolRealtimeEventGate0167(
         windowId: Int,
         eventType: Int,
         eventClassName: String?,
+        eventSemanticHash: Int = 0,
         nowElapsedMillis: Long,
     ): Boolean {
         val key = EventKey(
@@ -28,6 +29,7 @@ class FarolRealtimeEventGate0167(
             windowId = windowId,
             eventType = eventType,
             eventClassName = eventClassName.orEmpty(),
+            eventSemanticHash = eventSemanticHash,
         )
         val urgent = eventType == AccessibilityEventFloodGate.TYPE_WINDOW_STATE_CHANGED ||
             eventType == AccessibilityEventFloodGate.TYPE_WINDOWS_CHANGED
@@ -60,5 +62,6 @@ class FarolRealtimeEventGate0167(
         val windowId: Int,
         val eventType: Int,
         val eventClassName: String,
+        val eventSemanticHash: Int,
     )
 }
