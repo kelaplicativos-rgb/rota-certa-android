@@ -518,6 +518,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
             return
         }
         if (!entryGate638.allowHeavyPipeline) {
+            if (entryGate638.outcome == FarolPackageEntryGate638.Outcome.REJECT_FOREIGN) {
+                clearForeignForegroundPublicState638(eventPackage)
+            }
             FarolReadingActivationStage26.Metrics.increment("stage638ForeignEventsAvoided")
             return
         }
@@ -4604,6 +4607,39 @@ class LiveRideAccessibilityService : AccessibilityService() {
             }
         }
         return output638
+    }
+
+    private fun clearForeignForegroundPublicState638(foreignPackage638: String?) {
+        val hadRideState638 = universalActiveRidePackageName != null && (
+            universalActiveAddressSignature != null ||
+                currentDistanceKm != null ||
+                currentRadarColor == RadarColor.Green ||
+                currentRadarColor == RadarColor.Red ||
+                universalRouteJob?.isActive == true
+            )
+        if (!hadRideState638) return
+        universalRouteJob?.cancel()
+        universalRouteJob = null
+        analyzeJob?.cancel()
+        universalScreenGeneration += 1L
+        universalWindowGeneration += 1L
+        universalActiveRidePackageName = null
+        universalActiveAddressSignature = null
+        lastSnapshotHash = null
+        lastAnalyzedHash = null
+        currentDistanceKm = null
+        stage19VisualVerificationPending = false
+        if (::stage36RuntimeAuthority.isInitialized) stage36RuntimeAuthority.clearVisualLease("stage638_foreign_foreground")
+        rememberBubbleReason(
+            "stage638_foreign_foreground",
+            "O app de corrida saiu da frente; decisão anterior removida sem ler a tela atual.",
+        )
+        showOverlay(RadarColor.Default, distanceKm = null)
+        FarolFlightRecorder0163.record(
+            stage = "S638_FOREIGN_FOREGROUND_SINGLE_RESET",
+            packageName = foreignPackage638,
+            details = "screenGeneration=$universalScreenGeneration; windowGeneration=$universalWindowGeneration; hardClear=false; treeRead=false",
+        )
     }
 
     private fun clearTrainedCardPublicState638(packageName638: String) {
