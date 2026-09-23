@@ -38,7 +38,7 @@ test("0628 trip-specific password session does not send a stale slug beside the 
 });
 
 test("0628 target failure remains explicit and is not a fake successful reservation", () => {
-  const open = between(api, "async function openPassengerPasswordSession0625", "function passengerSessionContextId0623");
+  const open = between(api, "async function openPassengerPasswordSession0625", "async function signupPassengerAccount");
   assert.match(open, /agenda_target_invalid/);
   assert.match(open, /A viagem informada não está disponível\./);
   assert.match(publicJs, /if \(!response\.ok\) throw new Error\(safeMessage0569\(body\?\.message\)/);
