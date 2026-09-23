@@ -20,8 +20,8 @@ class FarolRealtimeEventGate0167(
         windowId: Int,
         eventType: Int,
         eventClassName: String?,
-        eventSemanticHash: Int = 0,
         nowElapsedMillis: Long,
+        eventSemanticHash: Int = 0,
     ): Boolean {
         val key = EventKey(
             selectedPackageName = selectedPackageName.normalized(),
