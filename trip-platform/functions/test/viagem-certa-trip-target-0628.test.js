@@ -27,6 +27,7 @@ test("0628 trip token is stronger than a public driver alias during passenger lo
   );
   assert.doesNotMatch(target, /tripDriver !== driverUsername/);
   assert.match(target, /return \{ driverUsername: tripResolved\.canonicalUsername, tripToken \}/);
+  assert.doesNotMatch(target, /if \\(publicSlug && isReservedPublicUsername\\(publicSlug\\)\\) return null/);
 });
 
 test("0628 trip-specific password session does not send a stale slug beside the trip token", () => {
