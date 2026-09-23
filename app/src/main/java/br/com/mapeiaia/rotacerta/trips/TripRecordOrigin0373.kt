@@ -113,3 +113,16 @@ private fun sha256Short0373(value: String, chars: Int): String =
 private val CANONICAL_PROFILE_UUID_0373 = Regex(
     "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
 )
+
+
+/**
+ * 0.1.633 — native Rota Certa trip identity is explicit and independent from
+ * BlaBlaCar account connectivity. Source changes how a trip is integrated, not
+ * whether it belongs to the canonical Viagens/Agenda domain.
+ */
+internal fun Trip.isNativeRotaCertaTrip0633(): Boolean =
+    resolvedTripRecordOrigin(this) == TripRecordOrigin.LOCAL &&
+        blablaProfileUuid.isNullOrBlank() &&
+        blablaTripId.isNullOrBlank()
+
+internal fun Trip.usesGlobalExtraSeats0633(): Boolean = !isNativeRotaCertaTrip0633()
