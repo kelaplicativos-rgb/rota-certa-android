@@ -57,7 +57,7 @@ class FarolEdge0635Test {
     fun incomplete_ocr_frame_preserves_active_semantic_lease() {
         val live = src("LiveRideAccessibilityService.kt")
         val marker = live.indexOf("S635_TRANSIENT_NO_CANDIDATE_INFLIGHT_PRESERVED")
-        val clear = live.indexOf("Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease semântica ativa.", marker)
+        val clear = live.indexOf("Snapshot visual atual sem dois endereços semanticamente completos Stage23 e sem lease Stage44 ativa nem lease semântica em andamento.", marker)
         assertTrue(marker >= 0)
         assertTrue(clear > marker)
         val block = live.substring((marker - 1400).coerceAtLeast(0), (clear + 500).coerceAtMost(live.length))
