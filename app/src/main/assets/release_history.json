@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.638",
+      "build": 5929,
+      "commit": null,
+      "branch": "agent/farol-card-signature-gate-0.1.638",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Farol Card Signature Gate: apps estrangeiros são rejeitados antes de Stage38, Stage19, Stage47, OCR, rota ou hard-clear.",
+        "Atalho 🧠 Memorizar card é adicionado à grade flutuante e dispara treinamento explícito com screenshot limpo, estrutura de acessibilidade e hash visual.",
+        "Assinaturas compiladas mascaram preço, distância, tempo, nome e endereço dinâmicos, preservando pacote, geometria, classe, view-id e tipos semânticos estáveis.",
+        "Apps treinados precisam corresponder a um modelo local antes de iniciar coleta pesada; apps selecionados ainda sem modelo mantêm compatibilidade com o pipeline existente."
+      ],
+      "fixed": [
+        "WhatsApp, Files, Maps e outros apps não selecionados deixam de consumir o pipeline universal do Farol.",
+        "Eliminado o ciclo repetitivo de hard-clear causado por telas estrangeiras sem dois endereços.",
+        "Análises agendadas também passam pelo gate de pacote/assinatura, fechando o caminho alternativo que poderia reativar leitura pesada fora do app de corrida."
+      ],
+      "improved": [
+        "Saída real do app de corrida executa apenas um reset visual leve e idempotente; overlays transitórios preservam o card confirmado.",
+        "Treinamento e matching usam o mesmo probe estrutural limitado a 64 nós para reduzir custo e aumentar estabilidade entre capturas.",
+        "Screenshot é usado somente por solicitação manual de treinamento; o matcher de produção não tira prints nem executa OCR."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.637: eventos estrangeiros ainda chegavam ao pipeline universal antes da filtragem estrita, gerando tempestade de clears e custo na main thread."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Assinaturas de card",
+        "Bolinha flutuante",
+        "Acessibilidade",
+        "OCR",
+        "Observabilidade"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.637",
       "build": 5928,
       "commit": null,
