@@ -1578,7 +1578,7 @@ private fun passengerCancellationDebugContext(
     "passengerKey=" + passengerCancellationHash(row.passengerId ?: row.externalPassengerId),
 ).joinToString(" ")
 
-private fun passengerCancellationHash(raw: String?): String {
+internal fun passengerCancellationHash(raw: String?): String {
     val value = raw?.trim().orEmpty()
     if (value.isBlank()) return "none"
     return MessageDigest.getInstance("SHA-256")
