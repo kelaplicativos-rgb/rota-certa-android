@@ -5,9 +5,10 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Botao mestre inspirado no ciclo explicito de trabalho observado no APK de referencia.
- * A Acessibilidade permanece autorizada pelo Android, mas o Rota Certa nao le, nao tira
- * screenshot, nao pede rota e nao fala alertas enquanto o modo estiver desligado.
+ * Botao mestre do Farol/leitura.
+ * A Acessibilidade permanece autorizada pelo Android, mas o Farol nao le cards, nao tira
+ * screenshot nem pede rota quando a leitura estiver desligada. Alertas de proximidade e
+ * radares possuem autoridade própria e continuam ativos quando habilitados.
  */
 object WorkModePolicy0162 {
     fun isEnabled(settings: AppSettings): Boolean = settings.appEnabled && settings.liveReadingEnabled
