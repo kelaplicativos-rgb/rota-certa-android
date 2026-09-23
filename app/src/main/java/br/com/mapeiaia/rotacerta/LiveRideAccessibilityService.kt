@@ -2185,7 +2185,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
         // Stage42: no SelectedRideAppStore, UsageEvents, running processes or selected-window scan
         // is allowed to participate in functional ON/OFF. Stage30/40 presence remains shadow only.
         val runtimeStage36 = if (::stage36RuntimeAuthority.isInitialized) {
-            stage36RuntimeAuthority.updateSelection(SelectedRideAppStore.read(applicationContext))
+            stage36RuntimeAuthority.updateSelection(configuredRidePackagesStage638())
             stage36RuntimeAuthority.setManualAuthority(manualEnabledStage42)
             stage36RuntimeAuthority.configureDriverTarget(currentSettings.homeAddress, currentSettings.homeRadiusKm)
             stage36RuntimeAuthority.observeWindowBoundary(currentRootPackageName() ?: eventPackageStage26)
@@ -6579,6 +6579,9 @@ class LiveRideAccessibilityService : AccessibilityService() {
         if (!DriverAppPackagePolicy0162.isEligible(normalized, this.packageName)) return false
         return normalized in SelectedRideAppStore.read(applicationContext)
     } // strict_selected_app_policy_checklist_1
+
+    private fun configuredRidePackagesStage638(): Set<String> =
+        SelectedRideAppStore.read(applicationContext)
 
     private fun selectedRidePackages(settings: AppSettings): Set<String> {
         @Suppress("UNUSED_VARIABLE")
