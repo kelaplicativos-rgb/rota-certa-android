@@ -116,7 +116,7 @@ class AgendaHeaderNavigation0396Test {
     @Test
     fun timelineDataAndPerTripMutationPathsRemainIntact() {
         assertTrue(timeline.contains("label = { Text(\"Buscar na Timeline\") }"))
-        assertTrue(timeline.contains("\"Nenhuma viagem sincronizada.\""))
+        assertTrue(timeline.contains("\"Nenhuma viagem canônica disponível.\""))
         assertTrue(timeline.contains("LazyColumn("))
         assertTrue(timeline.contains("TimelineEntryCard("))
         assertTrue(timeline.contains("TripMutationCoordinator0387"))
