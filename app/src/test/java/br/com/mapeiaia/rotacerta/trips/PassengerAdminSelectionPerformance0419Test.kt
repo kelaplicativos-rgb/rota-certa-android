@@ -30,7 +30,7 @@ class PassengerAdminSelectionPerformance0419Test {
         val access = ui.indexOf("Text(\"Acesso à Agenda\"", admin)
         assertTrue(admin >= 0 && action > admin)
         assertTrue(access > action)
-        assertTrue(ui.contains("Este passageiro ainda não possui acesso online a Minhas Viagens"))
+        assertTrue(ui.contains("Acesso online ainda não encontrado"))
         assertTrue(ui.contains("Você pode salvar a permissão agora"))
     }
 
