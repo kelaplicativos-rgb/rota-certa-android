@@ -131,14 +131,11 @@ class FarolEdge0638Test {
     }
 
     @Test
-    fun manual_training_is_the_only_signature_screenshot_path() {
+    fun legacy_signature_training_is_retired_from_active_runtime() {
         val live = src("LiveRideAccessibilityService.kt")
-        val trainStart = live.indexOf("private fun memorizeFarolCard638")
-        val printStart = live.indexOf("private fun saveScreenPrintStage32", trainStart)
-        assertTrue(trainStart >= 0 && printStart > trainStart)
-        val train = live.substring(trainStart, printStart)
-        assertTrue(train.contains("takeScreenshot("))
-        assertTrue(train.contains("S638_CARD_SIGNATURE_TRAINED"))
+        assertFalse(live.contains("private fun memorizeFarolCard638"))
+        assertFalse(live.contains("S638_CARD_SIGNATURE_TRAINED"))
+        assertFalse(live.contains("farolCardSignatureStore638"))
 
         val matcher = src("FarolCardSignatureCompiler638.kt")
         assertFalse(matcher.contains("takeScreenshot("))
@@ -146,14 +143,11 @@ class FarolEdge0638Test {
     }
 
     @Test
-    fun bubble_catalog_and_upgrade_migration_expose_memorize_card() {
-        val spec = BubbleShortcutCatalog.findSpec("farol_card_training")
-        assertTrue(spec?.action == BubbleShortcutAction.MemorizeFarolCard)
-        assertTrue(spec?.emoji == "🧠")
+    fun bubble_catalog_and_upgrade_migration_no_longer_expose_memorize_card() {
+        assertTrue(BubbleShortcutCatalog.findSpec("farol_card_training") == null)
         val grid = src("ShortcutGridCustomization0179.kt")
-        assertTrue(grid.contains("applyStage638SignatureShortcutMigration"))
-        assertTrue(grid.contains("farol_card_training"))
-        assertTrue(grid.contains("shortcutId == \"print\""))
+        assertFalse(grid.contains("applyStage638SignatureShortcutMigration"))
+        assertFalse(grid.contains("farol_card_training"))
     }
 
     @Test
