@@ -38,7 +38,6 @@ class FarolOfflineAi0642Test {
         val result = FarolOfflineAiStage642.recognizeFromEvidence(
             structured = structured,
             screenHeight = 2340,
-            visualSimilarity = null,
         )
         assertTrue(result.recognizedRideCard)
         assertTrue(result.confidence >= 60)
@@ -150,5 +149,4 @@ class FarolOfflineAi0642Test {
         assertTrue(history.contains("offline"))
         assertTrue(history.contains("OpenAI"))
     }
-}
 }
