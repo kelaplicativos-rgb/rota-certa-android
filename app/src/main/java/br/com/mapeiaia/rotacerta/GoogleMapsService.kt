@@ -53,6 +53,38 @@ class GoogleMapsService(context: Context? = null) {
         null
     }
 
+    /**
+     * FAROL Edge 0.1.634: coordinate cache is the critical-path authority.
+     * Historical road-route caches are deliberately not used for geographic-radius decisions.
+     */
+    fun cachedFarolCoordinate(originAddress: String): Coordinate? {
+        if (originAddress.isBlank()) return null
+        val normalized = normalizeAddress(originAddress)
+        val keys = buildList {
+            add("osm_origin|${normalized}")
+            geocodeQueries0547(originAddress).forEach { add(it.lowercase(Locale.ROOT)) }
+        }.distinct()
+        keys.forEach { key ->
+            geocodeCache[key]?.let { return it }
+            readPersistentCoordinate(key)?.let { coordinate ->
+                geocodeCache[key] = coordinate
+                return coordinate
+            }
+        }
+        return null
+    }
+
+    suspend fun resolveFarolCoordinate(
+        originAddress: String,
+        targetHints: List<Coordinate>,
+        apiKey: String,
+    ): Coordinate? = withContext(Dispatchers.IO) {
+        cachedFarolCoordinate(originAddress)?.let { return@withContext it }
+        resolveFreePrimaryOrigin0547(originAddress, targetHints)?.let { return@withContext it }
+        if (apiKey.isBlank()) return@withContext null
+        geocode(originAddress, DeviceRegion(), apiKey)
+    }
+
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? =
         withContext(Dispatchers.IO) {
             if (apiKey.isBlank()) return@withContext null
@@ -455,7 +487,7 @@ class GoogleMapsService(context: Context? = null) {
     private fun requestNominatimGeocodeCandidates0547(query: String): List<Coordinate>? {
         val encodedAddress = URLEncoder.encode(query.trim(), "UTF-8")
         val url = URL(
-            "$OSM_NOMINATIM_URL?format=jsonv2&limit=5&countrycodes=br&accept-language=pt-BR&q=$encodedAddress",
+            "$OSM_NOMINATIM_URL?format=jsonv2&limit=5&accept-language=${URLEncoder.encode(Locale.getDefault().toLanguageTag(), Charsets.UTF_8.name())}&q=$encodedAddress",
         )
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
