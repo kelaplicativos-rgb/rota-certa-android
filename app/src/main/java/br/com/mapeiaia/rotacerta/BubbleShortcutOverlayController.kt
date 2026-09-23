@@ -235,6 +235,11 @@ class BubbleShortcutOverlayController(
         hideSilentStatus159()
     }
 
+    fun hideFarolUiKeepAlerts0644() {
+        hideShortcuts()
+        hideSilentStatus159()
+    }
+
     fun showShortcutConfirmation0171(
         title: String,
         detail: String,
