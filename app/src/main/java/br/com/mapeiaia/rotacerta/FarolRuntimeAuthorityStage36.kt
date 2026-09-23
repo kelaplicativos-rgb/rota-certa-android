@@ -77,6 +77,7 @@ object FarolRuntimeAuthorityStage36 {
 
         @Synchronized
         fun updateSelection(packages: Set<String>): Snapshot {
+            val hadArmedSession = armed.isNotEmpty()
             selected = packages.mapNotNull(::normalizePackage).toSet()
             armed.retainAll(selected)
             resumed.retainAll(selected)
@@ -85,7 +86,7 @@ object FarolRuntimeAuthorityStage36 {
             activityStoppedAfterPositive.retainAll(selected)
             foregroundServiceStoppedAfterPositive.retainAll(selected)
             if (selected.isEmpty()) hardOffLocked("selection_empty")
-            else if (enabled && armed.isEmpty()) hardOffLocked("selected_session_removed")
+            else if (enabled && hadArmedSession && armed.isEmpty()) hardOffLocked("selected_session_removed")
             return snapshotLocked()
         }
 
