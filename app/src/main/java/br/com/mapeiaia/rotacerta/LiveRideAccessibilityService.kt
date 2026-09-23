@@ -7279,7 +7279,7 @@ class LiveRideAccessibilityService : AccessibilityService() {
                 toast("Deixe o card de corrida aberto e toque em Memorizar novamente.")
                 return@launch
             }
-            val nodes638 = collectFailedCardNodeLines0161(root638.node)
+            val nodes638 = collectSignatureProbeNodes638(root638.node)
             val text638 = collectImmediateVisibleTextChecklist13(root638.node)
             if (nodes638.size < 4 || text638.isBlank()) {
                 farolCardTrainingInProgress638.set(false)
