@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -191,15 +192,18 @@ internal fun ReservationManagementScreen0631(
         it.capacityClaimType == CapacityClaimType.PASSENGER && reservationIsResolved0631(it)
     }
 
+    val initialBooking = initialBookingId?.let { target -> bookings.firstOrNull { it.id == target } }
+    val initialFilter0631 = when {
+        initialPendingOnly -> ReservationFilter0631.PENDING
+        initialBooking?.status == BookingStatus.REQUESTED -> ReservationFilter0631.PENDING
+        initialBooking != null && reservationIsResolved0631(initialBooking) -> ReservationFilter0631.HISTORY
+        initialBooking != null -> ReservationFilter0631.ACTIVE
+        pendingCount > 0 -> ReservationFilter0631.PENDING
+        else -> ReservationFilter0631.ACTIVE
+    }
     var focusedBookingId by rememberSaveable(initialBookingId) { mutableStateOf(initialBookingId) }
     var filterName by rememberSaveable(initialBookingId, initialPendingOnly) {
-        mutableStateOf(
-            if (!initialBookingId.isNullOrBlank() || initialPendingOnly || pendingCount > 0) {
-                ReservationFilter0631.PENDING.name
-            } else {
-                ReservationFilter0631.ACTIVE.name
-            },
-        )
+        mutableStateOf(initialFilter0631.name)
     }
     val filter = runCatching { ReservationFilter0631.valueOf(filterName) }.getOrDefault(ReservationFilter0631.ACTIVE)
     var query by rememberSaveable { mutableStateOf("") }
@@ -346,6 +350,7 @@ internal fun ReservationManagementScreen0631(
                                         context.packageName,
                                         "action=APPROVE bookingId=${passengerCancellationHash(booking.id)}",
                                     )
+                                    filterName = ReservationFilter0631.ACTIVE.name
                                     onChanged("Reserva aprovada ✅")
                                 }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao aprovar"}") }
                                 busyId = null
@@ -409,6 +414,7 @@ internal fun ReservationManagementScreen0631(
                                                     mutationSource = "RESERVATION_MANAGEMENT_0631",
                                                 )
                                             }.onSuccess {
+                                                if (value == "COMPLETED") filterName = ReservationFilter0631.HISTORY.name
                                                 onChanged("Status atualizado no estado canônico.")
                                             }.onFailure {
                                                 onChanged("Nada foi alterado: ${it.message ?: "falha ao alterar status"}")
@@ -586,6 +592,7 @@ internal fun ReservationManagementScreen0631(
                             )
                         }.onSuccess {
                             rejectingId = null
+                            filterName = ReservationFilter0631.HISTORY.name
                             onChanged("Solicitação recusada; histórico preservado.")
                         }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao recusar"}") }
                         busyId = null
@@ -622,6 +629,7 @@ internal fun ReservationManagementScreen0631(
                             )
                         }.onSuccess {
                             cancellingId = null
+                            filterName = ReservationFilter0631.HISTORY.name
                             onChanged("Reserva cancelada; histórico preservado e vagas liberadas.")
                         }.onFailure { onChanged("Nada foi alterado: ${it.message ?: "falha ao cancelar"}") }
                         busyId = null
