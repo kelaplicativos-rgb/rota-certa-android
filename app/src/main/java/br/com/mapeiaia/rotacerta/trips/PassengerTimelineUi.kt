@@ -2104,10 +2104,8 @@ internal suspend fun persistCanonicalPassengerMutation0582(
                 revision = ack.entityRevision,
                 mutationType = mutationType,
                 source = mutationSource,
-                reconcileBookingInventory = true,
+                reconcileBookingInventory = false,
             )
-        } else {
-            store.reconcileBookingDerivedInventory(setOf(trip.id))
         }
         BookingRealtimeEvents0356.notifyChanged()
         UnifiedDebugEventStore.record(
