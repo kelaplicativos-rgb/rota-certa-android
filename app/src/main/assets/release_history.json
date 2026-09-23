@@ -2,6 +2,42 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.637",
+      "build": 5928,
+      "commit": null,
+      "branch": "agent/farol-edge-zero-jank-0.1.637",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage47 Ride Card Ownership: endereço visível deixa de equivaler a card de corrida; pacote selecionado, semântica de oferta e higiene contra Maps/navegação passam a autorizar o Farol.",
+        "Farol Edge Zero-Jank: gesto da bolinha separado do pipeline de leitura, OCR e rota, com movimento coalescido por frame e pintura adiada durante o toque.",
+        "Resposta em duas fases: cor verde/vermelha por coordenada local/cache sem exibir km e refinamento posterior por rota rodoviária exata."
+      ],
+      "fixed": [
+        "Clique simples deixa de aguardar o timeout de duplo toque antes de abrir os atalhos.",
+        "ACTION_MOVE deixa de executar a caixa-preta Stage38 a cada amostra do dedo.",
+        "Telas de busca, Street View, instruções de navegação, chats e outros pacotes deixam de iniciar rota apenas por conterem endereços."
+      ],
+      "improved": [
+        "Google Route Matrix TRAFFIC_AWARE passa a ser a autoridade preferencial da quilometragem rodoviária final, com cache próprio e OSRM somente como contingência.",
+        "Durante arraste, resultados de cor/km são retidos e aplicados após ACTION_UP para não disputar WindowManager.updateViewLayout com o dedo.",
+        "Coordenadas já conhecidas permitem decisão local imediata; o km mostrado continua reservado a distância rodoviária real."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "Bolinha com resposta lenta ao toque/arraste sob carga do Farol.",
+        "Reaquisição indevida de rotas a partir de endereços fora de cards de corrida."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Bolinha flutuante",
+        "Acessibilidade",
+        "Google Routes",
+        "OCR"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.636",
       "build": 5927,
       "commit": null,
