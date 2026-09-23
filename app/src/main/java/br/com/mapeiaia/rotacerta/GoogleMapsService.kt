@@ -30,6 +30,9 @@ class GoogleMapsService(context: Context? = null) {
     private val platformGeocodingService0547: GeocodingService? = context
         ?.applicationContext
         ?.let(::GeocodingService)
+    private val offlineAddressAtlas642: OfflineAddressAtlas642? = context
+        ?.applicationContext
+        ?.let(::OfflineAddressAtlas642)
     private var writesSincePrune = 0
 
     suspend fun geocode(query: String, region: DeviceRegion, apiKey: String): Coordinate? = withContext(Dispatchers.IO) {
@@ -61,6 +64,15 @@ class GoogleMapsService(context: Context? = null) {
     fun cachedFarolCoordinate(originAddress: String): Coordinate? {
         if (originAddress.isBlank()) return null
         val normalized = normalizeAddress(originAddress)
+        offlineAddressAtlas642?.lookup(originAddress)?.let { coordinate ->
+            geocodeCache["osm_origin|${normalized}"] = coordinate
+            FarolFlightRecorder0163.record(
+                stage = "OFFLINE_ATLAS_HIT_0642",
+                packageName = null,
+                details = "source=learned_local_atlas; network=false",
+            )
+            return coordinate
+        }
         val keys = buildList {
             add("osm_origin|${normalized}")
             geocodeQueries0547(originAddress).forEach { add(it.lowercase(Locale.ROOT)) }
@@ -104,6 +116,33 @@ class GoogleMapsService(context: Context? = null) {
         resolveFreePrimaryOrigin0547(originAddress, targetHints)?.let { return@withContext it }
         if (apiKey.isBlank()) return@withContext null
         geocode(originAddress, DeviceRegion(), apiKey)
+    }
+
+
+    /**
+     * Stage642 offline-first resolver. The learned local atlas is consulted before every provider.
+     * Any successful platform/OSM/Google result is immediately promoted into the local atlas so the
+     * same destination can be decided later with zero network, including without mobile data.
+     */
+    suspend fun resolveFarolCoordinateInstant642(
+        originAddress: String,
+        targetHints: List<Coordinate>,
+        apiKey: String,
+    ): Coordinate? = withContext(Dispatchers.IO) {
+        cachedFarolCoordinate(originAddress)?.let { return@withContext it }
+
+        resolvePlatformFirstOrigin640(originAddress)?.let { coordinate ->
+            learnOfflineAtlas642(originAddress, coordinate)
+            return@withContext coordinate
+        }
+        resolveFreePrimaryOrigin0547(originAddress, targetHints)?.let { coordinate ->
+            learnOfflineAtlas642(originAddress, coordinate)
+            return@withContext coordinate
+        }
+        if (apiKey.isBlank()) return@withContext null
+        geocode(originAddress, DeviceRegion(), apiKey)?.also { coordinate ->
+            learnOfflineAtlas642(originAddress, coordinate)
+        }
     }
 
     suspend fun drivingDistanceKm(origin: Coordinate, destination: Coordinate, apiKey: String): Double? =
@@ -450,6 +489,20 @@ class GoogleMapsService(context: Context? = null) {
             details = "resolved=${values.count { it != null }}; destinations=${destinations.size}; geocodeResolver=0547",
         )
         return values.takeIf { list -> list.any { it != null } }
+    }
+
+    private fun learnOfflineAtlas642(originAddress: String, coordinate: Coordinate) {
+        val aliases = buildList {
+            add(originAddress)
+            add(normalizeAddress(originAddress))
+            addAll(geocodeQueries0547(originAddress))
+        }
+        offlineAddressAtlas642?.learnAll(aliases, coordinate)
+        FarolFlightRecorder0163.record(
+            stage = "OFFLINE_ATLAS_LEARNED_0642",
+            packageName = null,
+            details = "aliases=${aliases.distinct().size}; networkNextTime=false",
+        )
     }
 
     private suspend fun resolvePlatformFirstOrigin640(originAddress: String): Coordinate? {
