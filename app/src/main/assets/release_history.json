@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.640",
+      "build": 5931,
+      "commit": null,
+      "branch": "agent/farol-instant-first-paint-0.1.640",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage640 transforma a assinatura treinada em porta de entrada do card: após Stage19 vincular um destino na mesma superfície, o lease semântico passa a sustentar a continuidade sem repetir o matcher estrutural em todo evento.",
+        "O primeiro snapshot com assinatura exata pinta imediatamente o estado de processamento antes de Stage38, Stage19, geocodificação ou rota.",
+        "O caminho crítico do primeiro Green/Red passa a usar cache e geocoder Android antes da cadeia pública de geocodificação; a quilometragem rodoviária exata continua em uma fase posterior."
+      ],
+      "fixed": [
+        "Corrige o Master Reset da 0.1.639 que podia interpretar mutações transitórias do card como signature miss, invalidar gerações e cancelar geocode/rota já pertencentes ao card confirmado.",
+        "Elimina a repetição do matcher de até 64 nós enquanto existe lease semântico válido na mesma janela admitida.",
+        "Evita que a cor local aguarde primeiro a ida ao Nominatim em endereços frios quando o geocoder do Android consegue resolver o mesmo endereço."
+      ],
+      "improved": [
+        "Verde/vermelho permanece desacoplado do km exato: decisão local é aplicada assim que a coordenada do destino é resolvida; rota traffic-aware apenas refina o texto de distância depois.",
+        "A segurança fail-closed da 0.1.639 é preservada na entrada: app sem modelo, card nunca admitido ou signature miss sem lease continuam bloqueados.",
+        "Trocas reais, feed e desaparecimento continuam chegando aos Stage46/Stage47 enquanto o lease está ativo, permitindo invalidar o estado pela semântica da superfície em vez de um frame estrutural incompleto."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.639: signature miss transitório podia executar hard-clear no meio do cálculo e atrasar a pintura física em vários segundos."
+      ],
+      "modulesAffected": [
+        "Farol Edge",
+        "Assinaturas de card",
+        "Lease semântico",
+        "Bolinha flutuante",
+        "Geocodificação",
+        "Acessibilidade",
+        "Stage46",
+        "Stage47",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.639",
       "build": 5930,
       "commit": null,
