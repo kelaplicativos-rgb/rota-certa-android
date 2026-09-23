@@ -51,7 +51,7 @@ class PassengerIdentityIntegrity0627Test {
 
         val merged = mergePassengerProfiles0627("kel-1", profiles)
         assertEquals("kel-1", merged.id)
-        assertEquals("Kel", normalizePassengerSearch(merged.displayName).replaceFirstChar(Char::uppercaseChar))
+        assertEquals("kel", normalizePassengerSearch(merged.displayName))
         assertEquals("11947434112", passengerContactKey(merged.whatsapp))
         assertEquals(
             setOf("legacy-booking-a", "legacy-booking-b", "legacy-booking-c", "legacy-booking-d"),
