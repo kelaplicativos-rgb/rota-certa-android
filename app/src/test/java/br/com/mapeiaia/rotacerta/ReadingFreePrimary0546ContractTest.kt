@@ -44,6 +44,7 @@ class ReadingFreePrimary0546ContractTest {
         val s = source("LiveRideAccessibilityService.kt")
         assertFalse(s.contains("if (apiKeyStage19.isBlank()) return"))
         assertFalse(s.contains("google_maps_api_required"))
-        assertTrue(s.contains("googleMapsService.drivingDistancesFromAddressKm("))
+        assertFalse(s.contains("googleMapsService.drivingDistancesFromAddressKm("))
+        assertTrue(s.contains("localDistancesFromAddressKm("))
     }
 }
