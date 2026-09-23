@@ -1,0 +1,127 @@
+name: Rota Certa 0.1.631 reservation management
+
+on:
+  push:
+    branches:
+      - agent/reservation-management-0.1.631
+    paths:
+      - '.github/workflows/reservation-management-0.1.631.yml'
+      - 'app/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      GOOGLE_MAPS_API_KEY: ci_dummy_key_0631
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      SOURCE_SHA: ${{ github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Verify exact 0.1.631 reservation source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=agent/reservation-management-0.1.631" >> "$GITHUB_ENV"
+          grep -Fq 'val releaseVersionCode = 5_922' app/build.gradle.kts
+          grep -Fq 'val releaseVersionName = "0.1.631"' app/build.gradle.kts
+          grep -Fq '"version": "0.1.631"' app/src/main/assets/release_history.json
+          grep -Fq 'ReservationManagementScreen0631' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ReservationManagementUi0631.kt
+          grep -Fq 'RESERVATION_MANAGEMENT_0631' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ReservationManagementUi0631.kt
+          grep -Fq 'RESERVATIONS("Reservas")' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaHeaderNavigation0396.kt
+          grep -Fq 'openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.RESERVATIONS' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'mutationSource = "RESERVATION_MANAGEMENT_0631"' app/src/main/java/br/com/mapeiaia/rotacerta/trips/ReservationManagementUi0631.kt
+          git diff --exit-code 76c4d81630518c6657805efb029eb264ab48bc8b HEAD -- app/src/main/java/br/com/mapeiaia/rotacerta/LiveRideAccessibilityService.kt
+
+      - name: Configure Firebase Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@14.12.0 apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@14.12.0 apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test reservation management contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests '*ReservationManagement0631Test' \
+            --tests '*AgendaHeaderNavigation0396Test' \
+            --tests '*CentralPassengerControls0593Test' \
+            --tests '*PassengerOperationalStatus0350Test' \
+            --tests '*PassengerTripActions0351Test' \
+            --no-daemon --max-workers=1 --no-parallel --stacktrace
+
+      - name: Build exact SHA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=1 --no-parallel --stacktrace
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > /tmp/aapt.txt
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" /tmp/aapt.txt
+          grep -Fq "versionCode='5922'" /tmp/aapt.txt
+          grep -Fq "versionName='0.1.631'" /tmp/aapt.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > /tmp/apksigner.txt
+          grep -Fq 'Verified' /tmp/apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/dex.txt
+          grep -Fq "$SOURCE_SHA" /tmp/dex.txt
+          mkdir -p /tmp/0631
+          SHORT_SHA="$(printf '%s' "$SOURCE_SHA" | cut -c1-12)"
+          cp "$APK" "/tmp/0631/RotaCerta-0.1.631-build5922-$SHORT_SHA-SM-S911B.apk"
+          sha256sum /tmp/0631/*.apk | tee /tmp/0631/apk.sha256
+          printf 'source_head=%s\nversion=0.1.631/5922\npackage=br.com.mapeiaia.rotacerta\ntarget=Samsung SM-S911B\n' "$SOURCE_SHA" > /tmp/0631/final-status.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-0.1.631-5922-${{ github.sha }}
+          retention-days: 30
+          if-no-files-found: error
+          path: /tmp/0631
