@@ -2037,16 +2037,21 @@ class LiveRideAccessibilityService : AccessibilityService() {
             // Stage635: an incomplete frame or equivalent OCR/Accessibility spelling is not proof
             // of a different card. Continue the same cycle without advancing generations.
         } else if (verifyWithoutBlinkStage46R4) {
-            // The concrete confirmed surface itself changed but Accessibility has not yet proved a
-            // different card. Keep the final visible while OCR verifies the current frame. If OCR
-            // proves a new two-address card, processUniversalVisualStage19 replaces it; if R2/R3
-            // prove disappearance/handoff, those paths already clear immediately.
+            // Stage636: the semantic lease may continue internally, but an ambiguous mutation of
+            // the concrete target surface must never leave the old Green/Red+km publicly visible.
+            // Revoke the old paint/generation now, then let OCR verify whether this is the same card
+            // or a replacement. Same-semantic candidates were already handled above without reset.
+            invalidateOldVisualBeforeCollectStage26(admissionStage26.visualGeneration, eventStartedNsStage26)
             stage19VisualVerificationPending = true
             FarolMaximumForensicsStage38.record(
-                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S46_R4_FINAL_LATCH_VERIFY_WITHOUT_BLINK", eventPackageStage19, cycleId = cycleIdStage20,
-                details = "color=${finalLeaseStage44.color}; distance=${finalLeaseStage44.distanceKm ?: -1.0}; signature=${finalLeaseStage44.addressSignature.orEmpty()}; target=${stage46TargetSourcePackage.orEmpty()}; targetWindow=${stablePresenceStage46R4.windowId}; root=${currentRootPackageName().orEmpty()}; noYellow=true; ocrMayVerify=true",
+                SystemClock.elapsedRealtimeNanos(), System.currentTimeMillis(), "S636_FINAL_PUBLIC_RESET_BEFORE_VERIFY", eventPackageStage19, cycleId = cycleIdStage20,
+                details = "oldColor=${finalLeaseStage44.color}; oldDistance=${finalLeaseStage44.distanceKm ?: -1.0}; signature=${finalLeaseStage44.addressSignature.orEmpty()}; target=${stage46TargetSourcePackage.orEmpty()}; targetWindow=${stablePresenceStage46R4.windowId}; root=${currentRootPackageName().orEmpty()}; yellowCommitted=true; internalSemanticLeasePreserved=true; ocrMayVerify=true",
             )
-            FarolCausalLatencyStage28.Metrics.increment("stage46R4FinalLatchVerifyWithoutBlink")
+            FarolCausalLatencyStage28.Metrics.increment("stage636FinalPublicResetBeforeVerify")
+            FarolCausalLatencyStage28.Metrics.sample(
+                "eventToStage636FinalPublicResetBeforeVerify",
+                SystemClock.elapsedRealtimeNanos() - eventStartedNsStage26,
+            )
         } else {
             // A different candidate or a surface no longer owned by the confirmed target is real
             // proof. Clear immediately to Yellow/no-km before processing the replacement.
