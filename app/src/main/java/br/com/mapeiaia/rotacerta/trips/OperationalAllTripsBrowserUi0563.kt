@@ -130,11 +130,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
             val canonicalTrip0602 = entry.localTripId
                 ?.let(projectedTripsById0602::get)
                 ?: projectedTripsById0602[entry.tripId]
-            val nativeRotaCerta0633 = canonicalTrip0602?.let { trip ->
-                resolvedTripRecordOrigin(trip) == TripRecordOrigin.LOCAL &&
-                    trip.blablaProfileUuid.isNullOrBlank() &&
-                    trip.blablaTripId.isNullOrBlank()
-            } == true
+            val nativeRotaCerta0633 = canonicalTrip0602?.isNativeRotaCertaTrip0633() == true
             val reason = if (nativeRotaCerta0633) {
                 null
             } else {
