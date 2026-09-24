@@ -1169,6 +1169,75 @@ class TripStore(context: Context) {
         saveBookingsBatch(listOf(booking), preserveSourceUpdatedAt = false).single()
 
     /**
+     * 0.1.646 private enrichment channel.
+     *
+     * Collector evidence is allowed to fill only private passenger metadata on an
+     * existing booking. The Trip record, canonical revision/hash, capacity, status,
+     * public mirror attestation and sibling bookings are deliberately untouched.
+     */
+    internal fun savePrivateBookingEnrichment0646(
+        candidates: List<Booking>,
+    ): List<Booking> = synchronized(CANONICAL_LOCK) {
+        if (candidates.isEmpty()) return@synchronized emptyList()
+
+        val existingAll = bookings()
+        val existingById = existingAll.associateBy(Booking::id)
+        val now = System.currentTimeMillis()
+        val prepared = candidates.mapNotNull { candidate ->
+            val existing = existingById[candidate.id] ?: return@mapNotNull null
+            if (
+                existing.tripId != candidate.tripId ||
+                existing.source != BookingSource.BLABLACAR ||
+                existing.capacityClaimType != CapacityClaimType.EXTERNAL_OCCUPANCY
+            ) {
+                return@mapNotNull null
+            }
+            val allowSupplement = !existing.localMetadataTouched
+            existing.copy(
+                passengerId = existing.passengerId.ifBlank { candidate.passengerId },
+                passengerContact = existing.passengerContact.ifBlank { candidate.passengerContact },
+                fareMinorUnits = existing.fareMinorUnits
+                    ?: candidate.fareMinorUnits.takeIf { allowSupplement },
+                fareCurrencyCode = existing.fareCurrencyCode.ifBlank {
+                    candidate.fareCurrencyCode.takeIf { allowSupplement }.orEmpty()
+                },
+                boardingAddress = existing.boardingAddress.ifBlank {
+                    candidate.boardingAddress.takeIf { allowSupplement }.orEmpty()
+                },
+                dropoffAddress = existing.dropoffAddress.ifBlank {
+                    candidate.dropoffAddress.takeIf { allowSupplement }.orEmpty()
+                },
+                boardingLatitude = existing.boardingLatitude
+                    ?: candidate.boardingLatitude.takeIf { allowSupplement },
+                boardingLongitude = existing.boardingLongitude
+                    ?: candidate.boardingLongitude.takeIf { allowSupplement },
+                dropoffLatitude = existing.dropoffLatitude
+                    ?: candidate.dropoffLatitude.takeIf { allowSupplement },
+                dropoffLongitude = existing.dropoffLongitude
+                    ?: candidate.dropoffLongitude.takeIf { allowSupplement },
+                updatedAtMillis = now,
+            )
+        }.filter { prepared ->
+            val existing = existingById[prepared.id] ?: return@filter false
+            existing.copy(updatedAtMillis = 0L) != prepared.copy(updatedAtMillis = 0L)
+        }
+
+        if (prepared.isEmpty()) return@synchronized emptyList()
+        val next = mergeBookingBatch0380(existingAll, prepared)
+        require(prefs.edit().putString(bookingsKey, json.encodeToString(next)).commit()) {
+            "Falha ao persistir enriquecimento privado de passageiro."
+        }
+        UnifiedDebugEventStore.recordAlways(
+            "CANONICAL_PRIVATE_BOOKING_PERSISTED_0646",
+            appContext.packageName,
+            "bookings=" + prepared.size +
+                " tripRevisionPreserved=true tripHashPreserved=true publicMirrorPreserved=true" +
+                " seatsPreserved=true statusPreserved=true siblingsPreserved=true",
+        )
+        prepared
+    }
+
+    /**
      * Persists a reconcile diff as one coherent booking snapshot. Remote imports keep
      * the server updatedAt value so an unchanged reservation compares equal on the
      * next pull instead of being imported again only because the local clock changed.
