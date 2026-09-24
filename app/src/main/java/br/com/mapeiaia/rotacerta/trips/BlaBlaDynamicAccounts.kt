@@ -3232,6 +3232,8 @@ internal class BlaBlaDynamicAccountSessionController0401(
             AgendaBackgroundSync0392.enqueueCollectorDelta0431(
                 context = this,
                 source = "exact_card_final",
+                profileUuid0646 = account.profileUuid.orEmpty(),
+                tripId0646 = targetTripId,
             )
         }
         return true
@@ -5029,6 +5031,9 @@ internal class BlaBlaDynamicAccountSessionController0401(
         AgendaBackgroundSync0392.enqueueCollectorDelta0431(
             context = this,
             source = "card_checkpoint:" + reason,
+            profileUuid0646 = account.profileUuid.orEmpty(),
+            tripId0646 = targetTripId,
+            dates0646 = targetDates,
         )
         UnifiedDebugEventStore.record(
             "TIMELINE_CARD_CHECKPOINT_SAVED",
