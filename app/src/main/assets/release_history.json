@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.647",
+      "build": 5938,
+      "commit": null,
+      "branch": "agent/alert-popup-timeout-0.1.647",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage647 redefine o ciclo de vida dos popups de radar e alerta para um único timeout fixo de 20 segundos por targetId, contado desde a primeira exibição.",
+        "Fechar, Editar e Excluir encerram imediatamente o alerta direcional e reconhecem o target até sair da zona; toques fora dos botões não fecham nem reiniciam o relógio.",
+        "O popup legado da bolinha para alerta/radar também recebe timeout de 20 segundos, preservando a confirmação destrutiva do fluxo legado."
+      ],
+      "fixed": [
+        "Remove o fechamento automático de 3 segundos após ultrapassar radar/alerta.",
+        "Impede que visual nulo/engine idle feche o popup antes do timeout de 20 segundos.",
+        "Impede que atualizações frequentes de GPS reiniciem o temporizador e mantenham o popup indefinidamente."
+      ],
+      "improved": [
+        "Timeout automático aplica o mesmo dismissUntilExit do botão Fechar no overlay direcional, evitando reaparecimento imediato do mesmo radar/alerta.",
+        "Editar e Excluir também reconhecem o target no overlay direcional antes de abrir a ação correspondente.",
+        "Telemetria registra início, cancelamento, timeout, botão utilizado, passagem do ponto mantida na tela e toque fora dos botões ignorado."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.646: radar/alerta ultrapassado era fechado automaticamente após 3 segundos.",
+        "0.1.646: o ciclo de vida do popup não distinguia no relatório timeout de 20 segundos, botão acionado e toque não acionável."
+      ],
+      "modulesAffected": [
+        "Alertas",
+        "Radares",
+        "Overlay direcional",
+        "Bolinha",
+        "Central de Saúde",
+        "Farol",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.646",
       "build": 5937,
       "commit": null,
