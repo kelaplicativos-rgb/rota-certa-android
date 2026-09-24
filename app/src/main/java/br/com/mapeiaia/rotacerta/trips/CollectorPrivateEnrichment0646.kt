@@ -13,6 +13,12 @@ import java.time.LocalDate
  * create/remove a passenger booking, change seats/status/segment identity, tombstone
  * siblings, or replace the HTML external snapshot.
  */
+internal data class CollectorPrivateEnrichmentScope0646(
+    val profileUuid: String = "",
+    val tripId: String = "",
+    val dates: Set<LocalDate> = emptySet(),
+)
+
 internal data class CollectorPrivateEnrichmentResult0646(
     val consideredSources: Int = 0,
     val matchedCanonicalTrips: Int = 0,
