@@ -302,6 +302,11 @@ class CentralDoDia0552Test {
         blablaProfileUuid = profileUuid.takeIf(String::isNotBlank),
         blablaTripId = externalTripId.takeIf(String::isNotBlank),
         blablaManageUrl = externalTripId.takeIf(String::isNotBlank)?.let { "https://www.blablacar.com.br/rides/offer/$it" },
+        externalSnapshotAuthority0607 = if (profileUuid.isNotBlank() && externalTripId.isNotBlank()) {
+            BlaBlaAcquisitionAuthority0607.HTML_DIRECT
+        } else {
+            ""
+        },
         tripKey = "tripkey:$id",
         canonicalRevision = 1,
         canonicalStateHash = "hash-$id",
