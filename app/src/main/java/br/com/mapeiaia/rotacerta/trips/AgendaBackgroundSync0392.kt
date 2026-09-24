@@ -1228,6 +1228,9 @@ internal object AgendaBackgroundSync0392 {
     private const val INPUT_TRIP_HREF_0407 = "trip_href_0407"
     private const val INPUT_REMOTE_TRIP_ID_0431 = "remote_trip_id_0431"
     private const val INPUT_REQUESTED_AT_0435 = "requested_at_0435"
+    private const val INPUT_COLLECTOR_PROFILE_UUID_0646 = "collector_profile_uuid_0646"
+    private const val INPUT_COLLECTOR_TRIP_ID_0646 = "collector_trip_id_0646"
+    private const val INPUT_COLLECTOR_DATES_0646 = "collector_dates_0646"
     private const val WORK_BACKOFF_SECONDS = 30L
     internal const val ONE_SHOT_MAX_AGE_MILLIS_0435 = 10L * 60L * 1000L
     private val tenantMutexes = ConcurrentHashMap<String, Mutex>()
@@ -1792,15 +1795,22 @@ internal object AgendaBackgroundSync0392 {
     fun enqueueCollectorDelta0431(
         context: Context,
         source: String,
+        profileUuid0646: String = "",
+        tripId0646: String = "",
+        dates0646: Collection<LocalDate> = emptyList(),
     ) {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
+        val normalizedDates0646 = dates0646.distinct().sorted().map(LocalDate::toString).toTypedArray()
         val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
             .setConstraints(networkConstraints())
             .setInputData(
                 workDataOf(
                     INPUT_REASON to "blablacar_collection_result",
                     INPUT_TENANT_ID to tenantId,
+                    INPUT_COLLECTOR_PROFILE_UUID_0646 to profileUuid0646.trim(),
+                    INPUT_COLLECTOR_TRIP_ID_0646 to tripId0646.trim(),
+                    INPUT_COLLECTOR_DATES_0646 to normalizedDates0646,
                 ),
             )
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WORK_BACKOFF_SECONDS, TimeUnit.SECONDS)
@@ -1814,7 +1824,25 @@ internal object AgendaBackgroundSync0392 {
         UnifiedDebugEventStore.record(
             "BLABLACAR_CARD_DELTA_ENQUEUED_0431",
             appContext.packageName,
-            "tenantKey=${seatSyncDiagnosticKey(tenantId)} source=${source.take(80)} workId=${request.id} expedited=true fullSyncRequested=false",
+            "tenantKey=${seatSyncDiagnosticKey(tenantId)} source=${source.take(80)} workId=${request.id}" +
+                " scopeProfile=${profileUuid0646.isNotBlank()} scopeTrip=${tripId0646.isNotBlank()}" +
+                " scopeDates=${normalizedDates0646.size} expedited=true fullSyncRequested=false" +
+                " collectorAuthority=PRIVATE_ENRICHMENT_ONLY_0646",
+        )
+    }
+
+    internal fun collectorPrivateEnrichmentScope0646(
+        workerParameters: WorkerParameters,
+    ): CollectorPrivateEnrichmentScope0646 {
+        val dates = workerParameters.inputData
+            .getStringArray(INPUT_COLLECTOR_DATES_0646)
+            .orEmpty()
+            .mapNotNull { raw -> runCatching { LocalDate.parse(raw.trim()) }.getOrNull() }
+            .toSet()
+        return CollectorPrivateEnrichmentScope0646(
+            profileUuid = workerParameters.inputData.getString(INPUT_COLLECTOR_PROFILE_UUID_0646)?.trim().orEmpty(),
+            tripId = workerParameters.inputData.getString(INPUT_COLLECTOR_TRIP_ID_0646)?.trim().orEmpty(),
+            dates = dates,
         )
     }
 
@@ -3364,16 +3392,41 @@ internal object AgendaBackgroundSync0392 {
         reason: String,
         collectorTarget0407: BlaBlaTripTarget0407? = null,
         bookingTargetRemoteTripId0431: String = "",
+        collectorPrivateScope0646: CollectorPrivateEnrichmentScope0646 = CollectorPrivateEnrichmentScope0646(),
     ): AgendaBackgroundSyncRun0392 {
         val appContext = context.applicationContext
         val tenantId = RotaCertaTenantRegistry(appContext).activeScope().tenantId
         if (reason == "blablacar_collection_result") {
-            UnifiedDebugEventStore.recordAlways(
-                "LEGACY_COLLECTOR_DELTA_DISABLED_0610",
-                appContext.packageName,
-                "tenantKey=${seatSyncDiagnosticKey(tenantId)} reason=blablacar_collection_result action=NO_CANONICAL_WRITE htmlOnly=true",
-            )
-            return AgendaBackgroundSyncRun0392()
+            val mutexKey0646 = tenantId + "|private|" +
+                collectorPrivateScope0646.profileUuid.trim().lowercase() + "|" +
+                collectorPrivateScope0646.tripId.trim() + "|" +
+                collectorPrivateScope0646.dates.sorted().joinToString(",")
+            val mutex0646 = collectorDeltaMutexes0431.computeIfAbsent(mutexKey0646) { Mutex() }
+            return mutex0646.withLock {
+                val store0646 = TripStore(appContext)
+                val response0646 = BlaBlaCollectorStateStore(appContext).lastResponseRecoveringDynamicSessions()
+                val result0646 = CollectorPrivateEnrichment0646.enrich(
+                    context = appContext,
+                    store = store0646,
+                    sources = response0646?.trips.orEmpty(),
+                    allowedDates = collectorPrivateScope0646.dates.takeIf { it.isNotEmpty() },
+                    allowedProfileUuid = collectorPrivateScope0646.profileUuid.takeIf(String::isNotBlank),
+                    allowedTripId = collectorPrivateScope0646.tripId.takeIf(String::isNotBlank),
+                )
+                UnifiedDebugEventStore.recordAlways(
+                    "COLLECTOR_PRIVATE_ENRICHMENT_DELTA_0646",
+                    appContext.packageName,
+                    "tenantKey=${seatSyncDiagnosticKey(tenantId)} considered=${result0646.consideredSources}" +
+                        " matched=${result0646.matchedCanonicalTrips} enrichedTrips=${result0646.enrichedTrips}" +
+                        " enrichedBookings=${result0646.enrichedBookings} outsideScope=${result0646.skippedOutsideScope}" +
+                        " skippedIdentity=${result0646.skippedIdentity} tripWrite=false tombstone=false siblingWrite=false" +
+                        " htmlTripAuthorityPreserved=true",
+                )
+                AgendaBackgroundSyncRun0392(
+                    collectorChangedTrips = result0646.enrichedTrips,
+                    collectorSkippedTrips = result0646.skippedOutsideScope + result0646.skippedIdentity,
+                )
+            }
         }
         val targetRemoteTripId = bookingTargetRemoteTripId0431.trim()
         if (
@@ -3922,6 +3975,7 @@ class AgendaBackgroundSyncWorker0392(
                     context = applicationContext,
                     reason = reason,
                     bookingTargetRemoteTripId0431 = bookingTargetRemoteTripId0431,
+                    collectorPrivateScope0646 = AgendaBackgroundSync0392.collectorPrivateEnrichmentScope0646(parameters),
                 )
             }
             val collectorState = AgendaBackgroundSyncConfig0392.collectorState0400(applicationContext)
