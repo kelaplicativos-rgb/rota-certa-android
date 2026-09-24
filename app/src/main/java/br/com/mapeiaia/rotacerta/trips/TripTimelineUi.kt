@@ -2237,11 +2237,13 @@ private fun TimelineEntryCard(
                     commandAudit0407.finishedAtMillis > 0L &&
                     System.currentTimeMillis() - commandAudit0407.finishedAtMillis in 0L..120_000L ->
                     "✓ Atualização individual concluída"
-                commandAudit0407?.status in setOf(
-                    BlaBlaCommandStatus0407.FAILED,
-                    BlaBlaCommandStatus0407.UNVERIFIED,
-                    BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
-                ) &&
+                commandAudit0407?.status?.let { status0645 ->
+                    status0645 in setOf(
+                        BlaBlaCommandStatus0407.FAILED,
+                        BlaBlaCommandStatus0407.UNVERIFIED,
+                        BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                    )
+                } == true &&
                     commandAudit0407.finishedAtMillis > 0L &&
                     System.currentTimeMillis() - commandAudit0407.finishedAtMillis in 0L..120_000L ->
                     "⚠ Atualização individual não concluída"
