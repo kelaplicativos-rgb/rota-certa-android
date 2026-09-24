@@ -1687,6 +1687,96 @@ internal object AgendaBackgroundSync0392 {
         )
         BookingRealtimeEvents0356.notifyChanged()
         TripWidgetProvider.updateAll(appContext)
+
+        fun exactSessionCollectorSource0646(): BlaBlaCollectorTrip? {
+            val account0646 = BlaBlaDynamicAccountRegistry(appContext).get(target.accountId) ?: return null
+            return BlaBlaDynamicSessionStore(appContext)
+                .read(account0646)
+                ?.trips
+                .orEmpty()
+                .filter { source0646 ->
+                    source0646.profile_uuid.trim().equals(target.profileUuid.trim(), ignoreCase = true) &&
+                        source0646.trip_id?.trim() == target.tripId
+                }
+                .singleOrNull()
+        }
+
+        var privateResult0646 = CollectorPrivateEnrichment0646.enrichExactTarget(
+            context = appContext,
+            store = store,
+            target = target,
+            source = exactSessionCollectorSource0646(),
+        )
+        var privateCollectorStatus0646 = if (privateResult0646.enrichedBookings > 0) {
+            "CACHE_ENRICHED"
+        } else {
+            "NOT_NEEDED"
+        }
+        var remainingPrivateMissing0646 = CollectorPrivateEnrichment0646.needsPrivateEnrichment(
+            store.bookingsFor(refreshed.id),
+        )
+
+        if (remainingPrivateMissing0646) {
+            privateCollectorStatus0646 = "HEADLESS_REQUESTED"
+            UnifiedDebugEventStore.recordAlways(
+                "TARGET_CARD_PRIVATE_ENRICHMENT_REQUESTED_0646",
+                appContext.packageName,
+                "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)}" +
+                    " reason=PRIVATE_FIELDS_MISSING htmlAlreadyCommitted=true" +
+                    " exactTargetOnly=true readOnlyPassengerScripts=true",
+            )
+            val privateCommand0646 = BlaBlaCommand0407.forTarget(
+                target = target,
+                operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                origin = BlaBlaCommandOrigin0407.SYSTEM_RECONCILIATION,
+            )
+            val privateVerify0646 = runCatching {
+                BlaBlaAutomaticCollectionCoordinator0400.reverifyTripHeadless0407(
+                    context = appContext,
+                    target = target,
+                    commandId = privateCommand0646.commandId,
+                    origin = "target_card_private_enrichment_0646",
+                    timeoutMillis = 180_000L,
+                    enabledScripts = CollectorPrivateEnrichment0646.readOnlyPassengerScripts,
+                )
+            }.getOrElse { error0646 ->
+                UnifiedDebugEventStore.recordAlways(
+                    "TARGET_CARD_PRIVATE_ENRICHMENT_FAILED_0646",
+                    appContext.packageName,
+                    "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)}" +
+                        " phase=HEADLESS exception=${error0646.javaClass.simpleName.take(80)}" +
+                        " htmlCanonicalPreserved=true",
+                )
+                null
+            }
+            if (privateVerify0646?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS) {
+                privateResult0646 = CollectorPrivateEnrichment0646.enrichExactTarget(
+                    context = appContext,
+                    store = store,
+                    target = target,
+                    source = exactSessionCollectorSource0646(),
+                )
+                remainingPrivateMissing0646 = CollectorPrivateEnrichment0646.needsPrivateEnrichment(
+                    store.bookingsFor(refreshed.id),
+                )
+                privateCollectorStatus0646 = when {
+                    privateResult0646.enrichedBookings > 0 && !remainingPrivateMissing0646 -> "HEADLESS_ENRICHED_COMPLETE"
+                    privateResult0646.enrichedBookings > 0 -> "HEADLESS_ENRICHED_PARTIAL"
+                    else -> "HEADLESS_NO_NEW_PRIVATE_FIELDS"
+                }
+                if (privateResult0646.enrichedBookings > 0) {
+                    TargetedTripRefreshEvents0645.notifyCanonicalCommitted(
+                        target = target,
+                        canonicalTripId = refreshed.id,
+                        canonicalRevision = refreshed.canonicalRevision,
+                        changed = true,
+                    )
+                }
+            } else if (privateVerify0646 != null) {
+                privateCollectorStatus0646 = "HEADLESS_" + privateVerify0646.status.name
+            }
+        }
+
         UnifiedDebugEventStore.recordAlways(
             "TIMELINE_CARD_TARGET_HTML_REFRESH_0607",
             appContext.packageName,
@@ -1694,7 +1784,10 @@ internal object AgendaBackgroundSync0392 {
                 " profileUuidPresent=true tripIdPresent=true changed=${batch.changedTrips}" +
                 " skipped=${batch.skippedTrips} blocked=${batch.blockedTrips}" +
                 " publicationQueued=${batch.publicationQueued} outboxDelivered=$delivered" +
-                " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false",
+                " exactTargetOnly=true authority=HTML_DIRECT_0607 legacyCollector=false" +
+                " privateEnrichment=$privateCollectorStatus0646" +
+                " privateBookings=${privateResult0646.enrichedBookings}" +
+                " privateStillMissing=$remainingPrivateMissing0646",
         )
         return BlaBlaCommandResult0407(
             commandId = work.commandId,
@@ -1702,7 +1795,11 @@ internal object AgendaBackgroundSync0392 {
             capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
             before = "CANONICAL_REVISION_${canonicalBefore.canonicalRevision}",
             after = "CANONICAL_REVISION_${refreshed.canonicalRevision}",
-            verification = "targeted_html_exact_trip_canonicalized",
+            verification = if (remainingPrivateMissing0646) {
+                "targeted_html_canonicalized_private_enrichment_incomplete"
+            } else {
+                "targeted_html_canonicalized_private_enrichment_complete"
+            },
             status = BlaBlaCommandStatus0407.VERIFIED_SUCCESS,
             errorCode = "",
             startedAtMillis = startedAt,
