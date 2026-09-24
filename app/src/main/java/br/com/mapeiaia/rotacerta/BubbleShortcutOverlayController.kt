@@ -36,6 +36,9 @@ class BubbleShortcutOverlayController(
     private var shortcutView: View? = null
     private var shortcutBackdropView0186: View? = null
     private var alertPopupView: View? = null
+    private var alertPopupTimeout0647: Runnable? = null
+    private var alertPopupTargetId0647: String? = null
+    private var alertPopupDismissAction0647: (() -> Unit)? = null
     private var silentStatusView: View? = null
     private var silentStatusDismiss: Runnable? = null
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -102,9 +105,19 @@ class BubbleShortcutOverlayController(
         })
         container.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(popupButton("Fechar", scale) { hideProximityAlert(); actions.onDismiss() })
-            addView(popupButton("Editar", scale) { hideProximityAlert(); actions.onEdit(alert) })
-            addView(popupButton("Excluir", scale) { showDeleteConfirmation(alert, actions, scale) })
+            addView(popupButton("Fechar", scale) {
+                dismissAlertPopup0647("CLOSE")
+            })
+            addView(popupButton("Editar", scale) {
+                dismissAlertPopup0647("EDIT")
+                actions.onEdit(alert)
+            })
+            addView(popupButton("Excluir", scale) {
+                // Mantém a confirmação destrutiva do fluxo legado, mas o alerta original
+                // deixa de ser o dono do timeout assim que o motorista escolhe Excluir.
+                cancelAlertPopupTimeout0647("DELETE_BUTTON")
+                showDeleteConfirmation(alert, actions, scale)
+            })
         })
 
         val metrics = context.resources.displayMetrics
@@ -121,7 +134,10 @@ class BubbleShortcutOverlayController(
         }
         if (runCatching { windowManager.addView(container, params) }.isSuccess) {
             alertPopupView = container
-            trace("proximity.popup.shown id=${alert.id} distance=${distanceMeters.roundToInt()} scale=$scale")
+            alertPopupTargetId0647 = "saved-${alert.id}"
+            alertPopupDismissAction0647 = actions.onDismiss
+            scheduleAlertPopupTimeout0647()
+            trace("proximity.popup.shown id=${alert.id} distance=${distanceMeters.roundToInt()} scale=$scale timeout_ms=$ALERT_POPUP_TIMEOUT_MILLIS_0647")
         }
     }
 
@@ -159,7 +175,9 @@ class BubbleShortcutOverlayController(
         })
         container.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(popupButton("Fechar", scale) { hideProximityAlert(); onDismiss() })
+            addView(popupButton("Fechar", scale) {
+                dismissAlertPopup0647("CLOSE")
+            })
         })
 
         val params = WindowManager.LayoutParams(
@@ -174,14 +192,72 @@ class BubbleShortcutOverlayController(
         }
         if (runCatching { windowManager.addView(container, params) }.isSuccess) {
             alertPopupView = container
-            trace("imported_radar.popup.shown id=${radar.id} distance=${distanceMeters.roundToInt()}")
+            alertPopupTargetId0647 = "radar-${radar.id}"
+            alertPopupDismissAction0647 = onDismiss
+            scheduleAlertPopupTimeout0647()
+            trace("imported_radar.popup.shown id=${radar.id} distance=${distanceMeters.roundToInt()} timeout_ms=$ALERT_POPUP_TIMEOUT_MILLIS_0647")
         }
     }
 
     fun hideProximityAlert() {
-        val view = alertPopupView ?: return
-        runCatching { windowManager.removeView(view) }
+        cancelAlertPopupTimeout0647("EXPLICIT_HIDE")
+        removeAlertPopupView0647()
+    }
+
+    private fun dismissAlertPopup0647(action: String) {
+        val target = alertPopupTargetId0647
+        val dismiss = alertPopupDismissAction0647
+        FarolFlightRecorder0163.record(
+            stage = "LEGACY_ALERT_POPUP_BUTTON_${action}_0647",
+            packageName = null,
+            details = "target_hash=${target?.hashCode()}; timeout_cancelled=true",
+        )
+        cancelAlertPopupTimeout0647("BUTTON_$action")
+        removeAlertPopupView0647()
+        runCatching { dismiss?.invoke() }
+    }
+
+    private fun scheduleAlertPopupTimeout0647() {
+        cancelAlertPopupTimeout0647("RESCHEDULE_GUARD")
+        val target = alertPopupTargetId0647 ?: return
+        val timeout = Runnable {
+            if (alertPopupTargetId0647 != target || alertPopupView == null) return@Runnable
+            alertPopupTimeout0647 = null
+            val dismiss = alertPopupDismissAction0647
+            FarolFlightRecorder0163.record(
+                stage = "LEGACY_ALERT_POPUP_TIMEOUT_DISMISSED_0647",
+                packageName = null,
+                details = "target_hash=${target.hashCode()}; timeout_ms=$ALERT_POPUP_TIMEOUT_MILLIS_0647",
+            )
+            removeAlertPopupView0647()
+            runCatching { dismiss?.invoke() }
+        }
+        alertPopupTimeout0647 = timeout
+        FarolFlightRecorder0163.record(
+            stage = "LEGACY_ALERT_POPUP_TIMEOUT_STARTED_0647",
+            packageName = null,
+            details = "target_hash=${target.hashCode()}; timeout_ms=$ALERT_POPUP_TIMEOUT_MILLIS_0647",
+        )
+        mainHandler.postDelayed(timeout, ALERT_POPUP_TIMEOUT_MILLIS_0647)
+    }
+
+    private fun cancelAlertPopupTimeout0647(reason: String) {
+        val timeout = alertPopupTimeout0647 ?: return
+        mainHandler.removeCallbacks(timeout)
+        alertPopupTimeout0647 = null
+        FarolFlightRecorder0163.record(
+            stage = "LEGACY_ALERT_POPUP_TIMEOUT_CANCELLED_0647",
+            packageName = null,
+            details = "reason=$reason; target_hash=${alertPopupTargetId0647?.hashCode()}",
+        )
+    }
+
+    private fun removeAlertPopupView0647() {
+        val view = alertPopupView
+        if (view != null) runCatching { windowManager.removeView(view) }
         alertPopupView = null
+        alertPopupTargetId0647 = null
+        alertPopupDismissAction0647 = null
         trace("proximity.popup.closed")
     }
 
@@ -600,6 +676,7 @@ class BubbleShortcutOverlayController(
 
     private companion object {
         const val LARGE_SCALE_TWO_COLUMNS = 1.35
+        const val ALERT_POPUP_TIMEOUT_MILLIS_0647 = 20_000L
     }
 }
 
