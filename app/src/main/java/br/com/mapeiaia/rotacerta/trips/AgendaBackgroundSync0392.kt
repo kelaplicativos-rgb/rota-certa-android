@@ -1296,9 +1296,11 @@ internal object AgendaBackgroundSync0392 {
             UnifiedDebugEventStore.record(
                 "NO_OP",
                 appContext.packageName,
-                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending requestedAction=TARGET_HTML_REFRESH_0607",
+                "commandKey=${seatSyncDiagnosticKey(commandId)} targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} capability=REVERIFY_TRIP reason=single_flight_already_pending requestedAction=TARGET_HTML_REFRESH_0607 accepted=false",
             )
-            return true
+            // 0.1.645: do not claim that a new exact-card refresh was queued when the
+            // durable single-flight owner already belongs to a previous command.
+            return false
         }
 
         val request = OneTimeWorkRequestBuilder<AgendaBackgroundSyncWorker0392>()
@@ -1657,6 +1659,23 @@ internal object AgendaBackgroundSync0392 {
                 startedAtMillis = startedAt,
                 finishedAtMillis = System.currentTimeMillis(),
             )
+
+        // 0.1.645: the exact-card contract completes locally at the canonical commit.
+        // Notify the visible Timeline before draining the public projection so returning from
+        // BlaBlaCar never waits for unrelated publication latency.
+        TargetedTripRefreshEvents0645.notifyCanonicalCommitted(
+            target = target,
+            canonicalTripId = refreshed.id,
+            canonicalRevision = refreshed.canonicalRevision,
+            changed = batch.changedTrips > 0,
+        )
+        UnifiedDebugEventStore.recordAlways(
+            "TIMELINE_CARD_TARGET_LOCAL_COMMIT_0645",
+            appContext.packageName,
+            "canonicalTripId=${seatSyncDiagnosticKey(refreshed.tripKey.ifBlank { refreshed.id })}" +
+                " changed=${batch.changedTrips > 0} publicationDeferredUntilAfterLocalCommit=true" +
+                " exactTargetOnly=true authority=HTML_DIRECT_0607",
+        )
 
         val targetPublicationIds = batch.publicationCanonicalTripIds0431
             .ifEmpty { setOf(refreshed.tripKey.ifBlank { refreshed.id }) }
