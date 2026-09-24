@@ -165,6 +165,7 @@ fun TripTimelineScreen(
     val appSettingsState by settingsRepository.settings.collectAsState(initial = null)
     val settingsLoaded = appSettingsState != null
     val appSettings = appSettingsState ?: AppSettings()
+    val targetedTripRefreshCommit0645 by TargetedTripRefreshEvents0645.commit.collectAsState()
 
     LaunchedEffect(uiCommandToken0396, uiCommand0396) {
         if (uiCommandToken0396 <= 0) return@LaunchedEffect
@@ -215,6 +216,45 @@ fun TripTimelineScreen(
     val canonicalRefreshStateCallback0499 = androidx.compose.runtime.rememberUpdatedState(onCanonicalRefreshState0499)
     val globalRefreshStartedCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshStarted0540)
     val globalRefreshBusyCallback0540 = androidx.compose.runtime.rememberUpdatedState(onGlobalRefreshBusy0540)
+
+    suspend fun reloadLocalCanonicalProjection0645(reason: String) {
+        val refreshed0645 = withContext(Dispatchers.IO) {
+            AgendaBackgroundSync0392.materializeCanonicalExternalPrivateBookings0515(context, store)
+            localAgendaTimelineProjection0515(
+                trips = store.trips(),
+                bookings = store.bookings(),
+                localProfileLabel = onlineSettings0494.driverDisplayName.ifBlank { "Agenda" },
+            )
+        }
+        localAgendaProjection0515 = refreshed0645
+        UnifiedDebugEventStore.record(
+            "TIMELINE_TARGET_LOCAL_RELOAD_0645",
+            context.packageName,
+            "reason=" + UnifiedDebugEventStore.sanitizeForExport(reason).take(80) +
+                " trips=" + refreshed0645.trips.size +
+                " bookings=" + refreshed0645.bookings.size +
+                " source=TRIP_STORE exactCardAcquisitionPreserved=true remoteRead=false",
+        )
+    }
+
+    LaunchedEffect(targetedTripRefreshCommit0645?.revision, onlineSettings0494.driverDisplayName) {
+        val commit0645 = targetedTripRefreshCommit0645 ?: return@LaunchedEffect
+        val activeTenant0645 = br.com.mapeiaia.rotacerta.RotaCertaTenantRegistry(context)
+            .activeScope()
+            .tenantId
+        if (commit0645.tenantId != activeTenant0645) return@LaunchedEffect
+        reloadLocalCanonicalProjection0645(
+            "TARGET_CARD_COMMIT:" + commit0645.canonicalTripId,
+        )
+        UnifiedDebugEventStore.record(
+            "TIMELINE_TARGET_CARD_RENDER_INVALIDATED_0645",
+            context.packageName,
+            "canonicalTripId=" + seatSyncDiagnosticKey(commit0645.canonicalTripId) +
+                " canonicalRevision=" + commit0645.canonicalRevision +
+                " changed=" + commit0645.changed +
+                " localCommitBeforePublicProjection=true",
+        )
+    }
 
     LaunchedEffect(store, trips, bookings, onlineSettings0494.driverDisplayName) {
         localAgendaProjection0515 = withContext(Dispatchers.IO) {
@@ -485,6 +525,9 @@ fun TripTimelineScreen(
 
     LaunchedEffect(Unit) {
         BookingRealtimeEvents0356.changes.collect {
+            // 0.1.645: paint persisted local canonical state first. The remote canonical
+            // projection remains secondary and must not delay the card the driver just refreshed.
+            reloadLocalCanonicalProjection0645("CANONICAL_CHANGE_EVENT")
             invalidateCanonicalTimeline0495("CANONICAL_CHANGE_EVENT")
         }
     }
@@ -500,7 +543,12 @@ fun TripTimelineScreen(
     DisposableEffect(lifecycleOwner0495) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                invalidateCanonicalTimeline0495("FOREGROUND")
+                incrementalPublishScope.launch {
+                    // Returning from BlaBlaCar must synchronously re-read the durable local
+                    // canonical snapshot before any whole-Timeline remote reconciliation.
+                    reloadLocalCanonicalProjection0645("FOREGROUND_RETURN")
+                    invalidateCanonicalTimeline0495("FOREGROUND")
+                }
             }
         }
         lifecycleOwner0495.lifecycle.addObserver(observer)
@@ -2182,6 +2230,30 @@ private fun TimelineEntryCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = agendaMuted0549,
             )
+            val targetedRefreshLabel0645 = when {
+                commandAudit0407?.pending == true ->
+                    "⟳ Atualizando somente esta viagem…"
+                commandAudit0407?.status == BlaBlaCommandStatus0407.VERIFIED_SUCCESS &&
+                    commandAudit0407.finishedAtMillis > 0L &&
+                    System.currentTimeMillis() - commandAudit0407.finishedAtMillis in 0L..120_000L ->
+                    "✓ Atualização individual concluída"
+                commandAudit0407?.status in setOf(
+                    BlaBlaCommandStatus0407.FAILED,
+                    BlaBlaCommandStatus0407.UNVERIFIED,
+                    BlaBlaCommandStatus0407.UNVERIFIED_TARGET,
+                ) &&
+                    commandAudit0407.finishedAtMillis > 0L &&
+                    System.currentTimeMillis() - commandAudit0407.finishedAtMillis in 0L..120_000L ->
+                    "⚠ Atualização individual não concluída"
+                else -> null
+            }
+            targetedRefreshLabel0645?.let { label0645 ->
+                Text(
+                    text = label0645,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = agendaMuted0549,
+                )
+            }
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.width(76.dp)) {
