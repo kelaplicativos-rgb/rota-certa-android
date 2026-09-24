@@ -158,12 +158,10 @@ internal object CollectorPrivateEnrichment0646 {
             }
             if (changed.isEmpty()) return@forEach
 
-            store.saveBookingsBatch(
-                bookingsToSave = changed,
-                preserveSourceUpdatedAt = false,
-            )
+            val persisted = store.savePrivateBookingEnrichment0646(changed)
+            if (persisted.isEmpty()) return@forEach
             enrichedTrips++
-            enrichedBookings += changed.size
+            enrichedBookings += persisted.size
 
             UnifiedDebugEventStore.recordAlways(
                 "COLLECTOR_CANONICAL_PRIVATE_ENRICHMENT_COMMITTED_0646",
