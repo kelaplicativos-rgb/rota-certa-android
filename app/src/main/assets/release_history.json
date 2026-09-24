@@ -2,6 +2,43 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.645",
+      "build": 5936,
+      "commit": null,
+      "branch": "agent/card-target-refresh-return-0.1.645",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Atualização individual de card passa a emitir um evento replayable assim que o HTML exato da viagem é reconciliado no TripStore canônico local.",
+        "Ao retornar da BlaBlaCar, a Timeline relê primeiro o estado canônico local persistido antes de qualquer reconciliação remota de escopo amplo.",
+        "O próprio card exibe estado de atualização individual em andamento, conclusão recente ou falha recente sem atualizar as demais viagens."
+      ],
+      "fixed": [
+        "Corrige a corrida em que o motorista voltava da BlaBlaCar antes do fim da publicação remota e via novamente o snapshot antigo do card.",
+        "O commit local da viagem alvo agora invalida a renderização antes da drenagem da Agenda Pública, removendo latência de publicação do caminho visual crítico.",
+        "Quando um single-flight anterior já possui a viagem, o enfileirador deixa de retornar sucesso falso e não informa que uma nova captura foi iniciada."
+      ],
+      "improved": [
+        "O contrato permanece estritamente por identidade forte da viagem: profileUuid + tripId + tripHref, sem coleta global nem atualização de cards irmãos.",
+        "Eventos canônicos gerais também recarregam primeiro o TripStore local; backend remoto continua secundário e não bloqueia o primeiro paint atualizado.",
+        "Testes de regressão verificam ordem commit-local antes de publicação, retorno ao foreground e ausência de falso positivo no enfileiramento."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.644: retorno ao Rota Certa podia renderizar o snapshot anterior enquanto a atualização individual ainda terminava em segundo plano.",
+        "0.1.644: single-flight pendente podia ser apresentado como se uma nova atualização individual tivesse sido enfileirada."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "BlaBlaCar",
+        "Atualização individual da viagem",
+        "Estado canônico local",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.644",
       "build": 5935,
       "commit": null,
