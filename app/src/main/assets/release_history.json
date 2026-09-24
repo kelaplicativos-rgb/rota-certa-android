@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.646",
+      "build": 5937,
+      "commit": null,
+      "branch": "agent/canonical-card-enrichment-0.1.646",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage646 cria um canal canônico privado de enriquecimento: o coletor pode preencher telefone, tarifa, endereços, coordenadas e identidade do passageiro somente em Booking BlaBlaCar já existente.",
+        "A atualização individual continua fazendo primeiro o commit HTML do card; quando faltam dados privados, tenta o cache da conta e depois executa coleta headless exata por profileUuid + tripId com scripts somente de leitura.",
+        "Sincronizações de todas as contas e por data/período passam a transportar escopo de perfil, viagem e datas até o delta de enriquecimento, atualizando os cards canônicos sem promover o coletor a autoridade da viagem."
+      ],
+      "fixed": [
+        "Corrige o bloqueio LEGACY_COLLECTOR_DELTA_DISABLED_0610 que descartava do estado canônico telefone, tarifa e endereços já capturados pelo coletor.",
+        "Corrige a Central do Dia com atalhos genéricos/WhatsApp desabilitado quando o HTML trazia passageiros mas privateFields permanecia zero.",
+        "Evita que enriquecimento privado altere revisão/hash do Trip, vagas, status, mirror público, irmãos ou crie/remova passageiros."
+      ],
+      "improved": [
+        "Persistência privada é fill-only e respeita metadata local tocada pelo motorista, preservando valores já existentes.",
+        "O card individual permanece visível imediatamente após o HTML e continua em atualização enquanto o complemento privado é executado.",
+        "Eventos locais invalidam Timeline, Agenda e Central do Dia assim que o Booking privado é enriquecido, sem depender da publicação pública."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.645: sincronização por data/período conseguia capturar phonePresent/farePresent/addressPresent, mas o delta terminava em NO_CANONICAL_WRITE e os atalhos continuavam vazios.",
+        "0.1.645: o refresh HTML individual não executava o percurso de reserva necessário para complementar telefone, tarifa e endereço quando esses campos ainda não existiam."
+      ],
+      "modulesAffected": [
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "BlaBlaCar",
+        "Coletor",
+        "WhatsApp",
+        "Passageiros",
+        "Estado canônico local",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.645",
       "build": 5936,
       "commit": null,
