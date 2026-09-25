@@ -230,6 +230,7 @@ class RotaCertaBookingMessagingService : FirebaseMessagingService() {
                 reason = "admin_full_reconcile:$correlationId0417",
             )
             "admin_sync_policy_changed" -> Unit
+            "password_recovery_requested" -> Unit
             else -> {
                 val reason = "booking_push:${event.take(40)}"
                 val targeted = AgendaBackgroundSync0392.enqueueCardDelta0431(
@@ -262,6 +263,7 @@ private object BookingNotificationCenter0304 {
     private const val CHANNEL_CREATED = "rota_certa_booking_created_v1"
     private const val CHANNEL_CHANGED = "rota_certa_booking_changed_v1"
     private const val CHANNEL_CANCELLED = "rota_certa_booking_cancelled_v1"
+    private const val CHANNEL_PASSWORD_RECOVERY = "rota_certa_password_recovery_v1"
 
     fun show(
         context: Context,
@@ -299,6 +301,15 @@ private object BookingNotificationCenter0304 {
                 vibration = longArrayOf(0, 300, 140, 300, 140, 450),
                 usage = AudioAttributes.USAGE_NOTIFICATION_EVENT,
             )
+            "password_recovery_requested" -> NotificationSpec(
+                channelId = CHANNEL_PASSWORD_RECOVERY,
+                channelName = "Recuperação de senha VIP",
+                title = "🔑 RECUPERAÇÃO DE SENHA",
+                body = (tripTitle.ifBlank { "Passageiro VIP" }) + " solicitou uma nova senha da Área VIP.",
+                sound = Settings.System.DEFAULT_NOTIFICATION_URI,
+                vibration = longArrayOf(0, 450, 160, 650),
+                usage = AudioAttributes.USAGE_NOTIFICATION_EVENT,
+            )
             else -> return
         }
 
@@ -326,7 +337,11 @@ private object BookingNotificationCenter0304 {
 
         val intent = Intent(context, TripsActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            action = TripActions.ACTION_OPEN_RESERVATION_REQUESTS
+            action = if (event == "password_recovery_requested") {
+                TripActions.ACTION_OPEN_PASSENGERS
+            } else {
+                TripActions.ACTION_OPEN_RESERVATION_REQUESTS
+            }
             putExtra(TripActions.EXTRA_REMOTE_TRIP_ID, remoteTripId)
             putExtra(TripActions.EXTRA_BOOKING_ID, bookingId)
         }
