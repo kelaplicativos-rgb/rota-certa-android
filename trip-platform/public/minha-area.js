@@ -531,8 +531,15 @@ async function refreshPrivateArea0491(silent = false) {
     const scoped = "?driverUsername=" + encodeURIComponent(driverUsername0491);
     const me = await request0491("/v1/passenger/me" + scoped);
     enterPrivateMode0491();
-    show0491("passwordPanel0491", me?.mustChangePassword === true);
+    const passwordChangeRequired0651 = me?.mustChangePassword === true;
+    show0491("passwordPanel0491", passwordChangeRequired0651);
     if ($("hello0625")) $("hello0625").textContent = me?.displayName ? "Olá, " + me.displayName : "Sua área";
+    if (passwordChangeRequired0651) {
+      if ($("refreshMessage0491")) {
+        $("refreshMessage0491").textContent = "Crie uma nova senha para concluir a recuperação antes de acessar seus dados.";
+      }
+      return;
+    }
 
     const [bookings, notifications, timeline] = await Promise.all([
       request0491("/v1/passenger/me/bookings" + scoped),
@@ -670,6 +677,7 @@ async function changePassword0491() {
     $("newPassword0491").value = "";
     $("newPasswordConfirm0491").value = "";
     show0491("passwordPanel0491", false);
+    await refreshPrivateArea0491(false);
   } catch (error) {
     message0491("passwordMessage0491", error.message || "Não foi possível alterar a senha.");
   } finally {
