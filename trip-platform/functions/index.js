@@ -5391,6 +5391,52 @@ async function publicPassengerAccessStatus0625(req, res) {
   }
 }
 
+async function requestPassengerPasswordRecovery0651(req, res) {
+  await enforceBookingRateLimit(req);
+  let passengerContact;
+  try {
+    passengerContact = normalizeBrazilWhatsapp(req.body && req.body.passengerContact);
+  } catch (error) {
+    return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
+  }
+  const target = await resolvePassengerTarget0625(req);
+  if (target == null || !target.driverUsername) {
+    return fail(res, 404, "vip_access_target_invalid_0651", "Este acesso privado não está disponível.");
+  }
+
+  let identity;
+  try {
+    identity = await resolveCanonicalPassengerByContact0625(passengerContact);
+  } catch (_) {
+    return json(res, 202, { requested: true });
+  }
+  if (!identity.knownPassenger || identity.passwordCreated !== true) {
+    return json(res, 202, { requested: true });
+  }
+
+  const access = await passengerAccessForIdentity(target.driverUsername, identity.passengerId, passengerContact);
+  if (!access || !passengerAccessIsAuthorized(access)) {
+    return json(res, 202, { requested: true });
+  }
+
+  const now = Date.now();
+  const previousRequestedAt = Number(access.passwordRecoveryRequestedAtMillis || 0);
+  const previousStatus = cleanText(access.passwordRecoveryStatus, 24).toUpperCase();
+  if (previousStatus === "REQUESTED" && now - previousRequestedAt < 60_000) {
+    return json(res, 202, { requested: true });
+  }
+
+  await db.collection("driverPassengerAccess").doc(access.id).set({
+    passwordRecoveryStatus: "REQUESTED",
+    passwordRecoveryRequestedAtMillis: now,
+    passwordRecoveryIssuedAtMillis: 0,
+    passwordRecoveryCompletedAtMillis: 0,
+    updatedAtMillis: now,
+  }, { merge: true });
+
+  return json(res, 202, { requested: true });
+}
+
 async function resolvePassengerTarget0625(req) {
   const publicSlug = normalizeUsername(req.body && req.body.publicSlug);
   const requestedDriver = publicSlug || normalizeUsername(req.body && req.body.driverUsername);
@@ -5455,6 +5501,7 @@ async function openPassengerPasswordSession0625(req, res) {
   const accountSnap = identity.accountSnap;
   const account = identity.account || {};
   const alreadyActivated = accountSnap.exists && passengerAccountIsActivated(account);
+  const passwordChangeRequired0651 = alreadyActivated && account.mustChangePassword === true;
 
   try {
     await assertPassengerPinAvailable0624("", passengerContact);
@@ -5544,7 +5591,14 @@ async function openPassengerPasswordSession0625(req, res) {
     }
   });
   await clearPassengerPinFailures0624("", passengerContact);
-  const session = await createPassengerSession(passengerContact, passengerId, cleanText(req.body && req.body.sessionContextId, 120), "", res);
+  const session = await createPassengerSession(
+    passengerContact,
+    passengerId,
+    cleanText(req.body && req.body.sessionContextId, 120),
+    "",
+    res,
+    passwordChangeRequired0651,
+  );
   return json(res, 200, {
     sessionToken: session.token,
     expiresAtMillis: session.expiresAtMillis,
@@ -5554,6 +5608,7 @@ async function openPassengerPasswordSession0625(req, res) {
     accountCreated: !alreadyActivated,
     identityCreated: creatingIdentity,
     passwordCreated: true,
+    mustChangePassword: passwordChangeRequired0651,
   });
 }
 
@@ -6024,6 +6079,11 @@ function safePassengerAccess(doc) {
     status: passengerAccessStatus(data) || "PENDING",
     passengerId: cleanText(data.passengerId, 120),
     accountActivated: data.accountActivated === true,
+    accountMustChangePassword: data.accountMustChangePassword === true,
+    passwordRecoveryStatus: cleanText(data.passwordRecoveryStatus, 24).toUpperCase(),
+    passwordRecoveryRequestedAtMillis: Number(data.passwordRecoveryRequestedAtMillis || 0),
+    passwordRecoveryIssuedAtMillis: Number(data.passwordRecoveryIssuedAtMillis || 0),
+    passwordRecoveryCompletedAtMillis: Number(data.passwordRecoveryCompletedAtMillis || 0),
     agendaAdmin: data.agendaAdmin === true,
     referredByContact: cleanText(data.referredByContact, 40),
     referralRewardGrantedAtMillis: Number(data.referralRewardGrantedAtMillis || 0),
@@ -6048,6 +6108,7 @@ async function listDriverPassengers(req, res) {
     return {
       ...access,
       accountActivated: accountSnap.exists && passengerAccountIsActivated(accountSnap.data()),
+      accountMustChangePassword: accountSnap.exists && accountSnap.data().mustChangePassword === true,
       creditBalanceCents: Math.max(0, Number(ledger.balanceCents || 0)),
       creditEarnedCents: Math.max(0, Number(ledger.earnedCents || 0)),
       creditSpentCents: Math.max(0, Number(ledger.spentCents || 0)),
@@ -6731,11 +6792,19 @@ async function resetDriverPassengerPassword(req, res) {
     createdAtMillis: Number(currentData.createdAtMillis || now),
     updatedAtMillis: now,
   }, { merge: true });
+  await db.collection("driverPassengerAccess").doc(access.id).set({
+    passwordRecoveryStatus: "ISSUED",
+    passwordRecoveryRequestedAtMillis: Number(access.passwordRecoveryRequestedAtMillis || 0),
+    passwordRecoveryIssuedAtMillis: now,
+    passwordRecoveryCompletedAtMillis: 0,
+    updatedAtMillis: now,
+  }, { merge: true });
   await invalidatePassengerSessions(currentContact);
   return json(res, 200, {
     temporaryPassword,
     firstAccessPassword: !wasActivated,
     accountActivatedBeforeReset: wasActivated,
+    recoveryStatus: "ISSUED",
   });
 }
 
@@ -6845,13 +6914,34 @@ async function changePassengerPassword(req, res) {
   try { password = passengerPassword0625(req.body && req.body.password); }
   catch (error) { return fail(res, error.httpStatus || 400, error.code || "invalid_password", error.message); }
   const salt = crypto.randomBytes(16).toString("hex");
+  const now = Date.now();
   await db.collection("passengerAccounts").doc(sha256Hex(session.passengerContact)).set({
     passengerContact: session.passengerContact,
     passwordSalt: salt,
     passwordHash: passengerPasswordDigest(password, salt),
     mustChangePassword: false,
-    updatedAtMillis: Date.now(),
+    updatedAtMillis: now,
   }, { merge: true });
+  await db.collection("passengerSessions").doc(session.sessionRefId).set({
+    passwordChangeRequired0651: false,
+    updatedAtMillis: now,
+  }, { merge: true });
+  const recoveryAccess = await db.collection("driverPassengerAccess")
+    .where("passengerContact", "==", session.passengerContact)
+    .limit(50)
+    .get();
+  const recoveryDocs = recoveryAccess.docs.filter((doc) =>
+    ["REQUESTED", "ISSUED"].includes(cleanText(doc.data().passwordRecoveryStatus, 24).toUpperCase())
+  );
+  if (recoveryDocs.length) {
+    const batch = db.batch();
+    recoveryDocs.forEach((doc) => batch.set(doc.ref, {
+      passwordRecoveryStatus: "COMPLETED",
+      passwordRecoveryCompletedAtMillis: now,
+      updatedAtMillis: now,
+    }, { merge: true }));
+    await batch.commit();
+  }
   return json(res, 200, { changed: true });
 }
 
@@ -6983,6 +7073,7 @@ async function createPassengerSession(
   sessionContextId = "",
   driverScope0428 = "",
   response = null,
+  passwordChangeRequired0651 = false,
 ) {
   const token = passengerSessionToken();
   const tokenHash = sha256Hex(token);
@@ -7017,6 +7108,7 @@ async function createPassengerSession(
     passengerId: cleanText(passengerId, 120),
     sessionContextHash,
     driverScope0428: driverScope,
+    passwordChangeRequired0651: passwordChangeRequired0651 === true,
     knownDevice0626: true,
     createdAtMillis: now,
     lastActivityAtMillis: now,
@@ -7070,6 +7162,19 @@ async function requirePassengerSession(req, res) {
   if (!sessionRef || !data) {
     clearPassengerKnownDeviceCookie0626(res);
     fail(res, 401, "passenger_session_invalid", "Sua sessão não é válida. Entre novamente.");
+    return null;
+  }
+
+  const requestPath0651 = cleanText((req.path || req.url || "").split("?")[0], 320);
+  if (
+    data.passwordChangeRequired0651 === true &&
+    !new Set([
+      "/v1/passenger/me",
+      "/v1/passenger/me/password",
+      "/v1/passenger/logout",
+    ]).has(requestPath0651)
+  ) {
+    fail(res, 403, "password_change_required", "Crie uma nova senha para concluir a recuperação do seu acesso.");
     return null;
   }
 
@@ -10941,6 +11046,7 @@ exports.tripApi = onRequest({ region: "southamerica-east1" }, async (req, res) =
     if (req.method === "POST" && path === "/v1/driver/username") return await changeDriverUsername(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access") return await openPassengerAgendaView(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-access/status") return await publicPassengerAccessStatus0625(req, res);
+    if (req.method === "POST" && path === "/v1/public/passenger-password-recovery/request") return await requestPassengerPasswordRecovery0651(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-password-session") return await openPassengerPasswordSession0625(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-pin-session") return await openPassengerPinSession0624(req, res);
     if (req.method === "POST" && path === "/v1/public/passenger-phone-session") return await retiredPassengerPhoneSession0624(req, res);
