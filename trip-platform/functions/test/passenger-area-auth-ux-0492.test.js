@@ -113,10 +113,10 @@ test("0492 phone UX is simple while explicit international normalization remains
   assert.match(source, /\^\[1-9\]\\d\{7,14\}\$/);
 });
 
-test("0492 password contract accepts four or more characters without breaking existing longer credentials", () => {
-  assert.equal((html.match(/minlength="4"/g) || []).length, 3);
+test("0492 legacy backend compatibility remains while current VIP UI requires four digits", () => {
+  assert.equal((html.match(/minlength="4"/g) || []).length, 4);
   assert.doesNotMatch(html, /minlength="8"/);
-  assert.match(web, /password\.length < 4/);
+  assert.match(web, /!\/\^\\d\{4\}\$\/\.test\(password\)/);
   assert.doesNotMatch(web, /password\.length < 8/);
 
   const source = block(api, "function passengerPassword", "function passengerPasswordDigest");
