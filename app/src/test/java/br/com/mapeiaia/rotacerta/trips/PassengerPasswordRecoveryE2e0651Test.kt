@@ -63,7 +63,7 @@ class PassengerPasswordRecoveryE2e0651Test {
             Regex("""val releaseVersionCode = ([0-9_]+)""").find(gradle),
         ).groupValues[1].replace("_", "").toInt()
         val patchVersion = requireNotNull(
-            Regex("""val releaseVersionName = "0\\.1\\.([0-9]+)"""").find(gradle),
+            Regex("""val releaseVersionName = "0\.1\.([0-9]+)"""").find(gradle),
         ).groupValues[1].toInt()
         assertTrue(versionCode >= 5942)
         assertTrue(patchVersion >= 651)
