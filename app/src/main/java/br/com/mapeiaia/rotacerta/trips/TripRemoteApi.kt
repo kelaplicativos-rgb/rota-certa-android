@@ -1397,25 +1397,40 @@ class TripRemoteApi(
             }
         if (normalized.isEmpty()) return DriverPassengerDirectoryResponse(synced = 0)
 
-        var synced = 0
-        normalized.chunked(PASSENGER_DIRECTORY_BATCH_SIZE_0629).forEachIndexed { batchIndex, batch ->
-            try {
+        suspend fun syncBatch0650(batch: List<DriverPassengerDirectoryItem>, batchIndex: Int): Int {
+            if (batch.isEmpty()) return 0
+            return try {
                 val response: DriverPassengerDirectoryResponse = request(
                     method = "POST",
                     path = "/v1/driver/passengers/sync",
                     body = json.encodeToString(DriverPassengerDirectoryRequest(batch)),
                     requireDriverToken = true,
                 )
-                synced += response.synced
+                response.synced
             } catch (error: Throwable) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
-                throw PassengerDirectoryBatchException0629(
-                    batchIndex = batchIndex,
-                    batchSize = batch.size,
-                    totalPassengers = normalized.size,
-                    cause = error,
-                )
+                val conflict = error is TripRemoteApiException && error.httpStatus == 409
+                if (conflict && batch.size > 1) {
+                    val midpoint = batch.size / 2
+                    syncBatch0650(batch.subList(0, midpoint), batchIndex) +
+                        syncBatch0650(batch.subList(midpoint, batch.size), batchIndex)
+                } else if (conflict && batch.size == 1) {
+                    // One identity conflict must not block the rest of the directory.
+                    0
+                } else {
+                    throw PassengerDirectoryBatchException0629(
+                        batchIndex = batchIndex,
+                        batchSize = batch.size,
+                        totalPassengers = normalized.size,
+                        cause = error,
+                    )
+                }
             }
+        }
+
+        var synced = 0
+        normalized.chunked(PASSENGER_DIRECTORY_BATCH_SIZE_0629).forEachIndexed { batchIndex, batch ->
+            synced += syncBatch0650(batch, batchIndex)
         }
         return DriverPassengerDirectoryResponse(synced = synced)
     }
