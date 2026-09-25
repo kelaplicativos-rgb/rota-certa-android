@@ -214,7 +214,7 @@ test("0492 Voltar à Agenda is a direct public navigation and remains distinct f
   assert.equal(store.has("rotaCertaPassengerSession0491:driver-test"), true);
 
   const init = block(web, "function init0491", "init0491();");
-  assert.match(init, /backToAgenda0491"\)\.href = "\/" \+ encodeURIComponent\(driverUsername0491\)/);
+  assert.match(init, /back\.href = "\/" \+ encodeURIComponent\(driverUsername0491\)/);
   assert.doesNotMatch(init, /backToAgenda0491[\s\S]{0,180}logout0491/);
   assert.match(web, /async function logout0491/);
 });
