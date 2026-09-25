@@ -22,6 +22,7 @@ object TripActions {
     const val ACTION_OPEN_TRIPS = "br.com.mapeiaia.rotacerta.action.OPEN_TRIPS"
     const val ACTION_NEW_TRIP = "br.com.mapeiaia.rotacerta.action.NEW_TRIP"
     const val ACTION_OPEN_RESERVATION_REQUESTS = "br.com.mapeiaia.rotacerta.action.OPEN_RESERVATION_REQUESTS"
+    const val ACTION_OPEN_PASSENGERS = "br.com.mapeiaia.rotacerta.action.OPEN_PASSENGERS"
     const val EXTRA_TRIP_ID = "trip_id"
     const val EXTRA_REMOTE_TRIP_ID = "remote_trip_id"
     const val EXTRA_BOOKING_ID = "booking_id"
