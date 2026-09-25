@@ -106,6 +106,7 @@ class TripsActivity : ComponentActivity() {
                         initialBookingId = intent?.getStringExtra(TripActions.EXTRA_BOOKING_ID),
                         initialPendingOnly = intent?.getBooleanExtra(TripActions.EXTRA_PENDING_ONLY, false) == true,
                         openReservationRequests = intent?.action == TripActions.ACTION_OPEN_RESERVATION_REQUESTS,
+                        openPassengers = intent?.action == TripActions.ACTION_OPEN_PASSENGERS,
                     )
                 }
             }
@@ -229,6 +230,7 @@ private fun TripApp(
     initialBookingId: String?,
     initialPendingOnly: Boolean,
     openReservationRequests: Boolean,
+    openPassengers: Boolean,
 ) {
     val traceId = AgendaTrace.currentTraceId()
     val firstCompositionOperation = remember {
@@ -307,6 +309,7 @@ private fun TripApp(
     var addPassengerResumeToken by remember { mutableStateOf(0) }
     val initialScreen0396 = when {
         startCreating -> TripScreen.CREATE
+        openPassengers -> TripScreen.PASSENGERS
         openReservationRequests || initialBookingId != null || initialPendingOnly -> TripScreen.RESERVATIONS
         initialTripId != null -> TripScreen.LIST
         else -> TripScreen.TIMELINE
