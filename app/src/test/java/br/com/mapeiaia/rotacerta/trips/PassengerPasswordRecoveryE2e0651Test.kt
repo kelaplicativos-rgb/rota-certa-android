@@ -9,6 +9,8 @@ class PassengerPasswordRecoveryE2e0651Test {
     private val passengerAdmin = File("src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerAdminUi.kt").readText()
     private val remoteApi = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripRemoteApi.kt").readText()
     private val tripsActivity = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt").readText()
+    private val messaging = File("src/main/java/br/com/mapeiaia/rotacerta/trips/RotaCertaBookingMessagingService.kt").readText()
+    private val entryPoints = File("src/main/java/br/com/mapeiaia/rotacerta/trips/TripAndroidEntryPoints.kt").readText()
     private val gradle = File("build.gradle.kts").readText()
 
     @Test
@@ -40,9 +42,12 @@ class PassengerPasswordRecoveryE2e0651Test {
     }
 
     @Test
-    fun recoveryStatusRefreshDoesNotRestoreGlobalPassengerJank() {
-        assertTrue(passengerAdmin.contains("delay(20_000)"))
-        assertTrue(passengerAdmin.contains("reloadRemote(syncDirectory = false)"))
+    fun recoveryPushAvoidsDirectoryPollingAndOpensPassengerManagement() {
+        assertFalse(passengerAdmin.contains("delay(20_000)"))
+        assertTrue(entryPoints.contains("ACTION_OPEN_PASSENGERS"))
+        assertTrue(messaging.contains("\"password_recovery_requested\""))
+        assertTrue(messaging.contains("TripActions.ACTION_OPEN_PASSENGERS"))
+        assertTrue(tripsActivity.contains("openPassengers -> TripScreen.PASSENGERS"))
         val marker = "PASSENGER_ADMIN_UPDATE_0650"
         val start = tripsActivity.indexOf(marker)
         assertTrue(start >= 0)
