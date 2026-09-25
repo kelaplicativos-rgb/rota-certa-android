@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.R
 import java.math.RoundingMode
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -314,13 +313,6 @@ fun PassengerAdminScreen(
 
     LaunchedEffect(settings.driverUsername, settings.driverToken, remoteDirectorySyncToken0650) {
         reloadRemote(syncDirectory = true)
-    }
-    LaunchedEffect(settings.driverUsername, settings.driverToken) {
-        if (!settings.configured) return@LaunchedEffect
-        while (true) {
-            delay(20_000)
-            reloadRemote(syncDirectory = false)
-        }
     }
 
     if (historyProfileId != null) {
