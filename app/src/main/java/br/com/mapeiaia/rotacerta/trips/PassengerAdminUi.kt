@@ -1,5 +1,8 @@
 package br.com.mapeiaia.rotacerta.trips
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.R
 import java.math.RoundingMode
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -102,6 +106,7 @@ fun PassengerAdminScreen(
     var creditValue by remember { mutableStateOf("") }
     var temporaryPassword by remember { mutableStateOf<String?>(null) }
     var temporaryPasswordFor by remember { mutableStateOf("") }
+    var temporaryPasswordWhatsapp0651 by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
     var historyProfileId by remember { mutableStateOf<String?>(null) }
     var selectedHistory0420 by remember { mutableStateOf<PassengerPersistentHistory?>(null) }
@@ -309,6 +314,13 @@ fun PassengerAdminScreen(
 
     LaunchedEffect(settings.driverUsername, settings.driverToken, remoteDirectorySyncToken0650) {
         reloadRemote(syncDirectory = true)
+    }
+    LaunchedEffect(settings.driverUsername, settings.driverToken) {
+        if (!settings.configured) return@LaunchedEffect
+        while (true) {
+            delay(20_000)
+            reloadRemote(syncDirectory = false)
+        }
     }
 
     if (historyProfileId != null) {
@@ -525,15 +537,26 @@ fun PassengerAdminScreen(
                 Text("Senha temporária gerada", style = MaterialTheme.typography.titleMedium)
                 Text(temporaryPasswordFor)
                 Text(password, style = MaterialTheme.typography.headlineMedium)
-                Text("Envie esta senha ao passageiro. No portal ele poderá trocar por uma senha própria.")
+                Text("Envie esta senha ao passageiro. O portal exigirá a criação de uma nova senha antes de liberar a Área VIP.")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = {
                         clipboard.setText(AnnotatedString(password))
                         onChanged("Senha temporária copiada.")
                     }) { Text("Copiar senha") }
+                    OutlinedButton(
+                        enabled = passengerAdminContactKey(temporaryPasswordWhatsapp0651).isNotBlank(),
+                        onClick = {
+                            sendTemporaryPasswordWhatsApp0651(
+                                context = context,
+                                whatsapp = temporaryPasswordWhatsapp0651,
+                                password = password,
+                            )
+                        },
+                    ) { Text("Enviar WhatsApp") }
                     OutlinedButton(onClick = {
                         temporaryPassword = null
                         temporaryPasswordFor = ""
+                        temporaryPasswordWhatsapp0651 = ""
                     }) { Text("Fechar") }
                 }
             }
@@ -604,6 +627,14 @@ fun PassengerAdminScreen(
                 }
                 passengerAccessLabel(access)?.let { label ->
                     Text(label, style = MaterialTheme.typography.bodySmall)
+                }
+                when (access?.passwordRecoveryStatus) {
+                    "REQUESTED" -> Text("🔑 Recuperação de senha solicitada", style = MaterialTheme.typography.bodySmall)
+                    "ISSUED" -> Text("🟠 Senha temporária emitida • troca obrigatória pendente", style = MaterialTheme.typography.bodySmall)
+                    "COMPLETED" -> Text("✅ Recuperação de senha concluída", style = MaterialTheme.typography.bodySmall)
+                }
+                if (access?.accountMustChangePassword == true && access.passwordRecoveryStatus != "ISSUED") {
+                    Text("🟠 Troca de senha obrigatória pendente", style = MaterialTheme.typography.bodySmall)
                 }
                 if (access?.agendaAdmin == true) {
                     Text("🔐 Administrador da Agenda", style = MaterialTheme.typography.bodySmall)
@@ -849,6 +880,7 @@ fun PassengerAdminScreen(
                                     .onSuccess {
                                         temporaryPassword = it.temporaryPassword
                                         temporaryPasswordFor = candidate.displayName
+                                        temporaryPasswordWhatsapp0651 = activeAccessWhatsapp
                                         onChanged(
                                             if (it.firstAccessPassword) {
                                                 "Senha temporária de primeiro acesso gerada."
@@ -865,10 +897,10 @@ fun PassengerAdminScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            if (access?.accountActivated == false) {
-                                "Gerar senha de primeiro acesso"
-                            } else {
-                                "Gerar nova senha"
+                            when {
+                                access?.passwordRecoveryStatus == "REQUESTED" -> "Gerar senha solicitada"
+                                access?.accountActivated == false -> "Gerar senha de primeiro acesso"
+                                else -> "Gerar nova senha"
                             },
                         )
                     }
@@ -1228,14 +1260,29 @@ internal fun mergePassengerAdminCandidates(
         .sortedWith(
         compareBy<PassengerAdminCandidate> {
             when {
-                it.remoteAccess?.status == "PENDING" -> 0
-                it.localProfile?.blocked == true -> 1
-                it.remoteAccess?.status == "ACTIVE" -> 2
-                else -> 3
+                it.remoteAccess?.passwordRecoveryStatus == "REQUESTED" -> 0
+                it.remoteAccess?.status == "PENDING" -> 1
+                it.localProfile?.blocked == true -> 2
+                it.remoteAccess?.status == "ACTIVE" -> 3
+                else -> 4
             }
         }.thenByDescending(PassengerAdminCandidate::lastActivityMillis)
             .thenBy(String.CASE_INSENSITIVE_ORDER) { it.displayName },
     )
+}
+
+
+private fun sendTemporaryPasswordWhatsApp0651(
+    context: Context,
+    whatsapp: String,
+    password: String,
+) {
+    val localDigits = passengerAdminContactKey(whatsapp)
+    if (localDigits.isBlank()) return
+    val destination = "55" + localDigits
+    val message = "Sua senha temporária da Área VIP é $password. Use-a para entrar e crie uma nova senha para concluir a recuperação."
+    val uri = Uri.parse("https://wa.me/$destination?text=" + Uri.encode(message))
+    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
 }
 
 internal fun passengerAdminContactKey(raw: String): String {
