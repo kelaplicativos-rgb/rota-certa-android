@@ -13,6 +13,7 @@ function normalizeDriver0491(value) {
 }
 
 const driverUsername0491 = normalizeDriver0491(params0491.get("motorista") || "");
+const returnTripToken0649 = String(params0491.get("viagem") || "").replace(/[^A-Za-z0-9_-]/g, "");
 const sessionKey0625 = "viagemCertaPassengerSession0625";
 const legacySessionKey0491 = "rotaCertaPassengerSession0491:" + driverUsername0491;
 const contextKey0491 = "rotaCertaPassengerContext0491:" + (driverUsername0491 || "global");
@@ -467,10 +468,16 @@ function setAuthLoadingMessage0492(text) {
 
 function enterPrivateMode0491() {
   passengerAuthenticated0626 = true;
-  sessionToken0491 = "";
-  sessionStorage.removeItem(sessionKey0625);
-  sessionStorage.removeItem(legacySessionKey0491);
   renderAuthState0492("authenticated");
+  const brand = $("privateBrand0649");
+  const title = $("privateTitle0649");
+  const lead = $("privateLead0649");
+  const back = $("backToAgenda0491");
+  if (brand) brand.textContent = "VIAGEM CERTA";
+  if (title) title.textContent = "Minhas viagens";
+  if (lead) lead.textContent = "Acompanhe suas reservas, próximas viagens e atualizações em um só lugar.";
+  if (back) back.textContent = "Voltar às viagens";
+  document.title = "Viagem Certa — Minha área VIP";
 }
 
 function leavePrivateMode0491() {
@@ -518,19 +525,25 @@ async function refreshPrivateArea0491(silent = false) {
   if (refreshInFlight0491) return;
   refreshInFlight0491 = true;
   try {
-    const [me, bookings, notifications, timeline] = await Promise.all([
-      request0491("/v1/passenger/me"),
-      request0491("/v1/passenger/me/bookings"),
-      request0491("/v1/passenger/me/notifications"),
-      request0491("/v1/passenger/me/timeline"),
-    ]);
+    if (!driverUsername0491) {
+      throw Object.assign(new Error("Este acesso privado não possui contexto válido."), { status: 400 });
+    }
+    const scoped = "?driverUsername=" + encodeURIComponent(driverUsername0491);
+    const me = await request0491("/v1/passenger/me" + scoped);
     enterPrivateMode0491();
     show0491("passwordPanel0491", me?.mustChangePassword === true);
+    if ($("hello0625")) $("hello0625").textContent = me?.displayName ? "Olá, " + me.displayName : "Sua área";
+
+    const [bookings, notifications, timeline] = await Promise.all([
+      request0491("/v1/passenger/me/bookings" + scoped),
+      request0491("/v1/passenger/me/notifications" + scoped),
+      request0491("/v1/passenger/me/timeline"),
+    ]);
     renderBookings0491(Array.isArray(bookings?.bookings) ? bookings.bookings : []);
     renderNotifications0491(notifications?.notifications || [], notifications?.unreadCount || 0);
     renderTimeline0625(timeline?.timeline || []);
-    if ($("hello0625")) $("hello0625").textContent = me?.displayName ? "Olá, " + me.displayName : "Sua área";
     changeCursor0495 = Math.max(changeCursor0495, Number(notifications?.changeCursor0495 || 0));
+    await loadPrivateCredits0649();
     watchPrivateCanonicalChanges0495();
     $("refreshMessage0491").textContent = "Atualizado às " + new Intl.DateTimeFormat("pt-BR", {
       hour: "2-digit",
@@ -574,10 +587,14 @@ async function startPassengerEntry0625() {
   try {
     const status = await request0491("/v1/public/passenger-access/status", {
       method: "POST",
-      body: { passengerContact: contact },
+      body: {
+        passengerContact: contact,
+        driverUsername: driverUsername0491,
+        tripToken: returnTripToken0649 || undefined,
+      },
     });
-    if (status?.knownPassenger !== true) {
-      return message0491("loginMessage0491", "Este WhatsApp ainda não aparece no cadastro de passageiros do Rota Certa.");
+    if (status?.vipActive !== true) {
+      return message0491("loginMessage0491", "Este acesso é exclusivo para membros VIP convidados.");
     }
     entryContact0625 = contact;
     entryPasswordCreated0625 = status?.passwordCreated === true;
@@ -616,6 +633,8 @@ async function finishPassengerEntry0625() {
         password,
         passwordConfirmation: entryPasswordCreated0625 ? undefined : confirmation,
         sessionContextId: sessionContext0491(),
+        driverUsername: returnTripToken0649 ? undefined : driverUsername0491,
+        tripToken: returnTripToken0649 || undefined,
       },
     });
     sessionToken0491 = String(result?.sessionToken || "");
@@ -658,6 +677,58 @@ async function changePassword0491() {
   }
 }
 
+function formatMoney0649(cents) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+    .format(Math.max(0, Number(cents || 0)) / 100);
+}
+
+async function loadPrivateCredits0649() {
+  if (!passengerAuthenticated0626 || !driverUsername0491) return;
+  const balance = $("privateCreditBalance0649");
+  const summary = $("privateCreditSummary0649");
+  try {
+    const result = await request0491(
+      "/v1/passenger/me/credits?driverUsername=" + encodeURIComponent(driverUsername0491),
+    );
+    if (balance) balance.textContent = formatMoney0649(result?.balanceCents || 0);
+    if (summary) {
+      summary.textContent =
+        "Ganhos: " + formatMoney0649(result?.earnedCents || 0) +
+        " • Usados: " + formatMoney0649(result?.spentCents || 0);
+    }
+  } catch (error) {
+    if (summary) summary.textContent = error.message || "Créditos indisponíveis agora.";
+  }
+}
+
+async function sharePrivateInvite0649() {
+  const message = $("privateCreditMessage0649");
+  try {
+    const result = await request0491("/v1/passenger/me/referral", {
+      method: "POST",
+      body: { driverUsername: driverUsername0491 },
+    });
+    const code = String(result?.referralCode || "");
+    if (!code) throw new Error("Convite indisponível.");
+    const url = new URL("/" + encodeURIComponent(driverUsername0491), location.origin);
+    url.searchParams.set("convite", code);
+    const shareData = {
+      title: "Área VIP",
+      text: "Você recebeu um convite para uma área privada.",
+      url: url.toString(),
+    };
+    if (navigator.share) await navigator.share(shareData);
+    else {
+      await navigator.clipboard.writeText(url.toString());
+      if (message) message.textContent = "Convite VIP copiado.";
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError" && message) {
+      message.textContent = error.message || "Não foi possível compartilhar o convite.";
+    }
+  }
+}
+
 async function markRead0491() {
   try {
     await request0491(
@@ -679,7 +750,16 @@ async function logout0491() {
 }
 
 function init0491() {
-  $("backToAgenda0491").href = driverUsername0491 ? "/" + encodeURIComponent(driverUsername0491) : "/";
+  const back = $("backToAgenda0491");
+  if (driverUsername0491) {
+    const query = new URLSearchParams();
+    if (returnTripToken0649) query.set("viagem", returnTripToken0649);
+    back.href = "/" + encodeURIComponent(driverUsername0491) + (query.toString() ? "?" + query.toString() : "");
+  } else {
+    back.href = "/";
+    show0491("contextError0491", true);
+    $("contextError0491").textContent = "Este acesso privado não possui contexto válido.";
+  }
   $("entryContactContinue0625").addEventListener("click", startPassengerEntry0625);
   $("entryPasswordContinue0625").addEventListener("click", continuePassengerPassword0625);
   $("entryConfirmContinue0625").addEventListener("click", finishPassengerEntry0625);
@@ -695,6 +775,8 @@ function init0491() {
   });
   $("changePassword0491").addEventListener("click", changePassword0491);
   $("markRead0491").addEventListener("click", markRead0491);
+  $("privateInvite0649")?.addEventListener("click", sharePrivateInvite0649);
+  $("privateRefreshCredits0649")?.addEventListener("click", loadPrivateCredits0649);
   $("logout0491").addEventListener("click", logout0491);
   window.addEventListener("online", () => {
     refreshPrivateArea0491(true);
