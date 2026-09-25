@@ -66,6 +66,11 @@
     .accessInput0589{width:100%;min-height:52px;border:1px solid #cfc8d0;border-radius:14px;padding:12px 14px;background:#fff;color:var(--ink);font:inherit}
     .accessButton0589{width:100%;min-height:50px;margin-top:12px;border:0;border-radius:14px;padding:12px 16px;background:#7055bd;color:#fff;font:inherit;font-weight:900;cursor:pointer}
     .accessButton0589:disabled{opacity:.62;cursor:wait}
+    .accessSecondary0651{width:100%;min-height:44px;margin-top:8px;border:1px solid #d9d0e2;border-radius:12px;padding:10px 14px;background:#fff;color:#4f3c8e;font:inherit;font-weight:850;cursor:pointer}
+    .accessSecondary0651:disabled{opacity:.62;cursor:wait}
+    .forcedPassword0651{margin-top:18px;padding:16px;border:1px solid #ddd5e5;border-radius:18px;background:#fbf8fd}
+    .forcedPassword0651 h2{margin:0 0 6px;font-size:21px}
+    .forcedPassword0651 p{margin:0;color:var(--muted);font-size:14px;line-height:1.4}
     .accessMessage0589{margin:11px 0 0;color:#8f1d1d;font-size:14px;line-height:1.35;font-weight:750}
     .vipGate0649{margin-top:28px;padding:28px 22px;border:1px solid #e6e0e7;border-radius:28px;background:linear-gradient(180deg,#fff 0%,#faf7ff 100%);box-shadow:0 18px 48px #493b6914}
     .vipEyebrow0649{font-size:13px;font-weight:950;letter-spacing:.15em;color:#7055bd}
@@ -145,7 +150,20 @@
           <input id="vipPasswordConfirm0649" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
         </label>
       </div>
+      <button id="vipForgotPassword0651" class="accessSecondary0651 hidden" type="button">Esqueci minha senha</button>
       <button id="passengerAccessContinue0589" class="accessButton0589" type="button">CONTINUAR</button>
+
+      <div id="vipForcedPasswordChange0651" class="forcedPassword0651 hidden">
+        <h2>Crie sua nova senha</h2>
+        <p>A senha temporária serviu somente para confirmar seu acesso. Escolha agora 4 números novos.</p>
+        <label class="accessLabel0589">Nova senha
+          <input id="vipRecoveredPassword0651" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+        <label class="accessLabel0589">Confirme a nova senha
+          <input id="vipRecoveredPasswordConfirm0651" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+        <button id="vipSaveRecoveredPassword0651" class="accessButton0589" type="button">SALVAR NOVA SENHA</button>
+      </div>
 
       <div id="vipReferralRequestWrap0649" class="hidden">
         <label class="accessLabel0589">Seu nome
@@ -241,6 +259,6 @@
     </section>
   </div>
 
-  <script src="/public-agenda-shell-0569.js?v=0.1.649-vip-private" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.651-password-recovery" defer></script>
 </body>
 </html>
