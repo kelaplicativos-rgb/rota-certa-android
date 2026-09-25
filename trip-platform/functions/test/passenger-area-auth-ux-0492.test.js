@@ -52,13 +52,7 @@ function initialClassFor(id) {
 }
 
 function runPassengerArea({ sessionToken = "", responseFactory = null } = {}) {
-  const ids = [
-    "backToAgenda0491", "contextError0491", "authLoading0492", "authLoadingMessage0492",
-    "loginPanel0491", "privatePanel0491", "passwordPanel0491", "contact0491", "password0491",
-    "loginMessage0491", "login0491", "newPassword0491", "newPasswordConfirm0491",
-    "passwordMessage0491", "changePassword0491", "markRead0491", "notifications0491",
-    "upcoming0491", "history0491", "refreshMessage0491", "logout0491",
-  ];
+  const ids = [...html.matchAll(/id="([^"]+)"/g)].map((match) => match[1]);
   const elements = Object.fromEntries(ids.map((id) => [id, makeElement(initialClassFor(id))]));
   const store = new Map();
   if (sessionToken) store.set("rotaCertaPassengerSession0491:driver-test", sessionToken);
@@ -81,6 +75,7 @@ function runPassengerArea({ sessionToken = "", responseFactory = null } = {}) {
     document: {
       visibilityState: "visible",
       getElementById(id) { return elements[id] || null; },
+      querySelectorAll() { return []; },
       addEventListener() {},
       createElement() { return makeElement(""); },
     },
@@ -98,7 +93,7 @@ function runPassengerArea({ sessionToken = "", responseFactory = null } = {}) {
 }
 
 test("0492 phone UX is simple while explicit international normalization remains supported", () => {
-  assert.match(html, /placeholder="Digite seu telefone\/WhatsApp"/);
+  assert.match(html, /id="contact0491"[^>]*placeholder="\(11\) 99999-9999"/);
   assert.doesNotMatch(html, /\+ código do país e número/);
   assert.doesNotMatch(html, /\+55/);
   assert.doesNotMatch(web, /\+55/);
@@ -212,8 +207,9 @@ test("0492 Voltar à Agenda is a direct public navigation and remains distinct f
   assert.match(web, /async function logout0491/);
 });
 
-test("0492 public Agenda remains password-free and no admin UI is reintroduced", () => {
-  assert.doesNotMatch(publicHtml, /type="password"/i);
+test("0651 public VIP gate owns password entry while driver admin UI stays private", () => {
+  assert.match(publicHtml, /id="vipPassword0649"[^>]*type="password"/i);
+  assert.match(publicHtml, /id="vipForgotPassword0651"/);
   assert.doesNotMatch(publicHtml, /Administrar esta viagem/i);
   assert.doesNotMatch(publicHtml, /agenda-admin/i);
   assert.doesNotMatch(web, /\/v1\/admin\//);
