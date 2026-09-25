@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.650",
+      "build": 5941,
+      "commit": null,
+      "branch": "agent/passenger-password-recovery-performance-0.1.650",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Gerenciar passageiro passa a manter Gerar nova senha visível sem depender de accountActivated recebido na listagem remota.",
+        "O motorista pode gerar senha temporária tanto para recuperação de conta ativada quanto para primeiro acesso autorizado, sempre preservando o passengerId canônico.",
+        "Quando o acesso remoto individual não existe, Reparar acesso sincroniza somente o passageiro selecionado antes de tentar novamente."
+      ],
+      "fixed": [
+        "PASSENGER_ADMIN_UPDATE deixa de disparar refresh global de viagens, reservas e widgets para alterações exclusivas do módulo Passageiros.",
+        "Salvar WhatsApp e bloquear/desbloquear deixam de executar resolução/persistência de identidade canônica na thread principal.",
+        "Conflito HTTP 409 em um passageiro deixa de abortar o lote inteiro: o lote é subdividido até isolar somente a identidade conflitante."
+      ],
+      "improved": [
+        "A sincronização remota completa fica desacoplada da revision local do módulo Passageiros; atualizações individuais recarregam apenas a projeção remota necessária.",
+        "Reset de senha invalida sessões anteriores, força troca da senha temporária e rejeita conflito entre WhatsApp e passengerId antes de gravar credencial.",
+        "Testes Stage650 protegem visibilidade da recuperação, ausência de refresh global, trabalho de identidade fora da main thread e isolamento de conflitos do diretório."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.649: botão Redefinir senha podia desaparecer quando a listagem remota não entregava accountActivated=true.",
+        "0.1.649: gerenciamento de passageiro podia provocar congelamento perceptível ao disparar refresh global após cada atualização.",
+        "0.1.649: um conflito no primeiro lote de 40 podia impedir a sincronização dos demais passageiros."
+      ],
+      "modulesAffected": [
+        "Passageiros",
+        "Autenticação",
+        "Viagem Certa",
+        "Sincronização",
+        "Performance",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.649",
       "build": 5940,
       "commit": null,
