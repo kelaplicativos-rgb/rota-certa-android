@@ -262,6 +262,8 @@ data class DriverPassengerResetPasswordRequest(
 @Serializable
 data class DriverPassengerResetPasswordResponse(
     val temporaryPassword: String = "",
+    val firstAccessPassword: Boolean = false,
+    val accountActivatedBeforeReset: Boolean = false,
 )
 
 @Serializable
