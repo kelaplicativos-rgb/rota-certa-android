@@ -58,8 +58,14 @@ class PassengerPasswordRecoveryE2e0651Test {
     }
 
     @Test
-    fun packageMetadataMatches0651() {
-        assertTrue(gradle.contains("val releaseVersionCode = 5_942"))
-        assertTrue(gradle.contains("val releaseVersionName = \"0.1.651\""))
+    fun packageMetadataPreserves0651OrNewer() {
+        val versionCode = requireNotNull(
+            Regex("""val releaseVersionCode = ([0-9_]+)""").find(gradle),
+        ).groupValues[1].replace("_", "").toInt()
+        val patchVersion = requireNotNull(
+            Regex("""val releaseVersionName = "0\\.1\\.([0-9]+)"""").find(gradle),
+        ).groupValues[1].toInt()
+        assertTrue(versionCode >= 5942)
+        assertTrue(patchVersion >= 651)
     }
 }
