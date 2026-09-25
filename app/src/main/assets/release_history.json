@@ -2,6 +2,38 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.652",
+      "build": 5943,
+      "commit": null,
+      "branch": "agent/passenger-compose-cancellation-0.1.652",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O carregamento remoto de Passageiros passa a distinguir cancelamento legítimo da composição Compose de falha real de rede ou backend.",
+        "Cancelamentos por saída/recomposição registram PASSENGERS_DIRECTORY_SYNC_CANCELLED_0652 e PASSENGERS_REMOTE_LOAD_CANCELLED_0652 sem exibir erro ao motorista."
+      ],
+      "fixed": [
+        "Corrige a mensagem falsa 'Não foi possível carregar acessos dos passageiros: The coroutine scope left the composition' ao abrir histórico ou trocar de sub-tela.",
+        "PASSENGERS_DIRECTORY_SYNC_ERROR_0630 e PASSENGERS_REMOTE_LOAD_ERROR deixam de receber CancellationException do ciclo normal de vida do Compose."
+      ],
+      "improved": [
+        "Falhas reais continuam observáveis e continuam mostrando mensagem; somente CancellationException é repropagada silenciosamente ao escopo do Compose.",
+        "Teste Stage652 impede regressão para runCatching que engula cancellation no listDriverPassengers."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.651: ao abrir histórico de passageiro, a coroutine de carregamento podia ser cancelada pela composição e aparecer como erro de acesso remoto."
+      ],
+      "modulesAffected": [
+        "Passageiros",
+        "Histórico do passageiro",
+        "Compose",
+        "Observabilidade",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.651",
       "build": 5942,
       "commit": null,
