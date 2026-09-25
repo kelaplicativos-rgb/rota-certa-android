@@ -150,8 +150,17 @@ test("0492 Minha Área never paints Login while an existing session is unresolve
   assert.equal(elements.privatePanel0491.classList.contains("hidden"), true);
 });
 
-test("0492 no-session state renders Login immediately without a fake loading delay", () => {
-  const { elements } = runPassengerArea();
+test("0492 no-session state resolves to Login after the HttpOnly-cookie probe rejects it", async () => {
+  const responseFactory = async () => ({
+    ok: false,
+    status: 401,
+    async json() { return { message: "Entre com seu WhatsApp e senha.", code: "passenger_auth_required" }; },
+  });
+  const { elements } = runPassengerArea({ responseFactory });
+  assert.equal(elements.loginPanel0491.classList.contains("hidden"), true);
+  assert.equal(elements.authLoading0492.classList.contains("hidden"), false);
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(elements.loginPanel0491.classList.contains("hidden"), false);
   assert.equal(elements.authLoading0492.classList.contains("hidden"), true);
   assert.equal(elements.privatePanel0491.classList.contains("hidden"), true);
@@ -164,6 +173,9 @@ test("0492 validated session transitions loading directly to private content wit
     async json() {
       if (url.includes("/bookings")) return { bookings: [] };
       if (url.includes("/notifications")) return { notifications: [], unreadCount: 0 };
+      if (url.includes("/timeline")) return { timeline: [] };
+      if (url.includes("/credits")) return { balanceCents: 0, earnedCents: 0, spentCents: 0 };
+      if (url.includes("/changes")) return { degraded: true, changed: false, cursor: 0 };
       return { mustChangePassword: false };
     },
   });
