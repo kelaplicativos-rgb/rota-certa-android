@@ -5434,6 +5434,16 @@ async function requestPassengerPasswordRecovery0651(req, res) {
     updatedAtMillis: now,
   }, { merge: true });
 
+  await sendDriverBookingPush({
+    driverUsername: target.driverUsername,
+    event: "password_recovery_requested",
+    tripToken: "",
+    bookingId: "",
+    seats: 0,
+    tripTitle: cleanText(identity.displayName, 120) || "Passageiro VIP",
+    correlationId: "password_recovery_0651",
+  }).catch(() => {});
+
   return json(res, 202, { requested: true });
 }
 
