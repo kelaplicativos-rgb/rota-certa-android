@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.649",
+      "build": 5940,
+      "commit": null,
+      "branch": "agent/viagem-certa-vip-portal-0.1.649",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Viagem Certa passa a abrir em um Portal VIP neutro antes da autenticação, sem expor caronas, motorista, rotas, preços ou viagens na apresentação inicial e na prévia social.",
+        "A Agenda, detalhes de viagem e canal de mudanças passam a exigir sessão autenticada e acesso canônico ACTIVE/AUTHORIZED do passageiro para o motorista correspondente.",
+        "Home VIP e Minha área passam a expor créditos e indicação por convite, com uso opcional do saldo como desconto no pedido de reserva."
+      ],
+      "fixed": [
+        "Sessão conhecida passa a usar o cookie __session compatível com Firebase Hosting rewrite, preservando também o Bearer em memória até rejeição real do servidor.",
+        "Agenda e Minha área preservam motorista e viagem compartilhada no round-trip, eliminando o retorno incorreto para a raiz sem contexto.",
+        "Reserva deixa de autoelevar passageiro conhecido para AUTHORIZED; acesso VIP depende de autorização prévia do motorista."
+      ],
+      "improved": [
+        "Minha área autentica primeiro em /me e libera a interface antes de aguardar reservas, notificações e timeline, reduzindo a latência percebida.",
+        "Links de indicação usam texto neutro antes do login e só revelam o ambiente Viagem Certa após autenticação.",
+        "Fluxo de reserva autenticado reutiliza identidade e senha já confirmadas, evitando pedir WhatsApp novamente dentro da viagem."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.648: sessão web podia autenticar por instantes e voltar ao login porque o cookie usado não era encaminhado pelo rewrite do Firebase Hosting.",
+        "0.1.648: Minha área descartava o contexto do motorista e Voltar às viagens podia navegar para / e exibir link inválido."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Agenda pública",
+        "Minha área",
+        "Passageiros",
+        "Autenticação",
+        "Créditos",
+        "Indicações",
+        "Reservas",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.648",
       "build": 5939,
       "commit": null,
