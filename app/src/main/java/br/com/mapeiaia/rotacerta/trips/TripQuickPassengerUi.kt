@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -24,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun QuickPassengerPanel(
@@ -80,17 +83,46 @@ fun QuickPassengerPanel(
         }.getOrNull()
     } else null
     val parsedFare = PassengerMoney.parseMinorUnits(fareText, moneySpec)
-    val exactContactMatches = remember(contact, selectedPassengerId) {
-        if (selectedPassengerId.isBlank()) passengerStore.exactContactMatches(contact) else emptyList()
+    var exactContactMatches by remember(trip.id, initialPassenger?.id) {
+        mutableStateOf<List<PassengerProfile>>(emptyList())
     }
-    val passengerSuggestions = remember(name, contact, selectedPassengerId, lockPassengerIdentity) {
-        if (lockPassengerIdentity || selectedPassengerId.isNotBlank()) emptyList()
-        else passengerRepository.search(
-            contact.takeIf { it.filter(Char::isDigit).length >= 4 } ?: name,
-            6,
-        )
+    LaunchedEffect(contact, selectedPassengerId) {
+        exactContactMatches = if (
+            selectedPassengerId.isBlank() &&
+            passengerContactKey(contact).isNotBlank()
+        ) {
+            withContext(Dispatchers.IO) { passengerStore.exactContactMatches(contact) }
+        } else {
+            emptyList()
+        }
     }
-    val selectedProfile = selectedPassengerId.takeIf(String::isNotBlank)?.let(passengerStore::profile)
+
+    var passengerSuggestions by remember(trip.id, initialPassenger?.id) {
+        mutableStateOf<List<PassengerProfile>>(emptyList())
+    }
+    LaunchedEffect(name, contact, selectedPassengerId, lockPassengerIdentity) {
+        val query0648 = contact.takeIf { it.filter(Char::isDigit).length >= 4 } ?: name.trim()
+        passengerSuggestions = if (
+            lockPassengerIdentity ||
+            selectedPassengerId.isNotBlank() ||
+            query0648.isBlank()
+        ) {
+            emptyList()
+        } else {
+            withContext(Dispatchers.IO) { passengerRepository.search(query0648, 6) }
+        }
+    }
+
+    var selectedProfile by remember(trip.id, initialPassenger?.id) {
+        mutableStateOf<PassengerProfile?>(null)
+    }
+    LaunchedEffect(selectedPassengerId, initialPassenger?.id) {
+        selectedProfile = when {
+            selectedPassengerId.isBlank() -> null
+            initialPassenger?.id == selectedPassengerId -> initialPassenger
+            else -> withContext(Dispatchers.IO) { passengerStore.profile(selectedPassengerId) }
+        }
+    }
     val selectedPassengerBlocked = selectedProfile?.blocked == true
 
     HorizontalDivider()
