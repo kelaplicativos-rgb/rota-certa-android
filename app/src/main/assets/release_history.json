@@ -2,6 +2,46 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.651",
+      "build": 5942,
+      "commit": null,
+      "branch": "agent/passenger-password-recovery-e2e-0.1.651",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A Área VIP passa a exibir Esqueci minha senha somente para membro VIP com senha já criada e registra uma solicitação de recuperação vinculada ao acesso canônico do motorista.",
+        "Gerenciar passageiro passa a destacar solicitações de recuperação, priorizá-las na lista e permitir gerar a senha temporária solicitada com envio direto pelo WhatsApp.",
+        "A senha temporária passa a criar sessão restrita: Agenda, reservas, créditos e Minha Área permanecem bloqueados até o passageiro definir uma nova senha."
+      ],
+      "fixed": [
+        "Fecha o ciclo incompleto da 0.1.650 em que o motorista conseguia emitir senha temporária, mas o portal não tinha Esqueci minha senha nem consumia mustChangePassword.",
+        "Minha Área deixa de iniciar carregamentos protegidos quando mustChangePassword=true, evitando 403 que expulsava o passageiro antes da troca obrigatória.",
+        "O estado de recuperação passa por REQUESTED, ISSUED e COMPLETED no mesmo driverPassengerAccess, sem criar segunda identidade ou quebrar passengerId."
+      ],
+      "improved": [
+        "Pedido público de recuperação usa resposta genérica e rate limit, sem devolver senha, passengerId ou dados privados.",
+        "Reset administrativo continua invalidando sessões anteriores; a nova sessão temporária só permite /me, troca de senha e logout até a conclusão.",
+        "Passageiros atualiza a projeção remota periodicamente enquanto a tela está aberta, sem disparar sincronização geral do diretório."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.650: passageiro que esquecia a senha ficava sem caminho de recuperação na Área VIP.",
+        "0.1.650: senha temporária podia autenticar como sessão normal porque o portal principal ignorava mustChangePassword.",
+        "0.1.650: Minha Área tentava carregar reservas/notificações/timeline antes da troca obrigatória e podia cair em 403."
+      ],
+      "modulesAffected": [
+        "Viagem Certa",
+        "Área VIP",
+        "Minha área",
+        "Passageiros",
+        "Autenticação",
+        "WhatsApp",
+        "Backend",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.650",
       "build": 5941,
       "commit": null,
