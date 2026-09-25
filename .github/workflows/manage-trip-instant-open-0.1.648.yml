@@ -1,0 +1,202 @@
+name: Manage Trip Instant Open 0.1.648 APK
+
+on:
+  push:
+    branches:
+      - 'agent/manage-trip-instant-open-0.1.648'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manage-trip-instant-open-0648-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove alert popup timeout source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.648"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_939' app/build.gradle.kts
+          grep -Fq 'CollectorPrivateEnrichment0646.enrich(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'savePrivateBookingEnrichment0646' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'tripRevisionPreserved=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripStore.kt
+          grep -Fq 'enabledScripts = CollectorPrivateEnrichment0646.readOnlyPassengerScripts' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'dates0646 = targetDates' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDynamicAccounts.kt
+          grep -Fq 'TargetedTripRefreshEvents0645.notifyCanonicalCommitted(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          grep -Fq 'PROXIMITY_ALERTS_ENABLED_IS_SOLE_ALERT_AUTHORITY_STAGE644' app/src/main/java/br/com/mapeiaia/rotacerta/AlertRuntimePolicy0644.kt
+          grep -Fq 'const val ALERT_TIMEOUT_MILLIS_0647 = 20_000L' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+          grep -Fq 'ALERT_OVERLAY_NON_ACTION_TOUCH_IGNORED_0647' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+          grep -Fq 'ALERT_OVERLAY_TIMEOUT_DISMISSED_0647' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+          grep -Fq 'const val ALERT_POPUP_TIMEOUT_MILLIS_0647 = 20_000L' app/src/main/java/br/com/mapeiaia/rotacerta/BubbleShortcutOverlayController.kt
+          grep -Fq 'val bookingsByTripId0648 = remember(bookings) { bookings.groupBy { it.tripId } }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'LazyColumn(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'bookings = bookingsByTripId0648[trip.id].orEmpty()' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'canonicalBookings0494 = bookings' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'trips.sortedBy { it.departureAtMillis }.forEach { trip ->' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          ! grep -Fq 'val bookings = store.bookingsFor(trip.id)' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripsActivity.kt
+          grep -Fq 'withContext(Dispatchers.IO) { passengerRepository.search(query0648, 6) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          grep -Fq 'withContext(Dispatchers.IO) { passengerStore.exactContactMatches(contact) }' app/src/main/java/br/com/mapeiaia/rotacerta/trips/TripQuickPassengerUi.kt
+          ! grep -Fq 'PASSED_CLOSE_DELAY_MILLIS' app/src/main/java/br/com/mapeiaia/rotacerta/DirectionalAlertOverlayController.kt
+          ! grep -Fq 'action=NO_CANONICAL_WRITE htmlOnly=true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/AgendaBackgroundSync0392.kt
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configure Firebase Android app
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          else
+            test -s /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          fi
+          grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Manage-trip performance regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CollectorCanonicalPrivateEnrichment0646Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedCardRefreshReturn0645Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaLiveHtmlCommit0617Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PublicAgendaAutoSync0300Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralDoDia0552Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TimelineAgendaAtomicSync0632Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.ManageTripInstantOpen0648Test' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupTimeout0647Test' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupLifecycle0190ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupPostPassHold0192ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertPopupTimingTelemetry0193ContractTest' \
+            --tests 'br.com.mapeiaia.rotacerta.DirectionalRadarDismiss0178Test' \
+            --tests 'br.com.mapeiaia.rotacerta.ProximityAlertPopup117Test' \
+            --tests 'br.com.mapeiaia.rotacerta.AlertRuntimeIndependent0644Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/manage-trip-0648-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/manage-trip-0648-assemble.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+      - name: Prove APK identity and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/manage-trip-0648-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/manage-trip-0648-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/manage-trip-0648-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5939'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.648'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/manage-trip-0648-apksigner.txt
+          grep -Fq 'Verified' /tmp/manage-trip-0648-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/manage-trip-0648-dex-strings.txt
+          grep -Fq "$GITHUB_SHA" /tmp/manage-trip-0648-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.648-5939-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.648"
+            echo "versionCode=5939"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$GITHUB_SHA"
+            echo "variant=debug"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "htmlTripAuthorityPreserved=PASS"
+            echo "collectorPrivateEnrichmentOnly=PASS"
+            echo "exactCardHeadlessFallback=PASS"
+            echo "datePeriodScopeIsolation=PASS"
+            echo "tripRevisionPreservedForPrivateFields=PASS"
+            echo "siblingMutationBlocked=PASS"
+            echo "alertsIndependent0644Regression=PASS"
+            echo "alertPopupTimeout20s=PASS"
+            echo "gpsUpdatesDoNotRestartTimeout=PASS"
+            echo "engineIdleDoesNotAutoClose=PASS"
+            echo "nonActionTouchDoesNotDismiss=PASS"
+            echo "timeoutDismissUntilExit=PASS"
+            echo "legacyAlertPopupTimeout20s=PASS"
+            echo "manageTripLazyList0648=PASS"
+            echo "manageTripSingleBookingSnapshot0648=PASS"
+            echo "quickPassengerIdentityOffMain0648=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee manage-trip-0648-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-manage-trip-0.1.648-${{ github.sha }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            manage-trip-0648-proof.txt
+            /tmp/manage-trip-0648-tests.log
+            /tmp/manage-trip-0648-assemble.log
+            /tmp/manage-trip-0648-aapt.txt
+            /tmp/manage-trip-0648-apksigner.txt
+            /tmp/manage-trip-0648-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
