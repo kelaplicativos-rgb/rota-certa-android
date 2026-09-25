@@ -42,6 +42,7 @@ test("0651 forgot-password request is public-safe and never returns credentials"
   assert.match(request, /await enforceBookingRateLimit\(req\)/);
   assert.match(request, /passengerAccessForIdentity\(target\.driverUsername, identity\.passengerId, passengerContact\)/);
   assert.match(request, /passwordRecoveryStatus: "REQUESTED"/);
+  assert.match(request, /event: "password_recovery_requested"/);
   assert.match(request, /return json\(res, 202, \{ requested: true \}\)/);
   assert.doesNotMatch(request, /temporaryPassword/);
   assert.doesNotMatch(request, /passwordHash/);
