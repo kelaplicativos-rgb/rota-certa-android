@@ -21,7 +21,7 @@
       "improved": [
         "Pedido público de recuperação usa resposta genérica e rate limit, sem devolver senha, passengerId ou dados privados.",
         "Reset administrativo continua invalidando sessões anteriores; a nova sessão temporária só permite /me, troca de senha e logout até a conclusão.",
-        "Passageiros atualiza a projeção remota periodicamente enquanto a tela está aberta, sem disparar sincronização geral do diretório."
+        "Solicitações de recuperação usam push de alta prioridade e abrem diretamente o módulo Passageiros, sem polling contínuo nem sincronização geral do diretório."
       ],
       "regressions": [],
       "resolvedRegressions": [
