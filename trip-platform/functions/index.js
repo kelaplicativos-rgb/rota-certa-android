@@ -4406,13 +4406,17 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
     }
   }
   const driver = driverSnap.data();
-  // 0623: A Agenda volta a ser realmente pública para consulta. Identidade
-  // e autenticação ficam restritas ao momento em que o passageiro solicita
-  // uma reserva. Dados privados continuam protegidos pelos endpoints /v1/passenger/*.
+  // 0.1.649: the member area is private by default. No trip, route, fare,
+  // driver profile or availability is returned before a valid VIP session.
   let tester = null;
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, username);
     if (!tester) return;
+  } else {
+    const session = await requirePassengerSession(req, res);
+    if (!session) return;
+    const authorized = await requirePassengerDriverAccess(req, res, username, session);
+    if (!authorized) return;
   }
   const snapshot = await db.collection("trips").where("driverUsername", "==", username).limit(200).get();
   const canonicalDocs0495 = selectCanonicalTripDocuments0495(snapshot.docs);
@@ -4442,9 +4446,9 @@ async function getPublicDriverAgenda(res, req, usernameRaw, agendaToken, shortRo
   return json(res, 200, {
     driver: safePublicDriverProfile(driver, resolvedDriver.publicUsername),
     trips,
-    authenticationRequired: false,
-    identifiedAccessRequired0589: false,
-    accessMode0589: "PUBLIC_READ_RESERVE_ON_DEMAND_0623",
+    authenticationRequired: true,
+    identifiedAccessRequired0589: true,
+    accessMode0589: "VIP_AUTHENTICATED_0649",
     readOnly: true,
     changeCursor0495: canonicalDocs0495.reduce(
       (latest, doc) => Math.max(latest, Math.max(0, Number(doc.data().updatedAtMillis || 0))),
@@ -4469,9 +4473,13 @@ async function waitPublicAgendaCanonicalChange0495(res, req, usernameRaw, agenda
   if (testerSessionHeader(req)) {
     tester0589 = await requireTesterSession(req, res, username);
     if (!tester0589) return;
+  } else {
+    const session = await requirePassengerSession(req, res);
+    if (!session) return;
+    const authorized = await requirePassengerDriverAccess(req, res, username, session);
+    if (!authorized) return;
   }
-  // 0623: the canonical-change channel follows the same public-read contract
-  // as the Agenda itself; no passenger identity is required to observe public data.
+  // 0.1.649: canonical-change polling follows the same VIP authorization gate.
   const query = db.collection("trips").where("driverUsername", "==", username).limit(300);
   return await waitForCanonicalInvalidation0495(
     req,
@@ -5063,9 +5071,13 @@ async function getPublicTrip(res, req, token) {
   if (testerSessionHeader(req)) {
     tester = await requireTesterSession(req, res, driverUsername);
     if (!tester) return;
+  } else {
+    const session = await requirePassengerSession(req, res);
+    if (!session) return;
+    const authorized = await requirePassengerDriverAccess(req, res, driverUsername, session);
+    if (!authorized) return;
   }
-  // 0623: public trip details are readable from a valid public trip URL.
-  // Reservation mutations still require a verified passenger session.
+  // 0.1.649: shared trip targets remain opaque until the VIP session is verified.
   if (!tester && !publicProjectionCommittedCurrent0434(token, data)) {
     return fail(res, 409, "public_projection_not_committed", "A projeção pública desta viagem ainda está sendo sincronizada.");
   }
@@ -5108,9 +5120,9 @@ async function getPublicTrip(res, req, token) {
   return json(res, 200, {
     ...publicTrip,
     driver: publicDriver,
-    sessionType: tester ? "TESTER" : "PUBLIC_READ_RESERVE_ON_DEMAND_0623",
-    authenticationRequired: false,
-    identifiedAccessRequired0589: false,
+    sessionType: tester ? "TESTER" : "VIP_AUTHENTICATED_0649",
+    authenticationRequired: true,
+    identifiedAccessRequired0589: true,
   });
 }
 
@@ -5355,16 +5367,27 @@ async function publicPassengerAccessStatus0625(req, res) {
   } catch (error) {
     return fail(res, error.httpStatus || 400, error.code || "invalid_whatsapp", error.message || "WhatsApp inválido.");
   }
+  const target = await resolvePassengerTarget0625(req);
+  if (target == null || !target.driverUsername) {
+    return fail(res, 404, "vip_access_target_invalid_0649", "Este acesso privado não está disponível.");
+  }
   try {
     const identity = await resolveCanonicalPassengerByContact0625(passengerContact);
-    if (identity.knownPassenger) await ensureCanonicalPassengerResolved0625(identity, "ACCESS_STATUS_0625");
+    if (identity.knownPassenger) await ensureCanonicalPassengerResolved0625(identity, "VIP_ACCESS_STATUS_0649");
+    const access = identity.knownPassenger
+      ? await passengerAccessForIdentity(target.driverUsername, identity.passengerId, passengerContact)
+      : null;
+    const rawStatus = cleanText(access && access.status, 20).toUpperCase();
+    const vipActive = Boolean(access && passengerAccessIsAuthorized(access));
     return json(res, 200, {
       knownPassenger: identity.knownPassenger,
       passwordCreated: identity.passwordCreated,
       nameRequired: !identity.knownPassenger,
+      vipActive,
+      vipStatus: vipActive ? "ACTIVE" : (rawStatus || "NONE"),
     });
   } catch (error) {
-    return fail(res, error.httpStatus || 409, error.code || "passenger_identity_unavailable", error.message || "Não foi possível localizar seu cadastro.");
+    return fail(res, error.httpStatus || 409, error.code || "passenger_identity_unavailable", error.message || "Não foi possível confirmar seu acesso privado.");
   }
 }
 
@@ -5465,7 +5488,10 @@ async function openPassengerPasswordSession0625(req, res) {
     targetAccess = await passengerAccessForIdentity(target.driverUsername, passengerId, passengerContact);
     const targetStatus = cleanText(targetAccess && targetAccess.status, 20).toUpperCase();
     if (targetAccess && (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(targetStatus) || targetStatus === "MOVED")) {
-      return fail(res, 403, "passenger_access_unavailable", "Seu acesso a esta viagem não está disponível.");
+      return fail(res, 403, "passenger_access_unavailable", "Seu acesso privado não está disponível.");
+    }
+    if (!targetAccess || !passengerAccessIsAuthorized(targetAccess)) {
+      return fail(res, 403, "vip_access_required_0649", "Este acesso é exclusivo para membros VIP convidados.");
     }
   }
 
@@ -5511,7 +5537,7 @@ async function openPassengerPasswordSession0625(req, res) {
         passengerContact,
         passengerId,
         displayName,
-        status: "AUTHORIZED",
+        status: cleanText(targetAccess && targetAccess.status, 20).toUpperCase() || "AUTHORIZED",
         createdAtMillis: Number(targetAccess && targetAccess.createdAtMillis || now),
         updatedAtMillis: now,
       }, { merge: true });
@@ -6886,7 +6912,7 @@ function passengerSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
 
-const PASSENGER_KNOWN_DEVICE_COOKIE_0626 = "__Host-viagem_certa_device_0626";
+const PASSENGER_KNOWN_DEVICE_COOKIE_0626 = "__session";
 const PASSENGER_KNOWN_DEVICE_TTL_MILLIS_0626 = 180 * 24 * 60 * 60 * 1000;
 const PASSENGER_KNOWN_DEVICE_RENEW_MILLIS_0626 = 24 * 60 * 60 * 1000;
 
@@ -7557,71 +7583,22 @@ async function listPassengerTimeline0625(req, res) {
 async function ensurePublicBookingPassengerAccess0626(driverUsername, session, requestedPassengerName = "") {
   const username = normalizeUsername(driverUsername);
   if (!username) {
-    throw Object.assign(new Error("Agenda do motorista não identificada."), { httpStatus: 400, code: "driver_username_required" });
+    throw Object.assign(new Error("Acesso privado não identificado."), { httpStatus: 400, code: "driver_username_required" });
   }
   const passengerId = cleanText(session && session.passengerId, 120);
   const passengerContact = cleanText(session && session.passengerContact, 40);
   if (!passengerId || !passengerContact) {
-    throw Object.assign(new Error("Sua identidade de passageiro ainda não está disponível."), { httpStatus: 409, code: "passenger_identity_unavailable" });
+    throw Object.assign(new Error("Sua identidade ainda não está disponível."), { httpStatus: 409, code: "passenger_identity_unavailable" });
   }
-
   const existing = await passengerAccessForIdentity(username, passengerId, passengerContact);
   const existingStatus = cleanText(existing && existing.status, 20).toUpperCase();
   if (existing && (PASSENGER_RESTRICTED_ACCESS_STATUSES.has(existingStatus) || existingStatus === "MOVED")) {
-    throw Object.assign(new Error("Seu acesso a esta viagem não está disponível."), { httpStatus: 403, code: "passenger_access_unavailable" });
+    throw Object.assign(new Error("Seu acesso privado não está disponível."), { httpStatus: 403, code: "passenger_access_unavailable" });
   }
-  if (existing && passengerAccessIsAuthorized(existing)) {
-    return { session, access: existing, driverUsername: username };
+  if (!existing || !passengerAccessIsAuthorized(existing)) {
+    throw Object.assign(new Error("Este acesso é exclusivo para membros VIP convidados."), { httpStatus: 403, code: "vip_access_required_0649" });
   }
-
-  const identity = await resolveCanonicalPassengerByContact0625(passengerContact);
-  if (identity.passengerId && identity.passengerId !== passengerId) {
-    throw Object.assign(new Error("Seu WhatsApp está vinculado a outra identidade de passageiro."), { httpStatus: 409, code: "passenger_identity_conflict" });
-  }
-  const displayName = cleanText(
-    (existing && existing.displayName) ||
-    identity.displayName ||
-    requestedPassengerName,
-    120,
-  );
-  if (!displayName) {
-    throw Object.assign(new Error("Seu cadastro ainda não possui um nome válido."), { httpStatus: 409, code: "passenger_name_unavailable" });
-  }
-
-  const now = Date.now();
-  const accessRef = driverPassengerAccessRef(username, passengerContact);
-  const batch = db.batch();
-  batch.set(accessRef, {
-    driverUsername: username,
-    passengerContact,
-    passengerId,
-    displayName,
-    status: "AUTHORIZED",
-    selfServicePublicBooking0626: true,
-    createdAtMillis: Number(existing && existing.createdAtMillis || now),
-    updatedAtMillis: now,
-  }, { merge: true });
-  writeCanonicalPassenger0625(batch, {
-    passengerId,
-    passengerContact,
-    displayName,
-    source: "PUBLIC_BOOKING_ACCESS_0626",
-    createdAtMillis: Number(identity.account && identity.account.createdAtMillis || now),
-  }, now);
-  await batch.commit();
-  return {
-    session,
-    access: {
-      ...(existing || {}),
-      driverUsername: username,
-      passengerContact,
-      passengerId,
-      displayName,
-      status: "AUTHORIZED",
-      selfServicePublicBooking0626: true,
-    },
-    driverUsername: username,
-  };
+  return { session, access: existing, driverUsername: username };
 }
 
 const PASSENGER_BOOKING_INACTIVE_STATUSES_0629 = new Set(["CANCELLED", "REJECTED", "EXPIRED"]);
