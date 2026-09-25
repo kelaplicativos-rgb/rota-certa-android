@@ -987,8 +987,9 @@ private fun TripApp(
                     store = store,
                     onBack = { screen = TripScreen.TIMELINE },
                     onChanged = { text ->
-                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "PASSENGER_ADMIN_UPDATE")
-                        refresh()
+                        recordModuleObservation0507(activity, DiagnosticModule0507.PASSENGERS, "PASSENGER_ADMIN_UPDATE_0650")
+                        // Passenger administration owns its local snapshot. Avoid decoding every trip/booking
+                        // and rebuilding widgets for password/access-only mutations.
                         message = text
                     },
                     showHeader = false,
