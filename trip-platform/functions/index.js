@@ -6703,24 +6703,40 @@ async function resetDriverPassengerPassword(req, res) {
   }
   const access = await passengerAccessForIdentity(driver.username, passengerId, passengerContact);
   if (!access) return fail(res, 404, "passenger_access_not_found", "Passageiro não cadastrado nesta agenda.");
+  if (!passengerAccessIsAuthorized(access)) {
+    return fail(res, 403, "passenger_access_unavailable", "O acesso deste passageiro não está autorizado nesta agenda.");
+  }
   const currentContact = normalizeBrazilWhatsapp(access.passengerContact);
+  const stablePassengerId = cleanText(access.passengerId, 120) || passengerId;
+  if (!stablePassengerId) {
+    return fail(res, 409, "passenger_identity_unavailable", "O passengerId deste passageiro ainda não está disponível.");
+  }
   const temporaryPassword = temporaryPassengerPassword();
   const salt = crypto.randomBytes(16).toString("hex");
   const accountRef = db.collection("passengerAccounts").doc(sha256Hex(currentContact));
   const currentAccount = await accountRef.get();
-  if (!currentAccount.exists || !passengerAccountIsActivated(currentAccount.data())) {
-    return fail(res, 409, "passenger_account_not_activated", "O passageiro ainda não criou a senha da área privada.");
+  const currentData = currentAccount.exists ? currentAccount.data() : {};
+  const currentPassengerId = cleanText(currentData.passengerId, 120);
+  if (currentPassengerId && currentPassengerId !== stablePassengerId) {
+    return fail(res, 409, "passenger_global_identity_conflict", "Este WhatsApp já pertence a outro passengerId.");
   }
+  const wasActivated = currentAccount.exists && passengerAccountIsActivated(currentData);
+  const now = Date.now();
   await accountRef.set({
     passengerContact: currentContact,
-    passengerId: cleanText(access.passengerId, 120) || passengerId,
+    passengerId: stablePassengerId,
     passwordSalt: salt,
     passwordHash: passengerPasswordDigest(temporaryPassword, salt),
     mustChangePassword: true,
-    updatedAtMillis: Date.now(),
+    createdAtMillis: Number(currentData.createdAtMillis || now),
+    updatedAtMillis: now,
   }, { merge: true });
   await invalidatePassengerSessions(currentContact);
-  return json(res, 200, { temporaryPassword });
+  return json(res, 200, {
+    temporaryPassword,
+    firstAccessPassword: !wasActivated,
+    accountActivatedBeforeReset: wasActivated,
+  });
 }
 
 async function updateDriverReferralSettings(req, res) {
