@@ -36,9 +36,9 @@ test("0649 Minha área preserves driver and shared-trip context",()=>{
   assert.match(shell,/query\.set\("viagem", sharedTripToken0623\)/);
   assert.match(privateJs,/returnTripToken0649/);
   assert.match(privateJs,/back\.href = "\/" \+ encodeURIComponent\(driverUsername0491\)/);
-  assert.match(privateHtml,/0\.1\.649-vip-private/);
+  assert.match(privateHtml,/0\.1\.651-password-recovery/);
 });
-test("0650 package metadata is explicit",()=>{
-  assert.match(gradle,/releaseVersionCode = 5_941/);
-  assert.match(gradle,/releaseVersionName = "0\.1\.650"/);
+test("0651 package metadata is explicit",()=>{
+  assert.match(gradle,/releaseVersionCode = 5_942/);
+  assert.match(gradle,/releaseVersionName = "0\.1\.651"/);
 });
