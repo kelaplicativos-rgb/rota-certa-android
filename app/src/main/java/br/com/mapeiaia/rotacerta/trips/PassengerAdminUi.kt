@@ -850,7 +850,7 @@ fun PassengerAdminScreen(
                                         temporaryPassword = it.temporaryPassword
                                         temporaryPasswordFor = candidate.displayName
                                         onChanged(
-                                            if (access?.accountActivated == false) {
+                                            if (it.firstAccessPassword) {
                                                 "Senha temporária de primeiro acesso gerada."
                                             } else {
                                                 "Nova senha temporária gerada."
