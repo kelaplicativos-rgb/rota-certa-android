@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'">
-  <title>Viagem Certa — Minhas viagens</title>
+  <title>Área VIP — Minha área</title>
+  <meta name="description" content="Espaço privado para membros convidados.">
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#f5f6f8;--muted:#60656d;--line:#dde1e6}
     *{box-sizing:border-box}body{margin:0;background:#f5f6f8}.hidden{display:none!important}
@@ -39,17 +40,20 @@
     .timelineItem0625::before{content:"";position:absolute;left:-8px;top:3px;width:13px;height:13px;border-radius:50%;background:#176f98;border:2px solid #fff}
     .timelineTime0625{font-size:13px;color:var(--muted);font-weight:750}.timelineTitle0625{font-size:18px;font-weight:950;margin-top:4px}
     .timelineMessage0625{margin-top:4px;color:#3f454b;line-height:1.4}.hello0625{font-weight:900;font-size:19px}
+    .vipBadge0649{display:inline-flex;padding:6px 10px;border-radius:999px;background:#ede7fb;color:#50388e;font-size:12px;font-weight:950;letter-spacing:.06em}
+    .creditBalance0649{font-size:28px;font-weight:950;letter-spacing:-.02em;margin:7px 0}
+    .creditGrid0649{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   </style>
 </head>
 <body>
 <main>
   <div class="top">
-    <div class="brand">VIAGEM CERTA</div>
-    <a id="backToAgenda0491" class="back" href="/">Voltar às viagens</a>
+    <div id="privateBrand0649" class="brand">ÁREA VIP</div>
+    <a id="backToAgenda0491" class="back" href="/">Voltar ao acesso</a>
   </div>
 
-  <h1>Minhas viagens</h1>
-  <p class="lead">Acompanhe suas reservas, próximas viagens e atualizações em um só lugar.</p>
+  <h1 id="privateTitle0649">Minha área</h1>
+  <p id="privateLead0649" class="lead">Seu espaço pessoal e protegido.</p>
 
   <section id="contextError0491" class="card error hidden" role="alert"></section>
 
@@ -102,8 +106,20 @@
     </div>
 
     <section class="card">
-      <div id="hello0625" class="hello0625">Sua área</div>
+      <span class="vipBadge0649">MEMBRO VIP</span>
+      <div id="hello0625" class="hello0625" style="margin-top:10px">Sua área</div>
       <p class="muted">Seu histórico permanece ligado ao mesmo passageiro.</p>
+    </section>
+
+    <section class="card">
+      <h2>Créditos e indicações</h2>
+      <div id="privateCreditBalance0649" class="creditBalance0649">—</div>
+      <p id="privateCreditSummary0649" class="muted">Carregando seus créditos...</p>
+      <div class="creditGrid0649">
+        <button id="privateInvite0649" class="primary" type="button">Indicar amigo</button>
+        <button id="privateRefreshCredits0649" class="secondary" type="button">Atualizar</button>
+      </div>
+      <p id="privateCreditMessage0649" class="muted"></p>
     </section>
 
     <section class="card">
@@ -128,6 +144,6 @@
     </section>
   </section>
 </main>
-<script src="/minha-area.js?v=0.1.626-known-device" defer></script>
+<script src="/minha-area.js?v=0.1.649-vip-private" defer></script>
 </body>
 </html>
