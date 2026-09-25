@@ -38,6 +38,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import br.com.mapeiaia.rotacerta.R
 import java.math.RoundingMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -247,35 +248,49 @@ fun PassengerAdminScreen(
                 "PASSENGERS_DIRECTORY_SYNC_START_0630",
                 "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
             )
-            runCatching { api.syncPassengerDirectory(directorySelection0630.profiles) }
-                .onSuccess { response ->
-                    AgendaTrace.event(
-                        context,
-                        "PASSENGERS_DIRECTORY_SYNC_END_0630",
-                        "synced=${response.synced} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
-                    )
-                }
-                .onFailure { error ->
-                    AgendaTrace.event(
-                        context,
-                        "PASSENGERS_DIRECTORY_SYNC_ERROR_0630",
-                        "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size} error=" +
-                            (error.message ?: error::class.java.simpleName).take(240),
-                    )
-                }
+            try {
+                val response = api.syncPassengerDirectory(directorySelection0630.profiles)
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_END_0630",
+                    "synced=${response.synced} conflictedContacts=${directorySelection0630.conflictedContactKeys.size}",
+                )
+            } catch (error: CancellationException) {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_CANCELLED_0652",
+                    "syncable=${directorySelection0630.profiles.size} reason=composition_left",
+                )
+                throw error
+            } catch (error: Throwable) {
+                AgendaTrace.event(
+                    context,
+                    "PASSENGERS_DIRECTORY_SYNC_ERROR_0630",
+                    "syncable=${directorySelection0630.profiles.size} conflictedContacts=${directorySelection0630.conflictedContactKeys.size} error=" +
+                        (error.message ?: error::class.java.simpleName).take(240),
+                )
+            }
         }
 
         AgendaTrace.event(context, "PASSENGERS_REMOTE_LOAD_START", "driver=" + settings.driverUsername)
-        val response = runCatching { api.listDriverPassengers() }
-            .getOrElse { error ->
-                AgendaTrace.event(
-                    context,
-                    "PASSENGERS_REMOTE_LOAD_ERROR",
-                    "error=" + (error.message ?: error::class.java.simpleName).take(240),
-                )
-                onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
-                return
-            }
+        val response = try {
+            api.listDriverPassengers()
+        } catch (error: CancellationException) {
+            AgendaTrace.event(
+                context,
+                "PASSENGERS_REMOTE_LOAD_CANCELLED_0652",
+                "reason=composition_left",
+            )
+            throw error
+        } catch (error: Throwable) {
+            AgendaTrace.event(
+                context,
+                "PASSENGERS_REMOTE_LOAD_ERROR",
+                "error=" + (error.message ?: error::class.java.simpleName).take(240),
+            )
+            onChanged("Não foi possível carregar acessos dos passageiros: ${error.message ?: "erro de conexão"}")
+            return
+        }
         withContext(Dispatchers.IO) {
             response.passengers.forEach { access ->
                 val current = passengerStore.resolveCanonicalPassenger(
