@@ -46,6 +46,7 @@ const vipReferralCode0649 = String(params0569.get("convite") || "").replace(/[^A
 let vipGateStage0649 = "contact";
 let vipGateContact0649 = "";
 let vipGatePasswordCreated0649 = false;
+let vipPasswordChangeRequired0651 = false;
 let vipCreditBalanceCents0649 = 0;
 let bookingSelection0623 = null;
 let bookingSeats0623 = 1;
@@ -88,14 +89,17 @@ async function probePassengerSession0626() {
         credentials: "same-origin",
         cache: "no-store",
       });
-      passengerAuthenticated0626 = response.ok;
+      const body = await response.json().catch(() => ({}));
+      vipPasswordChangeRequired0651 = response.ok && body?.mustChangePassword === true;
+      passengerAuthenticated0626 = response.ok && !vipPasswordChangeRequired0651;
       if (response.status === 401 || response.status === 403) {
+        vipPasswordChangeRequired0651 = false;
         passengerSessionToken0623 = "";
         sessionStorage.removeItem(passengerSessionKey0625);
         sessionStorage.removeItem(passengerLegacySessionKey0623);
       }
     } catch (_) {
-      passengerAuthenticated0626 = Boolean(passengerSessionToken0623);
+      passengerAuthenticated0626 = Boolean(passengerSessionToken0623) && !vipPasswordChangeRequired0651;
     }
     syncPassengerNav0623();
     return passengerAuthenticated0626;
@@ -656,7 +660,8 @@ function initSelfBooking0623() {
   setVisible0569("loading", true);
   probePassengerSession0626().then(async (authenticated) => {
     if (!authenticated) {
-      showPassengerAccessGate0589("");
+      if (vipPasswordChangeRequired0651) showForcedPasswordChange0651();
+      else showPassengerAccessGate0589("");
       return;
     }
     showPassengerAgendaAccess0589();
@@ -703,11 +708,17 @@ function resetVipGate0649() {
   vipGateStage0649 = "contact";
   vipGateContact0649 = "";
   vipGatePasswordCreated0649 = false;
+  vipPasswordChangeRequired0651 = false;
   if ($0569("passengerWhatsapp0589")) $0569("passengerWhatsapp0589").disabled = false;
   if ($0569("vipPassword0649")) $0569("vipPassword0649").value = "";
   if ($0569("vipPasswordConfirm0649")) $0569("vipPasswordConfirm0649").value = "";
+  if ($0569("vipRecoveredPassword0651")) $0569("vipRecoveredPassword0651").value = "";
+  if ($0569("vipRecoveredPasswordConfirm0651")) $0569("vipRecoveredPasswordConfirm0651").value = "";
   setVisible0569("vipPasswordWrap0649", false);
   setVisible0569("vipPasswordConfirmWrap0649", false);
+  setVisible0569("vipForgotPassword0651", false);
+  setVisible0569("vipForcedPasswordChange0651", false);
+  setVisible0569("passengerAccessContinue0589", true);
   setVisible0569("vipReferralRequestWrap0649", false);
   const button = $0569("passengerAccessContinue0589");
   if (button) button.textContent = "CONTINUAR";
@@ -729,12 +740,103 @@ function showPassengerAccessGate0589(message = "") {
 
 function showPassengerAgendaAccess0589() {
   passengerAuthenticated0626 = true;
+  vipPasswordChangeRequired0651 = false;
   setVipPublicIdentity0649(true);
+  setVisible0569("vipForcedPasswordChange0651", false);
+  setVisible0569("vipForgotPassword0651", false);
   setVisible0569("accessGate0589", false);
   setVisible0569("vipMemberHome0649", true);
   setVisible0569("passengerNav0589", true);
   setPassengerAccessMessage0589("");
   syncPassengerNav0623();
+}
+
+function showForcedPasswordChange0651(message = "Crie uma nova senha para concluir a recuperação do seu acesso.") {
+  passengerAuthenticated0626 = false;
+  vipPasswordChangeRequired0651 = true;
+  setVipPublicIdentity0649(false);
+  setVisible0569("accessGate0589", true);
+  setVisible0569("vipMemberHome0649", false);
+  setVisible0569("passengerNav0589", false);
+  setVisible0569("loading", false);
+  setVisible0569("agenda", false);
+  setVisible0569("error", false);
+  setVisible0569("whatsappFab0569", false);
+  setVisible0569("vipPasswordWrap0649", false);
+  setVisible0569("vipPasswordConfirmWrap0649", false);
+  setVisible0569("vipForgotPassword0651", false);
+  setVisible0569("passengerAccessContinue0589", false);
+  setVisible0569("vipReferralRequestWrap0649", false);
+  setVisible0569("vipForcedPasswordChange0651", true);
+  setPassengerAccessMessage0589(message, "success");
+  syncPassengerNav0623();
+  window.setTimeout(() => $0569("vipRecoveredPassword0651")?.focus(), 30);
+}
+
+async function requestPasswordRecovery0651() {
+  const button = $0569("vipForgotPassword0651");
+  if (!vipGateContact0649 || !vipGatePasswordCreated0649 || !button) return;
+  button.disabled = true;
+  try {
+    const response = await fetch("/v1/public/passenger-password-recovery/request", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({
+        passengerContact: vipGateContact0649,
+        ...vipTargetBody0649(),
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível enviar sua solicitação.");
+    button.textContent = "SOLICITAÇÃO ENVIADA";
+    setPassengerAccessMessage0589(
+      "Solicitação enviada ao responsável pelo seu acesso VIP. Quando receber a senha temporária, volte aqui para entrar.",
+      "success",
+    );
+  } catch (error) {
+    button.disabled = false;
+    setPassengerAccessMessage0589(error?.message || "Não foi possível enviar sua solicitação.");
+  }
+}
+
+async function saveRecoveredPassword0651() {
+  const button = $0569("vipSaveRecoveredPassword0651");
+  const password = String($0569("vipRecoveredPassword0651")?.value || "").trim();
+  const confirmation = String($0569("vipRecoveredPasswordConfirm0651")?.value || "").trim();
+  if (!/^\d{4}$/.test(password) || password !== confirmation) {
+    setPassengerAccessMessage0589("Use exatamente 4 números e confirme a mesma nova senha.");
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch("/v1/passenger/me/password", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...passengerAuthHeaders0626(),
+      },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ password }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível salvar sua nova senha.");
+    vipPasswordChangeRequired0651 = false;
+    passengerAuthenticated0626 = true;
+    if ($0569("vipRecoveredPassword0651")) $0569("vipRecoveredPassword0651").value = "";
+    if ($0569("vipRecoveredPasswordConfirm0651")) $0569("vipRecoveredPasswordConfirm0651").value = "";
+    showPassengerAgendaAccess0589();
+    setVisible0569("loading", true);
+    await Promise.all([loadAgenda0569(false), loadVipCredits0649()]);
+    void watchAgendaCanonicalChanges0632();
+  } catch (error) {
+    setPassengerAccessMessage0589(error?.message || "Não foi possível salvar sua nova senha.");
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function clearPassengerAgendaAccess0589() {
@@ -788,6 +890,7 @@ async function requestPassengerAgendaAccess0589() {
       if ($0569("passengerWhatsapp0589")) $0569("passengerWhatsapp0589").disabled = true;
       setVisible0569("vipPasswordWrap0649", true);
       setVisible0569("vipPasswordConfirmWrap0649", !vipGatePasswordCreated0649);
+      setVisible0569("vipForgotPassword0651", vipGatePasswordCreated0649);
       if (button) button.textContent = vipGatePasswordCreated0649 ? "ENTRAR" : "CRIAR SENHA E ENTRAR";
       vipGateStage0649 = "password";
       window.setTimeout(() => $0569("vipPassword0649")?.focus(), 30);
@@ -819,6 +922,11 @@ async function requestPassengerAgendaAccess0589() {
     passengerSessionToken0623 = String(body?.sessionToken || "");
     if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) {
       throw new Error("Não foi possível confirmar sua sessão.");
+    }
+    vipPasswordChangeRequired0651 = body?.mustChangePassword === true;
+    if (vipPasswordChangeRequired0651) {
+      showForcedPasswordChange0651();
+      return;
     }
     showPassengerAgendaAccess0589();
     setVisible0569("loading", true);
@@ -945,6 +1053,14 @@ function initPassengerAccess0589() {
   });
   $0569("vipPasswordConfirm0649")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") requestPassengerAgendaAccess0589();
+  });
+  $0569("vipForgotPassword0651")?.addEventListener("click", requestPasswordRecovery0651);
+  $0569("vipSaveRecoveredPassword0651")?.addEventListener("click", saveRecoveredPassword0651);
+  $0569("vipRecoveredPassword0651")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") $0569("vipRecoveredPasswordConfirm0651")?.focus();
+  });
+  $0569("vipRecoveredPasswordConfirm0651")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") saveRecoveredPassword0651();
   });
   $0569("vipReferralRequest0649")?.addEventListener("click", requestVipReferral0649);
   $0569("vipShareInvite0649")?.addEventListener("click", shareVipInvite0649);
@@ -1570,7 +1686,10 @@ async function loadAgenda0569(silent = false) {
   try {
     applyAgendaBody0569(await fetchJson0569(endpoint, 12000, passengerAuthHeaders0626()));
   } catch (primaryError) {
-    if (primaryError?.status === 401 || primaryError?.status === 403) {
+    if (primaryError?.code === "password_change_required") {
+      vipPasswordChangeRequired0651 = true;
+      showForcedPasswordChange0651();
+    } else if (primaryError?.status === 401 || primaryError?.status === 403) {
       clearPassengerAgendaAccess0589();
       showPassengerAccessGate0589("Entre novamente para acessar sua área VIP.");
     } else if (!silent) {
@@ -1589,6 +1708,7 @@ window.addEventListener("online", async () => {
   if (!passengerAuthenticated0626) {
     const authenticated = await probePassengerSession0626();
     if (authenticated) showPassengerAgendaAccess0589();
+    else if (vipPasswordChangeRequired0651) showForcedPasswordChange0651();
   }
   if (passengerAuthenticated0626) {
     loadAgenda0569(true);
