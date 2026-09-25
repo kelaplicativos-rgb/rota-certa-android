@@ -42,6 +42,11 @@ const passengerContextKey0623 = "rotaCertaPassengerContext0491:" + driverUsernam
 let passengerSessionToken0623 = sessionStorage.getItem(passengerSessionKey0625) || sessionStorage.getItem(passengerLegacySessionKey0623) || "";
 let passengerAuthenticated0626 = false;
 let passengerSessionProbePromise0626 = null;
+const vipReferralCode0649 = String(params0569.get("convite") || "").replace(/[^A-Za-z0-9_-]/g, "");
+let vipGateStage0649 = "contact";
+let vipGateContact0649 = "";
+let vipGatePasswordCreated0649 = false;
+let vipCreditBalanceCents0649 = 0;
 let bookingSelection0623 = null;
 let bookingSeats0623 = 1;
 let bookingBusy0623 = false;
@@ -65,7 +70,7 @@ function passengerAuthHeaders0626() {
 }
 
 function syncPassengerNav0623() {
-  setVisible0569("passengerNav0589", true);
+  setVisible0569("passengerNav0589", passengerAuthenticated0626);
   setVisible0569("passengerAgendaLogout0589", passengerAuthenticated0626);
   configurePassengerAreaLink0589();
 }
@@ -74,18 +79,17 @@ async function probePassengerSession0626() {
   if (passengerSessionProbePromise0626) return passengerSessionProbePromise0626;
   passengerSessionProbePromise0626 = (async () => {
     try {
-      const response = await fetch("/v1/passenger/me", {
+      const scoped = driverUsername0569
+        ? "?driverUsername=" + encodeURIComponent(driverUsername0569)
+        : "";
+      const response = await fetch("/v1/passenger/me" + scoped, {
         method: "GET",
         headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
         credentials: "same-origin",
         cache: "no-store",
       });
       passengerAuthenticated0626 = response.ok;
-      if (response.ok) {
-        passengerSessionToken0623 = "";
-        sessionStorage.removeItem(passengerSessionKey0625);
-        sessionStorage.removeItem(passengerLegacySessionKey0623);
-      } else if (response.status === 401) {
+      if (response.status === 401 || response.status === 403) {
         passengerSessionToken0623 = "";
         sessionStorage.removeItem(passengerSessionKey0625);
         sessionStorage.removeItem(passengerLegacySessionKey0623);
@@ -335,6 +339,9 @@ function continueBookingPasswordConfirm0625() {
 function continueBookingSeats0625() {
   const review = $0569("bookingReview0625");
   if (review) review.textContent = bookingSummaryText0625() + " • " + (bookingSeats0623 === 1 ? "1 lugar" : bookingSeats0623 + " lugares");
+  setVisible0569("bookingCreditWrap0649", vipCreditBalanceCents0649 > 0);
+  const creditText = $0569("bookingCreditText0649");
+  if (creditText) creditText.textContent = "Usar meus créditos disponíveis (" + formatMoney0649(vipCreditBalanceCents0649) + ").";
   showBookingStep0625("review");
 }
 
@@ -439,7 +446,7 @@ async function submitBookingIntent0629(idempotencyKey) {
         boardingStopId: bookingSelection0623.boardingStopId,
         dropoffStopId: bookingSelection0623.dropoffStopId,
         seats: bookingSeats0623,
-        creditToUseCents: 0,
+        creditToUseCents: $0569("bookingUseCredits0649")?.checked ? vipCreditBalanceCents0649 : 0,
         idempotencyKey,
         clientIntentId: idempotencyKey,
         passengerName: bookingName0625,
@@ -489,6 +496,7 @@ function showBookingSuccess0629(idempotencyKey) {
   clearBookingIntent0629(idempotencyKey);
   // 0.1.629: visual refresh is best-effort and cannot turn a committed booking into an error.
   void loadAgenda0569(true);
+  void loadVipCredits0649();
 }
 
 async function confirmBooking0625() {
@@ -593,8 +601,9 @@ async function shareTrip0623(item) {
 }
 
 function initSelfBooking0623() {
-  setVisible0569("accessGate0589", false);
-  syncPassengerNav0623();
+  resetVipGate0649();
+  showPassengerAccessGate0589("");
+  initPassengerAccess0589();
   $0569("passengerAgendaLogout0589")?.addEventListener("click", async () => {
     try {
       await fetch("/v1/passenger/logout", {
@@ -605,10 +614,11 @@ function initSelfBooking0623() {
       });
     } catch (_) {}
     passengerAuthenticated0626 = false;
-    passengerSessionToken0623 = "";
-    sessionStorage.removeItem(passengerSessionKey0625);
-    sessionStorage.removeItem(passengerLegacySessionKey0623);
-    syncPassengerNav0623();
+    clearPassengerAgendaAccess0589();
+    publicDriverWhatsapp0569 = "";
+    publicDriverDisplayName0569 = "";
+    showPassengerAccessGate0589("");
+    $0569("passengerWhatsapp0589")?.focus();
   });
   $0569("bookingClose0623")?.addEventListener("click", closeBooking0623);
   $0569("bookingContactContinue0625")?.addEventListener("click", continueBookingContact0625);
@@ -644,89 +654,283 @@ function initSelfBooking0623() {
     if (event.key === "Escape" && !$0569("bookingModal0623")?.classList.contains("hidden")) closeBooking0623();
   });
   setVisible0569("loading", true);
-  probePassengerSession0626().finally(() => loadAgenda0569(false));
+  probePassengerSession0626().then(async (authenticated) => {
+    if (!authenticated) {
+      showPassengerAccessGate0589("");
+      return;
+    }
+    showPassengerAgendaAccess0589();
+    await Promise.all([loadAgenda0569(false), loadVipCredits0649()]);
+    void watchAgendaCanonicalChanges0632();
+  });
 }
 
-function setPassengerAccessMessage0589(message) {
+function setPassengerAccessMessage0589(message, kind = "error") {
   const node = $0569("passengerAccessMessage0589");
   if (!node) return;
   node.textContent = String(message || "");
   node.classList.toggle("hidden", !message);
+  node.style.color = kind === "success" ? "#176a34" : "#8f1d1d";
 }
 
 function configurePassengerAreaLink0589() {
   const link = $0569("passengerAreaLink0589");
   if (!link) return;
-  link.href = "/minha-area.html";
+  const query = new URLSearchParams();
+  if (driverUsername0569) query.set("motorista", driverUsername0569);
+  if (sharedTripToken0623) query.set("viagem", sharedTripToken0623);
+  link.href = "/minha-area.html" + (query.toString() ? "?" + query.toString() : "");
+}
+
+function setVipPublicIdentity0649(authenticated) {
+  const brand = $0569("vipBrand0649");
+  const title = $0569("vipTitle0649");
+  const header = $0569("vipHeader0649");
+  if (authenticated) {
+    if (brand) brand.textContent = "Viagem Certa";
+    if (title) title.textContent = "Viagens disponíveis";
+    if (header) header.setAttribute("aria-label", "Viagem Certa");
+    document.title = "Viagem Certa — Área VIP";
+  } else {
+    if (brand) brand.textContent = "ÁREA VIP";
+    if (title) title.textContent = "Acesso privado para membros";
+    if (header) header.setAttribute("aria-label", "Área VIP");
+    document.title = "Área VIP — Acesso privado";
+  }
+}
+
+function resetVipGate0649() {
+  vipGateStage0649 = "contact";
+  vipGateContact0649 = "";
+  vipGatePasswordCreated0649 = false;
+  if ($0569("passengerWhatsapp0589")) $0569("passengerWhatsapp0589").disabled = false;
+  if ($0569("vipPassword0649")) $0569("vipPassword0649").value = "";
+  if ($0569("vipPasswordConfirm0649")) $0569("vipPasswordConfirm0649").value = "";
+  setVisible0569("vipPasswordWrap0649", false);
+  setVisible0569("vipPasswordConfirmWrap0649", false);
+  setVisible0569("vipReferralRequestWrap0649", false);
+  const button = $0569("passengerAccessContinue0589");
+  if (button) button.textContent = "CONTINUAR";
 }
 
 function showPassengerAccessGate0589(message = "") {
+  passengerAuthenticated0626 = false;
+  setVipPublicIdentity0649(false);
   setVisible0569("accessGate0589", true);
+  setVisible0569("vipMemberHome0649", false);
   setVisible0569("passengerNav0589", false);
   setVisible0569("loading", false);
   setVisible0569("agenda", false);
   setVisible0569("error", false);
+  setVisible0569("whatsappFab0569", false);
   setPassengerAccessMessage0589(message);
+  configurePassengerAreaLink0589();
 }
 
 function showPassengerAgendaAccess0589() {
+  passengerAuthenticated0626 = true;
+  setVipPublicIdentity0649(true);
   setVisible0569("accessGate0589", false);
+  setVisible0569("vipMemberHome0649", true);
   setVisible0569("passengerNav0589", true);
   setPassengerAccessMessage0589("");
-  configurePassengerAreaLink0589();
+  syncPassengerNav0623();
 }
 
 function clearPassengerAgendaAccess0589() {
   agendaViewToken0589 = "";
   sessionStorage.removeItem(agendaViewStorageKey0589);
+  passengerSessionToken0623 = "";
+  sessionStorage.removeItem(passengerSessionKey0625);
+  sessionStorage.removeItem(passengerLegacySessionKey0623);
+  vipCreditBalanceCents0649 = 0;
+  resetVipGate0649();
+}
+
+function vipTargetBody0649() {
+  return {
+    publicSlug: publicSlug0569 || undefined,
+    driverUsername: driverUsername0569 || undefined,
+    agendaToken: agendaToken0569 || undefined,
+    tripToken: sharedTripToken0623 || undefined,
+  };
 }
 
 async function requestPassengerAgendaAccess0589() {
   if (passengerAccessInFlight0589) return;
-  const input = $0569("passengerWhatsapp0589");
   const button = $0569("passengerAccessContinue0589");
-  const passengerContact = String(input?.value || "").trim();
-  if (!passengerContact) {
-    setPassengerAccessMessage0589("Informe seu WhatsApp para continuar.");
-    return;
-  }
   passengerAccessInFlight0589 = true;
   if (button) button.disabled = true;
   setPassengerAccessMessage0589("");
   try {
-    const response = await fetch("/v1/public/passenger-access", {
+    if (vipGateStage0649 === "contact") {
+      const passengerContact = normalizePhoneE1640623($0569("passengerWhatsapp0589")?.value || "");
+      const response = await fetch("/v1/public/passenger-access/status", {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        credentials: "same-origin",
+        cache: "no-store",
+        body: JSON.stringify({ passengerContact, ...vipTargetBody0649() }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível confirmar seu acesso.");
+      vipGateContact0649 = passengerContact;
+      if (body?.vipActive !== true) {
+        if (vipReferralCode0649) {
+          setVisible0569("vipReferralRequestWrap0649", true);
+          setPassengerAccessMessage0589("Este número ainda não é VIP. Seu convite permite solicitar acesso.", "success");
+        } else {
+          setPassengerAccessMessage0589("Este acesso é exclusivo para membros VIP convidados.");
+        }
+        return;
+      }
+      vipGatePasswordCreated0649 = body?.passwordCreated === true;
+      if ($0569("passengerWhatsapp0589")) $0569("passengerWhatsapp0589").disabled = true;
+      setVisible0569("vipPasswordWrap0649", true);
+      setVisible0569("vipPasswordConfirmWrap0649", !vipGatePasswordCreated0649);
+      if (button) button.textContent = vipGatePasswordCreated0649 ? "ENTRAR" : "CRIAR SENHA E ENTRAR";
+      vipGateStage0649 = "password";
+      window.setTimeout(() => $0569("vipPassword0649")?.focus(), 30);
+      return;
+    }
+
+    const password = String($0569("vipPassword0649")?.value || "").trim();
+    const confirmation = String($0569("vipPasswordConfirm0649")?.value || "").trim();
+    if (!/^\d{4}$/.test(password)) throw new Error("Sua senha precisa ter exatamente 4 números.");
+    if (!vipGatePasswordCreated0649) {
+      if (!/^\d{4}$/.test(confirmation)) throw new Error("Confirme sua senha de 4 números.");
+      if (password !== confirmation) throw new Error("As duas senhas precisam ser iguais.");
+    }
+    const response = await fetch("/v1/public/passenger-password-session", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({
+        passengerContact: vipGateContact0649,
+        password,
+        passwordConfirmation: vipGatePasswordCreated0649 ? undefined : confirmation,
+        sessionContextId: passengerSessionContext0623(),
+        ...vipTargetBody0649(),
+      }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível entrar.");
+    passengerSessionToken0623 = String(body?.sessionToken || "");
+    if (!/^[A-Za-z0-9_-]{32,200}$/.test(passengerSessionToken0623)) {
+      throw new Error("Não foi possível confirmar sua sessão.");
+    }
+    showPassengerAgendaAccess0589();
+    setVisible0569("loading", true);
+    await Promise.all([loadAgenda0569(false), loadVipCredits0649()]);
+    void watchAgendaCanonicalChanges0632();
+  } catch (error) {
+    setPassengerAccessMessage0589(error?.message || "Não foi possível confirmar seu acesso.");
+  } finally {
+    passengerAccessInFlight0589 = false;
+    if (button) button.disabled = false;
+  }
+}
+
+async function requestVipReferral0649() {
+  if (!vipReferralCode0649 || !vipGateContact0649) return;
+  const button = $0569("vipReferralRequest0649");
+  if (button) button.disabled = true;
+  try {
+    const displayName = String($0569("vipReferralName0649")?.value || "").trim();
+    if (displayName.length < 2) throw new Error("Informe seu nome para solicitar o acesso.");
+    const response = await fetch("/v1/public/referrals/request", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       cache: "no-store",
       body: JSON.stringify({
-        passengerContact,
-        publicSlug: publicSlug0569,
         driverUsername: driverUsername0569,
-        agendaToken: agendaToken0569,
+        referralCode: vipReferralCode0649,
+        displayName,
+        passengerContact: vipGateContact0649,
       }),
     });
-    const raw = await response.text();
-    let body = null;
-    try { body = JSON.parse(raw); } catch (_) { body = null; }
-    if (!response.ok) {
-      throw new Error(safeMessage0569(body?.message) || "Não foi possível liberar o acesso com este WhatsApp.");
-    }
-    const viewToken = String(body?.viewToken || "");
-    if (!/^[A-Za-z0-9_-]{32,200}$/.test(viewToken)) {
-      throw new Error("Não foi possível confirmar o acesso agora.");
-    }
-    agendaViewToken0589 = viewToken;
-    sessionStorage.setItem(agendaViewStorageKey0589, agendaViewToken0589);
-    if (input) input.value = "";
-    showPassengerAgendaAccess0589();
-    setVisible0569("loading", true);
-    await loadAgenda0569(false);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível solicitar o acesso.");
+    setPassengerAccessMessage0589("Solicitação enviada. O acesso VIP será liberado após aprovação.", "success");
+    setVisible0569("vipReferralRequestWrap0649", false);
   } catch (error) {
-    clearPassengerAgendaAccess0589();
-    showPassengerAccessGate0589(error?.message || "Não foi possível confirmar seu acesso.");
+    setPassengerAccessMessage0589(error?.message || "Não foi possível solicitar o acesso.");
   } finally {
-    passengerAccessInFlight0589 = false;
     if (button) button.disabled = false;
+  }
+}
+
+function formatMoney0649(cents) {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" })
+    .format(Math.max(0, Number(cents || 0)) / 100);
+}
+
+async function loadVipCredits0649() {
+  if (!passengerAuthenticated0626 || !driverUsername0569) return;
+  try {
+    const response = await fetch(
+      "/v1/passenger/me/credits?driverUsername=" + encodeURIComponent(driverUsername0569),
+      {
+        headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
+        credentials: "same-origin",
+        cache: "no-store",
+      },
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Créditos indisponíveis.");
+    vipCreditBalanceCents0649 = Math.max(0, Number(body?.balanceCents || 0));
+    const node = $0569("vipCreditBalance0649");
+    if (node) node.textContent = "Créditos: " + formatMoney0649(vipCreditBalanceCents0649);
+    const creditText = $0569("bookingCreditText0649");
+    if (creditText) creditText.textContent = "Usar meus créditos disponíveis (" + formatMoney0649(vipCreditBalanceCents0649) + ").";
+  } catch (_) {
+    const node = $0569("vipCreditBalance0649");
+    if (node) node.textContent = "Créditos: indisponível";
+  }
+}
+
+function vipReferralUrl0649(code) {
+  const pathSlug = publicSlug0569 || driverUsername0569;
+  const url = new URL(pathSlug ? "/" + encodeURIComponent(pathSlug) : "/", location.origin);
+  url.searchParams.set("convite", code);
+  return url.toString();
+}
+
+async function shareVipInvite0649() {
+  if (!passengerAuthenticated0626 || !driverUsername0569) return;
+  const message = $0569("vipMemberMessage0649");
+  try {
+    const response = await fetch("/v1/passenger/me/referral", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...passengerAuthHeaders0626(),
+      },
+      credentials: "same-origin",
+      cache: "no-store",
+      body: JSON.stringify({ driverUsername: driverUsername0569 }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(safeMessage0569(body?.message) || "Não foi possível criar seu convite.");
+    const code = String(body?.referralCode || "");
+    if (!code) throw new Error("Convite indisponível.");
+    const url = vipReferralUrl0649(code);
+    const shareData = {
+      title: "Área VIP",
+      text: "Você recebeu um convite para uma área privada.",
+      url,
+    };
+    if (navigator.share) await navigator.share(shareData);
+    else {
+      await navigator.clipboard.writeText(url);
+      if (message) message.textContent = "Convite VIP copiado.";
+    }
+  } catch (error) {
+    if (error?.name !== "AbortError" && message) {
+      message.textContent = error?.message || "Não foi possível compartilhar o convite.";
+    }
   }
 }
 
@@ -736,20 +940,15 @@ function initPassengerAccess0589() {
   $0569("passengerWhatsapp0589")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") requestPassengerAgendaAccess0589();
   });
-  $0569("passengerAgendaLogout0589")?.addEventListener("click", () => {
-    clearPassengerAgendaAccess0589();
-    publicDriverWhatsapp0569 = "";
-    syncWhatsappFab0569();
-    showPassengerAccessGate0589("");
-    $0569("passengerWhatsapp0589")?.focus();
+  $0569("vipPassword0649")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") requestPassengerAgendaAccess0589();
   });
-  if (agendaViewToken0589) {
-    showPassengerAgendaAccess0589();
-    setVisible0569("loading", true);
-    loadAgenda0569(false);
-  } else {
-    showPassengerAccessGate0589("");
-  }
+  $0569("vipPasswordConfirm0649")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") requestPassengerAgendaAccess0589();
+  });
+  $0569("vipReferralRequest0649")?.addEventListener("click", requestVipReferral0649);
+  $0569("vipShareInvite0649")?.addEventListener("click", shareVipInvite0649);
+  $0569("vipRefreshCredits0649")?.addEventListener("click", loadVipCredits0649);
 }
 
 function setVisible0569(id, visible) {
@@ -1248,6 +1447,7 @@ async function fetchJson0569(url, timeoutMillis = 12000, extraHeaders = {}) {
   try {
     const response = await fetch(url, {
       headers: { Accept: "application/json", ...extraHeaders },
+      credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
     });
@@ -1309,7 +1509,8 @@ async function fetchAgendaChange0632(endpoint) {
   const timeout = window.setTimeout(() => controller.abort(), 30_000);
   try {
     const response = await fetch(endpoint, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...passengerAuthHeaders0626() },
+      credentials: "same-origin",
       cache: "no-store",
       signal: controller.signal,
     });
@@ -1329,7 +1530,7 @@ async function watchAgendaCanonicalChanges0632() {
   if (agendaChangeWatchRunning0632) return;
   agendaChangeWatchRunning0632 = true;
   try {
-    while (navigator.onLine !== false) {
+    while (passengerAuthenticated0626 && navigator.onLine !== false) {
       if (document.visibilityState !== "visible") {
         await delayBooking0629(700);
         continue;
@@ -1359,45 +1560,57 @@ async function watchAgendaCanonicalChanges0632() {
 }
 
 async function loadAgenda0569(silent = false) {
-  if (agendaLoadInFlight0569) return;
+  if (agendaLoadInFlight0569 || !passengerAuthenticated0626) return;
   const endpoint = primaryEndpoint0569();
   if (!endpoint) {
-    if (!silent) showError0569("Este link não identifica uma área Viagem Certa válida.");
+    if (!silent) showPassengerAccessGate0589("Este acesso privado não está disponível.");
     return;
   }
   agendaLoadInFlight0569 = true;
   try {
-    applyAgendaBody0569(await fetchJson0569(endpoint, 12000));
+    applyAgendaBody0569(await fetchJson0569(endpoint, 12000, passengerAuthHeaders0626()));
   } catch (primaryError) {
-    if (!silent) showError0569(primaryError?.message || "Não foi possível carregar as viagens.");
+    if (primaryError?.status === 401 || primaryError?.status === 403) {
+      clearPassengerAgendaAccess0589();
+      showPassengerAccessGate0589("Entre novamente para acessar sua área VIP.");
+    } else if (!silent) {
+      showError0569(primaryError?.message || "Não foi possível carregar sua área.");
+    }
   } finally {
     agendaLoadInFlight0569 = false;
   }
 }
 
 initSelfBooking0623();
-void watchAgendaCanonicalChanges0632();
 window.setInterval(() => {
-  if (document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
+  if (passengerAuthenticated0626 && document.visibilityState === "visible" && navigator.onLine !== false) loadAgenda0569(true);
 }, 15_000);
-window.addEventListener("online", () => {
-  loadAgenda0569(true);
-  void watchAgendaCanonicalChanges0632();
+window.addEventListener("online", async () => {
+  if (!passengerAuthenticated0626) {
+    const authenticated = await probePassengerSession0626();
+    if (authenticated) showPassengerAgendaAccess0589();
+  }
+  if (passengerAuthenticated0626) {
+    loadAgenda0569(true);
+    loadVipCredits0649();
+    void watchAgendaCanonicalChanges0632();
+  }
 });
 window.addEventListener("pageshow", () => {
-  if (navigator.onLine !== false) {
+  if (passengerAuthenticated0626 && navigator.onLine !== false) {
     consumeAgendaCardRefresh0596();
     loadAgenda0569(true);
   }
 });
 window.addEventListener("focus", () => {
-  if (document.visibilityState === "visible" && navigator.onLine !== false) {
+  if (passengerAuthenticated0626 && document.visibilityState === "visible" && navigator.onLine !== false) {
     consumeAgendaCardRefresh0596();
   }
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && navigator.onLine !== false) {
+  if (passengerAuthenticated0626 && document.visibilityState === "visible" && navigator.onLine !== false) {
     consumeAgendaCardRefresh0596();
     loadAgenda0569(true);
+    void watchAgendaCanonicalChanges0632();
   }
 });
