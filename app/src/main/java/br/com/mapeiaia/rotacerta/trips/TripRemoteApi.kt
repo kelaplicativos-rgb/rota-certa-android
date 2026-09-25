@@ -177,6 +177,11 @@ data class DriverPassengerAccess(
     val displayName: String = "",
     val status: String = "PENDING",
     val accountActivated: Boolean = false,
+    val accountMustChangePassword: Boolean = false,
+    val passwordRecoveryStatus: String = "",
+    val passwordRecoveryRequestedAtMillis: Long = 0L,
+    val passwordRecoveryIssuedAtMillis: Long = 0L,
+    val passwordRecoveryCompletedAtMillis: Long = 0L,
     val agendaAdmin: Boolean = false,
     val referredByContact: String = "",
     val referralRewardGrantedAtMillis: Long = 0L,
@@ -264,6 +269,7 @@ data class DriverPassengerResetPasswordResponse(
     val temporaryPassword: String = "",
     val firstAccessPassword: Boolean = false,
     val accountActivatedBeforeReset: Boolean = false,
+    val recoveryStatus: String = "",
 )
 
 @Serializable
