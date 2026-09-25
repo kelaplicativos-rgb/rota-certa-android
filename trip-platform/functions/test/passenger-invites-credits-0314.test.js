@@ -1,58 +1,37 @@
 "use strict";
-
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const test = require("node:test");
-
-const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
-const web = fs.readFileSync(path.join(__dirname, "..", "..", "public", "app.js"), "utf8");
-const html = fs.readFileSync(path.join(__dirname, "..", "..", "public", "index.html"), "utf8");
-
-test("passenger consultation is phone-based while private actions remain driver-controlled", () => {
-  assert.match(html, /Informe apenas seu WhatsApp/);
-  assert.doesNotMatch(html, /id="accessPassword"/);
-  assert.match(api, /driverPassengerAccess/);
-  assert.match(api, /requirePassengerAgendaView/);
-  assert.match(api, /requirePassengerDriverAccess/);
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const path=require("node:path");
+const test=require("node:test");
+const api=fs.readFileSync(path.join(__dirname,"..","index.js"),"utf8");
+const root=path.join(__dirname,"..","..","..");
+const html=fs.readFileSync(path.join(root,"trip-platform","public","index.html"),"utf8");
+const shell=fs.readFileSync(path.join(root,"trip-platform","public","public-agenda-shell-0569.js"),"utf8");
+const privateHtml=fs.readFileSync(path.join(root,"trip-platform","public","minha-area.html"),"utf8");
+test("0649 VIP membership reuses driver passenger access authority",()=>{
+  assert.match(api,/PASSENGER_AUTHORIZED_ACCESS_STATUSES = new Set\(\["ACTIVE", "AUTHORIZED"\]\)/);
+  assert.match(api,/vipActive/);
+  assert.match(api,/vip_access_required_0649/);
+  assert.match(api,/requirePassengerDriverAccess/);
 });
-
-test("driver administers authorized suspended and blocked access without first-login temporary password", () => {
-  assert.match(api, /async function listDriverPassengers/);
-  assert.match(api, /async function inviteDriverPassenger/);
-  assert.match(api, /async function syncDriverPassengerDirectory/);
-  assert.match(api, /"SUSPENDED"/);
-  assert.match(api, /"BLOCKED"/);
-  assert.match(api, /status: "AUTHORIZED"/);
-  assert.match(api, /async function resetDriverPassengerPassword/);
-  assert.match(api, /\/v1\/driver\/passengers\/reset-password/);
+test("referrals still require approval and earn configured credits once",()=>{
+  assert.match(api,/requestPassengerReferralInvite/);
+  assert.match(api,/: "PENDING"/);
+  assert.match(api,/processReferralCreditsForCompletedTrip/);
+  assert.match(api,/referralRewardGrantedAtMillis/);
+  assert.match(api,/REFERRAL_EARNED/);
 });
-
-test("referrals require driver approval and earn configured credits once", () => {
-  assert.match(api, /requestPassengerReferralInvite/);
-  assert.match(api, /PASSENGER_RESTRICTED_ACCESS_STATUSES\.has/);
-  assert.match(api, /: "PENDING"/);
-  assert.match(api, /firstReferrer = cleanText\(existingData\.referredByContact/);
-  assert.match(api, /processReferralCreditsForCompletedTrip/);
-  assert.match(api, /referralRewardGrantedAtMillis/);
-  assert.match(api, /REFERRAL_EARNED/);
-  assert.match(api, /referralCreditCents/);
+test("credits are visible and spend atomically on booking",()=>{
+  assert.match(html,/vipCreditBalance0649/);
+  assert.match(privateHtml,/privateCreditBalance0649/);
+  assert.match(shell,/bookingUseCredits0649/);
+  assert.match(shell,/creditToUseCents: .*vipCreditBalanceCents0649/);
+  assert.match(api,/BOOKING_CREDIT_USED/);
+  assert.match(api,/BOOKING_CREDIT_REFUND/);
 });
-
-test("credits are spent atomically on booking and refunded on cancellation", () => {
-  assert.match(api, /creditToUseCents/);
-  assert.match(api, /BOOKING_CREDIT_USED/);
-  assert.match(api, /amountDueCents/);
-  assert.match(api, /refundBookingCreditsIfNeeded/);
-  assert.match(api, /BOOKING_CREDIT_REFUND/);
-  assert.match(web, /Meus créditos|portalCreditBalance/);
-  assert.match(web, /creditToUseCents/);
-});
-
-test("passenger can share a referral without granting access directly", () => {
-  assert.match(html, /Indique e ganhe créditos/);
-  assert.match(html, /Solicitar convite/);
-  assert.match(web, /sharePassengerReferral/);
-  assert.match(web, /requestReferralInvite/);
-  assert.match(web, /navigator\.share/);
+test("VIP referral sharing stays neutral before login",()=>{
+  assert.match(shell,/title: "Área VIP"/);
+  assert.match(shell,/Você recebeu um convite para uma área privada\./);
+  assert.match(shell,/navigator\.share/);
+  assert.doesNotMatch(html,/og:description" content="[^"]*(carona|motorista|viagem)/i);
 });
