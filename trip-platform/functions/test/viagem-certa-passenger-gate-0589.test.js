@@ -1,10 +1,8 @@
 "use strict";
-
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-
 const root = path.join(__dirname, "..", "..", "..");
 const api = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "trip-platform", "public", "index.html"), "utf8");
@@ -12,54 +10,35 @@ const shell = fs.readFileSync(path.join(root, "trip-platform", "public", "public
 const privateHtml = fs.readFileSync(path.join(root, "trip-platform", "public", "minha-area.html"), "utf8");
 const privateJs = fs.readFileSync(path.join(root, "trip-platform", "public", "minha-area.js"), "utf8");
 const gradle = fs.readFileSync(path.join(root, "app", "build.gradle.kts"), "utf8");
-
-function between(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  assert.notEqual(start, -1, startMarker + " missing");
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  assert.notEqual(end, -1, endMarker + " missing");
-  return source.slice(start, end);
-}
-
-test("0589 gate is superseded by 0625 public-read password reserve-on-demand", () => {
-  assert.match(html, /id="accessGate0589" class="accessGate0589 hidden"/);
-  assert.doesNotMatch(html, /id="passengerWhatsapp0589"/);
-  for (const id of [
-    "bookingContactStep0625",
-    "bookingPasswordStep0625",
-    "bookingPasswordConfirmStep0625",
-    "bookingSeatsStep0625",
-    "bookingReviewStep0625",
-  ]) {
-    assert.match(html, new RegExp('id="' + id + '"'));
-  }
-  assert.match(html, />SOLICITAR RESERVA</);
-  assert.doesNotMatch(html, /PIN|bookingPin0624|bookingOtp0623|RECEBER CÓDIGO|firebase-auth\.js/);
+function between(source,startMarker,endMarker){const start=source.indexOf(startMarker);assert.notEqual(start,-1,startMarker+" missing");const end=source.indexOf(endMarker,start+startMarker.length);assert.notEqual(end,-1,endMarker+" missing");return source.slice(start,end);}
+test("0649 unauthenticated landing is neutral VIP access",()=>{
+  assert.match(html, /<title>Área VIP — Acesso privado<\/title>/);
+  assert.match(html, /Você precisa ser VIP para entrar/);
+  assert.match(html, /id="passengerWhatsapp0589"/);
+  assert.match(html, /id="vipPassword0649"/);
+  assert.match(html, /id="passengerNav0589" class="passengerNav0589 hidden"/);
+  assert.match(html, /og:title" content="Área VIP — Acesso privado"/);
 });
-
-test("0625 keeps the 0623 public-read contract while password protects reservation identity", () => {
-  const agenda = between(api, "async function getPublicDriverAgenda", "async function waitPublicAgendaCanonicalChange0495");
-  assert.doesNotMatch(agenda, /requirePassengerAgendaView/);
-  assert.match(agenda, /identifiedAccessRequired0589: false/);
-  assert.match(agenda, /PUBLIC_READ_RESERVE_ON_DEMAND_0623/);
-
-  const changes = between(api, "async function waitPublicAgendaCanonicalChange0495", "function buildAdminHomeTrip0471");
-  assert.doesNotMatch(changes, /requirePassengerAgendaView/);
-
-  const publicTrip = between(api, "async function getPublicTrip", "function normalizeBrazilWhatsapp");
-  assert.doesNotMatch(publicTrip, /requirePassengerAgendaView/);
-  assert.match(publicTrip, /identifiedAccessRequired0589: false/);
+test("0649 agenda trip and change APIs require VIP session plus driver access",()=>{
+  const agenda=between(api,"async function getPublicDriverAgenda","async function waitPublicAgendaCanonicalChange0495");
+  assert.match(agenda,/requirePassengerSession\(req, res\)/);
+  assert.match(agenda,/requirePassengerDriverAccess\(req, res, username, session\)/);
+  assert.match(agenda,/VIP_AUTHENTICATED_0649/);
+  const changes=between(api,"async function waitPublicAgendaCanonicalChange0495","function buildAdminHomeTrip0471");
+  assert.match(changes,/requirePassengerSession\(req, res\)/);
+  assert.match(changes,/requirePassengerDriverAccess\(req, res, username, session\)/);
+  const trip=between(api,"async function getPublicTrip","function normalizeBrazilWhatsapp");
+  assert.match(trip,/requirePassengerSession\(req, res\)/);
+  assert.match(trip,/requirePassengerDriverAccess\(req, res, driverUsername, session\)/);
 });
-
-test("private passenger data stays protected even after the public agenda is reopened", () => {
-  assert.match(privateHtml, /VIAGEM CERTA/);
-  assert.match(privateHtml, /<h1>Minhas viagens<\/h1>/);
-  assert.match(privateJs, /headers\.Authorization = "Bearer " \+ sessionToken0491/);
-  assert.match(privateJs, /\/v1\/passenger\/me\/bookings/);
-  assert.doesNotMatch(privateJs, /localStorage/);
+test("0649 Minha área preserves driver and shared-trip context",()=>{
+  assert.match(shell,/query\.set\("motorista", driverUsername0569\)/);
+  assert.match(shell,/query\.set\("viagem", sharedTripToken0623\)/);
+  assert.match(privateJs,/returnTripToken0649/);
+  assert.match(privateJs,/back\.href = "\/" \+ encodeURIComponent\(driverUsername0491\)/);
+  assert.match(privateHtml,/0\.1\.649-vip-private/);
 });
-
-test("0.1.629 package metadata is explicit", () => {
-  assert.match(gradle, /releaseVersionCode = 5_920/);
-  assert.match(gradle, /releaseVersionName = "0\.1\.629"/);
+test("0649 package metadata is explicit",()=>{
+  assert.match(gradle,/releaseVersionCode = 5_940/);
+  assert.match(gradle,/releaseVersionName = "0\.1\.649"/);
 });
