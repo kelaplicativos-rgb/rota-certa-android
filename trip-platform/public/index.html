@@ -5,7 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-  <title>Viagem Certa — Suas viagens</title>
+  <title>Área VIP — Acesso privado</title>
+  <meta name="description" content="Espaço exclusivo para membros convidados.">
+  <meta property="og:title" content="Área VIP — Acesso privado">
+  <meta property="og:description" content="Espaço exclusivo para membros convidados.">
+  <meta property="og:type" content="website">
   <style>
     :root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717;background:#fbf8fc;--ink:#171717;--muted:#5f5962;--line:#d8d1d9;--accent:#7055bd}
     *{box-sizing:border-box}
@@ -63,6 +67,21 @@
     .accessButton0589{width:100%;min-height:50px;margin-top:12px;border:0;border-radius:14px;padding:12px 16px;background:#7055bd;color:#fff;font:inherit;font-weight:900;cursor:pointer}
     .accessButton0589:disabled{opacity:.62;cursor:wait}
     .accessMessage0589{margin:11px 0 0;color:#8f1d1d;font-size:14px;line-height:1.35;font-weight:750}
+    .vipGate0649{margin-top:28px;padding:28px 22px;border:1px solid #e6e0e7;border-radius:28px;background:linear-gradient(180deg,#fff 0%,#faf7ff 100%);box-shadow:0 18px 48px #493b6914}
+    .vipEyebrow0649{font-size:13px;font-weight:950;letter-spacing:.15em;color:#7055bd}
+    .vipGate0649 h1{margin:8px 0 8px;font-size:31px;line-height:1.08;letter-spacing:-.03em}
+    .vipGate0649 .vipLead0649{margin:0;color:#665f69;font-size:16px;line-height:1.5}
+    .vipTrust0649{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+    .vipTrust0649 span{padding:6px 9px;border-radius:999px;background:#f0ebf8;color:#51426f;font-size:12px;font-weight:850}
+    .vipMember0649{margin:16px 0;padding:18px;border:1px solid #dfd7e7;border-radius:22px;background:#fff;box-shadow:0 8px 26px #0000000b}
+    .vipMemberTop0649{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .vipBadge0649{display:inline-flex;padding:6px 10px;border-radius:999px;background:#ede7fb;color:#50388e;font-size:12px;font-weight:950;letter-spacing:.06em}
+    .vipCredit0649{font-size:17px;font-weight:950}
+    .vipMemberActions0649{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px}
+    .vipMemberActions0649 button{min-height:44px;border:1px solid #d9d0e2;border-radius:12px;background:#fff;color:#4f3c8e;font:inherit;font-weight:900;cursor:pointer}
+    .vipMemberMessage0649{margin:9px 0 0;color:#655e68;font-size:13px;line-height:1.35}
+    .bookingCredit0649{display:flex;align-items:flex-start;gap:10px;margin-top:12px;padding:12px;border:1px solid #ddd5e5;border-radius:14px;background:#fbf8fd;font-size:15px;font-weight:800}
+    .bookingCredit0649 input{width:20px;height:20px;margin-top:1px;accent-color:#7055bd}
 
     .agendaTopIdentity0623{min-width:0;flex:1}
     .agendaTopActions0623{display:flex;align-items:center;gap:8px;flex:0 0 auto}
@@ -98,16 +117,58 @@
 </head>
 <body>
   <main>
-    <header class="top0569" aria-label="Viagem Certa">
-      <div class="brand0569">Viagem Certa</div>
-      <div class="title0569">Viagens disponíveis</div>
-      <nav id="passengerNav0589" class="passengerNav0589" aria-label="Área do passageiro">
+    <header id="vipHeader0649" class="top0569" aria-label="Área VIP">
+      <div id="vipBrand0649" class="brand0569">ÁREA VIP</div>
+      <div id="vipTitle0649" class="title0569">Acesso privado para membros</div>
+      <nav id="passengerNav0589" class="passengerNav0589 hidden" aria-label="Área do membro">
         <a id="passengerAreaLink0589" href="/minha-area.html">Minha área</a>
         <button id="passengerAgendaLogout0589" class="hidden" type="button">Sair</button>
       </nav>
     </header>
-    <section id="accessGate0589" class="accessGate0589 hidden" aria-hidden="true"></section>
-    <section id="loading" class="state0569 hidden">Carregando viagens…</section>
+
+    <section id="accessGate0589" class="vipGate0649" aria-hidden="false">
+      <div class="vipEyebrow0649">ACESSO EXCLUSIVO</div>
+      <h1>Você precisa ser VIP para entrar.</h1>
+      <p class="vipLead0649">Este é um espaço privado, reservado a membros convidados.</p>
+      <div class="vipTrust0649" aria-hidden="true"><span>Privado</span><span>Pessoal</span><span>Por convite</span></div>
+
+      <label class="accessLabel0589">WhatsApp
+        <input id="passengerWhatsapp0589" class="accessInput0589" autocomplete="tel" inputmode="tel" maxlength="24" placeholder="(11) 99999-9999">
+      </label>
+      <div id="vipPasswordWrap0649" class="hidden">
+        <label class="accessLabel0589">Senha
+          <input id="vipPassword0649" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="current-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+      </div>
+      <div id="vipPasswordConfirmWrap0649" class="hidden">
+        <label class="accessLabel0589">Confirme sua senha
+          <input id="vipPasswordConfirm0649" class="accessInput0589 bookingPassword0625" type="password" inputmode="numeric" autocomplete="new-password" minlength="4" maxlength="4" pattern="[0-9]{4}" placeholder="••••">
+        </label>
+      </div>
+      <button id="passengerAccessContinue0589" class="accessButton0589" type="button">CONTINUAR</button>
+
+      <div id="vipReferralRequestWrap0649" class="hidden">
+        <label class="accessLabel0589">Seu nome
+          <input id="vipReferralName0649" class="accessInput0589" autocomplete="name" maxlength="120" placeholder="Como prefere ser chamado">
+        </label>
+        <button id="vipReferralRequest0649" class="accessButton0589" type="button">SOLICITAR ACESSO VIP</button>
+      </div>
+      <p id="passengerAccessMessage0589" class="accessMessage0589 hidden" role="alert"></p>
+    </section>
+
+    <section id="vipMemberHome0649" class="vipMember0649 hidden">
+      <div class="vipMemberTop0649">
+        <span class="vipBadge0649">MEMBRO VIP</span>
+        <span id="vipCreditBalance0649" class="vipCredit0649">Créditos: —</span>
+      </div>
+      <div class="vipMemberActions0649">
+        <button id="vipShareInvite0649" type="button">Indicar amigo</button>
+        <button id="vipRefreshCredits0649" type="button">Atualizar créditos</button>
+      </div>
+      <p id="vipMemberMessage0649" class="vipMemberMessage0649">Indicações aprovadas podem gerar créditos para descontos.</p>
+    </section>
+
+    <section id="loading" class="state0569 hidden">Carregando sua área…</section>
     <section id="error" class="state0569 error0569 hidden" role="alert"></section>
     <section id="agenda" class="hidden"><div id="agendaTrips" aria-live="polite"></div></section>
   </main>
@@ -167,6 +228,10 @@
       <div id="bookingReviewStep0625" class="hidden">
         <h3>Confira sua reserva</h3>
         <div id="bookingReview0625" class="bookingSummary0623"></div>
+        <label id="bookingCreditWrap0649" class="bookingCredit0649 hidden">
+          <input id="bookingUseCredits0649" type="checkbox" checked>
+          <span id="bookingCreditText0649">Usar meus créditos disponíveis neste pedido.</span>
+        </label>
         <button id="bookingConfirm0625" class="bookingPrimary0623" type="button">SOLICITAR RESERVA</button>
         <button class="bookingSecondary0623 bookingBack0625" type="button">Voltar</button>
       </div>
@@ -176,6 +241,6 @@
     </section>
   </div>
 
-  <script src="/public-agenda-shell-0569.js?v=0.1.633-unified-native-trips" defer></script>
+  <script src="/public-agenda-shell-0569.js?v=0.1.649-vip-private" defer></script>
 </body>
 </html>
