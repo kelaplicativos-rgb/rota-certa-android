@@ -7,6 +7,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -295,6 +297,8 @@ private fun TripApp(
             throw error
         }
     }
+    val sortedManageTrips0648 = remember(trips) { trips.sortedBy { it.departureAtMillis } }
+    val bookingsByTripId0648 = remember(bookings) { bookings.groupBy { it.tripId } }
     var localCapacityIncrementalBaseline by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val timelineListState = rememberLazyListState()
     var pendingCreateForPassengerId by remember { mutableStateOf("") }
@@ -725,7 +729,7 @@ private fun TripApp(
             },
         ) { padding ->
             Column(
-                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.DEBUG_REPORT) {
+                modifier = if (screen == TripScreen.TIMELINE || screen == TripScreen.DEBUG_REPORT || screen == TripScreen.LIST) {
                     Modifier
                         .padding(padding)
                         .padding(16.dp)
@@ -1059,64 +1063,83 @@ private fun TripApp(
                 )
                 TripScreen.LIST -> {
                     val onlineSettings = store.onlineSettings()
-                    if (onlineSettings.publicAgendaUrl != null) {
-                        OutlinedButton(onClick = {
-                            if (!onlineSettings.configured) {
-                                message = "A integração online precisa da chave privada do motorista antes de compartilhar."
-                            } else {
-                                message = "Validando seu link público…"
-                                shareScope.launch {
-                                    runCatching {
-                                        val resolvedProfile = PublicDriverProfileResolver(activity).resolve(onlineSettings)
-                                        val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken, resolvedProfile)
-                                        val validated = onlineSettings.copy(
-                                            driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
-                                            driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
-                                        )
-                                        store.saveOnlineSettings(validated)
-                                        response to validated
-                                    }.onSuccess { (response, validated) ->
-                                        if (TripCalendarBridge.sharePublicAgenda(activity, validated)) {
-                                            message = "Link da Agenda Pública validado e pronto para compartilhar."
-                                        } else {
-                                            message = "Não foi possível montar o link público validado."
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        if (onlineSettings.publicAgendaUrl != null) {
+                            item(key = "share_public_agenda_0648") {
+                                OutlinedButton(onClick = {
+                                    if (!onlineSettings.configured) {
+                                        message = "A integração online precisa da chave privada do motorista antes de compartilhar."
+                                    } else {
+                                        message = "Validando seu link público…"
+                                        shareScope.launch {
+                                            runCatching {
+                                                val resolvedProfile = PublicDriverProfileResolver(activity).resolve(onlineSettings)
+                                                val response = TripRemoteApi(onlineSettings).ensurePublicAgenda(onlineSettings.publicCalendarToken, resolvedProfile)
+                                                val validated = onlineSettings.copy(
+                                                    driverDisplayName = response.displayName.ifBlank { onlineSettings.driverDisplayName },
+                                                    driverUsername = response.username.ifBlank { onlineSettings.driverUsername },
+                                                )
+                                                store.saveOnlineSettings(validated)
+                                                response to validated
+                                            }.onSuccess { (response, validated) ->
+                                                if (TripCalendarBridge.sharePublicAgenda(activity, validated)) {
+                                                    message = "Link da Agenda Pública validado e pronto para compartilhar."
+                                                } else {
+                                                    message = "Não foi possível montar o link público validado."
+                                                }
+                                            }.onFailure {
+                                                message = "Não foi possível validar o link público: ${it.message ?: "erro de conexão"}"
+                                            }
                                         }
-                                    }.onFailure {
-                                        message = "Não foi possível validar o link público: ${it.message ?: "erro de conexão"}"
                                     }
-                                }
+                                }) { Text("Compartilhar minha agenda") }
                             }
-                        }) { Text("Compartilhar minha agenda") }
-                    }
-                    if (onlineSettings.googleCalendarMirrorUrl != null) {
-                        OutlinedButton(onClick = {
-                            if (TripCalendarBridge.shareGoogleCalendarFallback(activity, onlineSettings)) message = "Link do Google Agenda pronto para compartilhar."
-                        }) { Text("Compartilhar Google Agenda") }
-                    }
-                    if (trips.isEmpty()) {
-                        Text("Nenhuma viagem local neste aparelho. A Timeline continua exibindo publicações sincronizadas.")
-                    } else {
-                        trips.sortedBy { it.departureAtMillis }.forEach { trip ->
-                            TripCard(
-                                activity = activity,
-                                store = store,
-                                trip = trip,
-                                expanded = selectedId == trip.id,
-                                onToggle = {
-                                    val opening = selectedId != trip.id
-                                    if (opening && requestAgendaTripHtmlRefresh0607(activity, trip)) {
-                                        message = "Capturando o HTML somente desta viagem na BlaBlaCar."
+                        }
+                        if (onlineSettings.googleCalendarMirrorUrl != null) {
+                            item(key = "share_google_agenda_0648") {
+                                OutlinedButton(onClick = {
+                                    if (TripCalendarBridge.shareGoogleCalendarFallback(activity, onlineSettings)) {
+                                        message = "Link do Google Agenda pronto para compartilhar."
                                     }
-                                    selectedId = if (opening) trip.id else null
-                                },
-                                onChanged = { text -> refresh(); message = text },
-                                onEditNativeTrip = {
-                                    editingTripId0633 = trip.id
-                                    parentRootScreen0396 = TripScreen.TIMELINE
-                                    screen = TripScreen.CREATE
-                                },
-                                onRequestBlaBlaSync = {},
-                            )
+                                }) { Text("Compartilhar Google Agenda") }
+                            }
+                        }
+                        if (sortedManageTrips0648.isEmpty()) {
+                            item(key = "empty_manage_trips_0648") {
+                                Text("Nenhuma viagem local neste aparelho. A Timeline continua exibindo publicações sincronizadas.")
+                            }
+                        } else {
+                            items(
+                                items = sortedManageTrips0648,
+                                key = { trip -> trip.id },
+                            ) { trip ->
+                                TripCard(
+                                    activity = activity,
+                                    store = store,
+                                    trip = trip,
+                                    bookings = bookingsByTripId0648[trip.id].orEmpty(),
+                                    expanded = selectedId == trip.id,
+                                    onToggle = {
+                                        val opening = selectedId != trip.id
+                                        if (opening && requestAgendaTripHtmlRefresh0607(activity, trip)) {
+                                            message = "Capturando o HTML somente desta viagem na BlaBlaCar."
+                                        }
+                                        selectedId = if (opening) trip.id else null
+                                    },
+                                    onChanged = { text -> refresh(); message = text },
+                                    onEditNativeTrip = {
+                                        editingTripId0633 = trip.id
+                                        parentRootScreen0396 = TripScreen.TIMELINE
+                                        screen = TripScreen.CREATE
+                                    },
+                                    onRequestBlaBlaSync = {},
+                                )
+                            }
                         }
                     }
                 }
@@ -1522,6 +1545,7 @@ private fun TripCard(
     activity: ComponentActivity,
     store: TripStore,
     trip: Trip,
+    bookings: List<Booking>,
     expanded: Boolean,
     onToggle: () -> Unit,
     onChanged: (String) -> Unit,
@@ -1532,7 +1556,6 @@ private fun TripCard(
     val scope = rememberCoroutineScope()
     val mutationCoordinator = remember(activity, store) { TripMutationCoordinator0387(activity, store) }
     val nativeRotaCerta0633 = trip.isNativeRotaCertaTrip0633()
-    val bookings = store.bookingsFor(trip.id)
     val seatRange = SeatAvailabilityEngine.availableSeatRange(trip, bookings)
     val availabilityText = if (seatRange.variesBySegment) {
         "vagas por trecho ${seatRange.minimum}–${seatRange.maximum}/${trip.capacity}"
@@ -1674,7 +1697,13 @@ private fun TripCard(
                     Text("Modo online não configurado. Compartilhamento local, Google Agenda e ICS continuam funcionando.", style = MaterialTheme.typography.bodySmall)
                 }
                 if (trip.status in setOf(TripStatus.PUBLISHED, TripStatus.FULL)) {
-                    QuickPassengerPanel(trip, store, onChanged, onRequestBlaBlaSync)
+                    QuickPassengerPanel(
+                        trip = trip,
+                        store = store,
+                        onChanged = onChanged,
+                        onBlaBlaSyncRequested = onRequestBlaBlaSync,
+                        canonicalBookings0494 = bookings,
+                    )
                 }
                 if (bookings.isNotEmpty()) {
                     Text("Reservas locais", style = MaterialTheme.typography.titleSmall)
