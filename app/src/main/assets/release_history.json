@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.648",
+      "build": 5939,
+      "commit": null,
+      "branch": "agent/manage-trip-instant-open-0.1.648",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Stage648 torna Gerenciar viagem uma lista preguiçosa: somente os cards visíveis são compostos, sem materializar todas as viagens na abertura.",
+        "As reservas já carregadas pela TripsActivity passam a ser agrupadas uma única vez por tripId e entregues diretamente aos cards e ao QuickPassengerPanel.",
+        "Consultas de identidade e sugestões de passageiros do QuickPassengerPanel passam a executar fora da thread principal e não são iniciadas com consulta vazia."
+      ],
+      "fixed": [
+        "Elimina a desserialização repetida de toda a base de reservas por card durante a composição de Gerenciar viagem.",
+        "Elimina a busca síncrona de PassengerRepository durante o primeiro frame do card expandido.",
+        "Remove o caminho que podia congelar a TripsActivity por vários segundos ao abrir Gerenciar viagem com dezenas de viagens e centenas de reservas/passageiros."
+      ],
+      "improved": [
+        "O painel expandido reutiliza o snapshot de bookings do card, preservando exatamente a mesma semântica de vagas sem nova leitura do SharedPreferences.",
+        "A tela LIST deixa de usar verticalScroll eager no contêiner raiz e passa a usar LazyColumn com identidade estável por trip.id.",
+        "Teste de regressão Stage648 bloqueia retorno do loop eager, do bookingsFor por card e das consultas de passageiro na composição principal."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.647: abertura de Gerenciar viagem podia registrar freezes de aproximadamente 8 a 12 segundos na thread principal.",
+        "0.1.647: cada TripCard podia reler e desserializar toda a coleção de reservas durante a composição.",
+        "0.1.647: QuickPassengerPanel consultava a base canônica de passageiros sincronamente mesmo antes de o motorista iniciar uma busca."
+      ],
+      "modulesAffected": [
+        "Gerenciar viagem",
+        "Timeline",
+        "Reservas",
+        "Passageiros",
+        "Performance",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.647",
       "build": 5938,
       "commit": null,
