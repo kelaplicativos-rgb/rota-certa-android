@@ -27,7 +27,7 @@ internal data class BlaBlaTodayHtmlCaptureResult0661(
  * Direct HTML-only TODAY_ONLY coordinator for Central do Dia.
  *
  * It deliberately reuses the same acquisition classes as the global HTML button and never
- * enters BlaBlaDynamicSessionIntents.MODE_SYNC, BlaBlaBrowserOrchestrator or LEGACY_NON_HTML.
+ * enters the legacy account-sync/controller path.
  */
 internal object BlaBlaTodayHtmlCaptureCoordinator0661 {
     suspend fun capture(
@@ -45,7 +45,7 @@ internal object BlaBlaTodayHtmlCaptureCoordinator0661 {
             app.packageName,
             "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
                 "scope=TODAY_ONLY targetDate=$targetDate profiles=${accounts.size} " +
-                "authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT} legacySync=false modeSync=false",
+                "authority=HTML_DIRECT_0607 legacySync=false modeSync=false",
         )
         if (accounts.isEmpty()) {
             return BlaBlaTodayHtmlCaptureResult0661(
@@ -213,7 +213,7 @@ internal object BlaBlaTodayHtmlCaptureCoordinator0661 {
             "CENTRAL_TODAY_HTML_CANONICAL_COMMITTED_0661", context.packageName,
             "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} targetDate=$targetDate " +
                 "trips=${stagedPairs0661.size} changed=${batch0661.changedTrips} unchanged=${batch0661.skippedTrips} " +
-                "authority=${BlaBlaAcquisitionAuthority0607.HTML_DIRECT} preserveSiblings=true tombstone=false " +
+                "authority=HTML_DIRECT_0607 preserveSiblings=true tombstone=false " +
                 "evaluateAbsence=false legacySync=false modeSync=false",
         )
         true
