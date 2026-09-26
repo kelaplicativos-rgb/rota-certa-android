@@ -289,6 +289,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         captureId: String,
         profile: BlaBlaRidesSnapshotProfile0526,
         onProgress: (String) -> Unit = {},
+        targetDate0661: LocalDate? = null,
     ): BlaBlaUnifiedProfileCaptureResult0605 {
         val app = context.applicationContext
         val expectedProfileUuid = BlaBlaRidesSnapshotStore0526.strongUuid(profile.authenticatedProfileUuid)
@@ -312,6 +313,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
         val now = LocalTime.now()
         val futureRides = parsed.rides
             .filter { shouldCaptureRide0605(it, today, now) }
+            .filter { ride ->
+                targetDate0661 == null || runCatching { LocalDate.parse(ride.date) }.getOrNull() == targetDate0661
+            }
             .filter { ride ->
                 val absolute = BlaBlaCollectorUrlModule.absolute(ride.administrativeUrl)
                 BlaBlaCollectorUrlModule.isSpecificTrip(absolute) &&
