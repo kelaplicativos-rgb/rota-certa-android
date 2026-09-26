@@ -242,24 +242,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             return fail(store, account, captureId, "RIDES_HTML_SENSITIVE_${marker.take(48)}")
         }
 
-        val tripIds = extractAdministrativeTripIds0528(finalSample.snapshotHtml)
-        if (
-            !directObservedInventoryMatches0613(
-                snapshotTripIds = tripIds,
-                observedTripHrefs = finalSample.observedTripHrefs,
-                observedCardCount = finalSample.observedCardCount,
-            )
-        ) {
-            return fail(store, account, captureId, "RIDES_OBSERVED_INVENTORY_MISMATCH_0613")
-        }
-        val inventory = buildTripInventory0528(tripIds, finalSample.explicitEmptyList)
-        if (inventory.duplicateCount != 0) {
-            return fail(store, account, captureId, "RIDES_DUPLICATE_TRIP_IDS")
-        }
-        if (inventory.uniqueCount == 0 && !finalSample.explicitEmptyList) {
-            return fail(store, account, captureId, "RIDES_TRIP_IDS_MISSING")
-        }
-
+        val allHtmlTripIds0661 = extractAdministrativeTripIds0528(finalSample.snapshotHtml)
         val parsed = runCatching {
             parseExternalRideCards0535(
                 raw = finalSample.snapshotHtml,
@@ -267,8 +250,66 @@ internal object BlaBlaDirectAccountCapture0608 {
                 source = "HTML",
             )
         }.getOrNull()
+        val targetObservedEarlier0661 = targetDate0661 != null && samples.any { sample0661 ->
+            BlaBlaCollectorCardModule.candidatesOnDate(
+                candidates = sample0661.candidates,
+                targetDate = targetDate0661,
+            ).isNotEmpty()
+        }
+        val scopeBoundaryReason0661 = if (targetDate0661 == null) {
+            ""
+        } else {
+            directTodayScopeBoundaryReason0661(
+                sample = finalSample,
+                targetDate = targetDate0661,
+                targetObservedEarlier = targetObservedEarlier0661,
+            ).orEmpty()
+        }
+        if (targetDate0661 != null && scopeBoundaryReason0661.isBlank()) {
+            return fail(store, account, captureId, "TODAY_SCOPE_BOUNDARY_NOT_PROVEN_0661")
+        }
+
+        val scopedParsedRides0661 = if (targetDate0661 == null) {
+            parsed?.rides.orEmpty()
+        } else {
+            val now0661 = LocalTime.now()
+            parsed?.rides.orEmpty().filter { ride0661 ->
+                runCatching { LocalDate.parse(ride0661.date) }.getOrNull() == targetDate0661 &&
+                    shouldCaptureRide0605(ride0661, LocalDate.now(), now0661)
+            }
+        }
+        val tripIds = if (targetDate0661 == null) {
+            allHtmlTripIds0661
+        } else {
+            canonicalTripIds0528(scopedParsedRides0661.map(ParsedExternalRide0535::tripId))
+        }
+        if (targetDate0661 == null) {
+            if (!directObservedInventoryMatches0613(
+                    snapshotTripIds = tripIds,
+                    observedTripHrefs = finalSample.observedTripHrefs,
+                    observedCardCount = finalSample.observedCardCount,
+                )
+            ) {
+                return fail(store, account, captureId, "RIDES_OBSERVED_INVENTORY_MISMATCH_0613")
+            }
+        } else {
+            val htmlTripSet0661 = allHtmlTripIds0661.toSet()
+            if (tripIds.any { it !in htmlTripSet0661 }) {
+                return fail(store, account, captureId, "TODAY_SCOPE_TARGET_HTML_MISSING_0661")
+            }
+        }
+        val inventory = buildTripInventory0528(
+            tripIds = tripIds,
+            explicitEmptyList = if (targetDate0661 == null) finalSample.explicitEmptyList else tripIds.isEmpty(),
+        )
+        if (inventory.duplicateCount != 0) {
+            return fail(store, account, captureId, "RIDES_DUPLICATE_TRIP_IDS")
+        }
+        if (inventory.uniqueCount == 0 && !inventory.explicitEmptyList) {
+            return fail(store, account, captureId, "RIDES_TRIP_IDS_MISSING")
+        }
         val dateRange = buildRideDateRange0528(
-            parsed?.rides.orEmpty().mapNotNull { ride ->
+            scopedParsedRides0661.mapNotNull { ride ->
                 runCatching { LocalDate.parse(ride.date) }.getOrNull()
             },
         )
