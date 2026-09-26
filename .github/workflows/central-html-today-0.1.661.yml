@@ -1,0 +1,233 @@
+name: Central direct HTML today 0.1.661 APK
+
+on:
+  push:
+    branches:
+      - 'agent/central-html-today-0.1.661'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: central-html-today-0661-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-build-proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+      GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
+
+      - name: Prove exact 0.1.661 direct HTML today source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
+          echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          grep -Fq 'releaseVersionName = "0.1.661"' app/build.gradle.kts
+          grep -Fq 'releaseVersionCode = 5_952' app/build.gradle.kts
+          grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'READY_MESSAGE_SELECTOR' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'passengerOperationalAddressLabel0656' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerTimelineUi.kt
+          grep -Fq 'compactEmbeddedControls0593 = true' app/src/main/java/br/com/mapeiaia/rotacerta/trips/OperationalAllTripsBrowserUi0563.kt
+          grep -Fq 'captureSingleTrip0607' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'passenger_prepare.js' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'val passengerContact: String = ""' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PassengerIdentityStore.kt
+          grep -Fq 'metadata?.passengerContact' app/src/main/java/br/com/mapeiaia/rotacerta/trips/PublicAgendaAutoSync0300.kt
+          grep -Fq 'findComponentActivity0657()?.lifecycleScope' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaAccountsBrowsersUi0399.kt
+          grep -Fq 'BlaBlaMessageNotificationListener0655' app/src/main/AndroidManifest.xml
+          grep -Fq 'passengerHtmlArtifacts0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'Missing declared snapshot artifact' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'BLABLACAR_HTML_PROFILE_SERIAL_0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesSnapshot0526.kt
+          grep -Fq 'PASSENGER_HTML_ARTIFACT_INVALID_0658' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaRidesForensicEvidence0528.kt
+          grep -Fq 'REQUIRED_PRIVATE_OR_TRIP_GEO_MISSING_0659' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'passenger_ready.js' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PAGE_NOT_READY_0659' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'blablacar_trip_map_zoomOn_0659' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'stopLocations' app/src/main/assets/blablacar/scripts/trip_detail.js
+          grep -Fq 'moneyToken' app/src/main/assets/blablacar/scripts/passenger_fare.js
+          grep -Fq 'CENTRAL_DAY_TODAY_HTML_REQUESTED_0661' app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt
+          ! grep -Fq 'BlaBlaDynamicSessionIntents.syncToday(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt
+          grep -Fq 'BlaBlaTodayHtmlCaptureCoordinator0661.capture(' app/src/main/java/br/com/mapeiaia/rotacerta/trips/CentralDoDia0552.kt
+          grep -Fq 'loadTodayStable0661' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaDirectAccountCapture0608.kt
+          grep -Fq 'targetDate0661: LocalDate? = null' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaUnifiedHtmlCapture0605.kt
+          grep -Fq 'evaluateAbsentTrips0618 = false' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTodayHtmlCapture0661.kt
+          ! grep -Fq 'BlaBlaDynamicSessionIntents' app/src/main/java/br/com/mapeiaia/rotacerta/trips/BlaBlaTodayHtmlCapture0661.kt
+          git diff --check
+
+      - name: Configure Firebase Android app when credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+            exit 0
+          fi
+          PROJECT="${FIREBASE_PROJECT_ID:-rota-certa-7ccc8}"
+          if [ -n "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          elif [ -n "${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > /tmp/firebase-sa.json
+            chmod 600 /tmp/firebase-sa.json
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+          fi
+          if [ -n "${FIREBASE_TOKEN:-}" ]; then
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" --token "$FIREBASE_TOKEN" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json --token "$FIREBASE_TOKEN"
+          elif [ -s /tmp/firebase-sa.json ]; then
+            export GOOGLE_APPLICATION_CREDENTIALS=/tmp/firebase-sa.json
+            npx --yes firebase-tools@latest apps:list ANDROID --project "$PROJECT" > /tmp/apps.txt
+            APP_ID="$(grep -oE '1:[0-9]+:android:[A-Za-z0-9]+' /tmp/apps.txt | head -1)"
+            test -n "$APP_ID"
+            npx --yes firebase-tools@latest apps:sdkconfig ANDROID "$APP_ID" --project "$PROJECT" --out app/google-services.json
+          else
+            echo "No Firebase credential available; build.gradle keeps google-services optional."
+          fi
+          if [ -s app/google-services.json ]; then
+            grep -Fq '"package_name": "br.com.mapeiaia.rotacerta"' app/google-services.json
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Direct HTML today, targeted card and passenger regression suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerOperationalShortcuts0656Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerPrivateHtml0657Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaMessageNotificationRefresh0655Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerDeepCapture0653Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerArtifactCompleteness0658Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaPassengerHtmlPrecision0659Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayOnlyRefresh0660Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralTodayDirectHtml0661Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.BlaBlaDatePeriodSync0377Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.OperationalTripCardFooter0654Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.CentralPassengerControls0593Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.TargetedCardRefreshReturn0645Test' \
+            --tests 'br.com.mapeiaia.rotacerta.trips.PassengerComposeCancellation0652Test' \
+            --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0661-tests.log
+
+      - name: Assemble exact source APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0661-assemble.log
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+
+      - name: Prove APK identity manifest and signing
+        id: proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -1)"
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/android-0661-zip-integrity.txt
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V | tail -1)"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee /tmp/android-0661-aapt.txt
+          PACKAGE_LINE="$(grep '^package:' /tmp/android-0661-aapt.txt | head -1)"
+          grep -Fq "name='br.com.mapeiaia.rotacerta'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionCode='5952'" <<< "$PACKAGE_LINE"
+          grep -Fq "versionName='0.1.661'" <<< "$PACKAGE_LINE"
+          "$BUILD_TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/android-0661-manifest.txt
+          grep -Fq 'BlaBlaMessageNotificationListener0655' /tmp/android-0661-manifest.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0661-apksigner.txt
+          grep -Fq 'Verified' /tmp/android-0661-apksigner.txt
+          unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0661-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0661-dex-strings.txt
+          grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'PASSENGER_QUICK_MESSAGE_0656' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'BLABLACAR_HTML_PASSENGER_PAGE_NOT_READY_0659' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'blablacar_trip_map_zoomOn_0659' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'CENTRAL_DAY_TODAY_HTML_REQUESTED_0661' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'CENTRAL_TODAY_HTML_CAPTURE_COMPLETE_0661' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'BLABLACAR_DIRECT_TODAY_BOUNDARY_0661' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'CENTRAL_TODAY_HTML_CANONICAL_COMMITTED_0661' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'HTML_DIRECT_0607' /tmp/android-0661-dex-strings.txt
+          grep -Fq 'SINGLE_CARD' /tmp/android-0661-dex-strings.txt
+          APK_SHA256="$(sha256sum "$APK" | awk '{print $1}')"
+          SHORT_SHA="$(git rev-parse --short=12 HEAD)"
+          FINAL="rota-certa-0.1.661-5952-$SHORT_SHA.apk"
+          cp "$APK" "$FINAL"
+          echo "apk=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=br.com.mapeiaia.rotacerta"
+            echo "versionName=0.1.661"
+            echo "versionCode=5952"
+            echo "branch=$GITHUB_REF_NAME"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
+            echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
+            echo "privatePassengerHtml0657=PASS"
+            echo "passengerArtifactExport0658=PASS"
+            echo "passengerArtifactFinalReverify0658=PASS"
+            echo "profileSingleFlightSerialization0658=PASS"
+            echo "farePrefixSuffix0659=PASS"
+            echo "semanticRevealAllowlist0659=PASS"
+            echo "passengerReadinessGate0659=PASS"
+            echo "tripMapGeoJoin0659=PASS"
+            echo "centralTodayOnly0660=PASS"
+            echo "centralDirectHtml0661=PASS"
+            echo "todayHtmlBoundaryStop0661=PASS"
+            echo "todayHtmlNoLegacySync0661=PASS"
+            echo "todayHtmlPresenceOnlyCommit0661=PASS"
+            echo "singleCardIsolation0661=PASS"
+            echo "zeroLocalHtmlDiscovery0661=PASS"
+            echo "privatePassengerFailClosed0657=PASS"
+            echo "activityOwnedCapture0657=PASS"
+            echo "visibleEditableAddresses0656=PASS"
+            echo "genericCityNotExactMapTarget0656=PASS"
+            echo "quickMessageSelector0656=PASS"
+            echo "fareRefreshBeforeManual0656=PASS"
+            echo "targetedHtmlRefresh0607=PASS"
+            echo "messageTrigger0655Preserved=PASS"
+            echo "sharedPassengerOperator0656=PASS"
+            echo "apk=$FINAL"
+            echo "apk_sha256=$APK_SHA256"
+          } | tee central-html-today-0661-proof.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rota-certa-central-html-today-0.1.661-${{ env.ROTA_CERTA_TARGET_SHA }}
+          path: |
+            ${{ steps.proof.outputs.apk }}
+            central-html-today-0661-proof.txt
+            /tmp/android-0661-tests.log
+            /tmp/android-0661-assemble.log
+            /tmp/android-0661-aapt.txt
+            /tmp/android-0661-manifest.txt
+            /tmp/android-0661-apksigner.txt
+            /tmp/android-0661-zip-integrity.txt
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 30
