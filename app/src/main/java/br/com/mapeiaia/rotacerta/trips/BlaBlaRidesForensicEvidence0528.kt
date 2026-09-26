@@ -584,9 +584,12 @@ internal fun forensicCompletionError0528(
     ) return "SECURITY_EVIDENCE_MISSING"
     if (!checks.identityPayloadValid) return "IDENTITY_PAYLOAD_INVALID"
     if (!BlaBlaCollectorUrlModule.ridesPageMatches(profile.finalUrl)) return "NOT_ON_RIDES_PAGE"
-    if (!profile.reachedEnd || !profile.endEvidence.atBottom ||
-        profile.endEvidence.reason.isBlank() || profile.endEvidence.observedAt.isBlank()
-    ) return "END_NOT_PROVEN"
+    val todayScoped0661 = profile.endEvidence.reason.startsWith("TODAY_SCOPE_")
+    val scopedEndProven0661 = todayScoped0661 &&
+        profile.endEvidence.reason.isNotBlank() && profile.endEvidence.observedAt.isNotBlank()
+    val fullEndProven0661 = profile.reachedEnd && profile.endEvidence.atBottom &&
+        profile.endEvidence.reason.isNotBlank() && profile.endEvidence.observedAt.isNotBlank()
+    if (!fullEndProven0661 && !scopedEndProven0661) return "END_NOT_PROVEN"
     if (!profile.stabilized ||
         profile.stabilizationEvidence.requiredStableIterations < 2 ||
         profile.stabilizationEvidence.observedStableIterations <
