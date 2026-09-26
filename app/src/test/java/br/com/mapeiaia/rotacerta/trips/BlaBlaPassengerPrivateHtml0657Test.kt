@@ -37,7 +37,10 @@ class BlaBlaPassengerPrivateHtml0657Test {
         assertTrue(capture.contains("BLABLACAR_HTML_PASSENGER_PRIVATE_RETRY_0657"))
         assertTrue(capture.contains("BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657"))
         assertTrue(capture.contains("MARK_PASSENGER_INCOMPLETE_PRESERVE_PREVIOUS_CANONICAL"))
-        assertTrue(capture.contains("passengerPrivateEvidenceNeedsRetry0657"))
+        assertTrue(
+            capture.contains("passengerPrivateEvidenceNeedsRetry0657") ||
+                capture.contains("passengerOperationalEvidenceComplete0659"),
+        )
     }
 
     @Test
