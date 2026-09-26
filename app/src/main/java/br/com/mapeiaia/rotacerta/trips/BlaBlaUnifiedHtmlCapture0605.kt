@@ -1760,14 +1760,6 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 )
                 return@forEachIndexed
             }
-            if (privateEvidenceMissing0657) {
-                UnifiedDebugEventStore.recordAlways(
-                    "BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657",
-                    webView.context.packageName,
-                    "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempts=$attempt action=PRESERVE_PREVIOUS_PRIVATE_METADATA privateValuesLogged=false",
-                )
-            }
-
             val bookingHref = BlaBlaCollectorUrlModule.canonical(page.finalUrl)
                 .takeIf { passengerPageBelongsToTrip0653(it, ride.tripId) }
                 ?: return@forEachIndexed
@@ -1809,6 +1801,15 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     "BLABLACAR_HTML_PASSENGER_UNRESOLVED_0653",
                     webView.context.packageName,
                     "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index reason=SENSITIVE_HTML_${sensitive.take(40)}",
+                )
+                return@forEachIndexed
+            }
+            if (privateEvidenceMissing0657) {
+                htmlFiles += htmlEvidence.relativePath
+                UnifiedDebugEventStore.recordAlways(
+                    "BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657",
+                    webView.context.packageName,
+                    "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempts=$attempt action=MARK_PASSENGER_INCOMPLETE_PRESERVE_PREVIOUS_CANONICAL evidence=true privateValuesLogged=false",
                 )
                 return@forEachIndexed
             }
