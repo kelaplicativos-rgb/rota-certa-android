@@ -1869,6 +1869,7 @@ internal fun enhancedPassengerRows(
                 passengerStore.externalMetadata(privateMetadataKey0494)
             }
             val phone = booking.passengerContact.trim().takeIf(String::isNotEmpty)
+                ?: privateMetadata0494?.passengerContact?.trim()?.takeIf(String::isNotEmpty)
             val boardingStop = stops[booking.boardingStopId]
             val dropoffStop = stops[booking.dropoffStopId]
             val boarding = boardingStop?.name
