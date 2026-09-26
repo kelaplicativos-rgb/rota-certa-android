@@ -26,19 +26,20 @@ jobs:
       GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
       FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
       GOOGLE_MAPS_API_KEY: ''
+      ROTA_CERTA_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.sha }}
+          ref: ${{ env.ROTA_CERTA_TARGET_SHA }}
 
       - name: Prove exact 0.1.658 source
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          echo "ROTA_CERTA_GIT_SHA=$GITHUB_SHA" >> "$GITHUB_ENV"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
+          echo "ROTA_CERTA_GIT_SHA=$ROTA_CERTA_TARGET_SHA" >> "$GITHUB_ENV"
           echo "ROTA_CERTA_GIT_BRANCH=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
           grep -Fq 'releaseVersionName = "0.1.658"' app/build.gradle.kts
           grep -Fq 'releaseVersionCode = 5_949' app/build.gradle.kts
@@ -125,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           ./gradlew :app:assembleDebug --no-daemon --max-workers=2 --stacktrace | tee /tmp/android-0658-assemble.log
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$ROTA_CERTA_TARGET_SHA"
 
       - name: Prove APK identity manifest and signing
         id: proof
@@ -146,7 +147,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/android-0658-apksigner.txt
           grep -Fq 'Verified' /tmp/android-0658-apksigner.txt
           unzip -p "$APK" 'classes*.dex' | strings > /tmp/android-0658-dex-strings.txt
-          grep -Fq "$GITHUB_SHA" /tmp/android-0658-dex-strings.txt
+          grep -Fq "$ROTA_CERTA_TARGET_SHA" /tmp/android-0658-dex-strings.txt
           grep -Fq 'PASSENGER_PRIVATE_REFRESH_REQUEST_0656' /tmp/android-0658-dex-strings.txt
           grep -Fq 'BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657' /tmp/android-0658-dex-strings.txt
           grep -Fq 'PASSENGER_QUICK_MESSAGE_0656' /tmp/android-0658-dex-strings.txt
@@ -161,7 +162,7 @@ jobs:
             echo "versionName=0.1.658"
             echo "versionCode=5949"
             echo "branch=$GITHUB_REF_NAME"
-            echo "commit=$GITHUB_SHA"
+            echo "commit=$ROTA_CERTA_TARGET_SHA"
             echo "deviceTarget=Samsung SM-S911B / Android 16 / API 36"
             echo "privatePassengerHtml0657=PASS"
             echo "passengerArtifactExport0658=PASS"
@@ -182,7 +183,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rota-certa-passenger-complete-artifacts-0.1.658-${{ github.sha }}
+          name: rota-certa-passenger-complete-artifacts-0.1.658-${{ env.ROTA_CERTA_TARGET_SHA }}
           path: |
             ${{ steps.proof.outputs.apk }}
             passenger-complete-artifacts-0658-proof.txt
