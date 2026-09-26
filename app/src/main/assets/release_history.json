@@ -2,6 +2,41 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.654",
+      "build": 5945,
+      "commit": null,
+      "branch": "agent/trips-card-footer-shortcuts-0.1.654",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Os cards da tela Viagens passam a repetir no rodapé a mesma linha operacional da Central do Dia: Passageiros, Atalhos e Integridade.",
+        "Passageiros e Atalhos expandem no próprio card o operador compacto canônico já usado pela Central do Dia, preservando WhatsApp, embarque, destino, pagamento e mensagens."
+      ],
+      "fixed": [
+        "A tela Viagens deixa de obrigar a entrada em outra tela para alcançar os atalhos dos passageiros.",
+        "A contagem do rodapé passa a acompanhar a projeção canônica de reservas da própria viagem e a atualizar após cada mutação operacional."
+      ],
+      "improved": [
+        "O rodapé reutiliza EnhancedPassengerTimelineSection com compactEmbeddedControls0593, sem criar uma segunda lógica de atalhos.",
+        "Viagens mantém a abertura administrativa original pelo corpo do card e adiciona os controles operacionais como ações independentes no rodapé.",
+        "A implementação parte da captura HTML profunda 0.1.653 e preserva telefone, tarifa, endereços e vínculos privados coletados por passageiro."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.653: os dados profundos dos passageiros já chegavam ao estado canônico, mas os cards de Viagens ainda não expunham a linha de acesso aos atalhos."
+      ],
+      "modulesAffected": [
+        "Viagens",
+        "Central do Dia",
+        "Passageiros",
+        "Atalhos",
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.653",
       "build": 5944,
       "commit": null,
