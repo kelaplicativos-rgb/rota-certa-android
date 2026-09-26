@@ -47,8 +47,9 @@ import kotlinx.coroutines.delay
  * - trips stay in the active sequence for the full canonical operational lifecycle
  *   (arrival + grace, or safe retention when arrival is unknown) and only then move
  *   automatically to the collapsible archive while the screen remains open;
- * - the card carries no Rota Certa operational shortcuts;
- * - tapping a card opens the original administrative trip URL inside the isolated
+ * - 0.1.654: every canonical card exposes the same passenger/shortcut footer used by
+ *   Central do Dia, and expands the same canonical compact passenger operator in place;
+ * - tapping the card body still opens the original administrative trip URL inside the isolated
  *   WebView profile that owns the confirmed profileUuid;
  * - success is no longer claimed at startActivity(): the browser activity attests the
  *   final main-frame destination before emitting CONFIRMED.
@@ -81,9 +82,12 @@ internal fun OperationalAllTripsBrowserScreen0563(
     onFirstUsableFrame: (Int) -> Unit = {},
     onCreateTrip: () -> Unit = {},
     onManageCanonicalTrip: (String) -> Unit = {},
+    onRefreshLocal: () -> Unit = {},
+    onOpenTripIntegrity: (String) -> Unit = {},
     downloadTriggerToken0616: Int = 0,
 ) {
     val context = LocalContext.current
+    val store0654 = remember(context) { TripStore(context) }
     val accounts = remember(trips, bookings) {
         BlaBlaDynamicAccountRegistry(context.applicationContext).list()
     }
@@ -95,6 +99,16 @@ internal fun OperationalAllTripsBrowserScreen0563(
         )
     }
     val projectedEntries = projectedTimeline0602.entries
+    val passengerCountByTripId0654 = remember(projectedTimeline0602.bookings) {
+        projectedTimeline0602.bookings
+            .asSequence()
+            .filter { booking ->
+                booking.capacityClaimType != CapacityClaimType.RESERVED_SEAT ||
+                    booking.passengerName.isNotBlank()
+            }
+            .groupingBy(Booking::tripId)
+            .eachCount()
+    }
     val projectedTripsById0602 = remember(projectedTimeline0602.trips) {
         projectedTimeline0602.trips.associateBy(Trip::id)
     }
@@ -164,6 +178,9 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 nativeRotaCerta0633 = nativeRotaCerta0633,
                 decisionReason = reason,
                 segmentLoads0602 = liveSegmentLoads0602,
+                passengerCount0654 = passengerCountByTripId0654[
+                    canonicalTrip0602?.id ?: entry.localTripId ?: entry.tripId
+                ] ?: 0,
             )
         }
     }
@@ -228,6 +245,7 @@ internal fun OperationalAllTripsBrowserScreen0563(
 
     var nowMillis by remember(rows) { mutableStateOf(System.currentTimeMillis()) }
     var showArchived by remember { mutableStateOf(false) }
+    var expandedTripOperations0654 by remember { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(rows.map { it.entry.departureAtMillis }) {
         while (true) {
@@ -386,11 +404,28 @@ internal fun OperationalAllTripsBrowserScreen0563(
                 items = activeRows,
                 key = { _, row -> "active|${operationalTripBrowserKey0563(row.entry)}" },
             ) { _, row ->
+                val canonicalTripId0654 = operationalCanonicalTripId0654(row)
                 OperationalTripBrowserCard0563(
                     row = row,
                     zoneId = zoneId,
                     today = today,
                     archived = false,
+                    store0654 = store0654,
+                    bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
+                    operationsExpanded0654 = canonicalTripId0654 in expandedTripOperations0654,
+                    onToggleOperations0654 = {
+                        expandedTripOperations0654 =
+                            if (canonicalTripId0654 in expandedTripOperations0654) {
+                                expandedTripOperations0654 - canonicalTripId0654
+                            } else {
+                                expandedTripOperations0654 + canonicalTripId0654
+                            }
+                    },
+                    onOperationsChanged0654 = { text0654 ->
+                        onMessage(text0654)
+                        onRefreshLocal()
+                    },
+                    onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                     onOpen = { openRow(row) },
                 )
             }
@@ -418,11 +453,28 @@ internal fun OperationalAllTripsBrowserScreen0563(
                     items = archivedRows,
                     key = { _, row -> "archived|${operationalTripBrowserKey0563(row.entry)}" },
                 ) { _, row ->
+                    val canonicalTripId0654 = operationalCanonicalTripId0654(row)
                     OperationalTripBrowserCard0563(
                         row = row,
                         zoneId = zoneId,
                         today = today,
                         archived = true,
+                        store0654 = store0654,
+                        bookings0654 = projectedTimeline0602.bookings.filter { it.tripId == canonicalTripId0654 },
+                        operationsExpanded0654 = canonicalTripId0654 in expandedTripOperations0654,
+                        onToggleOperations0654 = {
+                            expandedTripOperations0654 =
+                                if (canonicalTripId0654 in expandedTripOperations0654) {
+                                    expandedTripOperations0654 - canonicalTripId0654
+                                } else {
+                                    expandedTripOperations0654 + canonicalTripId0654
+                                }
+                        },
+                        onOperationsChanged0654 = { text0654 ->
+                            onMessage(text0654)
+                            onRefreshLocal()
+                        },
+                        onOpenIntegrity0654 = { onOpenTripIntegrity(canonicalTripId0654) },
                         onOpen = { openRow(row) },
                     )
                 }
@@ -439,6 +491,7 @@ internal data class OperationalTripBrowserRow0563(
     val nativeRotaCerta0633: Boolean = false,
     val decisionReason: OperationalTripDecisionReason0564? = null,
     val segmentLoads0602: List<SegmentLoad> = emptyList(),
+    val passengerCount0654: Int = 0,
 )
 
 internal fun operationalTimelineSegmentLoads0602(
@@ -462,6 +515,12 @@ private fun OperationalTripBrowserCard0563(
     zoneId: ZoneId,
     today: LocalDate,
     archived: Boolean,
+    store0654: TripStore,
+    bookings0654: List<Booking>,
+    operationsExpanded0654: Boolean,
+    onToggleOperations0654: () -> Unit,
+    onOperationsChanged0654: (String) -> Unit,
+    onOpenIntegrity0654: () -> Unit,
     onOpen: () -> Unit,
 ) {
     val entry = row.entry
@@ -642,6 +701,51 @@ private fun OperationalTripBrowserCard0563(
                 }
             }
 
+            val hasCanonicalTrip0654 = row.canonicalTrip0633 != null
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = hasCanonicalTrip0654,
+                    onClick = onToggleOperations0654,
+                ) {
+                    Text(
+                        if (operationsExpanded0654) {
+                            "Passageiros ${row.passengerCount0654} ▲"
+                        } else {
+                            "Passageiros ${row.passengerCount0654} ▼"
+                        },
+                        maxLines = 1,
+                    )
+                }
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    enabled = hasCanonicalTrip0654,
+                    onClick = {
+                        if (!operationsExpanded0654) onToggleOperations0654()
+                    },
+                ) { Text("Atalhos", maxLines = 1) }
+                TextButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenIntegrity0654,
+                ) { Text("Integridade", maxLines = 1) }
+            }
+
+            if (operationsExpanded0654 && hasCanonicalTrip0654) {
+                EnhancedPassengerTimelineSection(
+                    entry = entry,
+                    trip = row.canonicalTrip0633,
+                    store = store0654,
+                    currentCoordinate = null,
+                    onChanged = onOperationsChanged0654,
+                    canonicalBookings0494 = bookings0654,
+                    showTripActions0549 = false,
+                    compactEmbeddedControls0593 = true,
+                )
+            }
+
             if (row.nativeRotaCerta0633) {
                 Text(
                     text = if (archived) "Rota Certa • viagem arquivada" else "Rota Certa • toque para gerenciar",
@@ -664,6 +768,11 @@ private fun OperationalTripBrowserCard0563(
         }
     }
 }
+
+internal fun operationalCanonicalTripId0654(row: OperationalTripBrowserRow0563): String =
+    row.canonicalTrip0633?.id
+        ?: row.entry.localTripId
+        ?: row.entry.tripId
 
 internal fun operationalTripBrowserKey0563(entry: TripTimelineEntry): String =
     listOf(
