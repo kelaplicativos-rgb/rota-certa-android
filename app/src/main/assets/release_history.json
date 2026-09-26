@@ -2,6 +2,47 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.659",
+      "build": 5950,
+      "commit": null,
+      "branch": "agent/passenger-html-precision-0.1.659",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "A captura da viagem passa a preservar, para cada link /rides/offer/map, o nome da parada, endereço exibido e as coordenadas zoomOn fornecidas pela própria BlaBlaCar.",
+        "Cada passageiro passa por um gate explícito de DOM privado pronto antes e depois do reveal seguro, rejeitando páginas ainda vazias ou com o root inert.",
+        "O fechamento do passageiro passa a exigir JOIN determinístico entre origem/destino do HTML individual e as paradas georreferenciadas do HTML da viagem."
+      ],
+      "fixed": [
+        "O parser de tarifa passa a aceitar tanto R$ 88 quanto 88 R$, inclusive espaços NBSP e valores com milhar/centavos.",
+        "passenger_prepare.js deixa de clicar genericamente em qualquer aria-expanded=false e não abre mais seletor de país, idioma, moeda ou navegação global.",
+        "Endereço e latitude/longitude de embarque e desembarque deixam de depender do HTML privado; passam a vir do mapa autoritativo da própria viagem."
+      ],
+      "improved": [
+        "Retry continua individual por passageiro e agora diferencia página não pronta por telemetria BLABLACAR_HTML_PASSENGER_PAGE_NOT_READY_0659.",
+        "Telefone, valor e trecho continuam vindo da página individual; pinos passam a usar endereço e coordenadas do HTML da viagem.",
+        "Central do Dia, Agenda e Timeline continuam recebendo os mesmos metadados privados canônicos, agora com boarding/dropoff address e geolocalização preenchidos no mesmo registro."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.658: valores exibidos como 88 R$ não eram reconhecidos e faziam passageiros válidos permanecerem unresolved.",
+        "0.1.658: o reveal genérico podia abrir o seletor de país e deixar #root inert.",
+        "0.1.658: telefone capturado podia chegar ao card sem tarifa e sem os pinos autoritativos da viagem."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Passageiros",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Atalhos",
+        "Geolocalização",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.658",
       "build": 5949,
       "commit": null,
