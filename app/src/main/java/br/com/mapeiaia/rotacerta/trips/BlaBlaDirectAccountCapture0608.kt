@@ -361,14 +361,27 @@ internal object BlaBlaDirectAccountCapture0608 {
         )
 
         val fingerprints = samples.map { sample ->
-            tripSetSha2560528(
-                sample.observedTripHrefs.mapNotNull(BlaBlaCollectorUrlModule::tripId),
-            )
+            if (targetDate0661 == null) {
+                tripSetSha2560528(
+                    sample.observedTripHrefs.mapNotNull(BlaBlaCollectorUrlModule::tripId),
+                )
+            } else {
+                val ids0661 = BlaBlaCollectorCardModule.candidatesOnDate(
+                    candidates = sample.candidates,
+                    targetDate = targetDate0661,
+                ).mapNotNull { candidate0661 -> BlaBlaCollectorUrlModule.tripId(candidate0661.href) }
+                tripSetSha2560528(canonicalTripIds0528(ids0661))
+            }
         }.filter(String::isNotBlank)
+        val requiredStablePasses0661 = if (targetDate0661 == null) {
+            DIRECT_STABLE_PASSES_0613 + 1
+        } else {
+            TODAY_SCOPE_STABLE_PASSES_0661
+        }
         val stablePasses = fingerprints
             .takeLastWhile { it == inventory.tripIdsSha256 }
             .size
-            .coerceAtLeast(DIRECT_STABLE_PASSES_0613 + 1)
+            .coerceAtLeast(requiredStablePasses0661)
         val updated = store.updateProfile(captureId, account.id) { previous ->
             previous.copy(
                 authenticatedProfileUuid = expected,
@@ -379,15 +392,28 @@ internal object BlaBlaDirectAccountCapture0608 {
                 identitySha256 = identityArtifact.sha256,
                 finalUrl = finalUrl,
                 timestamp = Instant.now().toString(),
-                cardCountInitial = samples.firstOrNull()?.observedCardCount ?: inventory.uniqueCount,
+                cardCountInitial = if (targetDate0661 == null) {
+                    samples.firstOrNull()?.observedCardCount ?: inventory.uniqueCount
+                } else {
+                    samples.firstOrNull()?.let { sample0661 ->
+                        BlaBlaCollectorCardModule.candidatesOnDate(
+                            candidates = sample0661.candidates,
+                            targetDate = targetDate0661,
+                        ).size
+                    } ?: inventory.uniqueCount
+                },
                 cardCountFinal = inventory.uniqueCount,
                 scrollIterations = (samples.size - 1).coerceAtLeast(0),
                 reachedEnd = finalSample.atBottom,
                 endEvidence = BlaBlaRidesEndEvidence0528(
-                    reason = when {
-                        finalSample.endSentinelVisible -> "ARCHIVED_RIDES_SENTINEL_VISIBLE"
-                        finalSample.explicitEmptyList -> "EXPLICIT_EMPTY_LIST"
-                        else -> "BOTTOM_STABLE"
+                    reason = if (targetDate0661 != null) {
+                        scopeBoundaryReason0661
+                    } else {
+                        when {
+                            finalSample.endSentinelVisible -> "ARCHIVED_RIDES_SENTINEL_VISIBLE"
+                            finalSample.explicitEmptyList -> "EXPLICIT_EMPTY_LIST"
+                            else -> "BOTTOM_STABLE"
+                        }
                     },
                     sentinel = finalSample.endSentinelText.take(160),
                     lastVisibleTripId = canonicalIds.lastOrNull().orEmpty(),
@@ -402,12 +428,16 @@ internal object BlaBlaDirectAccountCapture0608 {
                 ),
                 stabilized = true,
                 stabilizationEvidence = BlaBlaRidesStabilizationEvidence0528(
-                    requiredStableIterations = DIRECT_STABLE_PASSES_0613 + 1,
+                    requiredStableIterations = requiredStablePasses0661,
                     observedStableIterations = stablePasses,
                     cardCounts = samples.takeLast(8).map(DirectRideListEnvelope0608::observedCardCount),
                     tripSetFingerprintsSha256 = fingerprints.takeLast(8),
                     tripSetSha256 = inventory.tripIdsSha256,
-                    completionReason = "DIRECT_HTML_STABLE_0608",
+                    completionReason = if (targetDate0661 == null) {
+                        "DIRECT_HTML_STABLE_0608"
+                    } else {
+                        "DIRECT_HTML_TODAY_SCOPE_STABLE_0661"
+                    },
                 ),
                 tripInventory = inventory,
                 ridesIndexFile = indexArtifact.relativePath,
@@ -439,7 +469,10 @@ internal object BlaBlaDirectAccountCapture0608 {
         UnifiedDebugEventStore.recordAlways(
             "BLABLACAR_DIRECT_RIDES_HTML_READY_0608",
             app.packageName,
-            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=$accountKey cards=${inventory.uniqueCount} htmlBytes=${htmlArtifact.bytes} stablePasses=$stablePasses oldController=false oldIdentityProbe=false",
+            "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(captureId)} accountKey=$accountKey cards=${inventory.uniqueCount} " +
+                "htmlBytes=${htmlArtifact.bytes} stablePasses=$stablePasses scope=${if (targetDate0661 == null) "FULL" else "TODAY_ONLY"} " +
+                "targetDate=${targetDate0661?.toString().orEmpty()} scopeBoundary=${scopeBoundaryReason0661.ifBlank { "FULL_END" }} " +
+                "fullTraversal=${targetDate0661 == null} oldController=false oldIdentityProbe=false",
         )
 
         onProgress("${account.displayLabel} • HTML de Suas viagens pronto")
