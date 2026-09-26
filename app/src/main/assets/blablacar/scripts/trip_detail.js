@@ -197,6 +197,26 @@
       return false;
     }
   });
+  const stopLocations = mapAnchors.map((node) => {
+    try {
+      const url = new URL(node.getAttribute('href') || node.href || '', location.href);
+      const zoom = clean(url.searchParams.get('zoomOn'));
+      const parts = zoom.split(',').map((value) => Number(value));
+      const latitude = parts.length === 2 && Number.isFinite(parts[0]) && parts[0] >= -90 && parts[0] <= 90 ? parts[0] : null;
+      const longitude = parts.length === 2 && Number.isFinite(parts[1]) && parts[1] >= -180 && parts[1] <= 180 ? parts[1] : null;
+      const leaves = Array.from(node.querySelectorAll('span'))
+        .filter((span) => span.children.length === 0)
+        .map((span) => clean(span.innerText || span.textContent))
+        .filter(Boolean);
+      const distinct = Array.from(new Set(leaves));
+      const label = clean(distinct[0] || '');
+      const address = clean(distinct.length >= 2 ? distinct[distinct.length - 1] : '');
+      if (!label || !address || latitude === null || longitude === null) return null;
+      return {label, address, latitude, longitude};
+    } catch (_) {
+      return null;
+    }
+  }).filter(Boolean);
   let routeRoot = null;
   if (mapAnchors.length > 0) {
     routeRoot = mapAnchors[0].parentElement;
@@ -331,6 +351,7 @@ const html = clone.outerHTML || '';
     publicTripHref: publicTripHref,
     itineraryStops: itineraryStops,
     itineraryAuthoritative: itineraryAuthoritative,
+    stopLocations: stopLocations,
     views: Number.isFinite(views) ? views : null,
     domHtml: html.slice(0, 350000)
   });
