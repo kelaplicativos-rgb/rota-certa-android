@@ -636,6 +636,53 @@ internal object CentralDayCommandBridge0552 {
 
     fun refreshAll(context: Context, trips: List<Trip>): Int = trips.count { refreshTrip(context, it) }
 
+    suspend fun refreshTripDirect0662(context: Context, trip: Trip): BlaBlaCommandResult0407? {
+        val app = context.applicationContext
+        val target = target(app, trip) ?: return null
+        val statusStore = BlaBlaTripCommandStatusStore0407(app)
+        if (statusStore.get(target)?.pending == true) return null
+
+        val command = BlaBlaCommand0407.forTarget(
+            target = target,
+            operation = BlaBlaTripCapability0407.REVERIFY_TRIP,
+            origin = BlaBlaCommandOrigin0407.CARD,
+        )
+        if (!statusStore.tryMarkQueued(target, command.commandId, command.requestedAtMillis)) return null
+
+        val result = try {
+            AgendaBackgroundSync0392.refreshCanonicalTripFromCollector0517(
+                context = app,
+                work = AgendaBackgroundSync0392.TargetedTripWork0407(
+                    commandId = command.commandId,
+                    target = target,
+                ),
+                nowMillis = command.requestedAtMillis,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            BlaBlaCommandResult0407(
+                commandId = command.commandId,
+                target = target,
+                capability = BlaBlaTripCapability0407.REVERIFY_TRIP,
+                status = BlaBlaCommandStatus0407.FAILED,
+                errorCode = "DIRECT_CARD_HTML_FAILED_0662",
+                exceptionMessage = error.message.orEmpty().take(300),
+                rootCause = error.cause?.message.orEmpty().take(300),
+                startedAtMillis = command.requestedAtMillis,
+                finishedAtMillis = System.currentTimeMillis(),
+            )
+        }
+        statusStore.recordResult(result)
+        UnifiedDebugEventStore.recordAlways(
+            "CENTRAL_DAY_CARD_HTML_DIRECT_0662",
+            app.packageName,
+            "targetKey=${seatSyncDiagnosticKey(target.strongIdentityKey)} scope=TRIP_ONLY " +
+                "status=${result.status.name} workManager=false combinedResponse=false authority=HTML_DIRECT_0607",
+        )
+        return result
+    }
+
     internal fun target(context: Context, trip: Trip): BlaBlaTripTarget0407? {
         val tenantId = RotaCertaTenantRegistry(context.applicationContext).activeScope().tenantId.trim()
         val profileUuid = trip.blablaProfileUuid?.trim()?.lowercase().orEmpty()
@@ -839,14 +886,33 @@ internal fun CentralDoDiaScreen0552(
                     TextButton(
                         onClick = {
                             val trip = trips.firstOrNull { it.id == item.canonicalTripId }
-                            val queued = trip?.let { CentralDayCommandBridge0552.refreshTrip(context, it) } == true
-                            onMessage(
-                                if (queued) {
-                                    "🔄 Atualizando esta viagem pela cadeia BlaBlaCar → Agenda → Timeline…"
-                                } else {
-                                    "Atualização não iniciada: identidade forte indisponível ou atualização já em andamento."
-                                },
-                            )
+                            when {
+                                trip == null -> onMessage("Atualização não iniciada: viagem canônica não encontrada.")
+                                activity0661 == null -> onMessage("Atualização não iniciada: ciclo de vida da tela indisponível.")
+                                else -> {
+                                    onMessage("📥 Atualizando somente este card pelo HTML…")
+                                    activity0661.lifecycleScope.launch {
+                                        val result0662 = CentralDayCommandBridge0552.refreshTripDirect0662(
+                                            context = context.applicationContext,
+                                            trip = trip,
+                                        )
+                                        onRefreshLocal()
+                                        onMessage(
+                                            when (result0662?.status) {
+                                                BlaBlaCommandStatus0407.VERIFIED_SUCCESS ->
+                                                    "✅ Card atualizado pelo HTML • nenhuma outra viagem foi percorrida."
+                                                BlaBlaCommandStatus0407.AUTH_REQUIRED ->
+                                                    "⚠ Sessão BlaBlaCar necessária para atualizar este card."
+                                                null ->
+                                                    "Atualização não iniciada: identidade forte indisponível ou atualização já em andamento."
+                                                else ->
+                                                    "⚠ Atualização deste card terminou com pendência: " +
+                                                        result0662.errorCode.ifBlank { result0662.status.name }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         },
                     ) {
                         Text(
