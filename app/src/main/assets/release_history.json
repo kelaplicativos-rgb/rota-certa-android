@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.655",
+      "build": 5946,
+      "commit": null,
+      "branch": "agent/blablacar-message-trigger-0.1.655",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Notificações Android da BlaBlaCar passam a funcionar somente como gatilho de invalidação para uma nova leitura autenticada do HTML de /messages/list.",
+        "O índice de mensagens persiste conversationKey, groupKey observado e datetime para detectar novas atividades sem interpretar o texto da notificação como estado da viagem.",
+        "Mudanças confirmadas no índice disparam o refresh HTML direcionado existente, preservando captureSingleTrip0607 como autoridade do card."
+      ],
+      "fixed": [
+        "Reservas, cancelamentos e outras alterações notificadas deixam de depender exclusivamente de abrir ou voltar manualmente para as telas para iniciar uma revalidação.",
+        "Notificações repetidas são coalescidas por WorkManager e revisão monotônica, evitando múltiplas coletas simultâneas do mesmo evento.",
+        "Snapshots atrasados de mensagens não podem regredir o datetime já persistido; o índice aplica latest-wins por conversa."
+      ],
+      "improved": [
+        "O HTML de mensagens fica armazenado como evidência privada latest/previous por conta autenticada.",
+        "A associação com viagem é conservadora: identidade forte quando disponível, passageiro/rota quando inequívocos e fallback para os cards ainda ativos do mesmo perfil quando a conversa não identifica uma viagem com segurança.",
+        "Agenda, Timeline, Central do Dia e Viagens continuam convergindo pela mesma TripStore canônica e pelo evento TargetedTripRefreshEvents0645, sem uma segunda fonte de verdade."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.654: o refresh seletivo já existia, mas não havia um gatilho Android ligado às novas atividades de mensagens da BlaBlaCar."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Notificações Android",
+        "Coletor HTML",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Viagens",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.654",
       "build": 5945,
       "commit": null,
