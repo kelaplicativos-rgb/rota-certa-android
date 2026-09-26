@@ -906,7 +906,11 @@ internal fun CentralDoDiaScreen0552(
                     }
                     TextButton(
                         modifier = Modifier.weight(1f),
-                        onClick = { onOpenTimeline(item.canonicalTripId, null) },
+                        onClick = {
+                            if (!passengersExpanded0591) {
+                                expandedPassengerTripIds0591 += item.canonicalTripId
+                            }
+                        },
                     ) { Text("Atalhos", maxLines = 1) }
                     TextButton(
                         modifier = Modifier.weight(1f),
