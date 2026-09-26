@@ -13,6 +13,7 @@ import androidx.webkit.WebViewCompat
 import br.com.mapeiaia.rotacerta.UnifiedDebugEventStore
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -104,6 +105,7 @@ internal object BlaBlaDirectAccountCapture0608 {
         account: BlaBlaDynamicAccount,
         captureId: String,
         onProgress: (String) -> Unit = {},
+        targetDate0661: LocalDate? = null,
     ): BlaBlaDirectAccountCaptureResult0608 {
         val app = context.applicationContext
         val expected = BlaBlaRidesSnapshotStore0526.strongUuid(account.profileUuid)
@@ -388,6 +390,7 @@ internal object BlaBlaDirectAccountCapture0608 {
             captureId = captureId,
             profile = updated,
             onProgress = onProgress,
+            targetDate0661 = targetDate0661,
         )
         val profileAfter = store.read(captureId)
             ?.profiles
