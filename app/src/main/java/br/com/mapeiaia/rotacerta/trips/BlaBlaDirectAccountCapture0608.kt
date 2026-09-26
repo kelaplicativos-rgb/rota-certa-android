@@ -615,27 +615,32 @@ internal object BlaBlaDirectAccountCapture0608 {
                             sample.snapshotContainsAllObservedCards &&
                             sample.lastMutationAgeMs >= TODAY_SCOPE_MUTATION_QUIET_MS_0661
 
-                        if (boundary0661 != null && materialized0661) {
-                            stableBoundaryPasses0661 = if (fingerprint0661 == lastFingerprint0661) {
-                                stableBoundaryPasses0661 + 1
-                            } else 1
-                            lastFingerprint0661 = fingerprint0661
-                            if (stableBoundaryPasses0661 >= TODAY_SCOPE_STABLE_PASSES_0661) {
-                                UnifiedDebugEventStore.recordAlways(
-                                    "BLABLACAR_DIRECT_TODAY_BOUNDARY_0661",
-                                    "br.com.mapeiaia.rotacerta",
-                                    "scope=TODAY_ONLY targetDate=$targetDate reason=$boundary0661 " +
-                                        "targetCards=${scoped0661.size} observedCards=${sample.observedCardCount} " +
-                                        "atBottom=${sample.atBottom} fullTraversal=false incrementalScroll=true",
-                                )
-                                finish(finalUrl to sample)
-                                return@evaluateJavascript
+                        if (boundary0661 != null) {
+                            if (materialized0661) {
+                                stableBoundaryPasses0661 = if (fingerprint0661 == lastFingerprint0661) {
+                                    stableBoundaryPasses0661 + 1
+                                } else 1
+                                lastFingerprint0661 = fingerprint0661
+                                if (stableBoundaryPasses0661 >= TODAY_SCOPE_STABLE_PASSES_0661) {
+                                    UnifiedDebugEventStore.recordAlways(
+                                        "BLABLACAR_DIRECT_TODAY_BOUNDARY_0661",
+                                        "br.com.mapeiaia.rotacerta",
+                                        "scope=TODAY_ONLY targetDate=$targetDate reason=$boundary0661 " +
+                                            "targetCards=${scoped0661.size} observedCards=${sample.observedCardCount} " +
+                                            "atBottom=${sample.atBottom} fullTraversal=false incrementalScroll=true",
+                                    )
+                                    finish(finalUrl to sample)
+                                    return@evaluateJavascript
+                                }
+                            } else {
+                                stableBoundaryPasses0661 = 0
                             }
+                            // Boundary is already proven: wait in place for DOM quiet/stability.
+                            // Never scroll once tomorrow/another date has been reached.
                             handler.postDelayed(::evaluate, TODAY_SCOPE_RECHECK_MS_0661)
                             return@evaluateJavascript
-                        } else {
-                            stableBoundaryPasses0661 = 0
                         }
+                        stableBoundaryPasses0661 = 0
 
                         val decision0661 = BlaBlaCollectorCardModule.todayScopeStopDecision0660(
                             candidates = sample.candidates,
