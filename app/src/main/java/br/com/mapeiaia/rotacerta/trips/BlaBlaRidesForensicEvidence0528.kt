@@ -712,6 +712,58 @@ internal fun BlaBlaRidesSnapshotStore0526.validateProfileForComplete0528(
             indexCanonicalIds == extractAdministrativeTripIds0528(htmlFile?.readText(Charsets.UTF_8).orEmpty())
     } else true
 
+    for ((index0658, tripCapture0658) in profile.tripCaptures0605.withIndex()) {
+        if (tripCapture0658.status != "COMPLETE") {
+            return "TRIP_CAPTURE_NOT_COMPLETE_0658_${index0658}"
+        }
+        val tripHtml0658 = resolveArtifact0528(captureId, tripCapture0658.htmlFile)
+        if (!verifySnapshotArtifact0528(
+                tripHtml0658,
+                tripCapture0658.htmlBytes,
+                tripCapture0658.htmlSha256,
+            )
+        ) {
+            return "TRIP_HTML_ARTIFACT_INVALID_0658_${index0658}"
+        }
+        if (tripHtml0658 == null || sensitiveArtifactMarker0528(tripHtml0658) != null) {
+            return "TRIP_HTML_ARTIFACT_UNSAFE_0658_${index0658}"
+        }
+
+        val expectedPassengers0658 = tripCapture0658.passengerDetailsExpected0653
+        if (!passengerDeepCaptureComplete0653(
+                expectedPassengers = expectedPassengers0658,
+                resolvedPassengers = tripCapture0658.passengerDetailsResolved0653,
+            )
+        ) {
+            return "PASSENGER_DETAILS_COUNT_MISMATCH_0658_${index0658}"
+        }
+        val declaredPassengerPaths0658 = tripCapture0658.passengerHtmlFiles0653
+            .map(String::trim)
+            .filter(String::isNotBlank)
+        val passengerArtifacts0658 = tripCapture0658.passengerHtmlArtifacts0658
+        if (
+            declaredPassengerPaths0658.size != expectedPassengers0658 ||
+            passengerArtifacts0658.size != expectedPassengers0658
+        ) {
+            return "PASSENGER_HTML_ARTIFACT_COUNT_MISMATCH_0658_${index0658}"
+        }
+        if (
+            declaredPassengerPaths0658 !=
+            passengerArtifacts0658.map { it.relativePath.trim() }
+        ) {
+            return "PASSENGER_HTML_ARTIFACT_PATH_MISMATCH_0658_${index0658}"
+        }
+        passengerArtifacts0658.forEachIndexed { passengerIndex0658, artifact0658 ->
+            val passengerHtml0658 = resolveArtifact0528(captureId, artifact0658.relativePath)
+            if (!verifySnapshotArtifact0528(passengerHtml0658, artifact0658.bytes, artifact0658.sha256)) {
+                return "PASSENGER_HTML_ARTIFACT_INVALID_0658_${index0658}_${passengerIndex0658}"
+            }
+            if (passengerHtml0658 == null || sensitiveArtifactMarker0528(passengerHtml0658) != null) {
+                return "PASSENGER_HTML_ARTIFACT_UNSAFE_0658_${index0658}_${passengerIndex0658}"
+            }
+        }
+    }
+
     return forensicCompletionError0528(
         profile = profile,
         checks = BlaBlaRidesArtifactChecks0528(

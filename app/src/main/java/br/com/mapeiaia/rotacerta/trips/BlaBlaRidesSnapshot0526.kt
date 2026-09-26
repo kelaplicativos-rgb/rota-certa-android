@@ -269,16 +269,25 @@ internal class BlaBlaRidesSnapshotStore0526(context: Context) {
                 profile.ridesIndexFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.htmlFile.takeIf(String::isNotBlank)?.let(::add)
                 profile.mhtmlFile.takeIf(String::isNotBlank)?.let(::add)
-                profile.tripCaptures0605
-                    .map(BlaBlaRidesTripCapture0605::htmlFile)
-                    .filter(String::isNotBlank)
-                    .forEach(::add)
+                profile.tripCaptures0605.forEach { tripCapture ->
+                    tripCapture.htmlFile.takeIf(String::isNotBlank)?.let(::add)
+                    tripCapture.passengerHtmlArtifacts0658
+                        .map(BlaBlaRidesSnapshotFile0526::relativePath)
+                        .filter(String::isNotBlank)
+                        .forEach(::add)
+                    tripCapture.passengerHtmlFiles0653
+                        .filter(String::isNotBlank)
+                        .forEach(::add)
+                }
             }
         }.distinct()
-        relativePaths.mapNotNull { relative ->
+        relativePaths.map { relative ->
             val source = File(sourceRoot, relative).canonicalFile
-            if (!source.path.startsWith(sourceRoot.path + File.separator) || !source.isFile) {
-                return@mapNotNull null
+            require(source.path.startsWith(sourceRoot.path + File.separator)) {
+                "Artifact escaped capture directory: $relative"
+            }
+            require(source.isFile) {
+                "Missing declared snapshot artifact: $relative"
             }
             BlaBlaRidesSnapshotDownloadEntry0527(
                 relativePath = relative.replace('\\', '/').trimStart('/'),
@@ -711,11 +720,11 @@ internal class BlaBlaRidesSnapshotStabilizer0526(
 }
 
 /**
- * 0.1.618 multi-profile HTML coordinator.
+ * 0.1.658 multi-profile HTML coordinator.
  *
- * Accounts run concurrently only across isolated AndroidX WebView profiles. Each individual
- * account still navigates its own cards sequentially, avoiding burst traffic inside one
- * BlaBlaCar session. Canonical card commits are serialized; global finalization runs off-main.
+ * Profiles are deliberately serialized because the authenticated BlaBlaCar acquisition layer
+ * exposes a single-flight boundary. Each profile finishes rides -> trips -> passengers before
+ * the next profile starts, preventing UNIFIED_SINGLE_FLIGHT_BUSY from dropping another account.
  */
 internal object BlaBlaRidesSnapshotCoordinator0526 {
     suspend fun captureAll(
@@ -745,24 +754,28 @@ internal object BlaBlaRidesSnapshotCoordinator0526 {
         )
         val stagedByAccount = linkedMapOf<String, BlaBlaUnifiedProfileCaptureResult0605>()
         return try {
-            val accountResults0617 = coroutineScope {
-                accounts.mapIndexed { index, account ->
-                    async {
-                        onProgress(
-                            "Perfil ${index + 1}/${accounts.size} • ${account.displayLabel} • captura isolada",
-                        )
-                        val result = BlaBlaDirectAccountCapture0608.capture(
-                            context = app,
-                            store = store,
-                            account = account,
-                            captureId = manifest.captureId,
-                            onProgress = onProgress,
-                        )
-                        account to result
-                    }
-                }.awaitAll()
+            val accountResults0658 = buildList {
+                accounts.forEachIndexed { index, account ->
+                    onProgress(
+                        "Perfil ${index + 1}/${accounts.size} • ${account.displayLabel} • captura serial segura",
+                    )
+                    UnifiedDebugEventStore.recordAlways(
+                        "BLABLACAR_HTML_PROFILE_SERIAL_0658",
+                        app.packageName,
+                        "captureId=${BlaBlaRidesSnapshotStore0526.safeCaptureId(manifest.captureId)} " +
+                            "profile=${index + 1}/${accounts.size} accountKey=${store.accountKey(account.id)}",
+                    )
+                    val result = BlaBlaDirectAccountCapture0608.capture(
+                        context = app,
+                        store = store,
+                        account = account,
+                        captureId = manifest.captureId,
+                        onProgress = onProgress,
+                    )
+                    add(account to result)
+                }
             }
-            accountResults0617.forEach { (account, result) ->
+            accountResults0658.forEach { (account, result) ->
                 result.privateStage0610?.let { stagedByAccount[account.id] = it }
             }
             manifest = store.read(manifest.captureId) ?: manifest

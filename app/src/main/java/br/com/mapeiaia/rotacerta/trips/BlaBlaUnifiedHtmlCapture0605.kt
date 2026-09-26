@@ -57,6 +57,7 @@ internal data class BlaBlaRidesTripCapture0605(
     val passengerDetailsExpected0653: Int = 0,
     val passengerDetailsResolved0653: Int = 0,
     val passengerHtmlFiles0653: List<String> = emptyList(),
+    val passengerHtmlArtifacts0658: List<BlaBlaRidesSnapshotFile0526> = emptyList(),
     val publishedSeats: Int? = null,
     val publicTripUrl: String = "",
     val publicTripUrlSource: String = "",
@@ -173,6 +174,7 @@ private data class UnifiedPassengerDepthResult0653(
     val expected: Int,
     val resolved: Int,
     val htmlFiles: List<String>,
+    val htmlArtifacts: List<BlaBlaRidesSnapshotFile0526>,
 )
 
 private data class UnifiedDirectScripts0605(
@@ -1237,6 +1239,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 passengerDetailsExpected0653 = passengerDetailsExpected0653,
                 passengerDetailsResolved0653 = passengerDetailsResolved0653,
                 passengerHtmlFiles0653 = passengerDepth0653?.htmlFiles.orEmpty(),
+                passengerHtmlArtifacts0658 = passengerDepth0653?.htmlArtifacts.orEmpty(),
                 publishedSeats = trip?.published_seats,
                 publicTripUrl = trip?.public_trip_href.orEmpty(),
                 publicTripUrlSource = trip?.public_trip_href_source.orEmpty(),
@@ -1685,12 +1688,14 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 expected = 0,
                 resolved = 0,
                 htmlFiles = emptyList(),
+                htmlArtifacts = emptyList(),
             )
         }
 
         val passengers = source.passengers.toMutableList()
         val pendingMetadata = mutableListOf<ExternalPassengerMetadata>()
         val htmlFiles = mutableListOf<String>()
+        val htmlArtifacts = mutableListOf<BlaBlaRidesSnapshotFile0526>()
         val identityStore = PassengerIdentityStore(webView.context.applicationContext)
         var resolved = 0
 
@@ -1730,14 +1735,13 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                         addAll(candidate0657.fare.visibleAmounts)
                     }
                     val candidateFare0657 = parsePassengerFareMinorUnits0653(candidateFareValues0657)
-                    val candidateBoarding0657 = candidate0657.contact.boardingAddress.trim()
-                        .ifBlank { candidate0657.addresses.boardingAddress.trim() }
-                    val candidateDropoff0657 = candidate0657.addresses.dropoffAddress.trim()
+                    val candidateBoardingSegment0658 = candidate0657.segment.boarding.trim()
+                    val candidateDropoffSegment0658 = candidate0657.segment.dropoff.trim()
                     privateEvidenceMissing0657 = passengerPrivateEvidenceNeedsRetry0657(
                         phone = BlaBlaCollectorPassengerModule.normalizePhone(candidate0657.contact.phone),
                         fareMinorUnits = candidateFare0657,
-                        boardingAddress = candidateBoarding0657,
-                        dropoffAddress = candidateDropoff0657,
+                        boardingSegment = candidateBoardingSegment0658,
+                        dropoffSegment = candidateDropoffSegment0658,
                     )
                     if (!privateEvidenceMissing0657 || attempt >= PASSENGER_DETAIL_ATTEMPTS_0653) {
                         captured = candidate0657
@@ -1746,7 +1750,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                     UnifiedDebugEventStore.recordAlways(
                         "BLABLACAR_HTML_PASSENGER_PRIVATE_RETRY_0657",
                         webView.context.packageName,
-                        "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempt=$attempt reason=ALL_PRIVATE_FIELDS_BLANK privateValuesLogged=false",
+                        "tripKey=${seatSyncDiagnosticKey(definition.uuid + "|" + ride.tripId)} passengerIndex=$index attempt=$attempt reason=REQUIRED_PRIVATE_FIELDS_MISSING_0658 privateValuesLogged=false",
                     )
                 }
                 if (attempt < PASSENGER_DETAIL_ATTEMPTS_0653) {
@@ -1806,8 +1810,9 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 )
                 return@forEachIndexed
             }
+            htmlFiles += htmlEvidence.relativePath
+            htmlArtifacts += htmlEvidence
             if (privateEvidenceMissing0657) {
-                htmlFiles += htmlEvidence.relativePath
                 UnifiedDebugEventStore.recordAlways(
                     "BLABLACAR_HTML_PASSENGER_PRIVATE_MISSING_0657",
                     webView.context.packageName,
@@ -1861,7 +1866,6 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
                 },
             )
             passengers[index] = updatedPassenger
-            htmlFiles += htmlEvidence.relativePath
             resolved++
 
             UnifiedDebugEventStore.recordAlways(
@@ -1890,6 +1894,7 @@ internal object BlaBlaUnifiedHtmlCapture0605 {
             expected = expected,
             resolved = resolved,
             htmlFiles = htmlFiles,
+            htmlArtifacts = htmlArtifacts,
         )
     }
 

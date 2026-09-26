@@ -2,6 +2,45 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.658",
+      "build": 5949,
+      "commit": null,
+      "branch": "agent/passenger-complete-artifacts-0.1.658",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "O ZIP forense passa a incluir os HTMLs individuais de todos os passageiros declarados por cada viagem, preservando o vínculo por artefato com caminho, tamanho e SHA-256.",
+        "A validação final de COMPLETE passa a reabrir e verificar o HTML da viagem e cada HTML individual de passageiro antes da publicação global.",
+        "Os perfis BlaBlaCar passam a ser coletados serialmente através da fronteira single-flight compartilhada, concluindo um perfil antes de iniciar o próximo."
+      ],
+      "fixed": [
+        "Corrige o falso positivo em que passengerDetailsResolved0653 podia indicar 7/7 enquanto o ZIP final continha zero HTMLs privados porque o exportador ignorava passengerHtmlFiles0653.",
+        "O exportador deixa de descartar silenciosamente artefatos declarados ausentes; uma inconsistência agora bloqueia o ZIP em vez de produzir uma captura enganosa.",
+        "Telefone isolado, tarifa isolada ou trecho incompleto deixam de resolver um passageiro: a profundidade só fecha com telefone, valor individual explícito e os dois extremos do trecho."
+      ],
+      "improved": [
+        "Central do Dia, Agenda e Timeline continuam consumindo a mesma projeção canônica, agora protegida por evidência privada revalidada ponta a ponta.",
+        "As coordenadas e endereços dos pinos continuam vindo do HTML autoritativo da viagem; a página individual fornece telefone, valor e trecho sem substituir a geolocalização da viagem.",
+        "A telemetria continua registrando somente presença, contagens e códigos de erro, sem expor telefone, valor ou endereço."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.657: o manifesto podia apontar HTMLs privados que não eram adicionados ao ZIP.",
+        "0.1.657: perfis coletados em paralelo podiam disputar o single-flight e deixar uma conta como UNIFIED_SINGLE_FLIGHT_BUSY."
+      ],
+      "modulesAffected": [
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Passageiros",
+        "Agenda",
+        "Timeline",
+        "Central do Dia",
+        "Atalhos",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.657",
       "build": 5948,
       "commit": null,

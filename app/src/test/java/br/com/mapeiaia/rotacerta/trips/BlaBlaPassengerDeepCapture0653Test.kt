@@ -54,37 +54,45 @@ class BlaBlaPassengerDeepCapture0653Test {
     }
 
     @Test
-    fun blankPrivatePassengerEvidenceRequestsAnotherPagePass() {
+    fun privatePassengerEvidenceRequiresPhoneFareAndBothSegmentEndpoints() {
         assertTrue(
             passengerPrivateEvidenceNeedsRetry0657(
                 phone = null,
                 fareMinorUnits = null,
-                boardingAddress = "",
-                dropoffAddress = "",
+                boardingSegment = "",
+                dropoffSegment = "",
+            ),
+        )
+        assertTrue(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = "+5511999999999",
+                fareMinorUnits = null,
+                boardingSegment = "São Paulo",
+                dropoffSegment = "São Tomé das Letras",
+            ),
+        )
+        assertTrue(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = null,
+                fareMinorUnits = 10_600L,
+                boardingSegment = "São Paulo",
+                dropoffSegment = "São Tomé das Letras",
+            ),
+        )
+        assertTrue(
+            passengerPrivateEvidenceNeedsRetry0657(
+                phone = "+5511999999999",
+                fareMinorUnits = 10_600L,
+                boardingSegment = "São Paulo",
+                dropoffSegment = "",
             ),
         )
         assertFalse(
             passengerPrivateEvidenceNeedsRetry0657(
                 phone = "+5511999999999",
-                fareMinorUnits = null,
-                boardingAddress = "",
-                dropoffAddress = "",
-            ),
-        )
-        assertFalse(
-            passengerPrivateEvidenceNeedsRetry0657(
-                phone = null,
-                fareMinorUnits = 9_300L,
-                boardingAddress = "",
-                dropoffAddress = "",
-            ),
-        )
-        assertFalse(
-            passengerPrivateEvidenceNeedsRetry0657(
-                phone = null,
-                fareMinorUnits = null,
-                boardingAddress = "Rua Júlio Colaço, 73",
-                dropoffAddress = "",
+                fareMinorUnits = 10_600L,
+                boardingSegment = "São Paulo",
+                dropoffSegment = "São Tomé das Letras",
             ),
         )
     }
