@@ -2,6 +2,44 @@
   "schemaVersion": 1,
   "releases": [
     {
+      "version": "0.1.661",
+      "build": 5952,
+      "commit": null,
+      "branch": "agent/central-html-today-0.1.661",
+      "generatedAt": null,
+      "status": "EM_VALIDACAO",
+      "implemented": [
+        "Central do Dia passa a chamar diretamente o pipeline HTML usado por Atualizar BlaBlaCar, com escopo TODAY_ONLY e sem MODE_SYNC.",
+        "BlaBlaDirectAccountCapture0608 ganha leitura HTML limitada ao dia, com rolagem incremental e parada na primeira fronteira cronológica comprovada.",
+        "BlaBlaUnifiedHtmlCapture0605 recebe targetDate0661 e abre profundamente apenas as viagens operacionais da data, preservando a captura completa dos passageiros."
+      ],
+      "fixed": [
+        "Remove da Central do Dia o syncToday da 0.1.660 que acionava SYNC_START e LEGACY_NON_HTML.",
+        "A Central consegue descobrir viagens de hoje mesmo quando o estado canônico local está vazio.",
+        "O finalizador de hoje é presence-only: não apaga irmãos, não percorre datas futuras e não transforma ausência parcial em cancelamento."
+      ],
+      "improved": [
+        "A telemetria de hoje comprova HTML_DIRECT_0607, legacySync=false, modeSync=false e fullTraversal=false.",
+        "A validação forense aceita término por fronteira TODAY_SCOPE comprovada sem exigir o rodapé global da lista.",
+        "Atualização individual de card continua isolada no captureSingleTrip0607."
+      ],
+      "regressions": [],
+      "resolvedRegressions": [
+        "0.1.660: Atualizar operação de hoje usava o sincronizador de contas e gerava SYNC_START/LEGACY_NON_HTML em vez da captura HTML direta."
+      ],
+      "modulesAffected": [
+        "Central do Dia",
+        "BlaBlaCar",
+        "Coletor HTML",
+        "Passageiros",
+        "Agenda",
+        "Timeline",
+        "Viagens",
+        "Build"
+      ],
+      "detailsComplete": true
+    },
+    {
       "version": "0.1.660",
       "build": 5951,
       "commit": null,
